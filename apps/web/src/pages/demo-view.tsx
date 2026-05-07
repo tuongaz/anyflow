@@ -83,13 +83,12 @@ export function DemoView({
 
   // Selecting a node deselects any connector and vice versa — node + connector
   // selection are mutually exclusive (the inspector renders one entity at a
-  // time, even though the same Sheet hosts both). Clicking a node body also
-  // closes any open inspector — the panel is opened exclusively via the Info
-  // icon, so a body click that lands on a different (or null) node should
-  // always drop the panel.
+  // time, even though the same Sheet hosts both). The inspector is preserved
+  // while the user keeps clicking the same node's body; only a click that
+  // lands elsewhere (different node, pane, connector) drops it.
   const onSelectNode = useCallback((id: string | null) => {
     setSelectedId(id);
-    setInspectId(null);
+    setInspectId((prev) => (prev !== null && prev === id ? prev : null));
     if (id !== null) setSelectedConnectorId(null);
   }, []);
   const onSelectConnector = useCallback((id: string | null) => {
