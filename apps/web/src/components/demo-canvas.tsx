@@ -24,6 +24,10 @@ export interface DemoCanvasProps {
   connectors: Connector[];
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
+  /** Currently selected connector id (mutually exclusive with selectedNodeId). */
+  selectedConnectorId?: string | null;
+  /** Click handler for a connector edge; null clears the selection. */
+  onSelectConnector?: (id: string | null) => void;
   /** Per-node run state from SSE events. */
   runs?: NodeRuns;
   /** Click handler for a PlayNode's Play button. */
@@ -62,6 +66,8 @@ export function DemoCanvas({
   connectors,
   selectedNodeId,
   onSelectNode,
+  selectedConnectorId,
+  onSelectConnector,
   runs,
   onPlayNode,
   nodeOverrides,
@@ -128,9 +134,11 @@ export function DemoCanvas({
       connectors.map((c) => {
         const adjacentRunning =
           statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
-        return connectorToEdge(c, adjacentRunning);
+        const edge = connectorToEdge(c, adjacentRunning);
+        if (selectedConnectorId === c.id) edge.selected = true;
+        return edge;
       }),
-    [connectors, runs],
+    [connectors, runs, selectedConnectorId],
   );
 
   return (
@@ -146,7 +154,11 @@ export function DemoCanvas({
         nodesConnectable={false}
         elementsSelectable
         onNodeClick={(_e, node) => onSelectNode(node.id)}
-        onPaneClick={() => onSelectNode(null)}
+        onEdgeClick={(_e, edge) => onSelectConnector?.(edge.id)}
+        onPaneClick={() => {
+          onSelectNode(null);
+          onSelectConnector?.(null);
+        }}
         onNodeDragStart={() => {
           draggingRef.current = true;
         }}

@@ -2,16 +2,19 @@ import { JsonTree } from '@/components/json-tree';
 import { StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNodeDetail } from '@/hooks/use-node-detail';
 import type { NodeEventLogEntry } from '@/hooks/use-node-events';
 import type { NodeRunState } from '@/hooks/use-node-runs';
-import type { DemoNode } from '@/lib/api';
+import type { Connector, DemoNode } from '@/lib/api';
 import { RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export interface DetailPanelProps {
   /** Demo id — required so the dynamic-source proxy can find the node. */
   demoId: string | null;
   node: DemoNode | null;
+  connector: Connector | null;
   filePath?: string;
   /** Current run state for the selected node, when known. */
   run?: NodeRunState;
@@ -20,15 +23,18 @@ export interface DetailPanelProps {
   onClose: () => void;
 }
 
+type TabKey = 'detail' | 'style';
+
 export function DetailPanel({
   demoId,
   node,
+  connector,
   filePath,
   run,
   recentEvents,
   onClose,
 }: DetailPanelProps) {
-  const open = node !== null;
+  const open = node !== null || connector !== null;
   // Shape nodes are decorative — no detail/dynamicSource/run surface.
   const functionalNode = node && node.type !== 'shapeNode' ? node : null;
   const detail = functionalNode?.data.detail;
@@ -39,6 +45,17 @@ export function DetailPanel({
     node?.id ?? null,
     hasDynamicSource,
   );
+
+  // Active tab persists during a single selection (per US-024 AC). Reset to
+  // 'detail' whenever the selected entity id changes — keying off the id
+  // means tab state is preserved across SSE-driven re-renders that keep the
+  // same selection.
+  const selectionId = node?.id ?? connector?.id ?? null;
+  const [tab, setTab] = useState<TabKey>('detail');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on new selection.
+  useEffect(() => {
+    setTab('detail');
+  }, [selectionId]);
 
   return (
     <Sheet
@@ -54,55 +71,144 @@ export function DetailPanel({
         data-testid="detail-panel"
       >
         {node ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <SheetTitle data-testid="detail-panel-title">{node.data.label}</SheetTitle>
-              <SheetDescription className="font-mono text-[11px]">
-                {node.id} · {node.type}
-              </SheetDescription>
-            </div>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <SheetTitle data-testid="detail-panel-title">{node.data.label}</SheetTitle>
+                <SheetDescription className="font-mono text-[11px]">
+                  {node.id} · {node.type}
+                </SheetDescription>
+              </div>
 
-            {detail?.summary ? (
-              <p className="text-sm text-foreground/90 leading-relaxed">{detail.summary}</p>
-            ) : null}
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="detail" data-testid="detail-panel-tab-detail">
+                  Detail
+                </TabsTrigger>
+                <TabsTrigger value="style" data-testid="detail-panel-tab-style">
+                  Style
+                </TabsTrigger>
+              </TabsList>
 
-            {detail?.fields && detail.fields.length > 0 ? (
-              <div className="rounded-md border bg-muted/30">
-                <dl className="divide-y">
-                  {detail.fields.map((field) => (
-                    <div key={field.label} className="flex items-start gap-3 px-3 py-2 text-xs">
-                      <dt className="w-24 shrink-0 font-medium text-muted-foreground">
-                        {field.label}
-                      </dt>
-                      <dd className="flex-1 break-all font-mono">{field.value}</dd>
+              <TabsContent value="detail" className="mt-0 flex flex-col gap-3">
+                {detail?.summary ? (
+                  <p className="text-sm text-foreground/90 leading-relaxed">{detail.summary}</p>
+                ) : null}
+
+                {detail?.fields && detail.fields.length > 0 ? (
+                  <div className="rounded-md border bg-muted/30">
+                    <dl className="divide-y">
+                      {detail.fields.map((field) => (
+                        <div key={field.label} className="flex items-start gap-3 px-3 py-2 text-xs">
+                          <dt className="w-24 shrink-0 font-medium text-muted-foreground">
+                            {field.label}
+                          </dt>
+                          <dd className="flex-1 break-all font-mono">{field.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ) : null}
+
+                {hasDynamicSource ? (
+                  <DynamicSection state={dynamicState} onRefresh={refreshDynamic} />
+                ) : null}
+
+                {run ? <RunSection run={run} /> : null}
+
+                {recentEvents && recentEvents.length > 0 ? (
+                  <RecentEventsSection events={recentEvents} />
+                ) : null}
+
+                {filePath ? (
+                  <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
+                    <div className="font-medium uppercase tracking-wide text-[10px] mb-1">
+                      Demo file
                     </div>
-                  ))}
-                </dl>
+                    <div className="font-mono break-all">{filePath}</div>
+                  </div>
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="style" className="mt-0" data-testid="detail-panel-style-content">
+                <StylePlaceholder kind="node" />
+              </TabsContent>
+            </div>
+          </Tabs>
+        ) : connector ? (
+          <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <SheetTitle data-testid="detail-panel-title">
+                  {connector.label ?? 'Connector'}
+                </SheetTitle>
+                <SheetDescription className="font-mono text-[11px]">
+                  {connector.id} · {connector.kind}
+                </SheetDescription>
               </div>
-            ) : null}
 
-            {hasDynamicSource ? (
-              <DynamicSection state={dynamicState} onRefresh={refreshDynamic} />
-            ) : null}
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="detail" data-testid="detail-panel-tab-detail">
+                  Detail
+                </TabsTrigger>
+                <TabsTrigger value="style" data-testid="detail-panel-tab-style">
+                  Style
+                </TabsTrigger>
+              </TabsList>
 
-            {run ? <RunSection run={run} /> : null}
+              <TabsContent value="detail" className="mt-0 flex flex-col gap-3">
+                <ConnectorSummary connector={connector} />
+              </TabsContent>
 
-            {recentEvents && recentEvents.length > 0 ? (
-              <RecentEventsSection events={recentEvents} />
-            ) : null}
-
-            {filePath ? (
-              <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
-                <div className="font-medium uppercase tracking-wide text-[10px] mb-1">
-                  Demo file
-                </div>
-                <div className="font-mono break-all">{filePath}</div>
-              </div>
-            ) : null}
-          </div>
+              <TabsContent value="style" className="mt-0" data-testid="detail-panel-style-content">
+                <StylePlaceholder kind="connector" />
+              </TabsContent>
+            </div>
+          </Tabs>
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function StylePlaceholder({ kind }: { kind: 'node' | 'connector' }) {
+  return (
+    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
+      Style controls for the selected {kind} will appear here.
+    </div>
+  );
+}
+
+function ConnectorSummary({ connector }: { connector: Connector }) {
+  return (
+    <div className="rounded-md border bg-card px-3 py-2 text-xs">
+      <dl className="divide-y">
+        <SummaryRow label="Source" value={connector.source} />
+        <SummaryRow label="Target" value={connector.target} />
+        <SummaryRow label="Kind" value={connector.kind} />
+        {connector.label ? <SummaryRow label="Label" value={connector.label} /> : null}
+        {connector.style ? <SummaryRow label="Style" value={connector.style} /> : null}
+        {connector.color ? <SummaryRow label="Color" value={connector.color} /> : null}
+        {connector.direction ? <SummaryRow label="Direction" value={connector.direction} /> : null}
+        {connector.kind === 'http' && connector.url ? (
+          <SummaryRow label="URL" value={`${connector.method ?? 'GET'} ${connector.url}`} />
+        ) : null}
+        {connector.kind === 'event' ? (
+          <SummaryRow label="Event" value={connector.eventName} />
+        ) : null}
+        {connector.kind === 'queue' ? (
+          <SummaryRow label="Queue" value={connector.queueName} />
+        ) : null}
+      </dl>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
+      <dt className="w-20 shrink-0 font-medium text-muted-foreground">{label}</dt>
+      <dd className="flex-1 break-all font-mono">{value}</dd>
+    </div>
   );
 }
 

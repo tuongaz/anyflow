@@ -158,7 +158,8 @@
         "New data-testid='detail-panel-tab-style' for the Style tab trigger.",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-025",

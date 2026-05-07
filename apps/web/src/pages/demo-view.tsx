@@ -36,6 +36,7 @@ export function DemoView({
 }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -49,10 +50,23 @@ export function DemoView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on demo id change.
   useEffect(() => {
     setSelectedId(null);
+    setSelectedConnectorId(null);
     resetNodeOverrides();
     resetConnectorOverrides();
     setEditError(null);
   }, [detail?.id]);
+
+  // Selecting a node deselects any connector and vice versa — node + connector
+  // selection are mutually exclusive (the inspector renders one entity at a
+  // time, even though the same Sheet hosts both).
+  const onSelectNode = useCallback((id: string | null) => {
+    setSelectedId(id);
+    if (id !== null) setSelectedConnectorId(null);
+  }, []);
+  const onSelectConnector = useCallback((id: string | null) => {
+    setSelectedConnectorId(id);
+    if (id !== null) setSelectedId(null);
+  }, []);
 
   const demoNodes = detail?.demo?.nodes;
   const demoConnectors = detail?.demo?.connectors;
@@ -131,6 +145,7 @@ export function DemoView({
 
   const demo = detail?.demo;
   const selectedNode = demo?.nodes.find((n) => n.id === selectedId) ?? null;
+  const selectedConnector = demo?.connectors.find((c) => c.id === selectedConnectorId) ?? null;
   const selectedRun = selectedId ? runs[selectedId] : undefined;
   const selectedEvents = selectedId ? (nodeEvents[selectedId] ?? []) : [];
 
@@ -151,7 +166,9 @@ export function DemoView({
           nodes={demo.nodes}
           connectors={demo.connectors}
           selectedNodeId={selectedId}
-          onSelectNode={setSelectedId}
+          onSelectNode={onSelectNode}
+          selectedConnectorId={selectedConnectorId}
+          onSelectConnector={onSelectConnector}
           runs={runs}
           onPlayNode={onPlayNode}
           nodeOverrides={nodePending.overrides}
@@ -184,10 +201,14 @@ export function DemoView({
       <DetailPanel
         demoId={detail?.id ?? null}
         node={selectedNode}
+        connector={selectedConnector}
         filePath={detail?.filePath}
         run={selectedRun}
         recentEvents={selectedEvents}
-        onClose={() => setSelectedId(null)}
+        onClose={() => {
+          setSelectedId(null);
+          setSelectedConnectorId(null);
+        }}
       />
     </div>
   );

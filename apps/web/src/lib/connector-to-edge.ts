@@ -12,6 +12,7 @@ export interface DerivedEdge {
   style: { strokeDasharray?: string };
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
+  selected?: boolean;
 }
 
 // Closed arrowhead — width/height tuned to look balanced against the 1px stroke.
