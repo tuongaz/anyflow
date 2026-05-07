@@ -205,7 +205,8 @@
         "Keyboard listener is scoped to the canvas region (does not fire when focus is in an unrelated input or in the inline editor).",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-028",
@@ -221,7 +222,8 @@
         "data-testid='canvas-toolbar' with per-button data-testid='toolbar-shape-rectangle' etc.",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-029",
@@ -236,7 +238,8 @@
         "Connecting two nodes that already have a connector between them is allowed (multiple edges supported by the schema and React Flow).",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-030",
@@ -253,7 +256,8 @@
         "bun run typecheck passes.",
         "bun run lint passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-031",
@@ -273,7 +277,8 @@
         "bun run typecheck passes.",
         "bun run lint passes.",
         "Verify in browser using dev-browser skill (specifically: select a node, resize from each edge/corner, confirm the panel stays open and no visible border lines render)."
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-032",
@@ -291,7 +296,27 @@
         "bun run typecheck passes.",
         "bun run lint passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-033",
+      "title": "Tighter typography + denser canvas grid",
+      "description": "As a user, I want the nodes and the background grid to feel more compact — smaller text inside nodes, smaller default node footprint, and a denser, smaller-dot grid — so the canvas reads as a tight diagram rather than chunky widgets.",
+      "acceptanceCriteria": [
+        "Node title text drops a step: from 'text-sm' (~14px) to 'text-[11px]' (or 'text-xs' = 12px) with leading-tight retained.",
+        "Node description / body text drops to 'text-[10px]' (was text-[12px]).",
+        "StatusPill and Play button shrink to match: button uses 'h-5 px-1.5' instead of 'h-6 px-2', icon size 12px (h-3 w-3 stays acceptable).",
+        "Default node width shrinks from 'w-[260px]' to 'w-[200px]' across PlayNode, StateNode, and ShapeNode (only when data.width is unset — explicit width still wins).",
+        "Header and body padding tighten: header from 'px-3 py-1.5' to 'px-2 py-1'; body from 'px-3 py-2' to 'px-2 py-1.5'.",
+        "<Background /> in DemoCanvas gets gap={12} (was default 20) and size={0.6} (was default 1) — denser, smaller dots. Variant stays the default 'dots'.",
+        "Functional behavior unchanged: layouts still reflow gracefully at the smaller default width; resize-from-edges still works; inline editing inputs still fit.",
+        "Existing demos (examples/todo-demo-target) load and visually shrink uniformly — no broken layouts, no text clipping at default size.",
+        "bun run typecheck passes.",
+        "bun run lint passes.",
+        "Verify in browser using dev-browser skill (compare before/after: node footprint smaller, canvas grid tighter, no horizontal overflow on default text)."
+      ],
+      "passes": false
     }
   ],
   "functionalRequirements": [
@@ -370,6 +395,10 @@
     {
       "id": "FR-19",
       "text": "Each color configuration field in the Style tab (node Border, node Background, connector Color) is a single trigger swatch showing the currently-selected token. Clicking the trigger opens a Popover with the 8-token palette grid; selection applies + closes the popover. Refines FR-11/US-025 (replaces the always-visible row of 8 swatches)."
+    },
+    {
+      "id": "FR-20",
+      "text": "Node typography and default footprint shrink: title text-[11px], body text-[10px], default width 200px (when data.width unset), tighter header/body padding. Canvas <Background /> uses gap=12 + size=0.6 (denser, smaller dots). Explicit per-node width/height still wins."
     }
   ],
   "nonGoals": [

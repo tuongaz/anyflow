@@ -22,6 +22,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type Position = { x: number; y: number };
 
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+/** True when the element is a form control or contentEditable surface. */
+const isEditableElement = (el: Element | null): boolean => {
+  if (!el) return false;
+  if (EDITABLE_TAGS.has(el.tagName)) return true;
+  return el instanceof HTMLElement && el.isContentEditable;
+};
+
 export interface DemoViewProps {
   slug: string;
   demos: DemoSummary[];
@@ -198,6 +207,29 @@ export function DemoView({
     },
     [demoId],
   );
+
+  // Delete/Backspace shortcut: removes the selected node or connector. Skipped
+  // while focus is in any text-editing element so InlineEdit / form controls
+  // keep their normal Backspace behavior. The InlineEdit also calls
+  // e.stopPropagation(), but the activeElement guard is the durable line of
+  // defense — it covers any future input that forgets to stop the bubble.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (isEditableElement(document.activeElement)) return;
+      if (selectedConnectorId) {
+        e.preventDefault();
+        onDeleteConnector(selectedConnectorId);
+        return;
+      }
+      if (selectedId) {
+        e.preventDefault();
+        onDeleteNode(selectedId);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedId, selectedConnectorId, onDeleteNode, onDeleteConnector]);
 
   // Inline label edit on a node (PlayNode/StateNode title or ShapeNode label).
   // Empty value is filtered out by the InlineEdit's `required` flag for
