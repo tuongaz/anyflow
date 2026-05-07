@@ -85,7 +85,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1"
         data-testid="node-header"
       >
-        <div className="min-w-0 flex-1 text-[10px] font-normal leading-tight">
+        <div className="min-w-0 flex-1 text-[12px] font-normal leading-tight">
           {editing === 'label' && labelEditable ? (
             <InlineEdit
               initialValue={data.label}
@@ -93,13 +93,13 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
               required
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
-              className="text-[10px]"
+              className="text-[12px]"
             />
           ) : (
             <button
               type="button"
               className={cn(
-                'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[10px] font-normal leading-tight',
+                'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[12px] font-normal leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               onDoubleClick={
@@ -150,14 +150,14 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
             multiline
             onCommit={(v) => data.onDescriptionChange?.(id, v)}
             onExit={() => setEditing(null)}
-            className="w-full text-[9px] text-muted-foreground"
+            className="w-full text-[11px] text-muted-foreground"
             placeholder={data.kind}
           />
         ) : (
           <button
             type="button"
             className={cn(
-              'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[9px] text-muted-foreground',
+              'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[11px] text-muted-foreground',
               descEditable ? 'hover:opacity-80' : '',
             )}
             onDoubleClick={
