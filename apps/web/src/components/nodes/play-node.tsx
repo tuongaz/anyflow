@@ -13,41 +13,48 @@ export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
 export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const status = data.status ?? 'idle';
   const action = data.playAction;
-  const subtitle = action ? `${action.method} ${action.url}` : data.kind;
+  const description = data.detail?.summary ?? data.kind;
   const playable = !!action && !!data.onPlay;
   const isRunning = status === 'running';
 
   return (
     <div
-      className={`group flex min-w-[220px] flex-col gap-2 rounded-lg border bg-card px-3 py-2 shadow-sm transition-shadow ${
+      className={`group flex min-w-[240px] flex-col rounded-lg border bg-card shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-ring ring-offset-2' : ''
       } ${isRunning ? 'anydemo-node-pulse' : ''}`}
       data-status={status}
       data-testid="play-node"
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-muted-foreground" />
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium leading-tight truncate">{data.label}</div>
-          <div className="text-[11px] text-muted-foreground truncate font-mono">{subtitle}</div>
-        </div>
-        <StatusPill status={status} />
-      </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        disabled={!playable || isRunning}
-        className="h-7 gap-1 px-2 text-xs"
-        data-testid="play-button"
-        onClick={(e) => {
-          e.stopPropagation();
-          data.onPlay?.(id);
-        }}
+      <div
+        className="flex items-center justify-between gap-2 rounded-t-lg border-b bg-muted/40 px-3 py-1.5"
+        data-testid="node-header"
       >
-        <Play className="h-3 w-3" />
-        {isRunning ? 'Running…' : 'Play'}
-      </Button>
+        <div className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
+          {data.label}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <StatusPill status={status} />
+          <div className="flex shrink-0 items-center justify-end gap-1" data-testid="node-actions">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!playable || isRunning}
+              className="h-6 gap-1 px-2 text-xs"
+              data-testid="play-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onPlay?.(id);
+              }}
+            >
+              <Play className="h-3 w-3" />
+              {isRunning ? 'Running…' : 'Play'}
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="px-3 py-2 text-[12px] text-muted-foreground line-clamp-2">{description}</div>
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-muted-foreground" />
     </div>
   );
