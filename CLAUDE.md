@@ -28,6 +28,8 @@ bun test               # bun test (workspace-scoped tests)
 bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 ```
 
+A `Makefile` at the repo root wraps these (and the CLI subcommands) for discoverability — run `make help` to see the target list. It's sugar over the bun commands above, not a replacement; both stay in sync. `make register` takes `DIR=<path>` (not `PATH=` — that would clobber the shell `PATH` env var when Make exports command-line overrides to subshells).
+
 ## Dev / prod split
 
 - Dev: `bun run dev` runs Vite on `5173` and Hono on `4321` in parallel via `bun run --filter '*' dev`. Hono catch-all proxies non-`/api/*` requests to Vite. Vite HMR pins host/port to `5173` so the HMR WebSocket bypasses Hono — do NOT try to proxy the WebSocket through Hono.
