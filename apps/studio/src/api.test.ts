@@ -718,6 +718,144 @@ describe('PATCH /api/demos/:id/nodes/:nodeId/position', () => {
   });
 });
 
+describe('PATCH /api/demos/:id/nodes/:nodeId/order', () => {
+  const VALID_DEMO_THREE_NODES = {
+    version: 1,
+    name: 'Three Nodes',
+    nodes: [
+      {
+        id: 'a',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle' },
+      },
+      {
+        id: 'b',
+        type: 'shapeNode',
+        position: { x: 100, y: 0 },
+        data: { shape: 'rectangle' },
+      },
+      {
+        id: 'c',
+        type: 'shapeNode',
+        position: { x: 200, y: 0 },
+        data: { shape: 'rectangle' },
+      },
+    ],
+    connectors: [],
+  };
+
+  const patch = (app: ReturnType<typeof buildApp>['app'], path: string, body: unknown) =>
+    app.request(path, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  const ids = (path: string) =>
+    (JSON.parse(readFileSync(path, 'utf8')) as { nodes: Array<{ id: string }> }).nodes.map(
+      (n) => n.id,
+    );
+
+  const setup = async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_THREE_NODES);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    return { app, demoFile, demoId: reg.id };
+  };
+
+  it("op:'forward' swaps with the next neighbour", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/a/order`, { op: 'forward' });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['b', 'a', 'c']);
+  });
+
+  it("op:'forward' on the topmost node is a no-op", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/c/order`, { op: 'forward' });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['a', 'b', 'c']);
+  });
+
+  it("op:'backward' swaps with the previous neighbour", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/c/order`, { op: 'backward' });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['a', 'c', 'b']);
+  });
+
+  it("op:'backward' on the bottommost node is a no-op", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/a/order`, { op: 'backward' });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['a', 'b', 'c']);
+  });
+
+  it("op:'toFront' moves to the end of the array", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/a/order`, { op: 'toFront' });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['b', 'c', 'a']);
+  });
+
+  it("op:'toBack' moves to the start of the array", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/c/order`, { op: 'toBack' });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['c', 'a', 'b']);
+  });
+
+  it("op:'toIndex' pins to an absolute index (used by undo)", async () => {
+    const { app, demoFile, demoId } = await setup();
+    // Move 'a' (idx 0) to idx 2 — same as toFront on a 3-node array.
+    const res = await patch(app, `/api/demos/${demoId}/nodes/a/order`, { op: 'toIndex', index: 2 });
+    expect(res.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['b', 'c', 'a']);
+
+    // Then pin it back to idx 0 — exact inverse.
+    const res2 = await patch(app, `/api/demos/${demoId}/nodes/a/order`, {
+      op: 'toIndex',
+      index: 0,
+    });
+    expect(res2.status).toBe(200);
+    expect(ids(demoFile)).toEqual(['a', 'b', 'c']);
+  });
+
+  it("op:'toIndex' clamps out-of-range indices", async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/a/order`, {
+      op: 'toIndex',
+      index: 99,
+    });
+    expect(res.status).toBe(200);
+    // Clamped to length-1 = 2 → same as toFront.
+    expect(ids(demoFile)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('returns 400 for an unknown op', async () => {
+    const { app, demoFile, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/a/order`, { op: 'noSuchOp' });
+    expect(res.status).toBe(400);
+    expect(ids(demoFile)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns 404 for unknown nodeId', async () => {
+    const { app, demoId } = await setup();
+    const res = await patch(app, `/api/demos/${demoId}/nodes/missing/order`, { op: 'forward' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await patch(app, '/api/demos/nope/nodes/a/order', { op: 'forward' });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
   const patch = (app: ReturnType<typeof buildApp>['app'], path: string, body: unknown) =>
     app.request(path, {

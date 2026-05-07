@@ -158,6 +158,69 @@ const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody)
   }
 };
 
+// Reorder a node within `demo.nodes[]`. The four ops mirror the typical
+// "send backward / bring forward / to back / to front" actions; `toIndex`
+// pins the node back to a captured absolute index so undo for `forward` /
+// `backward` from the middle is faithful even under concurrent edits.
+const ReorderBodySchema = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('forward') }),
+  z.object({ op: z.literal('backward') }),
+  z.object({ op: z.literal('toFront') }),
+  z.object({ op: z.literal('toBack') }),
+  z.object({ op: z.literal('toIndex'), index: z.number().int().nonnegative() }),
+]);
+type ReorderBody = z.infer<typeof ReorderBodySchema>;
+
+const reorderNodes = (
+  nodes: Array<Record<string, unknown>>,
+  fromIdx: number,
+  body: ReorderBody,
+): boolean => {
+  const len = nodes.length;
+  switch (body.op) {
+    case 'forward': {
+      if (fromIdx >= len - 1) return false;
+      const tmp = nodes[fromIdx];
+      const next = nodes[fromIdx + 1];
+      if (tmp === undefined || next === undefined) return false;
+      nodes[fromIdx] = next;
+      nodes[fromIdx + 1] = tmp;
+      return true;
+    }
+    case 'backward': {
+      if (fromIdx <= 0) return false;
+      const tmp = nodes[fromIdx];
+      const prev = nodes[fromIdx - 1];
+      if (tmp === undefined || prev === undefined) return false;
+      nodes[fromIdx] = prev;
+      nodes[fromIdx - 1] = tmp;
+      return true;
+    }
+    case 'toFront': {
+      if (fromIdx === len - 1) return false;
+      const [removed] = nodes.splice(fromIdx, 1);
+      if (removed === undefined) return false;
+      nodes.push(removed);
+      return true;
+    }
+    case 'toBack': {
+      if (fromIdx === 0) return false;
+      const [removed] = nodes.splice(fromIdx, 1);
+      if (removed === undefined) return false;
+      nodes.unshift(removed);
+      return true;
+    }
+    case 'toIndex': {
+      const target = Math.min(Math.max(body.index, 0), len - 1);
+      if (target === fromIdx) return false;
+      const [removed] = nodes.splice(fromIdx, 1);
+      if (removed === undefined) return false;
+      nodes.splice(target, 0, removed);
+      return true;
+    }
+  }
+};
+
 // Kind-specific connector fields. When `kind` changes via PATCH, these are
 // dropped first so the resulting connector doesn't carry phantom payloads
 // from the previous kind (e.g. an event→default change leaving eventName
@@ -476,6 +539,93 @@ export function createApi(options: ApiOptions): Hono {
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true, position: { x, y } });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'unknownNode':
+        return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // PATCH the z-order position of a single node within demo.nodes[]. React
+  // Flow's painter renders nodes in array order, so moving a node to a later
+  // index brings it visually forward (later nodes paint over earlier ones).
+  // Five ops are supported: forward / backward (single-step swap), toFront /
+  // toBack (remove + push/unshift), and toIndex (pin to an absolute index)
+  // which the undo path uses to faithfully revert forward/backward gestures
+  // even if the array changed between the original op and the undo.
+  api.patch('/demos/:id/nodes/:nodeId/order', async (c) => {
+    const id = c.req.param('id');
+    const nodeId = c.req.param('nodeId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = ReorderBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid reorder body', issues: parsed.error.issues }, 400);
+    }
+    const reorderOp = parsed.data;
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'unknownNode' }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as { nodes: Array<Record<string, unknown>> };
+      const fromIdx = obj.nodes.findIndex((n) => n.id === nodeId);
+      if (fromIdx < 0) return { kind: 'unknownNode' };
+
+      // No-op reorders (e.g. forward on the topmost node) succeed silently —
+      // skip the write so we don't trigger a watcher echo for nothing.
+      const moved = reorderNodes(obj.nodes, fromIdx, reorderOp);
+      if (!moved) return { kind: 'ok' };
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true });
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':

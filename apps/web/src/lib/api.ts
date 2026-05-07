@@ -346,6 +346,37 @@ export const createConnector = async (
   return (await res.json()) as { ok: true; id: string };
 };
 
+export type ReorderOp =
+  | { op: 'forward' }
+  | { op: 'backward' }
+  | { op: 'toFront' }
+  | { op: 'toBack' }
+  | { op: 'toIndex'; index: number };
+
+export const reorderNode = async (
+  demoId: string,
+  nodeId: string,
+  body: ReorderOp,
+): Promise<{ ok: true }> => {
+  const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}/order`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `PATCH /api/demos/${demoId}/nodes/${nodeId}/order → ${res.status}`,
+    );
+  }
+  return (await res.json()) as { ok: true };
+};
+
 export const deleteNode = async (demoId: string, nodeId: string): Promise<{ ok: true }> => {
   const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}`, { method: 'DELETE' });
   if (!res.ok) {

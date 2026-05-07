@@ -14,11 +14,13 @@ import {
   type DemoDetail,
   type DemoNode,
   type DemoSummary,
+  type ReorderOp,
   type ShapeKind,
   createConnector,
   createNode,
   deleteConnector,
   deleteNode,
+  reorderNode,
   updateConnector,
   updateNode,
   updateNodePosition,
@@ -342,6 +344,37 @@ export function DemoView({
       });
     },
     [demoId, demoNodes, demoConnectors, pushUndo, dropUndoTop, markMutation],
+  );
+
+  // Right-click → "Bring to front" / "Send backward" / etc. Snapshot the
+  // node's current index BEFORE the API call so undo can pin it back via the
+  // `toIndex` op (faithful even under concurrent edits, where forward/backward
+  // alone wouldn't symmetrically invert from the middle of the array). We
+  // don't apply an optimistic override on the canvas here — a future story
+  // could (the SSE echo races vs. the user picking another item), but z-order
+  // changes are infrequent and the SSE echo lands within ~150ms.
+  const onReorderNode = useCallback(
+    (nodeId: string, op: ReorderOp) => {
+      if (!demoId) return;
+      const fromIdx = demoNodes?.findIndex((n) => n.id === nodeId) ?? -1;
+      if (fromIdx < 0) return;
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await reorderNode(demoId, nodeId, op);
+        },
+        undo: async () => {
+          await reorderNode(demoId, nodeId, { op: 'toIndex', index: fromIdx });
+        },
+      });
+      reorderNode(demoId, nodeId, op).catch((err) => {
+        dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('reorderNode failed', err);
+      });
+    },
+    [demoId, demoNodes, pushUndo, dropUndoTop, markMutation],
   );
 
   const onDeleteConnector = useCallback(
@@ -742,6 +775,8 @@ export function DemoView({
           onCreateShapeNode={onCreateShapeNode}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
+          onReorderNode={onReorderNode}
+          onDeleteNode={onDeleteNode}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

@@ -4,9 +4,16 @@ import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
-import type { Connector, DemoNode, ShapeKind } from '@/lib/api';
+import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { cn } from '@/lib/utils';
 import {
@@ -86,6 +93,19 @@ export interface DemoCanvasProps {
    * only includes the field that changed.
    */
   onReconnectConnector?: (connectorId: string, patch: { source?: string; target?: string }) => void;
+  /**
+   * Reorder a node within demo.nodes[]. Wiring this enables the right-click
+   * context-menu z-order actions (Bring to front, Bring forward, Send backward,
+   * Send to back). The parent owns the optimistic + persistence wiring; the
+   * canvas just translates the menu pick into this callback.
+   */
+  onReorderNode?: (nodeId: string, op: ReorderOp) => void;
+  /**
+   * Delete a node from the canvas. Wiring this enables the right-click
+   * context menu's Delete entry; the same callback DetailPanel invokes for
+   * keyboard-driven deletes.
+   */
+  onDeleteNode?: (nodeId: string) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -148,6 +168,8 @@ export function DemoCanvas({
   onCreateShapeNode,
   onCreateConnector,
   onReconnectConnector,
+  onReorderNode,
+  onDeleteNode,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -280,6 +302,53 @@ export function DemoCanvas({
   const setResizing = useCallback((on: boolean) => {
     resizingRef.current = on;
   }, []);
+
+  // Right-click context menu state. Radix's <ContextMenu.Root> is event-driven
+  // (its <Trigger> opens the menu on its own contextmenu event) and has no
+  // controlled `open` prop. To open the menu at the cursor position from
+  // React Flow's onNodeContextMenu — which runs BEFORE the trigger's listener
+  // would fire (and we preventDefault to suppress browser's default menu) —
+  // we render an invisible 0×0 trigger element pinned to the cursor and
+  // dispatch a synthetic contextmenu event on it. The same trigger ref is
+  // re-positioned for every right-click; one ContextMenu instance handles
+  // every node. The menu items read `contextNodeIdRef` so callbacks dispatch
+  // to the right node even if state hasn't re-rendered yet.
+  const contextEnabled = !!onReorderNode || !!onDeleteNode;
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const contextNodeIdRef = useRef<string | null>(null);
+  const contextTriggerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!contextMenuPos) return;
+    const trigger = contextTriggerRef.current;
+    if (!trigger) return;
+    // Dispatch a synthetic contextmenu event so Radix's Trigger opens at the
+    // cursor. The Trigger reads clientX/clientY off the event for positioning.
+    const evt = new MouseEvent('contextmenu', {
+      clientX: contextMenuPos.x,
+      clientY: contextMenuPos.y,
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+      buttons: 2,
+    });
+    trigger.dispatchEvent(evt);
+  }, [contextMenuPos]);
+
+  const handleReorderPick = useCallback(
+    (op: ReorderOp) => {
+      const id = contextNodeIdRef.current;
+      if (!id || !onReorderNode) return;
+      onReorderNode(id, op);
+    },
+    [onReorderNode],
+  );
+
+  const handleDeletePick = useCallback(() => {
+    const id = contextNodeIdRef.current;
+    if (!id || !onDeleteNode) return;
+    onDeleteNode(id);
+  }, [onDeleteNode]);
 
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
@@ -526,6 +595,19 @@ export function DemoCanvas({
           draggingRef.current = false;
           onNodePositionChange?.(node.id, { x: node.position.x, y: node.position.y });
         }}
+        onNodeContextMenu={
+          contextEnabled
+            ? (e, node) => {
+                // Suppress the browser's default menu and open our own at the
+                // cursor. The id sticks in a ref (read by item callbacks); the
+                // position state drives the trigger-position effect that
+                // dispatches the synthetic contextmenu event.
+                e.preventDefault();
+                contextNodeIdRef.current = node.id;
+                setContextMenuPos({ x: e.clientX, y: e.clientY });
+              }
+            : undefined
+        }
       >
         <Background gap={12} size={0.6} />
         <Controls showInteractive={false} />
@@ -547,6 +629,67 @@ export function DemoCanvas({
             height: ghostRect.height,
           }}
         />
+      ) : null}
+      {contextEnabled ? (
+        <ContextMenu
+          onOpenChange={(open) => {
+            if (!open) {
+              setContextMenuPos(null);
+              contextNodeIdRef.current = null;
+            }
+          }}
+        >
+          <ContextMenuTrigger asChild>
+            <div
+              ref={contextTriggerRef}
+              data-testid="node-context-menu-trigger"
+              aria-hidden
+              className="pointer-events-none fixed"
+              style={{
+                left: contextMenuPos?.x ?? 0,
+                top: contextMenuPos?.y ?? 0,
+                width: 0,
+                height: 0,
+              }}
+            />
+          </ContextMenuTrigger>
+          <ContextMenuContent data-testid="node-context-menu">
+            {onReorderNode ? (
+              <>
+                <ContextMenuItem
+                  data-testid="node-context-menu-to-front"
+                  onSelect={() => handleReorderPick({ op: 'toFront' })}
+                >
+                  Bring to front
+                </ContextMenuItem>
+                <ContextMenuItem
+                  data-testid="node-context-menu-forward"
+                  onSelect={() => handleReorderPick({ op: 'forward' })}
+                >
+                  Bring forward
+                </ContextMenuItem>
+                <ContextMenuItem
+                  data-testid="node-context-menu-backward"
+                  onSelect={() => handleReorderPick({ op: 'backward' })}
+                >
+                  Send backward
+                </ContextMenuItem>
+                <ContextMenuItem
+                  data-testid="node-context-menu-to-back"
+                  onSelect={() => handleReorderPick({ op: 'toBack' })}
+                >
+                  Send to back
+                </ContextMenuItem>
+              </>
+            ) : null}
+            {onReorderNode && onDeleteNode ? <ContextMenuSeparator /> : null}
+            {onDeleteNode ? (
+              <ContextMenuItem data-testid="node-context-menu-delete" onSelect={handleDeletePick}>
+                Delete
+              </ContextMenuItem>
+            ) : null}
+          </ContextMenuContent>
+        </ContextMenu>
       ) : null}
     </div>
   );
