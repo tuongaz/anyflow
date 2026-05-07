@@ -113,6 +113,16 @@ export function DetailPanel({
         side="right"
         className="!w-[380px] sm:!max-w-[380px] overflow-y-auto"
         data-testid="detail-panel"
+        onInteractOutside={(e) => {
+          // Resize gestures (US-031) start with a pointerdown on a
+          // .react-flow__resize-control outside the Sheet. Radix's default
+          // behavior is to close the Sheet on outside interaction, which would
+          // also unmount the resize controls mid-gesture and clear the
+          // selection. Suppress the close in that case so the panel stays
+          // open through the entire resize.
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('.react-flow__resize-control')) e.preventDefault();
+        }}
       >
         {node ? (
           <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>

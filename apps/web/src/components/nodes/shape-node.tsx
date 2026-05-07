@@ -1,8 +1,9 @@
 import { InlineEdit } from '@/components/inline-edit';
+import { ResizeControls } from '@/components/nodes/resize-controls';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
-import { Handle, type Node, type NodeProps, NodeResizer, Position } from '@xyflow/react';
+import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { type CSSProperties, useState } from 'react';
 
 export type ShapeNodeRuntimeData = ShapeNodeData & {
@@ -62,8 +63,8 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
       data-testid="shape-node"
       data-shape={shape}
     >
-      <NodeResizer
-        isVisible={selected && !!data.onResize && !isEditing}
+      <ResizeControls
+        visible={!!selected && !!data.onResize && !isEditing}
         minWidth={80}
         minHeight={40}
         onResizeStart={() => {

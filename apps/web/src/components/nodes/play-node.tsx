@@ -1,9 +1,10 @@
 import { InlineEdit } from '@/components/inline-edit';
+import { ResizeControls } from '@/components/nodes/resize-controls';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Handle, type Node, type NodeProps, NodeResizer, Position } from '@xyflow/react';
+import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { Loader2, Play } from 'lucide-react';
 import { useState } from 'react';
 
@@ -52,8 +53,8 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
       data-status={status ?? 'idle'}
       data-testid="play-node"
     >
-      <NodeResizer
-        isVisible={selected && !!data.onResize && editing === null}
+      <ResizeControls
+        visible={!!selected && !!data.onResize && editing === null}
         minWidth={80}
         minHeight={40}
         onResizeStart={() => {

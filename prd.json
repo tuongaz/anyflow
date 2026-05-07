@@ -278,7 +278,7 @@
         "bun run lint passes.",
         "Verify in browser using dev-browser skill (specifically: select a node, resize from each edge/corner, confirm the panel stays open and no visible border lines render)."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-032",
