@@ -2,7 +2,14 @@ import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
-import { type DemoDetail, type DemoSummary, updateNodePosition } from '@/lib/api';
+import { usePendingOverrides } from '@/hooks/use-pending-overrides';
+import {
+  type Connector,
+  type DemoDetail,
+  type DemoNode,
+  type DemoSummary,
+  updateNodePosition,
+} from '@/lib/api';
 import { useCallback, useEffect, useState } from 'react';
 
 type Position = { x: number; y: number };
@@ -28,60 +35,58 @@ export function DemoView({
 }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Optimistic per-node position overrides. Set on drag-stop; cleared when
-  // the next demo:reload echoes back the same coordinates (server caught up)
-  // or when a PATCH fails (revert to server state).
-  const [positionOverrides, setPositionOverrides] = useState<Record<string, Position>>({});
-  const [positionError, setPositionError] = useState<string | null>(null);
+  // Generalized optimistic overrides for nodes + connectors. Set on user
+  // edits BEFORE firing the API call; pruned on the next demo:reload echo
+  // (server caught up); dropped on API failure (revert to server state).
+  const nodePending = usePendingOverrides<DemoNode>();
+  const connectorPending = usePendingOverrides<Connector>();
+  const [editError, setEditError] = useState<string | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset selection when the demo id changes.
+  const { reset: resetNodeOverrides } = nodePending;
+  const { reset: resetConnectorOverrides } = connectorPending;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on demo id change.
   useEffect(() => {
     setSelectedId(null);
-    setPositionOverrides({});
-    setPositionError(null);
+    resetNodeOverrides();
+    resetConnectorOverrides();
+    setEditError(null);
   }, [detail?.id]);
 
   const demoNodes = detail?.demo?.nodes;
-  // After every demo reload, drop overrides whose coordinates already match
+  const demoConnectors = detail?.demo?.connectors;
+  const { pruneAgainst: pruneNodeOverrides } = nodePending;
+  const { pruneAgainst: pruneConnectorOverrides } = connectorPending;
+
+  // After every demo reload, drop override fields whose values already match
   // the on-disk demo. Reconciling here (not skipping the broadcast on the
-  // server) means an editor-driven position change still lands cleanly: the
-  // override is cleared, and the next render uses the server value.
+  // server) means an editor-driven change still lands cleanly: the matching
+  // overrides clear, and the next render uses the server value.
   useEffect(() => {
-    if (!demoNodes) return;
-    setPositionOverrides((prev) => {
-      let mutated = false;
-      const next: Record<string, Position> = { ...prev };
-      for (const node of demoNodes) {
-        const local = prev[node.id];
-        if (local && local.x === node.position.x && local.y === node.position.y) {
-          delete next[node.id];
-          mutated = true;
-        }
-      }
-      return mutated ? next : prev;
-    });
-  }, [demoNodes]);
+    if (demoNodes) pruneNodeOverrides(demoNodes);
+  }, [demoNodes, pruneNodeOverrides]);
+
+  useEffect(() => {
+    if (demoConnectors) pruneConnectorOverrides(demoConnectors);
+  }, [demoConnectors, pruneConnectorOverrides]);
 
   const demoId = detail?.id ?? null;
+  const { setOverride: setNodeOverride, dropOverride: dropNodeOverride } = nodePending;
   const onNodePositionChange = useCallback(
     (nodeId: string, position: Position) => {
       if (!demoId) return;
       // Optimistic — the visual stays where the user dropped it without
       // waiting for the PATCH response.
-      setPositionOverrides((prev) => ({ ...prev, [nodeId]: position }));
-      setPositionError(null);
+      setNodeOverride(nodeId, { position });
+      setEditError(null);
       updateNodePosition(demoId, nodeId, position).catch((err) => {
         // Revert: drop the override so the canvas falls back to server data.
-        setPositionOverrides((prev) => {
-          if (!(nodeId in prev)) return prev;
-          const next = { ...prev };
-          delete next[nodeId];
-          return next;
-        });
-        setPositionError(err instanceof Error ? err.message : String(err));
+        dropNodeOverride(nodeId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNodePosition failed', err);
       });
     },
-    [demoId],
+    [demoId, setNodeOverride, dropNodeOverride],
   );
 
   if (!summary) {
@@ -128,7 +133,7 @@ export function DemoView({
           onSelectNode={setSelectedId}
           runs={runs}
           onPlayNode={onPlayNode}
-          positionOverrides={positionOverrides}
+          nodeOverrides={nodePending.overrides}
           onNodePositionChange={onNodePositionChange}
         />
       ) : (
@@ -137,17 +142,17 @@ export function DemoView({
         </div>
       )}
 
-      {positionError ? (
+      {editError ? (
         <div
-          data-testid="position-error-banner"
+          data-testid="edit-error-banner"
           className="absolute inset-x-0 bottom-4 z-20 mx-auto w-fit max-w-[80%] rounded-md border border-rose-500/50 bg-rose-50 px-3 py-2 text-xs text-rose-900 shadow-md dark:bg-rose-950/60 dark:text-rose-100"
         >
-          <span className="font-medium">Couldn't save position: </span>
-          <span className="font-mono">{positionError}</span>
+          <span className="font-medium">Couldn't save change: </span>
+          <span className="font-mono">{editError}</span>
           <button
             type="button"
             className="ml-3 underline underline-offset-2"
-            onClick={() => setPositionError(null)}
+            onClick={() => setEditError(null)}
           >
             Dismiss
           </button>

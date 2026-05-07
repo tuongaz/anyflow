@@ -108,7 +108,8 @@
         "bun run typecheck passes.",
         "bun test passes.",
         "bun run lint passes."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-022",

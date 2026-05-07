@@ -2,6 +2,7 @@ import { PlayNode } from '@/components/nodes/play-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import type { NodeRuns } from '@/hooks/use-node-runs';
+import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode } from '@/lib/api';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import {
@@ -27,14 +28,20 @@ export interface DemoCanvasProps {
   /** Click handler for a PlayNode's Play button. */
   onPlayNode?: (nodeId: string) => void;
   /**
-   * Optimistic per-node position overrides. When present, they override the
-   * positions in `nodes`. Used by the parent to keep a node visually pinned
-   * to where the user dropped it while the PATCH round-trips.
+   * Optimistic per-node overrides. When present, they shallow-merge over the
+   * server `nodes` (with `data` shallow-merged one level deeper). Used by the
+   * parent to keep an edit visually pinned while the PATCH round-trips.
    */
-  positionOverrides?: Record<string, { x: number; y: number }>;
+  nodeOverrides?: OverrideMap<DemoNode>;
   /** Fired once per drag-stop with the node's final position. */
   onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
 }
+
+const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
+  if (!override) return node;
+  const data = override.data ? { ...node.data, ...override.data } : node.data;
+  return { ...node, ...override, data };
+};
 
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode };
 
@@ -48,23 +55,26 @@ export function DemoCanvas({
   onSelectNode,
   runs,
   onPlayNode,
-  positionOverrides,
+  nodeOverrides,
   onNodePositionChange,
 }: DemoCanvasProps) {
   const sourceNodes = useMemo<Node[]>(
     () =>
-      nodes.map((n) => ({
-        id: n.id,
-        type: n.type,
-        position: positionOverrides?.[n.id] ?? n.position,
-        data: {
-          ...n.data,
-          status: statusFor(runs, n.id),
-          onPlay: onPlayNode,
-        },
-        selected: n.id === selectedNodeId,
-      })),
-    [nodes, selectedNodeId, runs, onPlayNode, positionOverrides],
+      nodes.map((n) => {
+        const merged = mergeNodeOverride(n, nodeOverrides?.[n.id]);
+        return {
+          id: merged.id,
+          type: merged.type,
+          position: merged.position,
+          data: {
+            ...merged.data,
+            status: statusFor(runs, n.id),
+            onPlay: onPlayNode,
+          },
+          selected: n.id === selectedNodeId,
+        };
+      }),
+    [nodes, selectedNodeId, runs, onPlayNode, nodeOverrides],
   );
 
   // React Flow needs internal node state + onNodesChange to render drag
