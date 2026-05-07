@@ -7,6 +7,7 @@ import {
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
+import { useUndoStack } from '@/hooks/use-undo-stack';
 import {
   type Connector,
   type DefaultConnector,
@@ -63,6 +64,7 @@ export function DemoView({
   const nodePending = usePendingOverrides<DemoNode>();
   const connectorPending = usePendingOverrides<Connector>();
   const [editError, setEditError] = useState<string | null>(null);
+  const undoStack = useUndoStack();
 
   const { reset: resetNodeOverrides } = nodePending;
   const { reset: resetConnectorOverrides } = connectorPending;
@@ -74,6 +76,7 @@ export function DemoView({
     resetNodeOverrides();
     resetConnectorOverrides();
     setEditError(null);
+    undoStack.clear();
   }, [detail?.id]);
 
   // Selecting a node deselects any connector and vice versa — node + connector
@@ -237,6 +240,42 @@ export function DemoView({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [selectedId, selectedConnectorId, onDeleteNode, onDeleteConnector]);
+
+  // Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z (redo). Skipped while focus is in
+  // any editable element so native browser undo handles input/textarea/
+  // contentEditable. We always preventDefault on the chord — even when the
+  // stack is empty — so the browser doesn't navigate back on Cmd+Z with no
+  // selected text.
+  const { undo: undoFn, redo: redoFn, canUndo, canRedo } = undoStack;
+  useEffect(() => {
+    const handler = async (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() !== 'z') return;
+      if (isEditableElement(document.activeElement)) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (!canRedo) return;
+        try {
+          const result = await redoFn();
+          if (result?.entry) await result.entry.do();
+        } catch (err) {
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('redo failed', err);
+        }
+        return;
+      }
+      if (!canUndo) return;
+      try {
+        const result = await undoFn();
+        if (result?.entry) await result.entry.undo();
+      } catch (err) {
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('undo failed', err);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undoFn, redoFn, canUndo, canRedo]);
 
   // Inline label edit on a node (PlayNode/StateNode title or ShapeNode label).
   // Empty value is filtered out by the InlineEdit's `required` flag for
