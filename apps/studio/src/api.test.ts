@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEventBus } from './events.ts';
@@ -622,6 +622,99 @@ describe('GET /api/events', () => {
     const { app } = buildApp();
     const res = await app.request('/api/events?demoId=nope');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('PATCH /api/demos/:id/nodes/:nodeId/position', () => {
+  const patch = (app: ReturnType<typeof buildApp>['app'], path: string, body: unknown) =>
+    app.request(path, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('updates the node position and rewrites the demo file', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout/position`, {
+      x: 250,
+      y: 320,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; position: { x: number; y: number } };
+    expect(body.ok).toBe(true);
+    expect(body.position).toEqual({ x: 250, y: 320 });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; position: { x: number; y: number } }>;
+    };
+    expect(onDisk.nodes[0]?.position).toEqual({ x: 250, y: 320 });
+  });
+
+  it('preserves 2-space indent and trailing newline (clean editor diffs)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    await patch(app, `/api/demos/${reg.id}/nodes/api-checkout/position`, { x: 1, y: 2 });
+
+    const text = readFileSync(demoFile, 'utf8');
+    expect(text.endsWith('\n')).toBe(true);
+    // Top-level "version" line should be indented with 2 spaces.
+    expect(text).toMatch(/^\{\n {2}"version": 1,/);
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await patch(app, '/api/demos/nope/nodes/x/position', { x: 0, y: 0 });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for unknown nodeId', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/missing/position`, { x: 0, y: 0 });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when x or y is non-numeric', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout/position`, {
+      x: 'oops',
+      y: 0,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('writes via tempfile + rename (no .tmp residue, preserves content on success)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const dir = join(repoPath, '.anydemo');
+    await patch(app, `/api/demos/${reg.id}/nodes/api-checkout/position`, { x: 99, y: 99 });
+
+    const files = readdirSync(dir);
+    // Only demo.json should remain — temp files must be renamed/cleaned up.
+    expect(files).toEqual(['demo.json']);
   });
 });
 

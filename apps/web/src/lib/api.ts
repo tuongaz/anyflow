@@ -133,6 +133,35 @@ export const fetchNodeDetail = async (
   return (await res.json()) as NodeDetailResult;
 };
 
+export interface UpdatePositionResult {
+  ok: boolean;
+  position: { x: number; y: number };
+}
+
+export const updateNodePosition = async (
+  demoId: string,
+  nodeId: string,
+  position: { x: number; y: number },
+): Promise<UpdatePositionResult> => {
+  const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}/position`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(position),
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `PATCH /api/demos/${demoId}/nodes/${nodeId}/position → ${res.status}`,
+    );
+  }
+  return (await res.json()) as UpdatePositionResult;
+};
+
 export const playNode = async (demoId: string, nodeId: string): Promise<PlayResult> => {
   const res = await fetch(`/api/demos/${demoId}/play/${nodeId}`, {
     method: 'POST',

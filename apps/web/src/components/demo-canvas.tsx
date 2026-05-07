@@ -18,6 +18,14 @@ export interface DemoCanvasProps {
   runs?: NodeRuns;
   /** Click handler for a PlayNode's Play button. */
   onPlayNode?: (nodeId: string) => void;
+  /**
+   * Optimistic per-node position overrides. When present, they override the
+   * positions in `nodes`. Used by the parent to keep a node visually pinned
+   * to where the user dropped it while the PATCH round-trips.
+   */
+  positionOverrides?: Record<string, { x: number; y: number }>;
+  /** Fired once per drag-stop with the node's final position. */
+  onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode };
@@ -32,13 +40,15 @@ export function DemoCanvas({
   onSelectNode,
   runs,
   onPlayNode,
+  positionOverrides,
+  onNodePositionChange,
 }: DemoCanvasProps) {
   const rfNodes = useMemo<Node[]>(
     () =>
       nodes.map((n) => ({
         id: n.id,
         type: n.type,
-        position: n.position,
+        position: positionOverrides?.[n.id] ?? n.position,
         data: {
           ...n.data,
           status: statusFor(runs, n.id),
@@ -46,7 +56,7 @@ export function DemoCanvas({
         },
         selected: n.id === selectedNodeId,
       })),
-    [nodes, selectedNodeId, runs, onPlayNode],
+    [nodes, selectedNodeId, runs, onPlayNode, positionOverrides],
   );
 
   const rfEdges = useMemo<Edge[]>(
@@ -67,11 +77,17 @@ export function DemoCanvas({
         nodeTypes={nodeTypes}
         proOptions={{ hideAttribution: true }}
         fitView
-        nodesDraggable={false}
+        nodesDraggable={!!onNodePositionChange}
         nodesConnectable={false}
         elementsSelectable
         onNodeClick={(_e, node) => onSelectNode(node.id)}
         onPaneClick={() => onSelectNode(null)}
+        onNodeDragStop={(_e, node) => {
+          // Drag-while-moving lives in React Flow's internal state. We only
+          // surface (and persist) the final position on drag-stop so we don't
+          // PATCH the file on every pixel.
+          onNodePositionChange?.(node.id, { x: node.position.x, y: node.position.y });
+        }}
       >
         <Background />
         <Controls showInteractive={false} />

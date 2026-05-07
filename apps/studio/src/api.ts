@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
@@ -22,6 +22,51 @@ const EmitBodySchema = z.object({
   runId: z.string().optional(),
   payload: z.unknown().optional(),
 });
+
+const PositionBodySchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+});
+
+// Per-demo serialization: read-modify-write of the demo file isn't atomic
+// across multiple PATCHes, so two concurrent drags would race
+// (later writer's older read clobbers the earlier writer's update). We chain
+// position writes per demoId so the read+write sequence is effectively
+// serialized.
+const demoWriteChains = new Map<string, Promise<unknown>>();
+const withDemoWriteLock = <T>(demoId: string, fn: () => Promise<T>): Promise<T> => {
+  const prev = demoWriteChains.get(demoId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  // Replace with a tail that swallows errors so the chain keeps moving even
+  // if one write fails — but the original promise still rejects to its caller.
+  demoWriteChains.set(
+    demoId,
+    next.catch(() => undefined),
+  );
+  return next as Promise<T>;
+};
+
+/**
+ * Atomic write: writes to a sibling tempfile then renames over the target.
+ * `rename(2)` is atomic on POSIX, so a process reading mid-write either sees
+ * the old file or the new one — never a half-written one. This keeps user
+ * editor diffs clean (single fs.watch event for the rename) and means a crash
+ * during write can never corrupt the original.
+ */
+const writeFileAtomic = (filePath: string, content: string): void => {
+  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    writeFileSync(tempPath, content);
+    renameSync(tempPath, filePath);
+  } catch (err) {
+    try {
+      if (existsSync(tempPath)) unlinkSync(tempPath);
+    } catch {
+      // best-effort cleanup
+    }
+    throw err;
+  }
+};
 
 const EMIT_STATUS_TO_EVENT = {
   running: 'node:running',
@@ -255,6 +300,85 @@ export function createApi(options: ApiOptions): Hono {
 
     const result = await fetchDynamicDetail(dynamicSource);
     return c.json(result);
+  });
+
+  // PATCH a single node's position back into the on-disk demo.json. This is
+  // the second (and only other) place the studio mutates user files — the
+  // first being the SDK helper write in `register`. Atomic write via tempfile
+  // + rename keeps editor diffs clean and avoids corruption mid-write.
+  api.patch('/demos/:id/nodes/:nodeId/position', async (c) => {
+    const id = c.req.param('id');
+    const nodeId = c.req.param('nodeId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = PositionBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid position body', issues: parsed.error.issues }, 400);
+    }
+    const { x, y } = parsed.data;
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'unknownNode' }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      // Mutate the *raw* parsed JSON so we preserve every author-written
+      // field (including any v2 fields the schema doesn't know about yet).
+      const obj = raw as { nodes: Array<{ id: string; position: { x: number; y: number } }> };
+      const onDiskNode = obj.nodes.find((n) => n.id === nodeId);
+      if (!onDiskNode) return { kind: 'unknownNode' };
+      onDiskNode.position = { x, y };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(obj, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true, position: { x, y } });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'unknownNode':
+        return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
   });
 
   api.post('/emit', async (c) => {
