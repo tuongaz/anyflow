@@ -127,7 +127,8 @@
         "data-testid='shape-node' with data-shape attribute for tests.",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-023",

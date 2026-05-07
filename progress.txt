@@ -10,6 +10,9 @@
 - Connector PATCH gotcha: the connector schema is a `z.discriminatedUnion('kind', ...)`. By default, `z.object` strips unknown keys on parse, so a stale `eventName` (left over from a kind='event' → kind='default' change) would parse cleanly but linger on disk. PATCH /connectors/:connId clears `method/url/eventName/queueName` when `kind` changes — keep this invariant if you generalize the merge helper.
 - Frontend hook tests run as pure-function tests under `bun:test` — there's no React testing library installed. When writing a stateful hook, extract the state-update logic into pure helpers (e.g. `applySetOverride`, `applyPruneAgainst`) and test those; the hook itself is a thin `useState`/`useCallback` shell. Pattern: `apps/web/src/hooks/use-pending-overrides.ts` exports both the hook and the underlying pure reducers.
 - Optimistic-edit reconciliation: `usePendingOverrides<T>()` is the single way the canvas overlays in-flight edits on server data. `setOverride(id, partial)` BEFORE the API call; on success, the next `demo:reload` triggers `pruneAgainst(snapshot)` which drops fields that match the server (per-field, not per-entity); on failure, `dropOverride(id)` reverts. Use this pattern for every new UI mutation (US-022 onward) — don't add ad-hoc `useState` maps.
+- Frontend type sync: `apps/web/src/lib/api.ts` mirrors the studio's `apps/studio/src/schema.ts` Demo types as plain TS interfaces (no zod on the frontend). When schema additions land server-side, mirror them in `api.ts`. Discriminated unions in `api.ts` use inline-typed branches so the variant-name TS types don't collide with the React component names of the same name (e.g. `PlayNode` is a component in `nodes/play-node.tsx` — don't also export a `PlayNode` type from api.ts; build the union from anonymous branches instead).
+- Discriminated union spread gotcha: `mergeNodeOverride(node: DemoNode, override: Partial<DemoNode>)` in `apps/web/src/components/demo-canvas.tsx` returns a `DemoNode`, but TS can't preserve the variant through `{...node, ...override, data}` because `Partial<DemoNode>` flattens `data` to a union of partials. The override is keyed by the entity id so it's always the same variant — safe to cast at the boundary (`as DemoNode`). Future merges of partial-of-discriminated-union should follow the same trick.
+- Studio schema is loaded once at process start. After modifying `apps/studio/src/schema.ts`, restart the studio (`bun run apps/studio/src/cli.ts stop` then `... start --daemon`) before browser-verifying. The demo files will round-trip through the new schema on the next `demo:reload`. Live-reload only covers the frontend bundle (Vite HMR); backend changes need a restart.
 
 ---
 
@@ -83,4 +86,30 @@
   - When generalizing an existing optimistic-state pattern, the test surface should mirror the pattern's full lifecycle: set → prune-on-match (success path), set → drop (failure path), set + set (multi-field), prune-against-missing (entity gone). Anything less and you'll regress an edge case the next time someone changes the merge logic.
   - The position-drag flow's "drag-while-moving lives in React Flow's internal state" trick (`draggingRef` + the `useEffect` guard) still works after the generalization because the override map is keyed by id and only flows through React Flow's `nodes` prop on render — not on every drag event.
 - Manual browser verification: not required by US-021 (no new visual surface — the position-drag UX is unchanged and the new `edit-error-banner` won't be exercised until US-024/US-025/US-026/US-029 wire actual mutating UI). The data-testid rename (`position-error-banner` → `edit-error-banner`) is intentional per the PRD; CLAUDE.md still references the old name in the position-drag pattern paragraph but the new banner subsumes it.
+---
+
+## 2026-05-07 - US-022
+- Implemented the decorative ShapeNode component (rectangle / ellipse / sticky) and registered it in `DemoCanvas`.
+- Files added:
+  - `apps/web/src/components/nodes/shape-node.tsx` — `ShapeNode` React component for `type: 'shapeNode'`. Three visual variants driven by `data.shape`:
+    - rectangle: `rounded-lg border-2 bg-transparent` — themed border, transparent bg by default.
+    - ellipse: `rounded-full border-2 bg-transparent` — themed border, transparent bg by default.
+    - sticky: `rounded-md border shadow-md -rotate-1` — defaults to amber bg, slight rotation + shadow to read as a sticky note.
+    - Honors `data.borderColor` + `data.backgroundColor` via `colorTokenStyle(token, 'node')`. Sticky's amber default is overridable: any explicit `backgroundColor` token wins.
+    - Honors `data.width` / `data.height`; falls back to per-shape default sizes (`rectangle/ellipse: 200×120`, `sticky: 180×180`).
+    - Renders a `<Handle>` on each side (top/right/bottom/left). Top + Left are `type='target'`; Right + Bottom are `type='source'`. Handle classes match the existing `play-node.tsx`/`state-node.tsx` styling.
+    - `data-testid='shape-node'` + `data-shape` attribute for tests.
+- Files modified:
+  - `apps/web/src/lib/api.ts` — added `NodeVisual` (width/height/borderColor/backgroundColor), `ShapeKind`, `ShapeNodeData`. Rewrote `DemoNode` from a single interface into a discriminated union over `type` (`playNode | stateNode | shapeNode`) using anonymous branch types so the new union doesn't collide with the existing `PlayNode`/`StateNode` React component names.
+  - `apps/web/src/components/demo-canvas.tsx` — registered `shapeNode: ShapeNode` in the module-scope `nodeTypes` object (still a stable reference). `mergeNodeOverride` now ends with `as DemoNode` because TS can't preserve the discriminator through the spread of `Partial<DemoNode>`.
+  - `apps/web/src/components/detail-panel.tsx` — narrowed `node?.data.detail` access via `node.type !== 'shapeNode' ? node : null` so shape nodes (which have no `detail`/`fields`/`dynamicSource`) typecheck cleanly. Decorative nodes get a minimal panel surface; the proper Style tab lands in US-024/US-025.
+- Quality checks: `bun test` (150/0, no new tests — visual-only story), `bun run typecheck` (clean), `bun run lint` (clean).
+- Manual browser verification: added three temp shapeNodes (rectangle/ellipse/sticky) to `examples/todo-demo-target/.anydemo/demo.json`, restarted studio (schema cache), navigated to `/d/todo-demo`, verified all three render correctly with their expected sizes, colors, and side-handle dots; reverted demo.json after.
+- **Learnings for future iterations:**
+  - The web app's `DemoNode` was previously a single interface — adding `shapeNode` forced it into a discriminated union. That ripples to every consumer: `demo-canvas.tsx`'s `mergeNodeOverride` and `detail-panel.tsx`'s `node?.data.detail` both broke until narrowed/cast. Worth checking every `node.data.<x>` access when the union widens again.
+  - `apps/web/src/lib/api.ts` mirrors the studio's `Demo` types as plain TS interfaces (no zod on the frontend). When `apps/studio/src/schema.ts` grows new fields, mirror them in `api.ts` in the same PR — the typecheck won't complain about missing fields (they'd just round-trip as unknown), but the UI can't read them.
+  - Don't export per-variant types `PlayNode`/`StateNode`/`ShapeNode` from `api.ts` — they collide with the React component names from `apps/web/src/components/nodes/`. Build the discriminated union from anonymous branches: `(NodeBase & { type: 'foo'; data: FooData })`.
+  - Studio schema is process-cached — after editing `apps/studio/src/schema.ts`, restart the studio before browser-verifying. The first browser hit on a demo with new node/connector kinds will otherwise fail with `Invalid discriminator value`.
+  - The PRD's "ellipse" is `rounded-full` (Tailwind), which produces a capsule when width != height. A true ellipse requires SVG. The PRD prescribes `rounded-full`, so capsule is the intended visual.
+  - `data.label` on `ShapeNodeData` is optional — the component renders nothing when absent, which is the desired "blank decorative shape" affordance.
 ---

@@ -27,22 +27,6 @@ export interface NodeDetail {
   dynamicSource?: HttpAction;
 }
 
-export interface NodeData {
-  label: string;
-  kind: string;
-  stateSource: { kind: 'request' | 'event' };
-  detail?: NodeDetail;
-  playAction?: HttpAction;
-  handlerModule?: string;
-}
-
-export interface DemoNode {
-  id: string;
-  type: 'playNode' | 'stateNode';
-  position: { x: number; y: number };
-  data: NodeData;
-}
-
 export type ColorToken =
   | 'default'
   | 'slate'
@@ -52,6 +36,41 @@ export type ColorToken =
   | 'red'
   | 'purple'
   | 'pink';
+
+// Visual fields shared by every node type (functional + decorative). All
+// optional; mirrors NodeVisualBaseShape in apps/studio/src/schema.ts.
+export interface NodeVisual {
+  width?: number;
+  height?: number;
+  borderColor?: ColorToken;
+  backgroundColor?: ColorToken;
+}
+
+export interface NodeData extends NodeVisual {
+  label: string;
+  kind: string;
+  stateSource: { kind: 'request' | 'event' };
+  detail?: NodeDetail;
+  playAction?: HttpAction;
+  handlerModule?: string;
+}
+
+export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky';
+
+export interface ShapeNodeData extends NodeVisual {
+  shape: ShapeKind;
+  label?: string;
+}
+
+interface NodeBase {
+  id: string;
+  position: { x: number; y: number };
+}
+
+export type DemoNode =
+  | (NodeBase & { type: 'playNode'; data: NodeData })
+  | (NodeBase & { type: 'stateNode'; data: NodeData })
+  | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
 export type ConnectorDirection = 'forward' | 'backward' | 'both';

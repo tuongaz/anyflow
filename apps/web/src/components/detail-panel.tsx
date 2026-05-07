@@ -29,7 +29,9 @@ export function DetailPanel({
   onClose,
 }: DetailPanelProps) {
   const open = node !== null;
-  const detail = node?.data.detail;
+  // Shape nodes are decorative — no detail/dynamicSource/run surface.
+  const functionalNode = node && node.type !== 'shapeNode' ? node : null;
+  const detail = functionalNode?.data.detail;
   const hasDynamicSource = !!detail?.dynamicSource;
 
   const { state: dynamicState, refresh: refreshDynamic } = useNodeDetail(

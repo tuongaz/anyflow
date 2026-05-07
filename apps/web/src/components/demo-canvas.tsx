@@ -1,4 +1,5 @@
 import { PlayNode } from '@/components/nodes/play-node';
+import { ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import type { NodeRuns } from '@/hooks/use-node-runs';
@@ -39,11 +40,14 @@ export interface DemoCanvasProps {
 
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
   if (!override) return node;
+  // The override is keyed by the node's id, so its `data` (when present) is
+  // always a partial of the SAME variant as node.data. TS can't see this
+  // through the discriminated union spread, so cast at the boundary.
   const data = override.data ? { ...node.data, ...override.data } : node.data;
-  return { ...node, ...override, data };
+  return { ...node, ...override, data } as DemoNode;
 };
 
-const nodeTypes = { playNode: PlayNode, stateNode: StateNode };
+const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
 
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
   runs?.[id]?.status ?? 'idle';
