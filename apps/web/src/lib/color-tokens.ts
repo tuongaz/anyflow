@@ -1,0 +1,73 @@
+import type { ColorToken } from '@/lib/api';
+import type { CSSProperties } from 'react';
+
+// Single source of truth for the curated palette. Tokens are stored on disk in
+// demo.json; the strings below are the actual CSS values rendered on screen.
+//
+// • 'default' uses the shadcn HSL CSS variables so it adapts to light/dark
+//   automatically (--border, --card, --muted-foreground).
+// • Named tokens use Tailwind palette HSL values: a softer 400-ish for borders,
+//   a tinted 50/100 for backgrounds, a 500-ish for edge strokes. The HSL
+//   triplets are inlined intentionally — this file IS the palette spec.
+const COLOR_TOKEN_MAP: Record<ColorToken, { border: string; background: string; edge: string }> = {
+  default: {
+    border: 'hsl(var(--border))',
+    background: 'hsl(var(--card))',
+    edge: 'hsl(var(--muted-foreground))',
+  },
+  slate: {
+    border: 'hsl(215, 20%, 65%)',
+    background: 'hsl(210, 40%, 96%)',
+    edge: 'hsl(215, 16%, 47%)',
+  },
+  blue: {
+    border: 'hsl(213, 94%, 68%)',
+    background: 'hsl(214, 100%, 97%)',
+    edge: 'hsl(217, 91%, 60%)',
+  },
+  green: {
+    border: 'hsl(142, 69%, 58%)',
+    background: 'hsl(138, 76%, 97%)',
+    edge: 'hsl(142, 71%, 45%)',
+  },
+  amber: {
+    border: 'hsl(43, 96%, 56%)',
+    background: 'hsl(48, 100%, 96%)',
+    edge: 'hsl(38, 92%, 50%)',
+  },
+  red: {
+    border: 'hsl(0, 91%, 71%)',
+    background: 'hsl(0, 86%, 97%)',
+    edge: 'hsl(0, 84%, 60%)',
+  },
+  purple: {
+    border: 'hsl(270, 95%, 75%)',
+    background: 'hsl(270, 100%, 98%)',
+    edge: 'hsl(271, 91%, 65%)',
+  },
+  pink: {
+    border: 'hsl(330, 81%, 75%)',
+    background: 'hsl(327, 73%, 97%)',
+    edge: 'hsl(330, 81%, 60%)',
+  },
+};
+
+export const COLOR_TOKENS = COLOR_TOKEN_MAP;
+
+export type NodeColorStyle = Pick<CSSProperties, 'borderColor' | 'backgroundColor'>;
+export type EdgeColorStyle = Pick<CSSProperties, 'stroke'>;
+
+// Returns CSSProperties shaped for the call site:
+//   • kind 'node' → { borderColor, backgroundColor } — spread into a node container's style.
+//   • kind 'edge' → { stroke }                       — spread into a React Flow edge style.
+// `undefined` token falls back to 'default'.
+export function colorTokenStyle(token: ColorToken | undefined, kind: 'node'): NodeColorStyle;
+export function colorTokenStyle(token: ColorToken | undefined, kind: 'edge'): EdgeColorStyle;
+export function colorTokenStyle(
+  token: ColorToken | undefined,
+  kind: 'node' | 'edge',
+): NodeColorStyle | EdgeColorStyle {
+  const entry = COLOR_TOKEN_MAP[token ?? 'default'];
+  if (kind === 'edge') return { stroke: entry.edge };
+  return { borderColor: entry.border, backgroundColor: entry.background };
+}
