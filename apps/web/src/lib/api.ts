@@ -272,6 +272,34 @@ export const updateConnector = async (
   return (await res.json()) as { ok: true };
 };
 
+export interface CreateNodeBody {
+  id?: string;
+  type: 'playNode' | 'stateNode' | 'shapeNode';
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+}
+
+export const createNode = async (
+  demoId: string,
+  node: CreateNodeBody,
+): Promise<{ ok: true; id: string }> => {
+  const res = await fetch(`/api/demos/${demoId}/nodes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(node),
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/nodes → ${res.status}`);
+  }
+  return (await res.json()) as { ok: true; id: string };
+};
+
 export const deleteNode = async (demoId: string, nodeId: string): Promise<{ ok: true }> => {
   const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}`, { method: 'DELETE' });
   if (!res.ok) {

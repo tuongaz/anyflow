@@ -12,6 +12,8 @@ import {
   type DemoDetail,
   type DemoNode,
   type DemoSummary,
+  type ShapeKind,
+  createNode,
   deleteConnector,
   deleteNode,
   updateConnector,
@@ -269,6 +271,22 @@ export function DemoView({
     [demoId, demoNodesForDesc, setNodeOverride, dropNodeOverride],
   );
 
+  const onCreateShapeNode = useCallback(
+    (shape: ShapeKind, position: Position, dims: { width: number; height: number }) => {
+      if (!demoId) return;
+      setEditError(null);
+      createNode(demoId, {
+        type: 'shapeNode',
+        position,
+        data: { shape, width: dims.width, height: dims.height },
+      }).catch((err) => {
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('createNode failed', err);
+      });
+    },
+    [demoId],
+  );
+
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
@@ -358,6 +376,7 @@ export function DemoView({
           onNodeLabelChange={onNodeLabelChange}
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}
+          onCreateShapeNode={onCreateShapeNode}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

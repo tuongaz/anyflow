@@ -1,3 +1,4 @@
+import { CanvasToolbar } from '@/components/canvas-toolbar';
 import { EditableEdge } from '@/components/edges/editable-edge';
 import { PlayNode } from '@/components/nodes/play-node';
 import { ShapeNode } from '@/components/nodes/shape-node';
@@ -5,18 +6,21 @@ import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
-import type { Connector, DemoNode } from '@/lib/api';
+import type { Connector, DemoNode, ShapeKind } from '@/lib/api';
 import { connectorToEdge } from '@/lib/connector-to-edge';
+import { cn } from '@/lib/utils';
 import {
   Background,
   Controls,
   type Edge,
   type Node,
   type NodeChange,
+  Panel,
   ReactFlow,
+  type ReactFlowInstance,
   applyNodeChanges,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import '@xyflow/react/dist/style.css';
 
@@ -58,7 +62,18 @@ export interface DemoCanvasProps {
   onNodeDescriptionChange?: (nodeId: string, summary: string) => void;
   /** Persist a new connector label (PATCH /connectors/:id { label }). */
   onConnectorLabelChange?: (connId: string, label: string) => void;
+  /**
+   * Commit a new shape node from the bottom-toolbar draw flow. Wiring this
+   * enables the toolbar; absent → toolbar is hidden.
+   */
+  onCreateShapeNode?: (
+    shape: ShapeKind,
+    position: { x: number; y: number },
+    dims: { width: number; height: number },
+  ) => void;
 }
+
+const MIN_DRAW_SIZE = 8;
 
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
   if (!override) return node;
@@ -101,7 +116,125 @@ export function DemoCanvas({
   onNodeLabelChange,
   onNodeDescriptionChange,
   onConnectorLabelChange,
+  onCreateShapeNode,
 }: DemoCanvasProps) {
+  // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
+  // shows a crosshair cursor and a pointer-down on the React Flow pane begins
+  // an Excalidraw-style drag. We track the start + current pointer position in
+  // CLIENT coordinates and only convert to flow coordinates at commit time
+  // (mouse-up); the ghost preview overlay renders relative to the wrapper's
+  // bounding rect, so it stays accurate even if the canvas pans during the
+  // gesture (the underlying flow conversion handles the transform).
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
+  // State drives the ghost preview render; refs back the handlers so a single
+  // synchronous gesture (pointerdown→move→up in one task) reads up-to-date
+  // values without waiting for a React re-render to refresh useCallback
+  // closures.
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
+  const drawShapeRef = useRef<ShapeKind | null>(null);
+  const drawStartRef = useRef<{ x: number; y: number } | null>(null);
+  const drawCurrentRef = useRef<{ x: number; y: number } | null>(null);
+  const drawingRef = useRef(false);
+
+  // Mirror drawShape state into a ref so handlers see the live value without
+  // depending on closure identity (handler refs need to stay stable so React
+  // event delegation keeps working across renders mid-gesture).
+  useEffect(() => {
+    drawShapeRef.current = drawShape;
+  }, [drawShape]);
+
+  const exitDrawMode = useCallback(() => {
+    setDrawShape(null);
+    setDrawStart(null);
+    setDrawCurrent(null);
+    drawShapeRef.current = null;
+    drawStartRef.current = null;
+    drawCurrentRef.current = null;
+    drawingRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!drawShape) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitDrawMode();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawShape, exitDrawMode]);
+
+  const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    if (!drawShapeRef.current) return;
+    const target = e.target as HTMLElement | null;
+    if (!target?.classList.contains('react-flow__pane')) return;
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const local = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    drawingRef.current = true;
+    drawStartRef.current = local;
+    drawCurrentRef.current = local;
+    setDrawStart(local);
+    setDrawCurrent(local);
+    // Capture the pointer so move/up land here even if the cursor leaves
+    // the React Flow pane (e.g. drags up onto the toolbar). Wrapped because
+    // setPointerCapture throws on synthetic (non-trusted) events used in tests.
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore — gesture still works without explicit capture
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const onPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    if (!drawingRef.current) return;
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const local = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    drawCurrentRef.current = local;
+    setDrawCurrent(local);
+  }, []);
+
+  const onPointerUp = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!drawingRef.current) return;
+      drawingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      } catch {
+        // capture may not have been granted (synthetic events, browsers
+        // without pointer capture support); ignore.
+      }
+      const start = drawStartRef.current;
+      const current = drawCurrentRef.current;
+      const shape = drawShapeRef.current;
+      const rfInstance = rfInstanceRef.current;
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      // Always exit draw mode after a gesture, even if the commit short-circuits
+      // (too small, missing references). The PRD spec: "After commit (or ESC),
+      // draw mode exits automatically and the cursor returns to default."
+      exitDrawMode();
+      if (!start || !current || !shape || !rfInstance || !rect) return;
+      const minX = Math.min(start.x, current.x);
+      const minY = Math.min(start.y, current.y);
+      const maxX = Math.max(start.x, current.x);
+      const maxY = Math.max(start.y, current.y);
+      const width = maxX - minX;
+      const height = maxY - minY;
+      // Tiny drags (or pure clicks) don't commit — they'd produce a degenerate
+      // node that's invisible until the user resizes it.
+      if (width < MIN_DRAW_SIZE || height < MIN_DRAW_SIZE) return;
+      const flowPos = rfInstance.screenToFlowPosition({
+        x: rect.left + minX,
+        y: rect.top + minY,
+      });
+      onCreateShapeNode?.(shape, flowPos, { width, height });
+    },
+    [exitDrawMode, onCreateShapeNode],
+  );
   // Block upstream sync while a node is mid-drag or mid-resize. NodeResizer
   // dispatches dimension changes into rfNodes during the gesture; if we then
   // overwrite rfNodes with sourceNodes (from server, which still has the old
@@ -191,8 +324,39 @@ export function DemoCanvas({
     [connectors, runs, selectedConnectorId, connectorOverrides, onConnectorLabelChange],
   );
 
+  const ghostRect = useMemo(() => {
+    if (!drawStart || !drawCurrent) return null;
+    const minX = Math.min(drawStart.x, drawCurrent.x);
+    const minY = Math.min(drawStart.y, drawCurrent.y);
+    const w = Math.abs(drawCurrent.x - drawStart.x);
+    const h = Math.abs(drawCurrent.y - drawStart.y);
+    return { left: minX, top: minY, width: w, height: h };
+  }, [drawStart, drawCurrent]);
+
+  const ghostShapeClass =
+    drawShape === 'ellipse'
+      ? 'rounded-full border-2 border-primary/60 bg-primary/10'
+      : drawShape === 'sticky'
+        ? 'rounded-md border border-amber-500/60 bg-amber-200/40'
+        : 'rounded-lg border-2 border-primary/60 bg-primary/10';
+
   return (
-    <div data-testid="anydemo-canvas" className="h-full w-full">
+    <div
+      data-testid="anydemo-canvas"
+      ref={wrapperRef}
+      className="relative h-full w-full"
+      style={drawShape ? { cursor: 'crosshair' } : undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        drawingRef.current = false;
+        drawStartRef.current = null;
+        drawCurrentRef.current = null;
+        setDrawStart(null);
+        setDrawCurrent(null);
+      }}
+    >
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
@@ -201,12 +365,18 @@ export function DemoCanvas({
         edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
         fitView
-        nodesDraggable={!!onNodePositionChange}
+        nodesDraggable={!!onNodePositionChange && !drawShape}
         nodesConnectable={false}
-        elementsSelectable
+        elementsSelectable={!drawShape}
+        panOnDrag={!drawShape}
+        zoomOnDoubleClick={false}
+        onInit={(instance) => {
+          rfInstanceRef.current = instance;
+        }}
         onNodeClick={(_e, node) => onSelectNode(node.id)}
         onEdgeClick={(_e, edge) => onSelectConnector?.(edge.id)}
         onPaneClick={() => {
+          if (drawShape) return;
           onSelectNode(null);
           onSelectConnector?.(null);
         }}
@@ -223,7 +393,25 @@ export function DemoCanvas({
       >
         <Background />
         <Controls showInteractive={false} />
+        {onCreateShapeNode ? (
+          <Panel position="bottom-center">
+            <CanvasToolbar activeShape={drawShape} onSelectShape={setDrawShape} />
+          </Panel>
+        ) : null}
       </ReactFlow>
+      {ghostRect ? (
+        <div
+          data-testid="canvas-draw-ghost"
+          aria-hidden
+          className={cn('pointer-events-none absolute z-10', ghostShapeClass)}
+          style={{
+            left: ghostRect.left,
+            top: ghostRect.top,
+            width: ghostRect.width,
+            height: ghostRect.height,
+          }}
+        />
+      ) : null}
     </div>
   );
 }
