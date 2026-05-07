@@ -59,7 +59,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   return (
     <div
       className={cn(
-        'group flex flex-col justify-center overflow-hidden rounded-lg border shadow-sm transition-shadow',
+        'group flex flex-col justify-center overflow-hidden rounded-lg border-[3px] shadow-sm transition-shadow',
         sized ? 'h-full w-full' : '',
         selected ? 'ring-2 ring-ring ring-offset-2' : '',
         isRunning ? 'anydemo-node-pulse' : '',
@@ -87,7 +87,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1"
         data-testid="node-header"
       >
-        <div className="min-w-0 flex-1 text-[17px] font-normal leading-tight">
+        <div className="min-w-0 flex-1 text-[20px] font-normal leading-tight">
           {editing === 'label' && labelEditable ? (
             <InlineEdit
               initialValue={data.label}
@@ -95,13 +95,13 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               required
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
-              className="text-[17px]"
+              className="text-[20px]"
             />
           ) : (
             <button
               type="button"
               className={cn(
-                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[17px] font-normal leading-tight',
+                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[20px] font-normal leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               onDoubleClick={
@@ -153,14 +153,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             multiline
             onCommit={(v) => data.onDescriptionChange?.(id, v)}
             onExit={() => setEditing(null)}
-            className="w-full text-[16px] text-muted-foreground"
+            className="w-full text-[18px] text-muted-foreground"
             placeholder={data.kind}
           />
         ) : (
           <button
             type="button"
             className={cn(
-              'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[16px] text-muted-foreground',
+              'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[18px] text-muted-foreground',
               descEditable ? 'hover:opacity-80' : '',
             )}
             onDoubleClick={

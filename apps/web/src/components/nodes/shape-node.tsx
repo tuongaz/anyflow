@@ -21,9 +21,9 @@ const DEFAULT_SIZE: Record<ShapeKind, { width: number; height: number }> = {
 };
 
 const SHAPE_CLASS: Record<ShapeKind, string> = {
-  rectangle: 'rounded-lg border-2 bg-transparent',
-  ellipse: 'rounded-full border-2 bg-transparent',
-  sticky: 'rounded-md border shadow-md -rotate-1',
+  rectangle: 'rounded-lg border-[3px] bg-transparent',
+  ellipse: 'rounded-full border-[3px] bg-transparent',
+  sticky: 'rounded-md border-[3px] shadow-md -rotate-1',
 };
 
 const HANDLE_CLASS = '!h-2 !w-2 !bg-muted-foreground';
@@ -55,7 +55,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   return (
     <div
       className={cn(
-        'group relative flex items-center justify-center p-2 text-center text-[18px]',
+        'group relative flex items-center justify-center p-2 text-center text-[22px]',
         sized ? 'h-full w-full' : '',
         SHAPE_CLASS[shape],
         selected ? 'ring-2 ring-ring ring-offset-2' : '',
@@ -86,7 +86,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           field="node-label"
           onCommit={(v) => data.onLabelChange?.(id, v)}
           onExit={() => setIsEditing(false)}
-          className="text-[18px]"
+          className="text-[22px]"
           placeholder="Label"
         />
       ) : (

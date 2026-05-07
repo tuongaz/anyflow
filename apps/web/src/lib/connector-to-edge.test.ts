@@ -72,7 +72,7 @@ describe('connectorToEdge', () => {
   it('renders a default connector as solid (no dasharray)', () => {
     expect(styleForKind('default')).toEqual({});
     const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
-    expect(connectorToEdge(c, false).style).toEqual({});
+    expect(connectorToEdge(c, false).style).toEqual({ strokeWidth: 2 });
   });
 
   it('lets per-connector style override the kind-derived style', () => {
@@ -83,7 +83,21 @@ describe('connectorToEdge', () => {
       kind: 'http',
       style: 'dashed',
     };
-    expect(connectorToEdge(c, false).style).toEqual({ strokeDasharray: '6 4' });
+    expect(connectorToEdge(c, false).style).toEqual({
+      strokeDasharray: '6 4',
+      strokeWidth: 2,
+    });
+  });
+
+  it('uses connector.borderSize as strokeWidth when set', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      borderSize: 5,
+    };
+    expect(connectorToEdge(c, false).style.strokeWidth).toBe(5);
   });
 
   it('places markerStart only when direction is backward', () => {

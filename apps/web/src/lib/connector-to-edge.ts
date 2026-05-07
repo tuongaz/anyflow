@@ -62,8 +62,11 @@ export const connectorToEdge = (
   // selection styling override it; setting an explicit stroke even for the
   // default token keeps the visual deterministic.
   const colorStyle = connector.color ? colorTokenStyle(connector.color, 'edge') : {};
-  const sizeStyle: { strokeWidth?: number } =
-    connector.borderSize !== undefined ? { strokeWidth: connector.borderSize } : {};
+  // Default to a heavier stroke than SVG's 1px so connectors read at canvas
+  // zoom levels; per-connector borderSize overrides.
+  const sizeStyle: { strokeWidth: number } = {
+    strokeWidth: connector.borderSize ?? 2,
+  };
   const style = { ...dashStyle, ...colorStyle, ...sizeStyle };
   // 'forward' (or absent) → arrow at target only (historical behavior).
   // 'backward' → arrow at source only.
