@@ -358,6 +358,132 @@ describe('POST /api/demos/:id/play/:nodeId', () => {
   });
 });
 
+describe('POST /api/demos/:id/nodes/:nodeId/detail', () => {
+  const startStubServer = (
+    handler: (req: Request) => Response | Promise<Response>,
+  ): { url: string; stop: () => void } => {
+    const server = Bun.serve({ port: 0, fetch: handler });
+    return {
+      url: `http://${server.hostname}:${server.port}`,
+      stop: () => server.stop(true),
+    };
+  };
+
+  const demoWithDynamicSource = (url: string) => ({
+    ...VALID_DEMO,
+    nodes: [
+      {
+        ...VALID_DEMO.nodes[0],
+        data: {
+          ...VALID_DEMO.nodes[0]?.data,
+          detail: {
+            summary: 'Stats',
+            dynamicSource: {
+              kind: 'http',
+              method: 'GET',
+              url,
+            },
+          },
+        },
+      },
+    ],
+  });
+
+  it('proxies the dynamicSource request and returns status + body', async () => {
+    const stub = startStubServer((req) => {
+      expect(req.method).toBe('GET');
+      return Response.json({ orders: 12, lastOrderId: 'ord_42' });
+    });
+    try {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo(demoWithDynamicSource(stub.url));
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: number; body: unknown };
+      expect(body.status).toBe(200);
+      expect(body.body).toEqual({ orders: 12, lastOrderId: 'ord_42' });
+    } finally {
+      stub.stop();
+    }
+  });
+
+  it('does not broadcast node:* events when fetching detail', async () => {
+    const stub = startStubServer(() => Response.json({ ok: true }));
+    try {
+      const bus = createEventBus();
+      const registry = createRegistry({ path: tmpRegistry() });
+      const app = createApp({
+        mode: 'prod',
+        staticRoot: './dist/web',
+        registry,
+        events: bus,
+        disableWatcher: true,
+      });
+      const repoPath = tmpRepoWithDemo(demoWithDynamicSource(stub.url));
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const captured: Array<{ type: string }> = [];
+      bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+
+      const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
+      expect(res.status).toBe(200);
+      const nodeEvents = captured.filter((e) => e.type.startsWith('node:'));
+      expect(nodeEvents).toHaveLength(0);
+    } finally {
+      stub.stop();
+    }
+  });
+
+  it('returns 404 when the node has no dynamicSource', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain('dynamicSource');
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/demos/nope/nodes/x/detail', {});
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for unknown nodeId', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const res = await post(app, `/api/demos/${reg.id}/nodes/missing/detail`, {});
+    expect(res.status).toBe(404);
+  });
+
+  it('returns body.error when the upstream is unreachable', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(demoWithDynamicSource('http://127.0.0.1:1'));
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { error?: string; status?: number };
+    expect(body.status).toBeUndefined();
+    expect(body.error).toBeTruthy();
+  });
+});
+
 describe('GET /api/events', () => {
   it('returns 400 when demoId is missing', async () => {
     const { app } = buildApp();

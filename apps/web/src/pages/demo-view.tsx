@@ -73,6 +73,7 @@ export function DemoView({ slug, demos, detail, loading, runs, onPlayNode }: Dem
       )}
 
       <DetailPanel
+        demoId={detail?.id ?? null}
         node={selectedNode}
         filePath={detail?.filePath}
         run={selectedRun}

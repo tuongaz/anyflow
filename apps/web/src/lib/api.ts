@@ -87,6 +87,35 @@ export interface PlayResult {
   error?: string;
 }
 
+export interface NodeDetailResult {
+  status?: number;
+  body?: unknown;
+  error?: string;
+}
+
+export const fetchNodeDetail = async (
+  demoId: string,
+  nodeId: string,
+): Promise<NodeDetailResult> => {
+  const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}/detail`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `POST /api/demos/${demoId}/nodes/${nodeId}/detail → ${res.status}`,
+    );
+  }
+  return (await res.json()) as NodeDetailResult;
+};
+
 export const playNode = async (demoId: string, nodeId: string): Promise<PlayResult> => {
   const res = await fetch(`/api/demos/${demoId}/play/${nodeId}`, {
     method: 'POST',

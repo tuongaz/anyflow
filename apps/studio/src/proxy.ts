@@ -7,7 +7,7 @@
  */
 
 import type { EventBus } from './events.ts';
-import type { PlayAction } from './schema.ts';
+import type { DynamicSource, PlayAction } from './schema.ts';
 
 export interface PlayResult {
   /** Correlates this run across SSE events + the synchronous response. */
@@ -80,5 +80,36 @@ export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
       payload: { nodeId, runId, message },
     });
     return { runId, error: message };
+  }
+}
+
+export interface DetailFetchResult {
+  status?: number;
+  body?: unknown;
+  error?: string;
+}
+
+/**
+ * Fires the request declared in `data.detail.dynamicSource` and returns the
+ * proxied status + body. Unlike `runPlay`, this does NOT broadcast `node:*`
+ * events — opening the detail panel is not a "run".
+ */
+export async function fetchDynamicDetail(action: DynamicSource): Promise<DetailFetchResult> {
+  try {
+    const upstream = await fetch(action.url, buildRequestInit(action));
+    const ct = upstream.headers.get('content-type');
+    let body: unknown;
+    if (isJsonContentType(ct)) {
+      try {
+        body = await upstream.json();
+      } catch {
+        body = await upstream.text();
+      }
+    } else {
+      body = await upstream.text();
+    }
+    return { status: upstream.status, body };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
   }
 }
