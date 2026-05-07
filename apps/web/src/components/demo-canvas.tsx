@@ -4,8 +4,16 @@ import type { NodeStatus } from '@/components/nodes/status-pill';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { Connector, DemoNode } from '@/lib/api';
 import { connectorToEdge } from '@/lib/connector-to-edge';
-import { Background, Controls, type Edge, type Node, ReactFlow } from '@xyflow/react';
-import { useMemo } from 'react';
+import {
+  Background,
+  Controls,
+  type Edge,
+  type Node,
+  type NodeChange,
+  ReactFlow,
+  applyNodeChanges,
+} from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import '@xyflow/react/dist/style.css';
 
@@ -43,7 +51,7 @@ export function DemoCanvas({
   positionOverrides,
   onNodePositionChange,
 }: DemoCanvasProps) {
-  const rfNodes = useMemo<Node[]>(
+  const sourceNodes = useMemo<Node[]>(
     () =>
       nodes.map((n) => ({
         id: n.id,
@@ -58,6 +66,23 @@ export function DemoCanvas({
       })),
     [nodes, selectedNodeId, runs, onPlayNode, positionOverrides],
   );
+
+  // React Flow needs internal node state + onNodesChange to render drag
+  // motion smoothly. Without it, the controlled `nodes` prop overrides the
+  // drag position on every parent re-render (SSE `runs` ticks etc.) and the
+  // node snaps back mid-drag. We freeze upstream sync while a drag is in
+  // flight; the parent's positionOverrides take over after drag-stop.
+  const [rfNodes, setRfNodes] = useState<Node[]>(sourceNodes);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    if (draggingRef.current) return;
+    setRfNodes(sourceNodes);
+  }, [sourceNodes]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setRfNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
 
   const rfEdges = useMemo<Edge[]>(
     () =>
@@ -74,6 +99,7 @@ export function DemoCanvas({
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
+        onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
         proOptions={{ hideAttribution: true }}
         fitView
@@ -82,10 +108,14 @@ export function DemoCanvas({
         elementsSelectable
         onNodeClick={(_e, node) => onSelectNode(node.id)}
         onPaneClick={() => onSelectNode(null)}
+        onNodeDragStart={() => {
+          draggingRef.current = true;
+        }}
         onNodeDragStop={(_e, node) => {
           // Drag-while-moving lives in React Flow's internal state. We only
           // surface (and persist) the final position on drag-stop so we don't
           // PATCH the file on every pixel.
+          draggingRef.current = false;
           onNodePositionChange?.(node.id, { x: node.position.x, y: node.position.y });
         }}
       >

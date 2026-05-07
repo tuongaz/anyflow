@@ -11,7 +11,7 @@ export function StateNode({ data, selected }: NodeProps<StateNodeType>) {
 
   return (
     <div
-      className={`group flex min-w-[220px] flex-col rounded-lg border-2 border-dashed bg-card shadow-sm transition-shadow ${
+      className={`group flex w-[260px] flex-col rounded-lg border-2 border-dashed bg-card shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-ring ring-offset-2' : ''
       } ${status === 'running' ? 'anydemo-node-pulse' : ''}`}
       data-status={status}
@@ -19,10 +19,10 @@ export function StateNode({ data, selected }: NodeProps<StateNodeType>) {
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-muted-foreground" />
       <div
-        className="flex items-center justify-between gap-2 rounded-t-md border-b bg-muted/40 px-3 py-1.5"
+        className="flex items-start justify-between gap-2 rounded-t-md border-b bg-muted/40 px-3 py-1.5"
         data-testid="node-header"
       >
-        <div className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
+        <div className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
           {data.label}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -33,7 +33,7 @@ export function StateNode({ data, selected }: NodeProps<StateNodeType>) {
           />
         </div>
       </div>
-      <div className="px-3 py-2 text-[12px] text-muted-foreground line-clamp-2">{description}</div>
+      <div className="px-3 py-2 text-[12px] text-muted-foreground break-words">{description}</div>
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-muted-foreground" />
     </div>
   );

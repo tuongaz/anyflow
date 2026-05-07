@@ -1,4 +1,5 @@
 import type { Connector } from '@/lib/api';
+import { type EdgeMarker, MarkerType } from '@xyflow/react';
 
 export interface DerivedEdge {
   id: string;
@@ -9,7 +10,16 @@ export interface DerivedEdge {
   animated: boolean;
   data: { kind: Connector['kind'] };
   style: { strokeDasharray?: string };
+  markerEnd: EdgeMarker;
 }
+
+// Closed arrowhead at the target end so direction (source → target) reads at
+// a glance. Width/height are tuned to look balanced against the 1px stroke.
+const ARROW_END: EdgeMarker = {
+  type: MarkerType.ArrowClosed,
+  width: 18,
+  height: 18,
+};
 
 // Visual style per connector kind. Kept terse so the canvas reads cleanly:
 //   • http  — solid (no dasharray)
@@ -36,4 +46,5 @@ export const connectorToEdge = (
   animated: isAdjacentToRunning,
   data: { kind: connector.kind },
   style: STYLE_BY_KIND[connector.kind],
+  markerEnd: ARROW_END,
 });

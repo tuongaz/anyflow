@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { Connector } from '@/lib/api';
 import { connectorToEdge, styleForKind } from '@/lib/connector-to-edge';
+import { MarkerType } from '@xyflow/react';
 
 describe('connectorToEdge', () => {
   it('preserves id/source/target and uses smoothstep edge type', () => {
@@ -41,6 +42,19 @@ describe('connectorToEdge', () => {
     expect(styleForKind('http')).toEqual({});
     expect(styleForKind('event')).toEqual({ strokeDasharray: '6 4' });
     expect(styleForKind('queue')).toEqual({ strokeDasharray: '2 4' });
+  });
+
+  it('renders a closed arrowhead at the target so direction reads at a glance', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'http',
+      method: 'GET',
+      url: 'http://b/',
+    };
+    const edge = connectorToEdge(c, false);
+    expect(edge.markerEnd.type).toBe(MarkerType.ArrowClosed);
   });
 
   it('preserves the connector kind in edge data for downstream filtering', () => {

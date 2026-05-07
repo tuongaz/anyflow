@@ -5,22 +5,35 @@
     {
       "id": "api-create-todo",
       "type": "playNode",
-      "position": { "x": 80, "y": 80 },
+      "position": {
+        "x": 660.1105256473926,
+        "y": 202.97861633954807
+      },
       "data": {
         "label": "POST /todos",
         "kind": "service",
-        "stateSource": { "kind": "request" },
+        "stateSource": {
+          "kind": "request"
+        },
         "playAction": {
           "kind": "http",
           "method": "POST",
           "url": "http://localhost:3030/todos",
-          "body": { "title": "Buy milk" }
+          "body": {
+            "title": "Buy milk"
+          }
         },
         "detail": {
           "summary": "Creates a todo on the in-memory store and returns it.",
           "fields": [
-            { "label": "Service", "value": "todo-demo-target" },
-            { "label": "Port", "value": "3030" }
+            {
+              "label": "Service",
+              "value": "todo-demo-target"
+            },
+            {
+              "label": "Port",
+              "value": "3030"
+            }
           ],
           "dynamicSource": {
             "kind": "http",
@@ -33,11 +46,16 @@
     {
       "id": "api-complete-todo",
       "type": "playNode",
-      "position": { "x": 80, "y": 280 },
+      "position": {
+        "x": -68.25575708232533,
+        "y": 176.98064273708195
+      },
       "data": {
         "label": "POST /todos/:id/complete",
         "kind": "service",
-        "stateSource": { "kind": "request" },
+        "stateSource": {
+          "kind": "request"
+        },
         "playAction": {
           "kind": "http",
           "method": "POST",
@@ -47,8 +65,14 @@
         "detail": {
           "summary": "Marks the seed todo (id: seed-1) complete and publishes a todo.completed event onto the in-memory bus, which the worker picks up.",
           "fields": [
-            { "label": "Target id", "value": "seed-1" },
-            { "label": "Triggers", "value": "todo.completed event" }
+            {
+              "label": "Target id",
+              "value": "seed-1"
+            },
+            {
+              "label": "Triggers",
+              "value": "todo.completed event"
+            }
           ]
         }
       }
@@ -56,16 +80,27 @@
     {
       "id": "todo-worker",
       "type": "stateNode",
-      "position": { "x": 460, "y": 280 },
+      "position": {
+        "x": 344.19601708165186,
+        "y": 1.0789374988942342
+      },
       "data": {
         "label": "todo-worker",
         "kind": "worker",
-        "stateSource": { "kind": "event" },
+        "stateSource": {
+          "kind": "event"
+        },
         "detail": {
           "summary": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
           "fields": [
-            { "label": "Subscribes", "value": "todo.completed" },
-            { "label": "Emits", "value": "running → done" }
+            {
+              "label": "Subscribes",
+              "value": "todo.completed"
+            },
+            {
+              "label": "Emits",
+              "value": "running → done"
+            }
           ]
         }
       }
