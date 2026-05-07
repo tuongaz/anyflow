@@ -11,6 +11,7 @@ import { connectorToEdge } from '@/lib/connector-to-edge';
 import { cn } from '@/lib/utils';
 import {
   Background,
+  type Connection,
   Controls,
   type Edge,
   type Node,
@@ -71,6 +72,13 @@ export interface DemoCanvasProps {
     position: { x: number; y: number },
     dims: { width: number; height: number },
   ) => void;
+  /**
+   * Commit a new connector from a handle-drag gesture. Wiring this enables
+   * `nodesConnectable` on the React Flow instance; absent → handles are
+   * read-only. Self-connections (source === target) are rejected here so the
+   * parent never sees them.
+   */
+  onCreateConnector?: (source: string, target: string) => void;
 }
 
 const MIN_DRAW_SIZE = 8;
@@ -117,6 +125,7 @@ export function DemoCanvas({
   onNodeDescriptionChange,
   onConnectorLabelChange,
   onCreateShapeNode,
+  onCreateConnector,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -302,26 +311,53 @@ export function DemoCanvas({
     setRfNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
-  const rfEdges = useMemo<Edge[]>(
-    () =>
-      connectors.map((c) => {
-        const merged = mergeConnectorOverride(c, connectorOverrides?.[c.id]);
-        const adjacentRunning =
-          statusFor(runs, merged.source) === 'running' ||
-          statusFor(runs, merged.target) === 'running';
-        const edge = connectorToEdge(merged, adjacentRunning);
-        if (selectedConnectorId === merged.id) edge.selected = true;
-        // Inject the runtime label-change callback into edge.data — same
-        // channel the custom node components use for `onPlay` / `onResize`.
-        // `data` already carries the connector kind for downstream filtering;
-        // spread it into a new object to avoid mutating the connectorToEdge
-        // memo's return value.
-        return {
-          ...edge,
-          data: { ...edge.data, onLabelChange: onConnectorLabelChange },
-        };
-      }),
-    [connectors, runs, selectedConnectorId, connectorOverrides, onConnectorLabelChange],
+  const rfEdges = useMemo<Edge[]>(() => {
+    const decorate = (c: Connector): Edge => {
+      const adjacentRunning =
+        statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
+      const edge = connectorToEdge(c, adjacentRunning);
+      if (selectedConnectorId === c.id) edge.selected = true;
+      // Inject the runtime label-change callback into edge.data — same
+      // channel the custom node components use for `onPlay` / `onResize`.
+      return { ...edge, data: { ...edge.data, onLabelChange: onConnectorLabelChange } };
+    };
+    const serverIds = new Set(connectors.map((c) => c.id));
+    const fromServer = connectors.map((c) =>
+      decorate(mergeConnectorOverride(c, connectorOverrides?.[c.id])),
+    );
+    // Override-only entries represent optimistic/pending creations (US-029):
+    // the parent has set a full-Connector override BEFORE the POST round-trip
+    // completes. Once the server echo arrives, the entry is also in
+    // `connectors` and the prune drops the override (per US-021).
+    const fromOverrides: Edge[] = [];
+    if (connectorOverrides) {
+      for (const [id, partial] of Object.entries(connectorOverrides)) {
+        if (serverIds.has(id)) continue;
+        const candidate = partial as Partial<Connector>;
+        if (
+          typeof candidate.source !== 'string' ||
+          typeof candidate.target !== 'string' ||
+          typeof candidate.kind !== 'string'
+        ) {
+          continue;
+        }
+        fromOverrides.push(decorate({ ...candidate, id } as Connector));
+      }
+    }
+    return [...fromServer, ...fromOverrides];
+  }, [connectors, runs, selectedConnectorId, connectorOverrides, onConnectorLabelChange]);
+
+  const onConnect = useCallback(
+    (conn: Connection) => {
+      if (!onCreateConnector) return;
+      const { source, target } = conn;
+      if (!source || !target) return;
+      // Reject same-node connections client-side — the schema would also
+      // accept them but they're never useful (a node referencing itself).
+      if (source === target) return;
+      onCreateConnector(source, target);
+    },
+    [onCreateConnector],
   );
 
   const ghostRect = useMemo(() => {
@@ -366,7 +402,8 @@ export function DemoCanvas({
         proOptions={{ hideAttribution: true }}
         fitView
         nodesDraggable={!!onNodePositionChange && !drawShape}
-        nodesConnectable={false}
+        nodesConnectable={!!onCreateConnector && !drawShape}
+        onConnect={onConnect}
         elementsSelectable={!drawShape}
         panOnDrag={!drawShape}
         zoomOnDoubleClick={false}

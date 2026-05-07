@@ -239,7 +239,7 @@
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-030",

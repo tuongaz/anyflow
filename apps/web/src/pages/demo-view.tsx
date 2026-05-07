@@ -9,10 +9,12 @@ import type { NodeRuns } from '@/hooks/use-node-runs';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
 import {
   type Connector,
+  type DefaultConnector,
   type DemoDetail,
   type DemoNode,
   type DemoSummary,
   type ShapeKind,
+  createConnector,
   createNode,
   deleteConnector,
   deleteNode,
@@ -301,6 +303,27 @@ export function DemoView({
     [demoId, setConnectorOverride, dropConnectorOverride],
   );
 
+  // Create a default connector from a handle-drag gesture (US-029). We
+  // generate the id client-side and send it in the POST body so the
+  // optimistic override and the server echo share an id — the SSE-driven
+  // prune then drops the override cleanly. On failure, drop the override and
+  // surface the existing edit-error-banner.
+  const onCreateConnector = useCallback(
+    (source: string, target: string) => {
+      if (!demoId) return;
+      const id = `conn-${crypto.randomUUID()}`;
+      const optimistic: DefaultConnector = { id, source, target, kind: 'default' };
+      setConnectorOverride(id, optimistic as Partial<Connector>);
+      setEditError(null);
+      createConnector(demoId, { id, source, target, kind: 'default' }).catch((err) => {
+        dropConnectorOverride(id);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('createConnector failed', err);
+      });
+    },
+    [demoId, setConnectorOverride, dropConnectorOverride],
+  );
+
   // Merge pending overrides onto the selected entity so Style-tab controls
   // (active swatches, selected dropdown option) reflect the in-flight edit
   // immediately rather than waiting for the SSE echo. Defined here (above the
@@ -377,6 +400,7 @@ export function DemoView({
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
+          onCreateConnector={onCreateConnector}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

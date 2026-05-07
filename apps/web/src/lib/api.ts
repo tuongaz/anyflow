@@ -300,6 +300,42 @@ export const createNode = async (
   return (await res.json()) as { ok: true; id: string };
 };
 
+export interface CreateConnectorBody {
+  id?: string;
+  source: string;
+  target: string;
+  kind?: Connector['kind'];
+  label?: string;
+  style?: ConnectorStyle;
+  color?: ColorToken;
+  direction?: ConnectorDirection;
+  eventName?: string;
+  queueName?: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  url?: string;
+}
+
+export const createConnector = async (
+  demoId: string,
+  body: CreateConnectorBody,
+): Promise<{ ok: true; id: string }> => {
+  const res = await fetch(`/api/demos/${demoId}/connectors`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/connectors → ${res.status}`);
+  }
+  return (await res.json()) as { ok: true; id: string };
+};
+
 export const deleteNode = async (demoId: string, nodeId: string): Promise<{ ok: true }> => {
   const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}`, { method: 'DELETE' });
   if (!res.ok) {
