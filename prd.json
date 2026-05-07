@@ -257,7 +257,7 @@
         "bun run lint passes.",
         "Verify in browser using dev-browser skill."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-031",

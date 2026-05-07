@@ -4,11 +4,17 @@ import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, NodeResizer, Position } from '@xyflow/react';
-import { Play } from 'lucide-react';
+import { Loader2, Play } from 'lucide-react';
 import { useState } from 'react';
 
 export type PlayNodeData = NodeData & {
-  status: NodeStatus;
+  /**
+   * Undefined when this node has no entry in the runs map (i.e. the user has
+   * never clicked Play on it). The PlayNode hides its StatusPill in that case
+   * (per US-030); once a run is dispatched, status becomes 'running' →
+   * 'done'/'error' and the pill becomes visible thereafter.
+   */
+  status?: NodeStatus;
   onPlay?: (nodeId: string) => void;
   onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
   setResizing?: (on: boolean) => void;
@@ -22,11 +28,13 @@ export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
 type EditField = 'label' | 'description' | null;
 
 export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
-  const status = data.status ?? 'idle';
+  const status = data.status;
+  const hasRun = status !== undefined;
   const action = data.playAction;
   const description = data.detail?.summary ?? data.kind;
   const playable = !!action && !!data.onPlay;
   const isRunning = status === 'running';
+  const buttonLabel = isRunning ? 'Running…' : 'Play';
   const [isResizing, setIsResizing] = useState(false);
   const [editing, setEditing] = useState<EditField>(null);
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
@@ -41,7 +49,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         selected ? 'ring-2 ring-ring ring-offset-2' : '',
         isRunning ? 'anydemo-node-pulse' : '',
       )}
-      data-status={status}
+      data-status={status ?? 'idle'}
       data-testid="play-node"
     >
       <NodeResizer
@@ -94,22 +102,27 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <StatusPill status={status} />
+          {hasRun ? <StatusPill status={status} data-testid="play-node-status" /> : null}
           <div className="flex shrink-0 items-center justify-end gap-1" data-testid="node-actions">
             <Button
               type="button"
               size="sm"
               variant="secondary"
               disabled={!playable || isRunning}
-              className="h-6 gap-1 px-2 text-xs"
+              className="h-6 w-6 p-0"
               data-testid="play-button"
+              aria-label={buttonLabel}
+              title={buttonLabel}
               onClick={(e) => {
                 e.stopPropagation();
                 data.onPlay?.(id);
               }}
             >
-              <Play className="h-3 w-3" />
-              {isRunning ? 'Running…' : 'Play'}
+              {isRunning ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              ) : (
+                <Play className="h-3 w-3" aria-hidden />
+              )}
             </Button>
           </div>
         </div>

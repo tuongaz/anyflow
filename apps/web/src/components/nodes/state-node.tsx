@@ -6,7 +6,12 @@ import { Handle, type Node, type NodeProps, NodeResizer, Position } from '@xyflo
 import { useState } from 'react';
 
 export type StateNodeData = NodeData & {
-  status: NodeStatus;
+  /**
+   * Undefined when no emit() event has landed for this node — treated as
+   * 'idle' visually. Unlike PlayNode, StateNode always renders its pill
+   * (per US-030: "StateNode's existing StatusPill behavior is unaffected").
+   */
+  status?: NodeStatus;
   onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
   setResizing?: (on: boolean) => void;
   onLabelChange?: (nodeId: string, label: string) => void;

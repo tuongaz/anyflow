@@ -108,6 +108,17 @@ const edgeTypes = { editableEdge: EditableEdge };
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
   runs?.[id]?.status ?? 'idle';
 
+/**
+ * Per-node `status` injected into a node's `data` slot. PlayNode (US-030)
+ * needs to distinguish "never run" (undefined → hide pill) from "ran-then-idle"
+ * (the runs reducer doesn't actually produce idle entries — the only way
+ * status is undefined is no-entry-in-map). StateNode falls back to 'idle' on
+ * its own; passing undefined upstream lets PlayNode see the difference
+ * without affecting StateNode.
+ */
+const dataStatusFor = (runs: NodeRuns | undefined, id: string): NodeStatus | undefined =>
+  runs?.[id]?.status;
+
 export function DemoCanvas({
   nodes,
   connectors,
@@ -265,7 +276,7 @@ export function DemoCanvas({
           position: merged.position,
           data: {
             ...merged.data,
-            status: statusFor(runs, n.id),
+            status: dataStatusFor(runs, n.id),
             onPlay: onPlayNode,
             onResize: onNodeResize,
             setResizing,
