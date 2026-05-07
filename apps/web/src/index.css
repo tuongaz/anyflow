@@ -117,6 +117,28 @@
   .inline-edit-shake {
     animation: inline-edit-shake 0.32s ease-in-out;
   }
+  /* Placeholder for the contenteditable inline editor. The element sets
+   * data-placeholder + the `inline-edit-empty` class while its value is
+   * empty; the pseudo paints the hint without polluting innerText. */
+  .inline-edit-empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    opacity: 0.5;
+    font-style: italic;
+    pointer-events: none;
+  }
+}
+
+/* Force the default arrow cursor across nodes — the canvas should never
+ * surface a text I-beam (over labels) or a pointer (over interactive
+ * children) just from hovering. The contenteditable inline editor opts
+ * back into a text cursor once focused so the active edit feels right. */
+.react-flow__node,
+.react-flow__node * {
+  cursor: default;
+}
+.react-flow__node [contenteditable="true"] {
+  cursor: text;
 }
 
 /* React Flow visual tweaks — kept outside @layer so the selectors land at

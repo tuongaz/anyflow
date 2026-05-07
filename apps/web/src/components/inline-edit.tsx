@@ -7,7 +7,7 @@ export interface InlineEditProps {
   onCommit: (value: string) => void;
   /** Exit edit mode (called on blur/Enter/Escape after any commit/revert). */
   onExit: () => void;
-  /** Render a textarea instead of a single-line input (Shift+Enter inserts newline). */
+  /** Allow newlines (Shift+Enter inserts one; plain Enter still finalizes). */
   multiline?: boolean;
   /**
    * Empty value is rejected: revert to the previous value with a shake animation
@@ -22,11 +22,11 @@ export interface InlineEditProps {
 }
 
 /**
- * Local-state inline editor used by node titles, node descriptions, and
- * connector labels. The component is uncontrolled relative to its parent —
- * `initialValue` seeds the state on mount and the parent receives changes
- * via `onCommit`. Subsequent prop updates to `initialValue` do NOT clobber
- * the user's in-progress edits.
+ * Local-state inline editor backed by a contenteditable `<div>` so the editor
+ * blends visually with the surrounding text — no input/textarea chrome, no
+ * form-field cursor change, no scrollbars on overflow. The component is
+ * uncontrolled; `initialValue` seeds the editor on mount and the parent
+ * receives changes via `onCommit`.
  *
  * Persistence cadence (per US-026):
  *   • 400ms debounced commit while the user is typing.
@@ -43,22 +43,45 @@ export function InlineEdit({
   className,
   placeholder,
 }: InlineEditProps) {
-  const [value, setValue] = useState(initialValue);
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const [shake, setShake] = useState(false);
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const [empty, setEmpty] = useState(initialValue.length === 0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommittedRef = useRef(initialValue);
   const skipBlurRef = useRef(false);
 
+  // Mount: seed the editor's text, focus, and select all so the user can
+  // immediately overtype. We seed via DOM (not via JSX children) because
+  // contenteditable + React children fights React's reconciliation: the
+  // browser mutates the subtree on every keystroke, then React tries to
+  // restore it on re-render and the caret jumps.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initialValue is a one-shot seed.
   useEffect(() => {
-    const el = inputRef.current;
+    const el = editorRef.current;
     if (!el) return;
+    el.textContent = initialValue;
     el.focus();
-    if ('select' in el) el.select();
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
+    // initialValue is captured at mount on purpose — see component docstring.
   }, []);
+
+  const readValue = (): string => {
+    const el = editorRef.current;
+    if (!el) return '';
+    // innerText resolves <br> and block boundaries to '\n'; textContent
+    // ignores them. Use innerText for multiline so Shift+Enter newlines
+    // round-trip; textContent for single-line keeps things simple.
+    return multiline ? el.innerText : (el.textContent ?? '');
+  };
 
   const clearDebounce = () => {
     if (debounceRef.current) {
@@ -74,9 +97,10 @@ export function InlineEdit({
     onCommit(next);
   };
 
-  const handleChange = (next: string) => {
-    setValue(next);
+  const handleInput = () => {
     clearDebounce();
+    const next = readValue();
+    setEmpty(next.length === 0);
     // Skip the debounced commit when the value would be rejected — let the
     // user keep typing without round-tripping a 400-error to the server.
     if (required && next.trim().length === 0) return;
@@ -85,28 +109,31 @@ export function InlineEdit({
 
   const finalize = () => {
     clearDebounce();
-    if (required && value.trim().length === 0) {
+    const next = readValue();
+    if (required && next.trim().length === 0) {
       // Reject empty for required fields: revert local state, shake to signal,
       // and exit without firing onCommit. The previous server value is left
       // untouched (no PATCH was issued during the rejected edit thanks to
-      // the early-return in handleChange).
-      setValue(initialValue);
+      // the early-return in handleInput).
+      const el = editorRef.current;
+      if (el) el.textContent = initialValue;
       setShake(true);
       setTimeout(() => setShake(false), 320);
       onExit();
       return;
     }
-    commitNow(value);
+    commitNow(next);
     onExit();
   };
 
   const cancel = () => {
     clearDebounce();
-    setValue(initialValue);
+    const el = editorRef.current;
+    if (el) el.textContent = initialValue;
     onExit();
   };
 
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // Stop the keystroke from bubbling to the canvas — Backspace/Delete on the
     // canvas would otherwise trigger node deletion (US-027).
     e.stopPropagation();
@@ -118,11 +145,27 @@ export function InlineEdit({
       finalize();
       return;
     }
+    if (e.key === 'Enter' && multiline && e.shiftKey) {
+      // Default contenteditable Enter inserts <br> or <div> depending on
+      // browser; force a literal newline so innerText reads stay clean.
+      e.preventDefault();
+      document.execCommand('insertText', false, '\n');
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       skipBlurRef.current = true;
       cancel();
     }
+  };
+
+  const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    // Strip formatting/HTML on paste — we only persist plain text, and
+    // pasting rich text into a contenteditable would otherwise leak <span>
+    // styling (font, color, size) into the node.
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
   };
 
   const onBlur = () => {
@@ -135,50 +178,32 @@ export function InlineEdit({
 
   // `nodrag nopan nowheel` opts the editor out of React Flow's pointer/wheel
   // capture so typing isn't interpreted as a node drag, pane pan, or zoom.
-  // No border/background — the editor inherits the surrounding text style so
-  // the transition between read and edit is invisible.
-  const sharedClass = cn(
-    'nodrag nopan nowheel block bg-transparent p-0 text-inherit outline-none border-0 focus:ring-0 focus-visible:ring-0',
-    shake ? 'inline-edit-shake' : '',
-    className,
-  );
-
-  if (multiline) {
-    return (
-      <textarea
-        ref={(el) => {
-          inputRef.current = el;
-        }}
-        data-testid="inline-edit-input"
-        data-field={field}
-        value={value}
-        onChange={(e) => handleChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        onBlur={onBlur}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        placeholder={placeholder}
-        className={cn('w-full resize-none', sharedClass)}
-        rows={2}
-      />
-    );
-  }
+  // Inherits font / color from the surrounding text so read↔edit looks
+  // identical.
   return (
-    <input
-      ref={(el) => {
-        inputRef.current = el;
-      }}
+    <div
+      ref={editorRef}
       data-testid="inline-edit-input"
       data-field={field}
-      type="text"
-      value={value}
-      onChange={(e) => handleChange(e.target.value)}
+      data-placeholder={placeholder}
+      role="textbox"
+      tabIndex={0}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onInput={handleInput}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
       onBlur={onBlur}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      placeholder={placeholder}
-      className={cn('w-full', sharedClass)}
+      className={cn(
+        'nodrag nopan nowheel block w-full bg-transparent p-0 text-inherit outline-none',
+        'whitespace-pre-wrap break-words',
+        empty && placeholder ? 'inline-edit-empty' : '',
+        shake ? 'inline-edit-shake' : '',
+        className,
+      )}
     />
   );
 }

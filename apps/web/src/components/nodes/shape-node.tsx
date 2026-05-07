@@ -118,7 +118,6 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           type="button"
           className={cn(
             'block bg-transparent p-0 font-medium leading-tight',
-            labelEditable ? 'cursor-text' : '',
             data.label ? 'break-words' : 'text-muted-foreground/40 italic',
           )}
           onDoubleClick={

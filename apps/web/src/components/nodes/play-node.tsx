@@ -107,7 +107,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             <button
               type="button"
               className={cn(
-                'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[12px] font-normal leading-tight',
+                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[12px] font-normal leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               onDoubleClick={
@@ -183,7 +183,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
           <button
             type="button"
             className={cn(
-              'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[11px] text-muted-foreground',
+              'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[11px] text-muted-foreground',
               descEditable ? 'hover:opacity-80' : '',
             )}
             onDoubleClick={

@@ -82,7 +82,7 @@ export function EditableEdge({
               type="button"
               className={cn(
                 'rounded border border-border/40 bg-card px-1.5 py-0.5 text-[11px] text-foreground shadow-sm',
-                editable ? 'cursor-text hover:bg-muted/60' : '',
+                editable ? 'hover:bg-muted/60' : '',
               )}
               onDoubleClick={
                 editable
@@ -99,7 +99,7 @@ export function EditableEdge({
             <button
               type="button"
               aria-label="Add connector label"
-              className="cursor-text rounded-full border border-dashed border-muted-foreground/40 bg-card/60 px-1 text-[10px] text-muted-foreground/60 opacity-0 transition-opacity hover:opacity-100 group-hover/canvas:opacity-50"
+              className="rounded-full border border-dashed border-muted-foreground/40 bg-card/60 px-1 text-[10px] text-muted-foreground/60 opacity-0 transition-opacity hover:opacity-100 group-hover/canvas:opacity-50"
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 setEditing(true);
