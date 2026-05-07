@@ -6,7 +6,7 @@ import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { Info, Loader2, Play } from 'lucide-react';
+import { Loader2, Play } from 'lucide-react';
 import { type CSSProperties, useState } from 'react';
 
 export type PlayNodeData = NodeData & {
@@ -21,13 +21,6 @@ export type PlayNodeData = NodeData & {
   setResizing?: (on: boolean) => void;
   onLabelChange?: (nodeId: string, label: string) => void;
   onDescriptionChange?: (nodeId: string, summary: string) => void;
-  /**
-   * Open the inspector sidebar for this node. Wired to the Info icon in the
-   * header — clicking the node body itself no longer opens the panel; the
-   * inspect affordance is a dedicated control so selection (ring / resize /
-   * keyboard delete) and inspection are independent concerns.
-   */
-  onInspect?: (nodeId: string) => void;
 } & Record<string, unknown>;
 export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
 
@@ -145,23 +138,6 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               <Play className="h-3 w-3" aria-hidden />
             )}
           </Button>
-          {data.onInspect ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-5 w-5 p-0"
-              data-testid="inspect-button"
-              aria-label="View detail"
-              title="View detail"
-              onClick={(e) => {
-                e.stopPropagation();
-                data.onInspect?.(id);
-              }}
-            >
-              <Info className="h-3 w-3" aria-hidden />
-            </Button>
-          ) : null}
         </div>
       </div>
       <div

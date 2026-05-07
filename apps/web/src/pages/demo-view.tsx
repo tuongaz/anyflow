@@ -57,10 +57,6 @@ export function DemoView({
   const summary = demos.find((d) => d.slug === slug);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
-  // Node id whose inspector sidebar is open. Decoupled from `selectedId` so
-  // clicking a node selects it (ring / resize / Delete shortcut) without
-  // opening the panel — the panel only opens via the Info icon on the node.
-  const [inspectId, setInspectId] = useState<string | null>(null);
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -75,7 +71,6 @@ export function DemoView({
   useEffect(() => {
     setSelectedId(null);
     setSelectedConnectorId(null);
-    setInspectId(null);
     resetNodeOverrides();
     resetConnectorOverrides();
     setEditError(null);
@@ -83,28 +78,17 @@ export function DemoView({
 
   // Selecting a node deselects any connector and vice versa — node + connector
   // selection are mutually exclusive (the inspector renders one entity at a
-  // time, even though the same Sheet hosts both). The inspector is preserved
-  // while the user keeps clicking the same node's body; only a click that
-  // lands elsewhere (different node, pane, connector) drops it.
+  // time, even though the same Sheet hosts both). Selecting a node also opens
+  // the inspector; the panel stays open as long as the user keeps interacting
+  // with the same node (or any node), and only closes when interaction lands
+  // outside the canvas-node surfaces (handled by SheetContent.onInteractOutside).
   const onSelectNode = useCallback((id: string | null) => {
     setSelectedId(id);
-    setInspectId((prev) => (prev !== null && prev === id ? prev : null));
     if (id !== null) setSelectedConnectorId(null);
   }, []);
   const onSelectConnector = useCallback((id: string | null) => {
     setSelectedConnectorId(id);
-    if (id !== null) {
-      setSelectedId(null);
-      setInspectId(null);
-    }
-  }, []);
-  // Open the inspector for a node. Triggered by the Info icon in the node
-  // header; also pins selection to the same node so the ring + resize
-  // affordances align with what the panel is showing.
-  const onInspectNode = useCallback((id: string) => {
-    setSelectedId(id);
-    setSelectedConnectorId(null);
-    setInspectId(id);
+    if (id !== null) setSelectedId(null);
   }, []);
 
   const demoNodes = detail?.demo?.nodes;
@@ -210,7 +194,6 @@ export function DemoView({
       // would need to put it back. Just clear the selection so the panel
       // closes immediately.
       setSelectedId((prev) => (prev === nodeId ? null : prev));
-      setInspectId((prev) => (prev === nodeId ? null : prev));
       deleteNode(demoId, nodeId).catch((err) => {
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('deleteNode failed', err);
@@ -368,17 +351,17 @@ export function DemoView({
   const demo = detail?.demo;
   const nodeOverrides = nodePending.overrides;
   const connectorOverrides = connectorPending.overrides;
-  // The inspector is keyed off `inspectId` (Info-icon driven), not the
-  // selection ring's `selectedId`. Same merge pattern as connectors below.
+  // The inspector renders whatever is currently selected — clicking a node
+  // both selects it and opens the panel. Same merge pattern as connectors below.
   const inspectedNode = useMemo<DemoNode | null>(() => {
-    if (!inspectId) return null;
-    const found = demo?.nodes.find((n) => n.id === inspectId);
+    if (!selectedId) return null;
+    const found = demo?.nodes.find((n) => n.id === selectedId);
     if (!found) return null;
-    const ov = nodeOverrides[inspectId];
+    const ov = nodeOverrides[selectedId];
     if (!ov) return found;
     const data = ov.data ? { ...found.data, ...ov.data } : found.data;
     return { ...found, ...ov, data } as DemoNode;
-  }, [demo, inspectId, nodeOverrides]);
+  }, [demo, selectedId, nodeOverrides]);
   const selectedConnector = useMemo<Connector | null>(() => {
     if (!selectedConnectorId) return null;
     const found = demo?.connectors.find((c) => c.id === selectedConnectorId);
@@ -406,8 +389,8 @@ export function DemoView({
     );
   }
 
-  const inspectedRun = inspectId ? runs[inspectId] : undefined;
-  const inspectedEvents = inspectId ? (nodeEvents[inspectId] ?? []) : [];
+  const inspectedRun = selectedId ? runs[selectedId] : undefined;
+  const inspectedEvents = selectedId ? (nodeEvents[selectedId] ?? []) : [];
 
   return (
     <div className="relative h-full w-full">
@@ -431,7 +414,6 @@ export function DemoView({
           onSelectConnector={onSelectConnector}
           runs={runs}
           onPlayNode={onPlayNode}
-          onInspectNode={onInspectNode}
           nodeOverrides={nodeOverrides}
           connectorOverrides={connectorOverrides}
           onNodePositionChange={onNodePositionChange}
@@ -478,10 +460,10 @@ export function DemoView({
         onDeleteNode={onDeleteNode}
         onDeleteConnector={onDeleteConnector}
         onClose={() => {
-          // Closing the panel only drops inspector state — the canvas
-          // selection ring stays put so the user can still resize / Delete
-          // the node they were last working with.
-          setInspectId(null);
+          // Closing the panel clears whatever was selected — the panel and
+          // the selection ring track together (clicking outside the canvas-node
+          // surfaces is the only path that lands here).
+          setSelectedId(null);
           setSelectedConnectorId(null);
         }}
       />

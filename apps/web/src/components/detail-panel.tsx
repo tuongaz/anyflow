@@ -128,6 +128,12 @@ export function DetailPanel({
           // on its trigger via Radix's outside-pointer detection) would
           // otherwise close the Sheet. Keep it open.
           if (target?.closest('[data-radix-popper-content-wrapper]')) e.preventDefault();
+          // Clicks inside a React Flow node are part of the inspector's UX —
+          // selecting another node, double-clicking a label to inline-edit,
+          // hitting the Play button, etc. The panel must NOT close on those.
+          // Clicks on the pane (no .react-flow__node ancestor) still fall
+          // through and trigger the default close.
+          if (target?.closest('.react-flow__node')) e.preventDefault();
         }}
       >
         {node ? (

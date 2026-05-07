@@ -1,12 +1,10 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
-import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { Info } from 'lucide-react';
 import { type CSSProperties, useState } from 'react';
 
 export type StateNodeData = NodeData & {
@@ -19,8 +17,6 @@ export type StateNodeData = NodeData & {
   setResizing?: (on: boolean) => void;
   onLabelChange?: (nodeId: string, label: string) => void;
   onDescriptionChange?: (nodeId: string, summary: string) => void;
-  /** Open the inspector sidebar for this node — see PlayNodeData.onInspect. */
-  onInspect?: (nodeId: string) => void;
 } & Record<string, unknown>;
 export type StateNodeType = Node<StateNodeData, 'stateNode'>;
 
@@ -117,23 +113,6 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <StatusPill status={status} />
-          {data.onInspect ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-5 w-5 p-0"
-              data-testid="inspect-button"
-              aria-label="View detail"
-              title="View detail"
-              onClick={(e) => {
-                e.stopPropagation();
-                data.onInspect?.(id);
-              }}
-            >
-              <Info className="h-3 w-3" aria-hidden />
-            </Button>
-          ) : null}
         </div>
       </div>
       <div
