@@ -6,6 +6,10 @@ export interface DerivedEdge {
   id: string;
   source: string;
   target: string;
+  // Handle ids on the source/target nodes (US-013). Absent → React Flow
+  // attaches to the first matching handle (back-compat for pre-handle demos).
+  sourceHandle?: string;
+  targetHandle?: string;
   type: 'editableEdge';
   label?: string;
   animated: boolean;
@@ -84,6 +88,8 @@ export const connectorToEdge = (
     id: connector.id,
     source: connector.source,
     target: connector.target,
+    sourceHandle: connector.sourceHandle,
+    targetHandle: connector.targetHandle,
     type: 'editableEdge',
     label: connector.label,
     animated: isAdjacentToRunning,

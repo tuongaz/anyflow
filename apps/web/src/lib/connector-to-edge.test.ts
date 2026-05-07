@@ -137,4 +137,25 @@ describe('connectorToEdge', () => {
     const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
     expect(connectorToEdge(c, false).interactionWidth).toBe(24);
   });
+
+  it('passes sourceHandle/targetHandle through to the React Flow edge (US-013)', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      sourceHandle: 'b',
+      targetHandle: 't',
+    };
+    const edge = connectorToEdge(c, false);
+    expect(edge.sourceHandle).toBe('b');
+    expect(edge.targetHandle).toBe('t');
+  });
+
+  it('leaves sourceHandle/targetHandle undefined for connectors authored without handle ids', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const edge = connectorToEdge(c, false);
+    expect(edge.sourceHandle).toBeUndefined();
+    expect(edge.targetHandle).toBeUndefined();
+  });
 });

@@ -82,6 +82,10 @@ export interface ConnectorBase {
   id: string;
   source: string;
   target: string;
+  /** Handle id (e.g. 't' / 'r' / 'b' / 'l') on the source node. */
+  sourceHandle?: string;
+  /** Handle id on the target node. */
+  targetHandle?: string;
   label?: string;
   style?: ConnectorStyle;
   color?: ColorToken;
@@ -316,6 +320,8 @@ export interface CreateConnectorBody {
   id?: string;
   source: string;
   target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
   kind?: Connector['kind'];
   label?: string;
   style?: ConnectorStyle;

@@ -142,6 +142,12 @@ const ConnectorBaseShape = {
   id: z.string().min(1),
   source: z.string().min(1),
   target: z.string().min(1),
+  // Handle ids identify which side (top/right/bottom/left) of the source/target
+  // node this connector attaches to (US-013). Optional — connectors authored
+  // before the four-handle layout omit them and React Flow falls back to the
+  // first matching handle.
+  sourceHandle: z.string().optional(),
+  targetHandle: z.string().optional(),
   label: z.string().optional(),
   ...ConnectorVisualBaseShape,
 };

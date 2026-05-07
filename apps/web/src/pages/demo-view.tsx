@@ -621,11 +621,31 @@ export function DemoView({
   // prune then drops the override cleanly. On failure, drop the override and
   // surface the existing edit-error-banner.
   const onCreateConnector = useCallback(
-    (source: string, target: string) => {
+    (
+      source: string,
+      target: string,
+      handles?: { sourceHandle?: string; targetHandle?: string },
+    ) => {
       if (!demoId) return;
       const id = `conn-${crypto.randomUUID()}`;
-      const optimistic: DefaultConnector = { id, source, target, kind: 'default' };
-      const payload = { id, source, target, kind: 'default' as const };
+      const sourceHandle = handles?.sourceHandle;
+      const targetHandle = handles?.targetHandle;
+      const optimistic: DefaultConnector = {
+        id,
+        source,
+        target,
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+        kind: 'default',
+      };
+      const payload = {
+        id,
+        source,
+        target,
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+        kind: 'default' as const,
+      };
       setConnectorOverride(id, optimistic as Partial<Connector>);
       setEditError(null);
       markMutation();

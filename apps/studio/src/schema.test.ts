@@ -433,6 +433,75 @@ describe('DemoSchema', () => {
     expect(result.data.connectors).toHaveLength(3);
   });
 
+  it('round-trips optional sourceHandle/targetHandle on connectors (US-013)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'connector-handles',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          sourceHandle: 'b',
+          targetHandle: 't',
+          kind: 'default' as const,
+        },
+      ],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const conn = result.data.connectors[0];
+    if (conn?.kind !== 'default') throw new Error('expected default connector');
+    expect(conn.sourceHandle).toBe('b');
+    expect(conn.targetHandle).toBe('t');
+  });
+
+  it('parses connectors authored without handle ids (back-compat for US-013)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'no-handles',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default' as const }],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const conn = result.data.connectors[0];
+    if (conn?.kind !== 'default') throw new Error('expected default connector');
+    expect(conn.sourceHandle).toBeUndefined();
+    expect(conn.targetHandle).toBeUndefined();
+  });
+
   it('rejects an invalid connector style value', () => {
     const demo = {
       version: 1 as const,

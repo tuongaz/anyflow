@@ -84,7 +84,18 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
           data.onResize?.(id, { width: params.width, height: params.height });
         }}
       />
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-muted-foreground" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="t"
+        className="!h-2 !w-2 !bg-muted-foreground"
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="l"
+        className="!h-2 !w-2 !bg-muted-foreground"
+      />
       <div
         className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1"
         data-testid="node-header"
@@ -167,7 +178,18 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
           </button>
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-muted-foreground" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="r"
+        className="!h-2 !w-2 !bg-muted-foreground"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="b"
+        className="!h-2 !w-2 !bg-muted-foreground"
+      />
     </div>
   );
 }

@@ -83,9 +83,14 @@ export interface DemoCanvasProps {
    * Commit a new connector from a handle-drag gesture. Wiring this enables
    * `nodesConnectable` on the React Flow instance; absent → handles are
    * read-only. Self-connections (source === target) are rejected here so the
-   * parent never sees them.
+   * parent never sees them. `sourceHandle`/`targetHandle` carry the
+   * handle ids React Flow attached the drag to (US-013).
    */
-  onCreateConnector?: (source: string, target: string) => void;
+  onCreateConnector?: (
+    source: string,
+    target: string,
+    handles?: { sourceHandle?: string; targetHandle?: string },
+  ) => void;
   /**
    * Reattach an existing connector's source or target to a different node.
    * Wired enables React Flow's edge reconnect gesture: drag an edge endpoint
@@ -487,12 +492,15 @@ export function DemoCanvas({
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!onCreateConnector) return;
-      const { source, target } = conn;
+      const { source, target, sourceHandle, targetHandle } = conn;
       if (!source || !target) return;
       // Reject same-node connections client-side — the schema would also
       // accept them but they're never useful (a node referencing itself).
       if (source === target) return;
-      onCreateConnector(source, target);
+      onCreateConnector(source, target, {
+        sourceHandle: sourceHandle ?? undefined,
+        targetHandle: targetHandle ?? undefined,
+      });
     },
     [onCreateConnector],
   );
