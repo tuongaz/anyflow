@@ -5,7 +5,7 @@ import {
   type Edge,
   EdgeLabelRenderer,
   type EdgeProps,
-  getSmoothStepPath,
+  getBezierPath,
 } from '@xyflow/react';
 import { useState } from 'react';
 
@@ -17,8 +17,9 @@ export type EditableEdgeData = {
 export type EditableEdgeType = Edge<EditableEdgeData, 'editableEdge'>;
 
 /**
- * Custom React Flow edge that mirrors the built-in smoothstep visuals while
- * letting the user inline-edit the connector label via double-click.
+ * Custom React Flow edge rendered as a smooth bezier curve so connectors flow
+ * between handles instead of stepping at right angles. Doubles up as an
+ * inline-editor for the connector label via double-click.
  *
  * The label is rendered through `EdgeLabelRenderer` (an HTML overlay portal)
  * rather than the SVG-native `<text>` element so we can swap it for an
@@ -40,7 +41,7 @@ export function EditableEdge({
   data,
 }: EdgeProps<EditableEdgeType>) {
   const [editing, setEditing] = useState(false);
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
