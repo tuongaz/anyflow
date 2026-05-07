@@ -47,7 +47,10 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
+    ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
   };
+  const labelFontStyle: CSSProperties =
+    data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
   const style: CSSProperties = sized
     ? colorStyle
     : { ...colorStyle, width: data.width ?? size.width, height: data.height ?? size.height };
@@ -87,6 +90,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           onCommit={(v) => data.onLabelChange?.(id, v)}
           onExit={() => setIsEditing(false)}
           className="text-[22px]"
+          style={labelFontStyle}
           placeholder="Label"
         />
       ) : (
@@ -96,6 +100,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
             'block bg-transparent p-0 font-medium leading-tight',
             data.label ? 'break-words' : 'text-muted-foreground/40 italic',
           )}
+          style={labelFontStyle}
           onDoubleClick={
             labelEditable
               ? (e) => {

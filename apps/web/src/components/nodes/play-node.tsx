@@ -45,6 +45,12 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   // wrapper has no explicit dims and we own sizing — pin a default width so a
   // long label/description wraps inside the node instead of stretching it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
+  // Per-node fontSize override (US-009). Label uses the value as-is; description
+  // tracks 2px below the label so the existing visual hierarchy survives.
+  const labelFontStyle: CSSProperties =
+    data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
+  const descriptionFontStyle: CSSProperties =
+    data.fontSize !== undefined ? { fontSize: `${Math.max(10, data.fontSize - 2)}px` } : {};
 
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
@@ -87,7 +93,10 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1"
         data-testid="node-header"
       >
-        <div className="min-w-0 flex-1 text-[20px] font-normal leading-tight">
+        <div
+          className="min-w-0 flex-1 text-[20px] font-normal leading-tight"
+          style={labelFontStyle}
+        >
           {editing === 'label' && labelEditable ? (
             <InlineEdit
               initialValue={data.label}
@@ -96,6 +105,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
               className="text-[20px]"
+              style={labelFontStyle}
             />
           ) : (
             <button
@@ -104,6 +114,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
                 'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[20px] font-normal leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
+              style={labelFontStyle}
               onDoubleClick={
                 labelEditable
                   ? (e) => {
@@ -154,6 +165,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             onCommit={(v) => data.onDescriptionChange?.(id, v)}
             onExit={() => setEditing(null)}
             className="w-full text-[18px] text-muted-foreground"
+            style={descriptionFontStyle}
             placeholder={data.kind}
           />
         ) : (
@@ -163,6 +175,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[18px] text-muted-foreground',
               descEditable ? 'hover:opacity-80' : '',
             )}
+            style={descriptionFontStyle}
             onDoubleClick={
               descEditable
                 ? (e) => {

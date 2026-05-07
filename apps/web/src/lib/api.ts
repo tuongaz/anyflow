@@ -45,6 +45,7 @@ export interface NodeVisual {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  fontSize?: number;
 }
 
 export interface NodeData extends NodeVisual {
@@ -210,6 +211,7 @@ export interface UpdateNodeBody {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  fontSize?: number;
   width?: number;
   height?: number;
   shape?: ShapeKind;

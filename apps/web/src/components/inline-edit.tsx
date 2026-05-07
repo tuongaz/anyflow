@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 
 export interface InlineEditProps {
   initialValue: string;
@@ -18,6 +18,7 @@ export interface InlineEditProps {
   /** data-field attribute for tests; pairs with data-testid='inline-edit-input'. */
   field: string;
   className?: string;
+  style?: CSSProperties;
   placeholder?: string;
 }
 
@@ -41,6 +42,7 @@ export function InlineEdit({
   required = false,
   field,
   className,
+  style,
   placeholder,
 }: InlineEditProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -197,6 +199,7 @@ export function InlineEdit({
       onBlur={onBlur}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      style={style}
       className={cn(
         'nodrag nopan nowheel block w-full bg-transparent p-0 text-inherit outline-none',
         'whitespace-pre-wrap break-words',

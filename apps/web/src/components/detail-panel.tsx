@@ -36,6 +36,7 @@ export interface NodeStylePatch {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  fontSize?: number;
 }
 
 export interface ConnectorStylePatch {
@@ -277,24 +278,37 @@ function NodeStyleTab({
         value={node.data.borderSize}
         onChange={(n) => onApply({ borderSize: n })}
       />
+      <SizeInput
+        label="Font size"
+        testId="style-tab-font-size"
+        min={10}
+        max={32}
+        value={node.data.fontSize}
+        onChange={(n) => onApply({ fontSize: n })}
+      />
     </div>
   );
 }
 
-// Numeric stepper used by both NodeStyleTab (Border size) and ConnectorStyleTab
-// (Stroke width). Local string state allows the input to be empty while typing;
-// committed value is parsed on every change — empty / NaN / out-of-range
-// collapses to undefined (the "clear override" signal). Range 1-8 px.
+// Numeric stepper used by NodeStyleTab (Border size, Font size) and
+// ConnectorStyleTab (Stroke width). Local string state allows the input to be
+// empty while typing; committed value is parsed on every change — empty / NaN
+// / out-of-range collapses to undefined (the "clear override" signal). Range
+// is configurable via min/max props (default 1-8 px for stroke widths).
 function SizeInput({
   label,
   testId,
   value,
   onChange,
+  min = 1,
+  max = 8,
 }: {
   label: string;
   testId: string;
   value: number | undefined;
   onChange: (n: number | undefined) => void;
+  min?: number;
+  max?: number;
 }) {
   const [text, setText] = useState<string>(value === undefined ? '' : String(value));
   // Sync local state when the upstream value changes from somewhere else (e.g.
@@ -309,8 +323,8 @@ function SizeInput({
       </span>
       <input
         type="number"
-        min={1}
-        max={8}
+        min={min}
+        max={max}
         step={1}
         data-testid={testId}
         className="h-9 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -323,7 +337,7 @@ function SizeInput({
             return;
           }
           const n = Number.parseInt(next, 10);
-          if (!Number.isFinite(n) || n < 1 || n > 8) {
+          if (!Number.isFinite(n) || n < min || n > max) {
             onChange(undefined);
             return;
           }

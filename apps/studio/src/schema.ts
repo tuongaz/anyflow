@@ -28,6 +28,7 @@ const NodeVisualBaseShape = {
   borderColor: ColorTokenSchema.optional(),
   backgroundColor: ColorTokenSchema.optional(),
   borderSize: z.number().positive().optional(),
+  fontSize: z.number().positive().optional(),
 };
 
 const HttpActionSchema = z.object({
