@@ -86,7 +86,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1"
         data-testid="node-header"
       >
-        <div className="min-w-0 flex-1 text-[14px] font-normal leading-tight">
+        <div className="min-w-0 flex-1 text-[17px] font-normal leading-tight">
           {editing === 'label' && labelEditable ? (
             <InlineEdit
               initialValue={data.label}
@@ -94,13 +94,13 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               required
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
-              className="text-[14px]"
+              className="text-[17px]"
             />
           ) : (
             <button
               type="button"
               className={cn(
-                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[14px] font-normal leading-tight',
+                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[17px] font-normal leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               onDoubleClick={
@@ -152,14 +152,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             multiline
             onCommit={(v) => data.onDescriptionChange?.(id, v)}
             onExit={() => setEditing(null)}
-            className="w-full text-[13px] text-muted-foreground"
+            className="w-full text-[16px] text-muted-foreground"
             placeholder={data.kind}
           />
         ) : (
           <button
             type="button"
             className={cn(
-              'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[13px] text-muted-foreground',
+              'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[16px] text-muted-foreground',
               descEditable ? 'hover:opacity-80' : '',
             )}
             onDoubleClick={

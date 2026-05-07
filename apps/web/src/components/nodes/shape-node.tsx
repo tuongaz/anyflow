@@ -54,7 +54,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   return (
     <div
       className={cn(
-        'group relative flex items-center justify-center p-2 text-center text-[15px]',
+        'group relative flex items-center justify-center p-2 text-center text-[18px]',
         sized ? 'h-full w-full' : '',
         SHAPE_CLASS[shape],
         selected ? 'ring-2 ring-ring ring-offset-2' : '',
@@ -85,7 +85,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           field="node-label"
           onCommit={(v) => data.onLabelChange?.(id, v)}
           onExit={() => setIsEditing(false)}
-          className="text-[15px]"
+          className="text-[18px]"
           placeholder="Label"
         />
       ) : (
