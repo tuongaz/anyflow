@@ -2,7 +2,8 @@ import { PlayNode } from '@/components/nodes/play-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import type { NodeRuns } from '@/hooks/use-node-runs';
-import type { DemoEdge, DemoNode } from '@/lib/api';
+import type { Connector, DemoNode } from '@/lib/api';
+import { connectorToEdge } from '@/lib/connector-to-edge';
 import { Background, Controls, type Edge, type Node, ReactFlow } from '@xyflow/react';
 import { useMemo } from 'react';
 
@@ -10,7 +11,7 @@ import '@xyflow/react/dist/style.css';
 
 export interface DemoCanvasProps {
   nodes: DemoNode[];
-  edges: DemoEdge[];
+  connectors: Connector[];
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
   /** Per-node run state from SSE events. */
@@ -26,7 +27,7 @@ const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
 
 export function DemoCanvas({
   nodes,
-  edges,
+  connectors,
   selectedNodeId,
   onSelectNode,
   runs,
@@ -50,18 +51,12 @@ export function DemoCanvas({
 
   const rfEdges = useMemo<Edge[]>(
     () =>
-      edges.map((e) => {
+      connectors.map((c) => {
         const adjacentRunning =
-          statusFor(runs, e.source) === 'running' || statusFor(runs, e.target) === 'running';
-        return {
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          type: e.type,
-          animated: e.animated || adjacentRunning,
-        };
+          statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
+        return connectorToEdge(c, adjacentRunning);
       }),
-    [edges, runs],
+    [connectors, runs],
   );
 
   return (

@@ -40,12 +40,14 @@
       }
     }
   ],
-  "edges": [
+  "connectors": [
     {
-      "id": "e1",
+      "id": "c-checkout-fulfillment",
       "source": "api-checkout",
       "target": "worker-fulfillment",
-      "type": "smoothstep"
+      "kind": "event",
+      "eventName": "checkout.created",
+      "label": "publishes checkout.created"
     }
   ]
 }

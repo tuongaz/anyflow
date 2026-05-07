@@ -71,7 +71,14 @@
       }
     }
   ],
-  "edges": [
-    { "id": "e-complete-worker", "source": "api-complete-todo", "target": "todo-worker", "type": "smoothstep" }
+  "connectors": [
+    {
+      "id": "c-complete-worker",
+      "source": "api-complete-todo",
+      "target": "todo-worker",
+      "kind": "event",
+      "eventName": "todo.completed",
+      "label": "publishes todo.completed"
+    }
   ]
 }

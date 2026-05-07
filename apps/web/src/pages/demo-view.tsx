@@ -71,7 +71,7 @@ export function DemoView({
       {demo ? (
         <DemoCanvas
           nodes={demo.nodes}
-          edges={demo.edges}
+          connectors={demo.connectors}
           selectedNodeId={selectedId}
           onSelectNode={setSelectedId}
           runs={runs}

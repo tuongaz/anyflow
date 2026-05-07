@@ -43,19 +43,36 @@ export interface DemoNode {
   data: NodeData;
 }
 
-export interface DemoEdge {
+export interface ConnectorBase {
   id: string;
   source: string;
   target: string;
-  type?: string;
-  animated?: boolean;
+  label?: string;
 }
+
+export interface HttpConnector extends ConnectorBase {
+  kind: 'http';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  url?: string;
+}
+
+export interface EventConnector extends ConnectorBase {
+  kind: 'event';
+  eventName: string;
+}
+
+export interface QueueConnector extends ConnectorBase {
+  kind: 'queue';
+  queueName: string;
+}
+
+export type Connector = HttpConnector | EventConnector | QueueConnector;
 
 export interface Demo {
   version: 1;
   name: string;
   nodes: DemoNode[];
-  edges: DemoEdge[];
+  connectors: Connector[];
 }
 
 export interface DemoDetail {

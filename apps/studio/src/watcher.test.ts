@@ -22,7 +22,7 @@ const VALID_DEMO = {
       },
     },
   ],
-  edges: [],
+  connectors: [],
 };
 
 const tmpRepo = (demo: unknown = VALID_DEMO) => {

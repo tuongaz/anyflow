@@ -18,7 +18,11 @@ describe('DemoSchema', () => {
     expect(result.data.version).toBe(1);
     expect(result.data.name).toBe('Checkout flow');
     expect(result.data.nodes).toHaveLength(2);
-    expect(result.data.edges).toHaveLength(1);
+    expect(result.data.connectors).toHaveLength(1);
+    const connector = result.data.connectors[0];
+    if (connector?.kind !== 'event') throw new Error('expected event connector');
+    expect(connector.eventName).toBe('checkout.created');
+    expect(connector.label).toBe('publishes checkout.created');
   });
 
   it('rejects an invalid demo fixture with a usable Zod error', async () => {
@@ -40,6 +44,119 @@ describe('DemoSchema', () => {
     expect(nameIssue).toBeDefined();
   });
 
+  it('rejects an invalid-demo-connector fixture (connector references missing nodeId)', async () => {
+    const data = await readFixture('invalid-demo-connector.json');
+    const result = DemoSchema.safeParse(data);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const targetIssue = result.error.issues.find(
+      (i) =>
+        i.path.length === 3 &&
+        i.path[0] === 'connectors' &&
+        i.path[1] === 0 &&
+        i.path[2] === 'target',
+    );
+    expect(targetIssue).toBeDefined();
+    expect(targetIssue?.message).toContain('ghost-node');
+  });
+
+  it('parses connectors of all three kinds: http, event, queue', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'all-kinds',
+      nodes: [
+        {
+          id: 'a',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'A',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+          },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'c',
+          type: 'stateNode' as const,
+          position: { x: 200, y: 0 },
+          data: { label: 'C', kind: 'worker', stateSource: { kind: 'event' as const } },
+        },
+        {
+          id: 'd',
+          type: 'stateNode' as const,
+          position: { x: 300, y: 0 },
+          data: { label: 'D', kind: 'worker', stateSource: { kind: 'event' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          kind: 'http' as const,
+          method: 'POST' as const,
+          url: 'http://b/',
+          label: 'calls B',
+        },
+        {
+          id: 'c2',
+          source: 'a',
+          target: 'c',
+          kind: 'event' as const,
+          eventName: 'a.published',
+        },
+        {
+          id: 'c3',
+          source: 'a',
+          target: 'd',
+          kind: 'queue' as const,
+          queueName: 'work-queue',
+        },
+      ],
+    };
+
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues, null, 2)}`);
+    }
+    expect(result.data.connectors).toHaveLength(3);
+    expect(result.data.connectors[0]?.kind).toBe('http');
+    expect(result.data.connectors[1]?.kind).toBe('event');
+    expect(result.data.connectors[2]?.kind).toBe('queue');
+  });
+
+  it('rejects a connector with an unknown discriminator kind', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-kind',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'whisper' }],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(false);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',
@@ -50,7 +167,7 @@ describe('DemoSchema', () => {
       version: 1 as const,
       name: 'minimal',
       nodes: [{ id: 'n1', type: 'stateNode' as const, position: { x: 0, y: 0 }, data }],
-      edges: [],
+      connectors: [],
     });
 
     expect(DemoSchema.safeParse(baseDemo(baseData)).success).toBe(true);

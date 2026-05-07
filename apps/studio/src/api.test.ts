@@ -26,7 +26,7 @@ const VALID_DEMO = {
       },
     },
   ],
-  edges: [],
+  connectors: [],
 };
 
 const tmpRegistry = () => {

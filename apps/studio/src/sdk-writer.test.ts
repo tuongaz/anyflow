@@ -21,7 +21,7 @@ const REQUEST_DEMO: Demo = {
       },
     },
   ],
-  edges: [],
+  connectors: [],
 };
 
 const EVENT_DEMO: Demo = {

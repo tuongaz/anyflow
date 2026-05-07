@@ -1,10 +1,11 @@
 {
   "version": 1,
+  "name": "Connector references missing nodeId",
   "nodes": [
     {
       "id": "api-checkout",
       "type": "playNode",
-      "position": { "x": 100, "y": 100 },
+      "position": { "x": 0, "y": 0 },
       "data": {
         "label": "POST /checkout",
         "kind": "service",
@@ -17,5 +18,13 @@
       }
     }
   ],
-  "connectors": []
+  "connectors": [
+    {
+      "id": "c-bad",
+      "source": "api-checkout",
+      "target": "ghost-node",
+      "kind": "event",
+      "eventName": "ghost.created"
+    }
+  ]
 }
