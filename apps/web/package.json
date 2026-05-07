@@ -1,0 +1,16 @@
+{
+  "name": "@anydemo/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "echo 'web dev: not implemented (M1.A scaffold only)'",
+    "build": "echo 'web build: not implemented (M1.A scaffold only)'"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.6.3"
+  }
+}
