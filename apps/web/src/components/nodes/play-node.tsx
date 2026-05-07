@@ -52,6 +52,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const containerStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
+    borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     ...(sized ? {} : { width: DEFAULT_W }),
   };
 

@@ -46,6 +46,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const colorStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
+    borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
   };
   const style: CSSProperties = sized
     ? colorStyle

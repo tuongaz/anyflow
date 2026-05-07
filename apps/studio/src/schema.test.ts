@@ -502,6 +502,55 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(demo).success).toBe(false);
   });
 
+  it('accepts a positive borderSize on nodes and connectors, rejects 0/negative', () => {
+    const make = (nodeBorderSize: unknown, connBorderSize: unknown) => ({
+      version: 1 as const,
+      name: 'border-size',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'A',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            borderSize: nodeBorderSize,
+          },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          kind: 'default' as const,
+          borderSize: connBorderSize,
+        },
+      ],
+    });
+
+    // node borderSize: 3, connector borderSize: 4 — both accepted.
+    const ok = DemoSchema.safeParse(make(3, 4));
+    if (!ok.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(ok.error.issues)}`);
+    }
+    const node = ok.data.nodes[0];
+    if (node?.type !== 'stateNode') throw new Error('expected stateNode');
+    expect(node.data.borderSize).toBe(3);
+    expect(ok.data.connectors[0]?.borderSize).toBe(4);
+
+    // 0 and negative values rejected (positive constraint).
+    expect(DemoSchema.safeParse(make(0, 4)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(-2, 4)).success).toBe(false);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

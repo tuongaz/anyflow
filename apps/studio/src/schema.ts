@@ -27,6 +27,7 @@ const NodeVisualBaseShape = {
   height: z.number().positive().optional(),
   borderColor: ColorTokenSchema.optional(),
   backgroundColor: ColorTokenSchema.optional(),
+  borderSize: z.number().positive().optional(),
 };
 
 const HttpActionSchema = z.object({
@@ -132,6 +133,7 @@ const ConnectorVisualBaseShape = {
   style: ConnectorStyleSchema.optional(),
   color: ColorTokenSchema.optional(),
   direction: ConnectorDirectionSchema.optional(),
+  borderSize: z.number().positive().optional(),
 };
 
 const ConnectorBaseShape = {

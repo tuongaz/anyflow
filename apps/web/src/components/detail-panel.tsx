@@ -35,12 +35,14 @@ const PALETTE_TOKENS: ColorToken[] = [
 export interface NodeStylePatch {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
+  borderSize?: number;
 }
 
 export interface ConnectorStylePatch {
   color?: ColorToken;
   style?: ConnectorStyle;
   direction?: ConnectorDirection;
+  borderSize?: number;
 }
 
 export interface DetailPanelProps {
@@ -196,11 +198,7 @@ export function DetailPanel({
               </TabsContent>
 
               <TabsContent value="style" className="mt-0" data-testid="detail-panel-style-content">
-                <NodeStyleTab
-                  node={node}
-                  onApply={(patch) => onStyleNode?.(node.id, patch)}
-                  onDelete={onDeleteNode ? () => onDeleteNode(node.id) : undefined}
-                />
+                <NodeStyleTab node={node} onApply={(patch) => onStyleNode?.(node.id, patch)} />
               </TabsContent>
             </div>
           </Tabs>
@@ -247,33 +245,91 @@ export function DetailPanel({
 function NodeStyleTab({
   node,
   onApply,
-  onDelete,
 }: {
   node: DemoNode;
   onApply: (patch: NodeStylePatch) => void;
-  onDelete?: () => void;
 }) {
   const borderActive = (node.data.borderColor ?? 'default') as ColorToken;
   const backgroundActive = (node.data.backgroundColor ?? 'default') as ColorToken;
   return (
     <div className="flex flex-col gap-4">
-      <SwatchPicker
-        label="Border"
-        active={borderActive}
-        onSelect={(token) => onApply({ borderColor: token })}
-        triggerTestId="style-tab-border-color-trigger"
-        tokenTestIdPrefix="style-tab-border-color"
-        previewKind="border"
+      <div className="flex flex-row gap-6">
+        <SwatchPicker
+          label="Border"
+          active={borderActive}
+          onSelect={(token) => onApply({ borderColor: token })}
+          triggerTestId="style-tab-border-color-trigger"
+          tokenTestIdPrefix="style-tab-border-color"
+          previewKind="border"
+        />
+        <SwatchPicker
+          label="Background"
+          active={backgroundActive}
+          onSelect={(token) => onApply({ backgroundColor: token })}
+          triggerTestId="style-tab-background-color-trigger"
+          tokenTestIdPrefix="style-tab-background-color"
+          previewKind="background"
+        />
+      </div>
+      <SizeInput
+        label="Border size"
+        testId="style-tab-border-size"
+        value={node.data.borderSize}
+        onChange={(n) => onApply({ borderSize: n })}
       />
-      <SwatchPicker
-        label="Background"
-        active={backgroundActive}
-        onSelect={(token) => onApply({ backgroundColor: token })}
-        triggerTestId="style-tab-background-color-trigger"
-        tokenTestIdPrefix="style-tab-background-color"
-        previewKind="background"
+    </div>
+  );
+}
+
+// Numeric stepper used by both NodeStyleTab (Border size) and ConnectorStyleTab
+// (Stroke width). Local string state allows the input to be empty while typing;
+// committed value is parsed on every change — empty / NaN / out-of-range
+// collapses to undefined (the "clear override" signal). Range 1-8 px.
+function SizeInput({
+  label,
+  testId,
+  value,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: number | undefined;
+  onChange: (n: number | undefined) => void;
+}) {
+  const [text, setText] = useState<string>(value === undefined ? '' : String(value));
+  // Sync local state when the upstream value changes from somewhere else (e.g.
+  // selecting a different node/connector while the panel is open).
+  useEffect(() => {
+    setText(value === undefined ? '' : String(value));
+  }, [value]);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <input
+        type="number"
+        min={1}
+        max={8}
+        step={1}
+        data-testid={testId}
+        className="h-9 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        value={text}
+        onChange={(e) => {
+          const next = e.target.value;
+          setText(next);
+          if (next === '') {
+            onChange(undefined);
+            return;
+          }
+          const n = Number.parseInt(next, 10);
+          if (!Number.isFinite(n) || n < 1 || n > 8) {
+            onChange(undefined);
+            return;
+          }
+          onChange(n);
+        }}
       />
-      <DeleteButton onDelete={onDelete} entity="node" />
     </div>
   );
 }
@@ -299,6 +355,13 @@ function ConnectorStyleTab({
         triggerTestId="style-tab-edge-color-trigger"
         tokenTestIdPrefix="style-tab-color"
         previewKind="edge"
+      />
+
+      <SizeInput
+        label="Stroke width"
+        testId="style-tab-edge-size"
+        value={connector.borderSize}
+        onChange={(n) => onApply({ borderSize: n })}
       />
 
       <div className="flex flex-col gap-1.5">
@@ -349,6 +412,18 @@ function swatchPreviewStyle(token: ColorToken, kind: SwatchPreviewKind) {
   return { borderColor: palette.border, backgroundColor: palette.background };
 }
 
+// Trigger swatch is borderless — we want a single solid disc that reads as
+// "this is the active color" at a glance. Picks the user-visible face per kind:
+//   • border     → the border color (what they'd see as the node's ring)
+//   • background → the background fill
+//   • edge       → the edge stroke color
+function swatchTriggerFillStyle(token: ColorToken, kind: SwatchPreviewKind) {
+  const palette = COLOR_TOKENS[token];
+  if (kind === 'background') return { backgroundColor: palette.background };
+  if (kind === 'edge') return { backgroundColor: palette.edge };
+  return { backgroundColor: palette.border };
+}
+
 function SwatchPicker({
   label,
   active,
@@ -380,10 +455,10 @@ function SwatchPicker({
             aria-label={`${label}: ${active}`}
             title={active}
             className={cn(
-              'relative h-7 w-7 self-start rounded-full border-2 transition-all',
+              'relative h-7 w-7 self-start rounded-full transition-all',
               'hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             )}
-            style={swatchPreviewStyle(active, previewKind)}
+            style={swatchTriggerFillStyle(active, previewKind)}
           >
             {isUnset ? (
               <span

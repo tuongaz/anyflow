@@ -44,6 +44,7 @@ export interface NodeVisual {
   height?: number;
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
+  borderSize?: number;
 }
 
 export interface NodeData extends NodeVisual {
@@ -83,6 +84,7 @@ export interface ConnectorBase {
   style?: ConnectorStyle;
   color?: ColorToken;
   direction?: ConnectorDirection;
+  borderSize?: number;
 }
 
 export interface HttpConnector extends ConnectorBase {
@@ -207,6 +209,7 @@ export interface UpdateNodeBody {
   detail?: NodeDetail;
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
+  borderSize?: number;
   width?: number;
   height?: number;
   shape?: ShapeKind;
@@ -241,6 +244,7 @@ export interface UpdateConnectorBody {
   style?: ConnectorStyle;
   color?: ColorToken;
   direction?: ConnectorDirection;
+  borderSize?: number;
   kind?: Connector['kind'];
   eventName?: string;
   queueName?: string;

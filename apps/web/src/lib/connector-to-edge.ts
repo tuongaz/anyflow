@@ -13,7 +13,7 @@ export interface DerivedEdge {
   // (e.g. onLabelChange) are injected by DemoCanvas at render time so they
   // don't churn the connectorToEdge memo.
   data: { kind: Connector['kind'] };
-  style: { strokeDasharray?: string; stroke?: string };
+  style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number };
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
   selected?: boolean;
@@ -62,7 +62,9 @@ export const connectorToEdge = (
   // selection styling override it; setting an explicit stroke even for the
   // default token keeps the visual deterministic.
   const colorStyle = connector.color ? colorTokenStyle(connector.color, 'edge') : {};
-  const style = { ...dashStyle, ...colorStyle };
+  const sizeStyle: { strokeWidth?: number } =
+    connector.borderSize !== undefined ? { strokeWidth: connector.borderSize } : {};
+  const style = { ...dashStyle, ...colorStyle, ...sizeStyle };
   // 'forward' (or absent) → arrow at target only (historical behavior).
   // 'backward' → arrow at source only.
   // 'both'     → arrows at both ends.
