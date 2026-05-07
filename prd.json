@@ -142,7 +142,8 @@
         "Functional nodes' internal layout (header, status pill, play button) gracefully reflows at narrow widths.",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-024",

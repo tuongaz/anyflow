@@ -8,6 +8,7 @@ import {
   type DemoDetail,
   type DemoNode,
   type DemoSummary,
+  updateNode,
   updateNodePosition,
 } from '@/lib/api';
 import { useCallback, useEffect, useState } from 'react';
@@ -89,6 +90,26 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride],
   );
 
+  const onNodeResize = useCallback(
+    (nodeId: string, dims: { width: number; height: number }) => {
+      if (!demoId) return;
+      // Optimistic: keep the resized footprint pinned through the PATCH
+      // round-trip + SSE echo. Cast the data partial because TS can't see
+      // through the discriminated union; the override is keyed by the same
+      // node id so the variant always matches at runtime.
+      setNodeOverride(nodeId, {
+        data: { width: dims.width, height: dims.height },
+      } as Partial<DemoNode>);
+      setEditError(null);
+      updateNode(demoId, nodeId, dims).catch((err) => {
+        dropNodeOverride(nodeId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode resize failed', err);
+      });
+    },
+    [demoId, setNodeOverride, dropNodeOverride],
+  );
+
   if (!summary) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-background p-6 text-center">
@@ -135,6 +156,7 @@ export function DemoView({
           onPlayNode={onPlayNode}
           nodeOverrides={nodePending.overrides}
           onNodePositionChange={onNodePositionChange}
+          onNodeResize={onNodeResize}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

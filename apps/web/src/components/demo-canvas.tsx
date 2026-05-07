@@ -36,6 +36,11 @@ export interface DemoCanvasProps {
   nodeOverrides?: OverrideMap<DemoNode>;
   /** Fired once per drag-stop with the node's final position. */
   onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
+  /**
+   * Fired once per resize-stop with the node's final dimensions. Wiring this
+   * enables NodeResizer's resize handles inside each custom node.
+   */
+  onNodeResize?: (nodeId: string, dims: { width: number; height: number }) => void;
 }
 
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
@@ -61,12 +66,24 @@ export function DemoCanvas({
   onPlayNode,
   nodeOverrides,
   onNodePositionChange,
+  onNodeResize,
 }: DemoCanvasProps) {
+  // Block upstream sync while a node is mid-drag or mid-resize. NodeResizer
+  // dispatches dimension changes into rfNodes during the gesture; if we then
+  // overwrite rfNodes with sourceNodes (from server, which still has the old
+  // dimensions until the PATCH echoes back), the node snaps back. The
+  // resizingRef is set/cleared by node components via data.setResizing.
+  const draggingRef = useRef(false);
+  const resizingRef = useRef(false);
+  const setResizing = useCallback((on: boolean) => {
+    resizingRef.current = on;
+  }, []);
+
   const sourceNodes = useMemo<Node[]>(
     () =>
       nodes.map((n) => {
         const merged = mergeNodeOverride(n, nodeOverrides?.[n.id]);
-        return {
+        const node: Node = {
           id: merged.id,
           type: merged.type,
           position: merged.position,
@@ -74,11 +91,20 @@ export function DemoCanvas({
             ...merged.data,
             status: statusFor(runs, n.id),
             onPlay: onPlayNode,
+            onResize: onNodeResize,
+            setResizing,
           },
           selected: n.id === selectedNodeId,
         };
+        // Pass explicit width/height to the React Flow node wrapper when set
+        // in data. NodeResizer dispatches dimension changes that update these
+        // during a gesture; we only persist (and hence sync them back into
+        // data) on resize-stop.
+        if (merged.data.width !== undefined) node.width = merged.data.width;
+        if (merged.data.height !== undefined) node.height = merged.data.height;
+        return node;
       }),
-    [nodes, selectedNodeId, runs, onPlayNode, nodeOverrides],
+    [nodes, selectedNodeId, runs, onPlayNode, onNodeResize, setResizing, nodeOverrides],
   );
 
   // React Flow needs internal node state + onNodesChange to render drag
@@ -87,10 +113,9 @@ export function DemoCanvas({
   // node snaps back mid-drag. We freeze upstream sync while a drag is in
   // flight; the parent's positionOverrides take over after drag-stop.
   const [rfNodes, setRfNodes] = useState<Node[]>(sourceNodes);
-  const draggingRef = useRef(false);
 
   useEffect(() => {
-    if (draggingRef.current) return;
+    if (draggingRef.current || resizingRef.current) return;
     setRfNodes(sourceNodes);
   }, [sourceNodes]);
 
