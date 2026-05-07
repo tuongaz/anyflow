@@ -7,6 +7,28 @@ const PositionSchema = z.object({
 
 const HttpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
+// Curated palette tokens. Stored on disk as readable names; the frontend maps
+// them to actual CSS values (theme-aware, light + dark).
+export const ColorTokenSchema = z.enum([
+  'default',
+  'slate',
+  'blue',
+  'green',
+  'amber',
+  'red',
+  'purple',
+  'pink',
+]);
+
+// Visual fields shared by every node type (functional + decorative). All
+// optional — existing demo files predate them and must continue to parse.
+const NodeVisualBaseShape = {
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  borderColor: ColorTokenSchema.optional(),
+  backgroundColor: ColorTokenSchema.optional(),
+};
+
 const HttpActionSchema = z.object({
   kind: z.literal('http'),
   method: HttpMethodSchema,
@@ -44,6 +66,7 @@ const NodeDataBaseSchema = z.object({
   // Reserved for v2: a module path resolved by future skills runtime.
   // Schema-only at v1 — never read at runtime.
   handlerModule: z.string().optional(),
+  ...NodeVisualBaseShape,
 });
 
 const PlayNodeDataSchema = NodeDataBaseSchema.extend({
@@ -68,7 +91,25 @@ const StateNodeSchema = z.object({
   data: StateNodeDataSchema,
 });
 
-const NodeSchema = z.discriminatedUnion('type', [PlayNodeSchema, StateNodeSchema]);
+// Decorative annotation node — rectangle / ellipse / sticky. No semantic
+// payload (no kind/stateSource/playAction); reuses NodeVisualBaseShape so
+// users can theme it the same way as functional nodes.
+const ShapeKindSchema = z.enum(['rectangle', 'ellipse', 'sticky']);
+
+const ShapeNodeDataSchema = z.object({
+  shape: ShapeKindSchema,
+  label: z.string().optional(),
+  ...NodeVisualBaseShape,
+});
+
+const ShapeNodeSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('shapeNode'),
+  position: PositionSchema,
+  data: ShapeNodeDataSchema,
+});
+
+const NodeSchema = z.discriminatedUnion('type', [PlayNodeSchema, StateNodeSchema, ShapeNodeSchema]);
 
 // Connector is the semantic edge between two nodes — describes HOW they are
 // connected, not just THAT they are. Discriminated on `kind`:
@@ -140,6 +181,9 @@ export const DemoSchema = z
 
 export type Demo = z.infer<typeof DemoSchema>;
 export type DemoNode = z.infer<typeof NodeSchema>;
+export type ShapeNode = z.infer<typeof ShapeNodeSchema>;
+export type ShapeKind = z.infer<typeof ShapeKindSchema>;
+export type ColorToken = z.infer<typeof ColorTokenSchema>;
 export type Connector = z.infer<typeof ConnectorSchema>;
 export type HttpConnector = z.infer<typeof HttpConnectorSchema>;
 export type EventConnector = z.infer<typeof EventConnectorSchema>;

@@ -157,6 +157,195 @@ describe('DemoSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('round-trips a shapeNode with each shape variant', () => {
+    const make = (shape: 'rectangle' | 'ellipse' | 'sticky') => ({
+      version: 1 as const,
+      name: 'shape-demo',
+      nodes: [
+        {
+          id: `shape-${shape}`,
+          type: 'shapeNode' as const,
+          position: { x: 10, y: 20 },
+          data: { shape, label: `${shape} note` },
+        },
+      ],
+      connectors: [],
+    });
+
+    for (const shape of ['rectangle', 'ellipse', 'sticky'] as const) {
+      const result = DemoSchema.safeParse(make(shape));
+      if (!result.success) {
+        throw new Error(
+          `expected ${shape} shapeNode to parse, got: ${JSON.stringify(result.error.issues)}`,
+        );
+      }
+      const node = result.data.nodes[0];
+      if (node?.type !== 'shapeNode') throw new Error('expected shapeNode');
+      expect(node.data.shape).toBe(shape);
+      expect(node.data.label).toBe(`${shape} note`);
+    }
+  });
+
+  it('accepts a shapeNode without an optional label', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'no-label-shape',
+      nodes: [
+        {
+          id: 'shape-1',
+          type: 'shapeNode' as const,
+          position: { x: 0, y: 0 },
+          data: { shape: 'rectangle' as const },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a shapeNode with an unknown shape variant', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-shape',
+      nodes: [
+        {
+          id: 'shape-1',
+          type: 'shapeNode' as const,
+          position: { x: 0, y: 0 },
+          data: { shape: 'triangle' },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts node visual fields (width/height/borderColor/backgroundColor) on every node type', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'visual-fields',
+      nodes: [
+        {
+          id: 'p',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'P',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            width: 200,
+            height: 80,
+            borderColor: 'blue' as const,
+            backgroundColor: 'amber' as const,
+          },
+        },
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'S',
+            kind: 'worker',
+            stateSource: { kind: 'event' as const },
+            width: 160,
+            height: 60,
+          },
+        },
+        {
+          id: 'shape-1',
+          type: 'shapeNode' as const,
+          position: { x: 200, y: 0 },
+          data: {
+            shape: 'sticky' as const,
+            width: 240,
+            height: 140,
+            borderColor: 'amber' as const,
+            backgroundColor: 'amber' as const,
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.nodes).toHaveLength(3);
+  });
+
+  it('accepts nodes that omit the new visual fields entirely (backwards compatible)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'no-visual-fields',
+      nodes: [
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(true);
+  });
+
+  it('rejects width/height that are zero or negative', () => {
+    const demo = (width: number, height: number) => ({
+      version: 1 as const,
+      name: 'bad-size',
+      nodes: [
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'S',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            width,
+            height,
+          },
+        },
+      ],
+      connectors: [],
+    });
+    expect(DemoSchema.safeParse(demo(0, 80)).success).toBe(false);
+    expect(DemoSchema.safeParse(demo(-1, 80)).success).toBe(false);
+    expect(DemoSchema.safeParse(demo(120, 0)).success).toBe(false);
+  });
+
+  it('rejects an invalid color token (only enum values allowed)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-color',
+      nodes: [
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'S',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            borderColor: 'fuchsia',
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find(
+      (i) => i.path.includes('borderColor') && i.path.includes('data'),
+    );
+    expect(issue).toBeDefined();
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

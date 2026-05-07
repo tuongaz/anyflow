@@ -17,7 +17,9 @@ export interface SdkWriteResult {
  * never overwritten. The only place M1's CLI mutates a user repo.
  */
 export function writeSdkEmitIfNeeded(repoPath: string, demo: Demo): SdkWriteResult {
-  const hasEventState = demo.nodes.some((n) => n.data.stateSource.kind === 'event');
+  const hasEventState = demo.nodes.some(
+    (n) => n.type !== 'shapeNode' && n.data.stateSource.kind === 'event',
+  );
   if (!hasEventState) return { outcome: 'skipped', filePath: null };
 
   const sdkDir = join(repoPath, '.anydemo', 'sdk');

@@ -250,7 +250,7 @@ export function createApi(options: ApiOptions): Hono {
 
     const node = parsed.data.nodes.find((n) => n.id === nodeId);
     if (!node) return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
-    if (!node.data.playAction) {
+    if (node.type === 'shapeNode' || !node.data.playAction) {
       return c.json({ error: `Node ${nodeId} has no playAction` }, 400);
     }
 
@@ -293,7 +293,7 @@ export function createApi(options: ApiOptions): Hono {
     const node = parsed.data.nodes.find((n) => n.id === nodeId);
     if (!node) return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
 
-    const dynamicSource = node.data.detail?.dynamicSource;
+    const dynamicSource = node.type === 'shapeNode' ? undefined : node.data.detail?.dynamicSource;
     if (!dynamicSource) {
       return c.json({ error: `Node ${nodeId} has no dynamicSource` }, 404);
     }
