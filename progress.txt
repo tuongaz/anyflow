@@ -1,0 +1,66 @@
+## Codebase Patterns
+- Biome `organizeImports` sorts strictly alphabetically by source string. `@/...` imports come BEFORE third-party because `@` < `r`. `bun run format` does NOT auto-rewrite import order (it's a "suggested" Biome fix that requires `--unsafe`); manually reorder so `bun run lint` passes.
+- `ColorTokenSchema` is the single source of truth for the palette enum (declared in `apps/studio/src/schema.ts`); the same string-literal union is mirrored in `apps/web/src/lib/api.ts` as `ColorToken`.
+- Tests run under `bun test` and use the `bun:test` import (`describe/it/expect`). Example: `apps/web/src/lib/connector-to-edge.test.ts`.
+- Web workspace TS config: `@/*` resolves to `apps/web/src/*`; uses `react-jsx`; `noEmit: true`; `tsc --noEmit` for typecheck.
+- The `prd.json` and progress files are at the repo ROOT, not inside a `ralph/` subdirectory (the Makefile's `ralph-clean` target predates this — keep an eye on it).
+- Demo file write pattern (apps/studio/src/api.ts): every mutation reads + parses + mutates the *raw parsed JSON* (not the Zod-typed object) so unknown forward-compat fields survive round-trips, then re-validates the WHOLE demo via `DemoSchema` before commit, then writes via `writeFileAtomic` inside `withDemoWriteLock(demoId, …)`. Output is `JSON.stringify(obj, null, 2) + '\n'` — 2-space indent + trailing newline. Errors use a discriminated `Outcome` union mapped to HTTP status in a final `switch`.
+- Body-validation pattern: top-level mutation bodies are validated with a Zod schema using `.strict()` to reject typos in unknown keys; final shape is enforced via `DemoSchema.safeParse(rawAfterMutation)`. Nested fields can stay loose (`z.unknown()`) because the post-mutation DemoSchema check is the real gate.
+- `crypto.randomUUID()` is available globally under Bun (no import needed). New node ids follow `node-${crypto.randomUUID()}`; new connector ids follow `conn-${crypto.randomUUID()}`.
+- Connector PATCH gotcha: the connector schema is a `z.discriminatedUnion('kind', ...)`. By default, `z.object` strips unknown keys on parse, so a stale `eventName` (left over from a kind='event' → kind='default' change) would parse cleanly but linger on disk. PATCH /connectors/:connId clears `method/url/eventName/queueName` when `kind` changes — keep this invariant if you generalize the merge helper.
+
+---
+
+## 2026-05-07 - US-018
+- Implemented the color palette token system end-to-end.
+- Files added:
+  - `apps/web/src/lib/color-tokens.ts` — single-source map `COLOR_TOKENS` keyed by every `ColorToken` enum value with `{ border, background, edge }` CSS strings, plus a `colorTokenStyle(token, kind)` helper with overloads:
+    - `kind: 'node'` → `{ borderColor, backgroundColor }` (spread into a node container's `style`)
+    - `kind: 'edge'` → `{ stroke }` (spread into a React Flow edge `style`)
+    - `undefined` token falls back to `'default'` (which uses shadcn HSL CSS vars so it adapts to dark mode).
+  - `apps/web/src/lib/color-tokens.test.ts` — covers: every enum value has a mapping, the helper returns non-empty strings for each token, default-token uses CSS vars, undefined falls back to default, and the helper output matches the `COLOR_TOKENS` map.
+- Quality checks: `bun test` (105/0), `bun run typecheck` (clean), `bun run lint` (clean).
+- **Learnings for future iterations:**
+  - Biome's `organizeImports` is a "suggested" fix — `bun run format` doesn't apply it. Run `bun run lint` to surface it, then manually reorder. `@/`-prefixed imports come BEFORE third-party (alphabetical by literal source string).
+  - Schema additions for US-016/US-017 already exported `ColorTokenSchema` from `apps/studio/src/schema.ts` AND mirrored a `ColorToken` string-union in `apps/web/src/lib/api.ts`. US-018 just bridged the two with a CSS-value mapping; no schema or API change needed.
+  - The PRD's helper signature is ambiguous about return shape ("returns the right CSS values"). I used overloads returning a `CSSProperties`-shaped object so call sites can `style={{ ...colorTokenStyle(token, 'node') }}` directly. The test's "returns a non-empty string for each token" maps onto each property of that object being non-empty.
+  - For the colored tokens I inlined Tailwind palette HSL triplets (border ≈ 400, background ≈ 50/100, edge ≈ 500). The `default` token uses `hsl(var(--border))` / `hsl(var(--card))` / `hsl(var(--muted-foreground))` so it inherits the active theme.
+- Manual browser verification: not required by US-018 (no UI rendering yet — that lands in US-022/US-025).
+---
+
+## 2026-05-07 - US-019
+- Implemented backend node CRUD endpoints in `apps/studio/src/api.ts`:
+  - `PATCH /api/demos/:id/nodes/:nodeId` — partial update of position, label, detail, borderColor, backgroundColor, width, height, shape. Body validated by a new `NodePatchBodySchema` (`.strict()` so unknown keys are rejected). `position` lands on `node.position`; every other key lands inside `node.data` via the new `mergeNodeUpdates` helper.
+  - `POST /api/demos/:id/nodes` — appends a complete new node payload. Auto-generates `id = 'node-' + crypto.randomUUID()` when absent. Returns `{ ok, id }`.
+  - `DELETE /api/demos/:id/nodes/:nodeId` — removes the node and cascade-removes every connector with `source === nodeId || target === nodeId` in the SAME atomic write.
+- All three endpoints share the same shape: 400 on body / on-disk JSON / schema failure, 404 on unknown demoId or nodeId, 500 on write failure. They all run inside `withDemoWriteLock` and write via `writeFileAtomic`. Crucially they re-validate the WHOLE mutated demo via `DemoSchema` before commit (existing `/position` endpoint stays as-is — pure-position mutations can't break invariants so the pre-mutation parse is enough there).
+- Existing `PATCH /api/demos/:id/nodes/:nodeId/position` fast path preserved unchanged. Hono's radix tree picks `/:nodeId/position` over `/:nodeId` when both exist.
+- Files changed:
+  - `apps/studio/src/api.ts` — new endpoints, `NodePatchBodySchema`, `mergeNodeUpdates` helper, `ColorTokenSchema` import.
+  - `apps/studio/src/api.test.ts` — three new `describe` blocks (15 new tests): PATCH partial update, position-only update, schema validation 400, body-strict 400, label-empty 400, 404s, file formatting preservation; POST creates with auto-id, with caller-id, schema-failure 400, 404; DELETE cascade (full removal), DELETE with non-cascading connectors preserved, 404s.
+- Quality checks: `bun test` (121/0 — was 105 before, +16 incl. one shared describe restructure), `bun run typecheck` (clean), `bun run lint` (clean).
+- **Learnings for future iterations:**
+  - Mutate the *raw parsed JSON* (the `unknown` from `Bun.file().json()`), NOT the Zod-typed result. The schema strips/coerces — author-written fields outside the schema would be lost on round-trip. The existing `/position` handler already followed this pattern; new endpoints must too.
+  - `DemoSchema.superRefine` enforces connector → node referential integrity. Cascade-deleting connectors when a node is removed isn't optional — without it the post-mutation `DemoSchema.safeParse` would 400 on every node delete that had any adjacent connectors.
+  - Biome's formatter wraps long lambda bodies onto a single line when they fit. The DELETE handler had a 3-line `obj.connectors.filter((cn) => …)` that the formatter rewrote inline. `bun run format` fixes this; always run `bun run format` before `bun run lint`.
+  - `crypto.randomUUID()` works at the global scope under Bun — no import needed.
+  - For PATCH bodies, prefer `.strict()` Zod schemas over loose `z.record(z.unknown())` — strict catches client typos (e.g. `borderColour` instead of `borderColor`) at the body-validation layer rather than waiting for the post-mutation schema parse to throw a more confusing error.
+- Manual browser verification: not required by US-019 (backend-only). UI consumers land in US-021 onward.
+---
+
+## 2026-05-07 - US-020
+- Implemented backend connector CRUD endpoints in `apps/studio/src/api.ts`, mirroring the US-019 node CRUD pattern:
+  - `PATCH /api/demos/:id/connectors/:connId` — partial update of `label`, `style`, `color`, `direction`, `kind`, `eventName`, `queueName`, `method`, `url`. Body validated by `ConnectorPatchBodySchema` (`.strict()`). When `kind` changes, the new `mergeConnectorUpdates` helper drops every kind-specific field (`method/url/eventName/queueName`) before applying the new ones, so the on-disk JSON doesn't carry phantom fields from the previous kind.
+  - `POST /api/demos/:id/connectors` — creates a new connector. Auto-generates `id = 'conn-' + crypto.randomUUID()` when absent. Defaults `kind` to `'default'` (the no-semantics user-drawn variant) when absent. DemoSchema's `superRefine` enforces source/target referential integrity automatically.
+  - `DELETE /api/demos/:id/connectors/:connId` — removes the connector. Unlike node DELETE, no cascade is needed (connectors don't own anything else).
+- All three endpoints share the same Outcome-union → switch-on-kind pattern: 400 on body / on-disk JSON / schema failure, 404 on unknown demoId or connectorId, 500 on write failure. They run inside `withDemoWriteLock(id, …)`, write via `writeFileAtomic`, and re-validate the WHOLE demo through `DemoSchema` before commit.
+- Files changed:
+  - `apps/studio/src/api.ts` — three new endpoints, `ConnectorPatchBodySchema`, `ConnectorKindSchema`, `mergeConnectorUpdates` helper, `CONNECTOR_KIND_FIELDS` constant.
+  - `apps/studio/src/api.test.ts` — three new `describe` blocks (14 new tests): PATCH visual-fields merge, kind-change clears stale fields, schema 400 (kind='event' without eventName), body-strict 400, 404s; POST default-kind auto-id, caller-id pass-through, schema 400 (unknown source), kind-discriminated 400, demo 404; DELETE removes targeted, demo 404, conn 404.
+- Quality checks: `bun test` (135/0 — was 121 before, +14), `bun run typecheck` (clean), `bun run lint` (clean).
+- **Learnings for future iterations:**
+  - `z.discriminatedUnion` with `z.object` children silently STRIPS unknown keys on parse but does NOT remove them from the source object you mutated. If you change the discriminator (`kind`) without dropping the previous variant's fields, the post-parse object looks correct but the on-disk JSON keeps the stale fields. Always clear kind-specific fields explicitly when the discriminator changes.
+  - For POST endpoints with auto-generated IDs, prefer a typed-prefix convention (`node-`, `conn-`) — it makes the PRD's "id auto-generated if absent" testable via a regex match (`expect(id).toMatch(/^conn-/)`) without hardcoding UUIDs in fixtures.
+  - The post-mutation `DemoSchema.safeParse` is the real gate. The body-validation schema only catches typos and obvious type errors at the top level; per-kind invariants (e.g. `kind='event'` requires `eventName`) are caught by the discriminated union's per-branch parsing of the *whole* demo. This means the body schema can stay loose on per-kind fields without losing safety.
+- Manual browser verification: not required by US-020 (backend-only). UI consumers (Style tab editor, connector creation via handle drag) land in US-024/US-025/US-029.
+---

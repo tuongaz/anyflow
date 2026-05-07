@@ -48,6 +48,25 @@ const NodePatchBodySchema = z
   .strict();
 type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
 
+// Partial connector update body. Strict at the top level so client typos
+// surface as 400. Per-kind invariants (e.g. kind='event' requires eventName)
+// are enforced post-merge by re-parsing the whole demo through DemoSchema.
+const ConnectorKindSchema = z.enum(['http', 'event', 'queue', 'default']);
+const ConnectorPatchBodySchema = z
+  .object({
+    label: z.string().optional(),
+    style: z.enum(['solid', 'dashed', 'dotted']).optional(),
+    color: ColorTokenSchema.optional(),
+    direction: z.enum(['forward', 'backward', 'both']).optional(),
+    kind: ConnectorKindSchema.optional(),
+    eventName: z.string().optional(),
+    queueName: z.string().optional(),
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+    url: z.string().optional(),
+  })
+  .strict();
+type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;
+
 // Per-demo serialization: read-modify-write of the demo file isn't atomic
 // across multiple PATCHes, so two concurrent drags would race
 // (later writer's older read clobbers the earlier writer's update). We chain
@@ -126,6 +145,28 @@ const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody)
   }
   if (touchedData) {
     node.data = data;
+  }
+};
+
+// Kind-specific connector fields. When `kind` changes via PATCH, these are
+// dropped first so the resulting connector doesn't carry phantom payloads
+// from the previous kind (e.g. an event→default change leaving eventName
+// behind, which DemoSchema would silently strip on parse but leave on disk).
+const CONNECTOR_KIND_FIELDS = ['method', 'url', 'eventName', 'queueName'] as const;
+
+const mergeConnectorUpdates = (
+  conn: Record<string, unknown>,
+  updates: ConnectorPatchBody,
+): void => {
+  if (updates.kind !== undefined && updates.kind !== conn.kind) {
+    for (const key of CONNECTOR_KIND_FIELDS) {
+      delete conn[key];
+    }
+  }
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      conn[key] = value;
+    }
   }
 };
 
@@ -664,6 +705,236 @@ export function createApi(options: ApiOptions): Hono {
         return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
       case 'unknownNode':
         return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // PATCH a single connector — partial update of label/style/color/direction
+  // and (optionally) kind + per-kind payload fields. When `kind` changes,
+  // stale kind-specific fields are dropped before the merge. The whole demo
+  // is re-validated through DemoSchema before commit so the discriminated
+  // union catches missing-required-fields (e.g. kind='event' without
+  // eventName) and the superRefine still gates source/target referential
+  // integrity.
+  api.patch('/demos/:id/connectors/:connId', async (c) => {
+    const id = c.req.param('id');
+    const connId = c.req.param('connId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = ConnectorPatchBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid connector patch body', issues: parsed.error.issues }, 400);
+    }
+    const updates = parsed.data;
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'unknownConnector' }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as { connectors: Array<Record<string, unknown>> };
+      const onDiskConn = obj.connectors.find((cn) => cn.id === connId);
+      if (!onDiskConn) return { kind: 'unknownConnector' };
+
+      mergeConnectorUpdates(onDiskConn, updates);
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'unknownConnector':
+        return c.json({ error: `Unknown connectorId: ${connId}` }, 404);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // POST a new connector. Body is the connector payload; `id` is auto-generated
+  // server-side if absent and `kind` defaults to 'default' (the no-semantics
+  // user-drawn variant). Source/target referential integrity is enforced by
+  // DemoSchema's superRefine on the post-mutation parse.
+  api.post('/demos/:id/connectors', async (c) => {
+    const id = c.req.param('id');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return c.json({ error: 'Body must be an object' }, 400);
+    }
+    const newConn = { ...(body as Record<string, unknown>) };
+    if (typeof newConn.id !== 'string' || newConn.id.length === 0) {
+      newConn.id = `conn-${crypto.randomUUID()}`;
+    }
+    if (typeof newConn.kind !== 'string' || newConn.kind.length === 0) {
+      newConn.kind = 'default';
+    }
+    const newId = newConn.id as string;
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as { connectors: Array<Record<string, unknown>> };
+      obj.connectors.push(newConn);
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true, id: newId });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // DELETE a connector. Just removes the entry from demo.connectors — node
+  // deletion is what cascades, not connector deletion.
+  api.delete('/demos/:id/connectors/:connId', async (c) => {
+    const id = c.req.param('id');
+    const connId = c.req.param('connId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'unknownConnector' }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as { connectors: Array<{ id: string }> };
+      const idx = obj.connectors.findIndex((cn) => cn.id === connId);
+      if (idx < 0) return { kind: 'unknownConnector' };
+      obj.connectors.splice(idx, 1);
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'unknownConnector':
+        return c.json({ error: `Unknown connectorId: ${connId}` }, 404);
       case 'writeFailed':
         return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
     }
