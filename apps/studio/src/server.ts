@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { createApi } from './api.ts';
+import { type EventBus, createEventBus } from './events.ts';
 import { type Registry, createRegistry } from './registry.ts';
+import { type DemoWatcher, createWatcher } from './watcher.ts';
 
 export type AppMode = 'dev' | 'prod';
 
@@ -13,6 +15,14 @@ export interface CreateAppOptions {
   staticRoot?: string;
   /** Inject a registry; defaults to one persisted at ~/.anydemo/registry.json. */
   registry?: Registry;
+  /** Inject an event bus; defaults to a fresh in-memory bus. */
+  events?: EventBus;
+  /** Inject a watcher; defaults to one wired to the registry + event bus. */
+  watcher?: DemoWatcher;
+  /** Skip starting fs.watch on registered demos. Useful for tests. */
+  watchAllOnBoot?: boolean;
+  /** Disable file watching entirely (no fs handles leaked). Useful for tests. */
+  disableWatcher?: boolean;
 }
 
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
@@ -25,11 +35,19 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   const viteDevUrl = options.viteDevUrl ?? DEFAULT_VITE_DEV_URL;
   const staticRoot = options.staticRoot ?? DEFAULT_STATIC_ROOT;
   const registry = options.registry ?? createRegistry();
+  const events = options.events ?? createEventBus();
+  const watcher = options.disableWatcher
+    ? undefined
+    : (options.watcher ?? createWatcher({ registry, events }));
+
+  if (watcher && (options.watchAllOnBoot ?? true)) {
+    watcher.watchAll();
+  }
 
   const app = new Hono();
 
   app.get('/health', (c) => c.json({ ok: true }));
-  app.route('/api', createApi({ registry }));
+  app.route('/api', createApi({ registry, events, watcher }));
 
   if (mode === 'dev') {
     app.all('*', async (c) => {

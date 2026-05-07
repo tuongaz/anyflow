@@ -42,7 +42,7 @@ const tmpRepoWithDemo = (demo: unknown = VALID_DEMO) => {
 
 const buildApp = () => {
   const registry = createRegistry({ path: tmpRegistry() });
-  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry });
+  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true });
   return { app, registry };
 };
 
@@ -155,12 +155,22 @@ describe('GET /api/demos', () => {
     const repoB = tmpRepoWithDemo({ ...VALID_DEMO, name: 'Other Flow' });
 
     const reg1 = createRegistry({ path: registryPath });
-    const app1 = createApp({ mode: 'prod', staticRoot: './dist/web', registry: reg1 });
+    const app1 = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry: reg1,
+      disableWatcher: true,
+    });
     await post(app1, '/api/demos/register', { repoPath: repoA, demoPath: '.anydemo/demo.json' });
     await post(app1, '/api/demos/register', { repoPath: repoB, demoPath: '.anydemo/demo.json' });
 
     const reg2 = createRegistry({ path: registryPath });
-    const app2 = createApp({ mode: 'prod', staticRoot: './dist/web', registry: reg2 });
+    const app2 = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry: reg2,
+      disableWatcher: true,
+    });
     const list = (await (await app2.request('/api/demos')).json()) as Array<{
       slug: string;
       valid: boolean;
@@ -168,6 +178,68 @@ describe('GET /api/demos', () => {
     expect(list).toHaveLength(2);
     expect(list.map((e) => e.slug).sort()).toEqual(['checkout-flow', 'other-flow']);
     expect(list.every((e) => e.valid)).toBe(true);
+  });
+});
+
+describe('GET /api/demos/:id', () => {
+  it('returns the validated demo + filePath when watcher is disabled (sync read fallback)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await app.request(`/api/demos/${reg.id}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      id: string;
+      slug: string;
+      name: string;
+      filePath: string;
+      demo: { name: string };
+      valid: boolean;
+      error: string | null;
+    };
+    expect(body.valid).toBe(true);
+    expect(body.demo.name).toBe('Checkout Flow');
+    expect(body.filePath.endsWith('.anydemo/demo.json')).toBe(true);
+    expect(body.error).toBeNull();
+  });
+
+  it('returns 404 for unknown demo ids', async () => {
+    const { app } = buildApp();
+    const res = await app.request('/api/demos/does-not-exist');
+    expect(res.status).toBe(404);
+  });
+
+  it('reports valid:false + error when on-disk JSON is malformed', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), '{ broken');
+
+    const res = await app.request(`/api/demos/${reg.id}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { valid: boolean; error: string | null };
+    expect(body.valid).toBe(false);
+    expect(body.error).toContain('Invalid JSON');
+  });
+});
+
+describe('GET /api/events', () => {
+  it('returns 400 when demoId is missing', async () => {
+    const { app } = buildApp();
+    const res = await app.request('/api/events');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when demoId is unknown', async () => {
+    const { app } = buildApp();
+    const res = await app.request('/api/events?demoId=nope');
+    expect(res.status).toBe(404);
   });
 });
 
