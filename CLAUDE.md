@@ -34,6 +34,8 @@ bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 - Prod: `cd apps/web && bun run build` emits to `apps/studio/dist/web/`. `NODE_ENV=production` makes `apps/studio/src/server.ts` serve that bundle via `serveStatic`; end users never run Vite.
 - Web app uses `@/*` alias for `apps/web/src/*` — declared in both `apps/web/tsconfig.json` and `apps/web/vite.config.ts`. Update both when changing it.
 - shadcn/ui primitives live at `apps/web/src/components/ui/`; `cn(...)` helper at `apps/web/src/lib/utils.ts`.
+- Frontend routing is hand-rolled at `apps/web/src/lib/router.ts` (`usePathname()` + `navigate(to)`); a custom `anydemo:navigate` event re-renders all `usePathname()` consumers when `pushState` happens. Do not pull in `react-router-dom`.
+- Biome's `organizeImports` sorts imports alphabetically by source string — `@/foo` imports come BEFORE third-party imports (`lucide-react`, `react`) because `@` < `l` < `r` in ASCII. Run `bun run format` then check lint output.
 
 ## Conventions
 

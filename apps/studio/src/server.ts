@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
+import { createApi } from './api.ts';
+import { type Registry, createRegistry } from './registry.ts';
 
 export type AppMode = 'dev' | 'prod';
 
@@ -9,6 +11,8 @@ export interface CreateAppOptions {
   viteDevUrl?: string;
   /** Filesystem root for the built web bundle in prod mode. */
   staticRoot?: string;
+  /** Inject a registry; defaults to one persisted at ~/.anydemo/registry.json. */
+  registry?: Registry;
 }
 
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
@@ -20,10 +24,12 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   const mode = options.mode ?? inferMode();
   const viteDevUrl = options.viteDevUrl ?? DEFAULT_VITE_DEV_URL;
   const staticRoot = options.staticRoot ?? DEFAULT_STATIC_ROOT;
+  const registry = options.registry ?? createRegistry();
 
   const app = new Hono();
 
   app.get('/health', (c) => c.json({ ok: true }));
+  app.route('/api', createApi({ registry }));
 
   if (mode === 'dev') {
     app.all('*', async (c) => {
