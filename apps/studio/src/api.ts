@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { EventBus } from './events.ts';
+import { runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
 import { DemoSchema } from './schema.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
@@ -157,6 +158,50 @@ export function createApi(options: ApiOptions): Hono {
     const removed = registry.remove(id);
     if (!removed) return c.json({ ok: false, error: 'not found' }, 404);
     return c.json({ ok: true });
+  });
+
+  api.post('/demos/:id/play/:nodeId', async (c) => {
+    const id = c.req.param('id');
+    const nodeId = c.req.param('nodeId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+    if (!events) return c.json({ error: 'events not enabled' }, 500);
+
+    // Always re-read from disk so the user's most recent edit (validated or
+    // not yet observed by the watcher) drives the actual fetch.
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+    let raw: unknown;
+    try {
+      raw = await Bun.file(fullPath).json();
+    } catch (err) {
+      return c.json(
+        {
+          error: `Demo file is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        400,
+      );
+    }
+    const parsed = DemoSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: 'Demo failed schema validation', issues: parsed.error.issues }, 400);
+    }
+
+    const node = parsed.data.nodes.find((n) => n.id === nodeId);
+    if (!node) return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
+    if (!node.data.playAction) {
+      return c.json({ error: `Node ${nodeId} has no playAction` }, 400);
+    }
+
+    const result = await runPlay({
+      events,
+      demoId: id,
+      nodeId,
+      action: node.data.playAction,
+    });
+    return c.json(result);
   });
 
   api.get('/events', (c) => {

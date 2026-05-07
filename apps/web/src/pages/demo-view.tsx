@@ -1,5 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { DemoDetail, DemoSummary } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
@@ -8,9 +9,11 @@ export interface DemoViewProps {
   demos: DemoSummary[];
   detail: DemoDetail | null;
   loading: boolean;
+  runs: NodeRuns;
+  onPlayNode: (nodeId: string) => void;
 }
 
-export function DemoView({ slug, demos, detail, loading }: DemoViewProps) {
+export function DemoView({ slug, demos, detail, loading, runs, onPlayNode }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -40,6 +43,7 @@ export function DemoView({ slug, demos, detail, loading }: DemoViewProps) {
 
   const demo = detail?.demo;
   const selectedNode = demo?.nodes.find((n) => n.id === selectedId) ?? null;
+  const selectedRun = selectedId ? runs[selectedId] : undefined;
 
   return (
     <div className="relative h-full w-full">
@@ -59,6 +63,8 @@ export function DemoView({ slug, demos, detail, loading }: DemoViewProps) {
           edges={demo.edges}
           selectedNodeId={selectedId}
           onSelectNode={setSelectedId}
+          runs={runs}
+          onPlayNode={onPlayNode}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
@@ -69,6 +75,7 @@ export function DemoView({ slug, demos, detail, loading }: DemoViewProps) {
       <DetailPanel
         node={selectedNode}
         filePath={detail?.filePath}
+        run={selectedRun}
         onClose={() => setSelectedId(null)}
       />
     </div>

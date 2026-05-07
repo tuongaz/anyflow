@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createEventBus } from './events.ts';
 import { createRegistry } from './registry.ts';
 import { createApp } from './server.ts';
 
@@ -226,6 +227,134 @@ describe('GET /api/demos/:id', () => {
     const body = (await res.json()) as { valid: boolean; error: string | null };
     expect(body.valid).toBe(false);
     expect(body.error).toContain('Invalid JSON');
+  });
+});
+
+describe('POST /api/demos/:id/play/:nodeId', () => {
+  const startStubServer = (
+    handler: (req: Request) => Response | Promise<Response>,
+  ): { url: string; stop: () => void } => {
+    const server = Bun.serve({ port: 0, fetch: handler });
+    return {
+      url: `http://${server.hostname}:${server.port}`,
+      stop: () => server.stop(true),
+    };
+  };
+
+  const demoWithUrl = (url: string) => ({
+    ...VALID_DEMO,
+    nodes: [
+      {
+        ...VALID_DEMO.nodes[0],
+        data: {
+          ...VALID_DEMO.nodes[0]?.data,
+          playAction: {
+            kind: 'http',
+            method: 'POST',
+            url,
+            body: { hello: 'world' },
+          },
+        },
+      },
+    ],
+  });
+
+  it('proxies the request and returns status + JSON body', async () => {
+    const stub = startStubServer((req) => {
+      expect(req.method).toBe('POST');
+      return Response.json({ ok: true, echoed: 42 }, { status: 201 });
+    });
+    try {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo(demoWithUrl(stub.url));
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const res = await post(app, `/api/demos/${reg.id}/play/api-checkout`, {});
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { runId: string; status: number; body: unknown };
+      expect(typeof body.runId).toBe('string');
+      expect(body.status).toBe(201);
+      expect(body.body).toEqual({ ok: true, echoed: 42 });
+    } finally {
+      stub.stop();
+    }
+  });
+
+  it('broadcasts node:running before the fetch and node:done after', async () => {
+    let serverHit = false;
+    const stub = startStubServer(() => {
+      serverHit = true;
+      return Response.json({ ok: true });
+    });
+    try {
+      const bus = createEventBus();
+      const registry = createRegistry({ path: tmpRegistry() });
+      const app = createApp({
+        mode: 'prod',
+        staticRoot: './dist/web',
+        registry,
+        events: bus,
+        disableWatcher: true,
+      });
+      const repoPath = tmpRepoWithDemo(demoWithUrl(stub.url));
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const captured: Array<{ type: string; payload: unknown }> = [];
+      bus.subscribe(reg.id, (e) => captured.push({ type: e.type, payload: e.payload }));
+
+      const playRes = await post(app, `/api/demos/${reg.id}/play/api-checkout`, {});
+      expect(playRes.status).toBe(200);
+      expect(serverHit).toBe(true);
+
+      const types = captured.map((e) => e.type);
+      expect(types[0]).toBe('node:running');
+      expect(types[types.length - 1]).toBe('node:done');
+      const done = captured[captured.length - 1]?.payload as {
+        nodeId: string;
+        status: number;
+        body: unknown;
+      };
+      expect(done.nodeId).toBe('api-checkout');
+      expect(done.status).toBe(200);
+    } finally {
+      stub.stop();
+    }
+  });
+
+  it('broadcasts node:error and returns runId + error when the target is unreachable', async () => {
+    const { app } = buildApp();
+    // Pick a port we know nothing is listening on.
+    const repoPath = tmpRepoWithDemo(demoWithUrl('http://127.0.0.1:1'));
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/play/api-checkout`, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { runId: string; error?: string; status?: number };
+    expect(typeof body.runId).toBe('string');
+    expect(body.status).toBeUndefined();
+    expect(body.error).toBeTruthy();
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/demos/nope/play/x', {});
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for unknown nodeId', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const res = await post(app, `/api/demos/${reg.id}/play/missing`, {});
+    expect(res.status).toBe(404);
   });
 });
 

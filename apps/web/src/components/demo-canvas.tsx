@@ -1,5 +1,7 @@
 import { PlayNode } from '@/components/nodes/play-node';
 import { StateNode } from '@/components/nodes/state-node';
+import type { NodeStatus } from '@/components/nodes/status-pill';
+import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { DemoEdge, DemoNode } from '@/lib/api';
 import { Background, Controls, type Edge, type Node, ReactFlow } from '@xyflow/react';
 import { useMemo } from 'react';
@@ -11,35 +13,55 @@ export interface DemoCanvasProps {
   edges: DemoEdge[];
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
+  /** Per-node run state from SSE events. */
+  runs?: NodeRuns;
+  /** Click handler for a PlayNode's Play button. */
+  onPlayNode?: (nodeId: string) => void;
 }
 
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode };
 
-export function DemoCanvas({ nodes, edges, selectedNodeId, onSelectNode }: DemoCanvasProps) {
+const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
+  runs?.[id]?.status ?? 'idle';
+
+export function DemoCanvas({
+  nodes,
+  edges,
+  selectedNodeId,
+  onSelectNode,
+  runs,
+  onPlayNode,
+}: DemoCanvasProps) {
   const rfNodes = useMemo<Node[]>(
     () =>
       nodes.map((n) => ({
         id: n.id,
         type: n.type,
         position: n.position,
-        // Each render passes a fresh status:'idle' for now; M1.D will mix in
-        // the real per-node status reducer driven by SSE events.
-        data: { ...n.data, status: 'idle' as const },
+        data: {
+          ...n.data,
+          status: statusFor(runs, n.id),
+          onPlay: onPlayNode,
+        },
         selected: n.id === selectedNodeId,
       })),
-    [nodes, selectedNodeId],
+    [nodes, selectedNodeId, runs, onPlayNode],
   );
 
   const rfEdges = useMemo<Edge[]>(
     () =>
-      edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.type,
-        animated: e.animated,
-      })),
-    [edges],
+      edges.map((e) => {
+        const adjacentRunning =
+          statusFor(runs, e.source) === 'running' || statusFor(runs, e.target) === 'running';
+        return {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          type: e.type,
+          animated: e.animated || adjacentRunning,
+        };
+      }),
+    [edges, runs],
   );
 
   return (

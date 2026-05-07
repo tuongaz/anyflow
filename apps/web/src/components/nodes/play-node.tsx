@@ -1,23 +1,27 @@
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { NodeData } from '@/lib/api';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { Play } from 'lucide-react';
 
-export type PlayNodeData = NodeData & { status: NodeStatus } & Record<string, unknown>;
+export type PlayNodeData = NodeData & {
+  status: NodeStatus;
+  onPlay?: (nodeId: string) => void;
+} & Record<string, unknown>;
 export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
 
-export function PlayNode({ data, selected }: NodeProps<PlayNodeType>) {
+export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const status = data.status ?? 'idle';
   const action = data.playAction;
   const subtitle = action ? `${action.method} ${action.url}` : data.kind;
+  const playable = !!action && !!data.onPlay;
+  const isRunning = status === 'running';
 
   return (
     <div
       className={`group flex min-w-[220px] flex-col gap-2 rounded-lg border bg-card px-3 py-2 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-ring ring-offset-2' : ''
-      } ${status === 'running' ? 'anydemo-node-pulse' : ''}`}
+      } ${isRunning ? 'anydemo-node-pulse' : ''}`}
       data-status={status}
       data-testid="play-node"
     >
@@ -29,24 +33,21 @@ export function PlayNode({ data, selected }: NodeProps<PlayNodeType>) {
         </div>
         <StatusPill status={status} />
       </div>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled
-              className="h-7 gap-1 px-2 text-xs"
-              data-testid="play-button"
-            >
-              <Play className="h-3 w-3" />
-              Play
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Play arrives in M1.D</TooltipContent>
-      </Tooltip>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={!playable || isRunning}
+        className="h-7 gap-1 px-2 text-xs"
+        data-testid="play-button"
+        onClick={(e) => {
+          e.stopPropagation();
+          data.onPlay?.(id);
+        }}
+      >
+        <Play className="h-3 w-3" />
+        {isRunning ? 'Running…' : 'Play'}
+      </Button>
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-muted-foreground" />
     </div>
   );
