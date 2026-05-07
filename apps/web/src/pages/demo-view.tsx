@@ -1,5 +1,9 @@
 import { DemoCanvas } from '@/components/demo-canvas';
-import { DetailPanel } from '@/components/detail-panel';
+import {
+  type ConnectorStylePatch,
+  DetailPanel,
+  type NodeStylePatch,
+} from '@/components/detail-panel';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
@@ -8,10 +12,13 @@ import {
   type DemoDetail,
   type DemoNode,
   type DemoSummary,
+  deleteConnector,
+  deleteNode,
+  updateConnector,
   updateNode,
   updateNodePosition,
 } from '@/lib/api';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type Position = { x: number; y: number };
 
@@ -124,6 +131,98 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride],
   );
 
+  const { setOverride: setConnectorOverride, dropOverride: dropConnectorOverride } =
+    connectorPending;
+
+  // Style-tab edit on a node: border + background tokens. Cast the partial
+  // through Partial<DemoNode> because the discriminated union prevents TS from
+  // seeing that 'data' on the override matches the variant of the keyed node.
+  const onStyleNode = useCallback(
+    (nodeId: string, patch: NodeStylePatch) => {
+      if (!demoId) return;
+      setNodeOverride(nodeId, { data: patch } as Partial<DemoNode>);
+      setEditError(null);
+      updateNode(demoId, nodeId, patch).catch((err) => {
+        dropNodeOverride(nodeId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode style failed', err);
+      });
+    },
+    [demoId, setNodeOverride, dropNodeOverride],
+  );
+
+  // Style-tab edit on a connector: color, edge style, direction. Cast through
+  // Partial<Connector> because the discriminated union over `kind` rejects
+  // bare partials at the type level (we never change kind here, so the cast
+  // is safe at runtime).
+  const onStyleConnector = useCallback(
+    (connId: string, patch: ConnectorStylePatch) => {
+      if (!demoId) return;
+      setConnectorOverride(connId, patch as Partial<Connector>);
+      setEditError(null);
+      updateConnector(demoId, connId, patch).catch((err) => {
+        dropConnectorOverride(connId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateConnector failed', err);
+      });
+    },
+    [demoId, setConnectorOverride, dropConnectorOverride],
+  );
+
+  const onDeleteNode = useCallback(
+    (nodeId: string) => {
+      if (!demoId) return;
+      setEditError(null);
+      // Don't optimistically remove from the canvas — the SSE echo of the
+      // demo file rewrite will drop the node naturally, and a failure path
+      // would need to put it back. Just clear the selection so the panel
+      // closes immediately.
+      setSelectedId((prev) => (prev === nodeId ? null : prev));
+      deleteNode(demoId, nodeId).catch((err) => {
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('deleteNode failed', err);
+      });
+    },
+    [demoId],
+  );
+
+  const onDeleteConnector = useCallback(
+    (connId: string) => {
+      if (!demoId) return;
+      setEditError(null);
+      setSelectedConnectorId((prev) => (prev === connId ? null : prev));
+      deleteConnector(demoId, connId).catch((err) => {
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('deleteConnector failed', err);
+      });
+    },
+    [demoId],
+  );
+
+  // Merge pending overrides onto the selected entity so Style-tab controls
+  // (active swatches, selected dropdown option) reflect the in-flight edit
+  // immediately rather than waiting for the SSE echo. Defined here (above the
+  // early returns below) so React's hook order is stable across renders.
+  const demo = detail?.demo;
+  const nodeOverrides = nodePending.overrides;
+  const connectorOverrides = connectorPending.overrides;
+  const selectedNode = useMemo<DemoNode | null>(() => {
+    if (!selectedId) return null;
+    const found = demo?.nodes.find((n) => n.id === selectedId);
+    if (!found) return null;
+    const ov = nodeOverrides[selectedId];
+    if (!ov) return found;
+    const data = ov.data ? { ...found.data, ...ov.data } : found.data;
+    return { ...found, ...ov, data } as DemoNode;
+  }, [demo, selectedId, nodeOverrides]);
+  const selectedConnector = useMemo<Connector | null>(() => {
+    if (!selectedConnectorId) return null;
+    const found = demo?.connectors.find((c) => c.id === selectedConnectorId);
+    if (!found) return null;
+    const ov = connectorOverrides[selectedConnectorId];
+    return ov ? ({ ...found, ...ov } as Connector) : found;
+  }, [demo, selectedConnectorId, connectorOverrides]);
+
   if (!summary) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-background p-6 text-center">
@@ -143,9 +242,6 @@ export function DemoView({
     );
   }
 
-  const demo = detail?.demo;
-  const selectedNode = demo?.nodes.find((n) => n.id === selectedId) ?? null;
-  const selectedConnector = demo?.connectors.find((c) => c.id === selectedConnectorId) ?? null;
   const selectedRun = selectedId ? runs[selectedId] : undefined;
   const selectedEvents = selectedId ? (nodeEvents[selectedId] ?? []) : [];
 
@@ -171,7 +267,8 @@ export function DemoView({
           onSelectConnector={onSelectConnector}
           runs={runs}
           onPlayNode={onPlayNode}
-          nodeOverrides={nodePending.overrides}
+          nodeOverrides={nodeOverrides}
+          connectorOverrides={connectorOverrides}
           onNodePositionChange={onNodePositionChange}
           onNodeResize={onNodeResize}
         />
@@ -205,6 +302,10 @@ export function DemoView({
         filePath={detail?.filePath}
         run={selectedRun}
         recentEvents={selectedEvents}
+        onStyleNode={onStyleNode}
+        onStyleConnector={onStyleConnector}
+        onDeleteNode={onDeleteNode}
+        onDeleteConnector={onDeleteConnector}
         onClose={() => {
           setSelectedId(null);
           setSelectedConnectorId(null);

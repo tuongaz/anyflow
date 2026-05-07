@@ -38,6 +38,12 @@ export interface DemoCanvasProps {
    * parent to keep an edit visually pinned while the PATCH round-trips.
    */
   nodeOverrides?: OverrideMap<DemoNode>;
+  /**
+   * Optimistic per-connector overrides. Shallow-merged over the server
+   * `connectors` so style/color/direction edits are visible immediately
+   * (without waiting for the SSE echo of the file rewrite).
+   */
+  connectorOverrides?: OverrideMap<Connector>;
   /** Fired once per drag-stop with the node's final position. */
   onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
   /**
@@ -56,6 +62,16 @@ const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefin
   return { ...node, ...override, data } as DemoNode;
 };
 
+const mergeConnectorOverride = (
+  conn: Connector,
+  override: Partial<Connector> | undefined,
+): Connector => {
+  if (!override) return conn;
+  // Style-tab edits never change kind, so the discriminator stays intact and
+  // the cast is safe at runtime (TS can't see through the union spread).
+  return { ...conn, ...override } as Connector;
+};
+
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
 
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
@@ -71,6 +87,7 @@ export function DemoCanvas({
   runs,
   onPlayNode,
   nodeOverrides,
+  connectorOverrides,
   onNodePositionChange,
   onNodeResize,
 }: DemoCanvasProps) {
@@ -132,13 +149,15 @@ export function DemoCanvas({
   const rfEdges = useMemo<Edge[]>(
     () =>
       connectors.map((c) => {
+        const merged = mergeConnectorOverride(c, connectorOverrides?.[c.id]);
         const adjacentRunning =
-          statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
-        const edge = connectorToEdge(c, adjacentRunning);
-        if (selectedConnectorId === c.id) edge.selected = true;
+          statusFor(runs, merged.source) === 'running' ||
+          statusFor(runs, merged.target) === 'running';
+        const edge = connectorToEdge(merged, adjacentRunning);
+        if (selectedConnectorId === merged.id) edge.selected = true;
         return edge;
       }),
-    [connectors, runs, selectedConnectorId],
+    [connectors, runs, selectedConnectorId, connectorOverrides],
   );
 
   return (

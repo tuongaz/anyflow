@@ -6,9 +6,41 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNodeDetail } from '@/hooks/use-node-detail';
 import type { NodeEventLogEntry } from '@/hooks/use-node-events';
 import type { NodeRunState } from '@/hooks/use-node-runs';
-import type { Connector, DemoNode } from '@/lib/api';
-import { RefreshCw } from 'lucide-react';
+import type {
+  ColorToken,
+  Connector,
+  ConnectorDirection,
+  ConnectorStyle,
+  DemoNode,
+} from '@/lib/api';
+import { COLOR_TOKENS } from '@/lib/color-tokens';
+import { cn } from '@/lib/utils';
+import { ArrowLeftRight, ArrowRight, MoveLeft, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
+
+// Curated palette order — surfaced once so swatch rows stay visually consistent
+// and per-token data-testids match the PRD ('style-tab-border-color-blue' etc).
+const PALETTE_TOKENS: ColorToken[] = [
+  'default',
+  'slate',
+  'blue',
+  'green',
+  'amber',
+  'red',
+  'purple',
+  'pink',
+];
+
+export interface NodeStylePatch {
+  borderColor?: ColorToken;
+  backgroundColor?: ColorToken;
+}
+
+export interface ConnectorStylePatch {
+  color?: ColorToken;
+  style?: ConnectorStyle;
+  direction?: ConnectorDirection;
+}
 
 export interface DetailPanelProps {
   /** Demo id — required so the dynamic-source proxy can find the node. */
@@ -20,6 +52,14 @@ export interface DetailPanelProps {
   run?: NodeRunState;
   /** Last N node:* events for the selected node (newest first). */
   recentEvents?: NodeEventLogEntry[];
+  /** Apply a Style-tab edit to the selected node (border / background). */
+  onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
+  /** Apply a Style-tab edit to the selected connector (color / style / direction). */
+  onStyleConnector?: (connId: string, patch: ConnectorStylePatch) => void;
+  /** Delete the selected node (cascade-removes adjacent connectors server-side). */
+  onDeleteNode?: (nodeId: string) => void;
+  /** Delete the selected connector. */
+  onDeleteConnector?: (connId: string) => void;
   onClose: () => void;
 }
 
@@ -32,6 +72,10 @@ export function DetailPanel({
   filePath,
   run,
   recentEvents,
+  onStyleNode,
+  onStyleConnector,
+  onDeleteNode,
+  onDeleteConnector,
   onClose,
 }: DetailPanelProps) {
   const open = node !== null || connector !== null;
@@ -130,7 +174,11 @@ export function DetailPanel({
               </TabsContent>
 
               <TabsContent value="style" className="mt-0" data-testid="detail-panel-style-content">
-                <StylePlaceholder kind="node" />
+                <NodeStyleTab
+                  node={node}
+                  onApply={(patch) => onStyleNode?.(node.id, patch)}
+                  onDelete={onDeleteNode ? () => onDeleteNode(node.id) : undefined}
+                />
               </TabsContent>
             </div>
           </Tabs>
@@ -160,7 +208,11 @@ export function DetailPanel({
               </TabsContent>
 
               <TabsContent value="style" className="mt-0" data-testid="detail-panel-style-content">
-                <StylePlaceholder kind="connector" />
+                <ConnectorStyleTab
+                  connector={connector}
+                  onApply={(patch) => onStyleConnector?.(connector.id, patch)}
+                  onDelete={onDeleteConnector ? () => onDeleteConnector(connector.id) : undefined}
+                />
               </TabsContent>
             </div>
           </Tabs>
@@ -170,11 +222,209 @@ export function DetailPanel({
   );
 }
 
-function StylePlaceholder({ kind }: { kind: 'node' | 'connector' }) {
+function NodeStyleTab({
+  node,
+  onApply,
+  onDelete,
+}: {
+  node: DemoNode;
+  onApply: (patch: NodeStylePatch) => void;
+  onDelete?: () => void;
+}) {
+  const borderActive = (node.data.borderColor ?? 'default') as ColorToken;
+  const backgroundActive = (node.data.backgroundColor ?? 'default') as ColorToken;
   return (
-    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
-      Style controls for the selected {kind} will appear here.
+    <div className="flex flex-col gap-4">
+      <SwatchRow
+        label="Border"
+        active={borderActive}
+        onSelect={(token) => onApply({ borderColor: token })}
+        testIdPrefix="style-tab-border-color"
+        previewKind="border"
+      />
+      <SwatchRow
+        label="Background"
+        active={backgroundActive}
+        onSelect={(token) => onApply({ backgroundColor: token })}
+        testIdPrefix="style-tab-background-color"
+        previewKind="background"
+      />
+      <DeleteButton onDelete={onDelete} entity="node" />
     </div>
+  );
+}
+
+function ConnectorStyleTab({
+  connector,
+  onApply,
+  onDelete,
+}: {
+  connector: Connector;
+  onApply: (patch: ConnectorStylePatch) => void;
+  onDelete?: () => void;
+}) {
+  const colorActive = (connector.color ?? 'default') as ColorToken;
+  const styleActive = (connector.style ?? 'auto') as ConnectorStyle | 'auto';
+  const directionActive = (connector.direction ?? 'forward') as ConnectorDirection;
+  return (
+    <div className="flex flex-col gap-4">
+      <SwatchRow
+        label="Color"
+        active={colorActive}
+        onSelect={(token) => onApply({ color: token })}
+        testIdPrefix="style-tab-color"
+        previewKind="edge"
+      />
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          Edge style
+        </span>
+        <select
+          data-testid="style-tab-edge-style"
+          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={styleActive}
+          onChange={(e) => {
+            const v = e.target.value as ConnectorStyle | 'auto';
+            // 'Auto' clears the explicit style override so the edge falls back
+            // to the kind-derived default (per US-017 connectorToEdge logic).
+            onApply({ style: v === 'auto' ? undefined : v });
+          }}
+        >
+          <option value="auto">Auto ({connector.kind})</option>
+          <option value="solid">Solid</option>
+          <option value="dashed">Dashed</option>
+          <option value="dotted">Dotted</option>
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          Direction
+        </span>
+        <DirectionToggle active={directionActive} onSelect={(d) => onApply({ direction: d })} />
+      </div>
+
+      <DeleteButton onDelete={onDelete} entity="connector" />
+    </div>
+  );
+}
+
+function SwatchRow({
+  label,
+  active,
+  onSelect,
+  testIdPrefix,
+  previewKind,
+}: {
+  label: string;
+  active: ColorToken;
+  onSelect: (token: ColorToken) => void;
+  testIdPrefix: string;
+  previewKind: 'border' | 'background' | 'edge';
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {PALETTE_TOKENS.map((token) => {
+          const isActive = active === token;
+          const palette = COLOR_TOKENS[token];
+          // Each preview kind picks the most readable face of the token:
+          //   • border    → ring of the border color over a card-tinted disc
+          //   • background → solid disc of the background color
+          //   • edge      → solid disc of the edge stroke color
+          const previewStyle =
+            previewKind === 'background'
+              ? { backgroundColor: palette.background, borderColor: palette.border }
+              : previewKind === 'edge'
+                ? { backgroundColor: palette.edge, borderColor: palette.edge }
+                : { borderColor: palette.border, backgroundColor: palette.background };
+          return (
+            <button
+              key={token}
+              type="button"
+              onClick={() => onSelect(token)}
+              data-testid={`${testIdPrefix}-${token}`}
+              data-active={isActive}
+              aria-label={`${label} ${token}`}
+              title={token}
+              className={cn(
+                'h-7 w-7 rounded-full border-2 transition-all',
+                isActive
+                  ? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
+                  : 'hover:scale-110',
+              )}
+              style={previewStyle}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DirectionToggle({
+  active,
+  onSelect,
+}: {
+  active: ConnectorDirection;
+  onSelect: (d: ConnectorDirection) => void;
+}) {
+  const options: Array<{ value: ConnectorDirection; icon: typeof ArrowRight; label: string }> = [
+    { value: 'forward', icon: ArrowRight, label: 'Forward' },
+    { value: 'backward', icon: MoveLeft, label: 'Backward' },
+    { value: 'both', icon: ArrowLeftRight, label: 'Both' },
+  ];
+  return (
+    <div className="inline-flex gap-0 rounded-md border border-input bg-background p-0.5">
+      {options.map(({ value, icon: Icon, label }) => {
+        const isActive = active === value;
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onSelect(value)}
+            data-testid={`style-tab-direction-${value}`}
+            data-active={isActive}
+            aria-label={`Direction: ${label}`}
+            title={label}
+            className={cn(
+              'flex h-7 w-9 items-center justify-center rounded transition-colors',
+              isActive
+                ? 'bg-secondary text-secondary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DeleteButton({
+  onDelete,
+  entity,
+}: {
+  onDelete?: () => void;
+  entity: 'node' | 'connector';
+}) {
+  if (!onDelete) return null;
+  return (
+    <Button
+      type="button"
+      variant="destructive"
+      size="sm"
+      onClick={onDelete}
+      data-testid="style-tab-delete"
+      className="mt-2 self-start"
+    >
+      Delete {entity}
+    </Button>
   );
 }
 

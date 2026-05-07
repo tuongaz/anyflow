@@ -173,7 +173,8 @@
         "Style tab respects pending overrides — selecting a color shows the chosen swatch as 'active' immediately.",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-026",

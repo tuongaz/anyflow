@@ -236,6 +236,74 @@ export const updateNode = async (
   return (await res.json()) as { ok: true };
 };
 
+export interface UpdateConnectorBody {
+  label?: string;
+  style?: ConnectorStyle;
+  color?: ColorToken;
+  direction?: ConnectorDirection;
+  kind?: Connector['kind'];
+  eventName?: string;
+  queueName?: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  url?: string;
+}
+
+export const updateConnector = async (
+  demoId: string,
+  connId: string,
+  patch: UpdateConnectorBody,
+): Promise<{ ok: true }> => {
+  const res = await fetch(`/api/demos/${demoId}/connectors/${connId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `PATCH /api/demos/${demoId}/connectors/${connId} → ${res.status}`,
+    );
+  }
+  return (await res.json()) as { ok: true };
+};
+
+export const deleteNode = async (demoId: string, nodeId: string): Promise<{ ok: true }> => {
+  const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `DELETE /api/demos/${demoId}/nodes/${nodeId} → ${res.status}`,
+    );
+  }
+  return (await res.json()) as { ok: true };
+};
+
+export const deleteConnector = async (demoId: string, connId: string): Promise<{ ok: true }> => {
+  const res = await fetch(`/api/demos/${demoId}/connectors/${connId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `DELETE /api/demos/${demoId}/connectors/${connId} → ${res.status}`,
+    );
+  }
+  return (await res.json()) as { ok: true };
+};
+
 export const playNode = async (demoId: string, nodeId: string): Promise<PlayResult> => {
   const res = await fetch(`/api/demos/${demoId}/play/${nodeId}`, {
     method: 'POST',

@@ -1,4 +1,5 @@
 import type { Connector, ConnectorStyle } from '@/lib/api';
+import { colorTokenStyle } from '@/lib/color-tokens';
 import { type EdgeMarker, MarkerType } from '@xyflow/react';
 
 export interface DerivedEdge {
@@ -9,7 +10,7 @@ export interface DerivedEdge {
   label?: string;
   animated: boolean;
   data: { kind: Connector['kind'] };
-  style: { strokeDasharray?: string };
+  style: { strokeDasharray?: string; stroke?: string };
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
   selected?: boolean;
@@ -50,7 +51,15 @@ export const connectorToEdge = (
   // Per-connector `style` overrides the kind-derived default. This lets a
   // user-drawn 'default' connector pick up any visual style without changing
   // its (semantically empty) kind.
-  const style = connector.style ? STYLE_BY_NAME[connector.style] : STYLE_BY_KIND[connector.kind];
+  const dashStyle = connector.style
+    ? STYLE_BY_NAME[connector.style]
+    : STYLE_BY_KIND[connector.kind];
+  // Color token (defaults to 'default') drives the stroke. Letting an
+  // unset color fall through to undefined would let React Flow's built-in
+  // selection styling override it; setting an explicit stroke even for the
+  // default token keeps the visual deterministic.
+  const colorStyle = connector.color ? colorTokenStyle(connector.color, 'edge') : {};
+  const style = { ...dashStyle, ...colorStyle };
   // 'forward' (or absent) → arrow at target only (historical behavior).
   // 'backward' → arrow at source only.
   // 'both'     → arrows at both ends.
