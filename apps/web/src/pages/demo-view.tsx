@@ -65,6 +65,9 @@ export function DemoView({
   const connectorPending = usePendingOverrides<Connector>();
   const [editError, setEditError] = useState<string | null>(null);
   const undoStack = useUndoStack();
+  // Stable handles for the mutation handlers below. push/dropTop/markMutation
+  // are useCallback-stable so their identity doesn't churn dep arrays.
+  const { push: pushUndo, dropTop: dropUndoTop, markMutation } = undoStack;
 
   const { reset: resetNodeOverrides } = nodePending;
   const { reset: resetConnectorOverrides } = connectorPending;
@@ -116,23 +119,43 @@ export function DemoView({
   const onNodePositionChange = useCallback(
     (nodeId: string, position: Position) => {
       if (!demoId) return;
+      // Snapshot the on-disk pre-state BEFORE the optimistic override so the
+      // undo entry can revert to where the node was before the drag started.
+      const prev = demoNodes?.find((n) => n.id === nodeId)?.position;
       // Optimistic — the visual stays where the user dropped it without
       // waiting for the PATCH response.
       setNodeOverride(nodeId, { position });
       setEditError(null);
+      markMutation();
+      if (prev) {
+        pushUndo({
+          do: async () => {
+            await updateNodePosition(demoId, nodeId, position);
+          },
+          undo: async () => {
+            await updateNodePosition(demoId, nodeId, prev);
+          },
+          coalesceKey: `node:${nodeId}:position`,
+        });
+      }
       updateNodePosition(demoId, nodeId, position).catch((err) => {
-        // Revert: drop the override so the canvas falls back to server data.
+        // Revert: drop the override so the canvas falls back to server data,
+        // and drop the optimistic stack entry so the user isn't holding a
+        // phantom undo step pointing at a state we never persisted.
         dropNodeOverride(nodeId);
+        if (prev) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNodePosition failed', err);
       });
     },
-    [demoId, setNodeOverride, dropNodeOverride],
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   const onNodeResize = useCallback(
     (nodeId: string, dims: { width: number; height: number }) => {
       if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      const prev = node ? { width: node.data.width, height: node.data.height } : undefined;
       // Optimistic: keep the resized footprint pinned through the PATCH
       // round-trip + SSE echo. Cast the data partial because TS can't see
       // through the discriminated union; the override is keyed by the same
@@ -141,13 +164,26 @@ export function DemoView({
         data: { width: dims.width, height: dims.height },
       } as Partial<DemoNode>);
       setEditError(null);
+      markMutation();
+      if (prev) {
+        pushUndo({
+          do: async () => {
+            await updateNode(demoId, nodeId, dims);
+          },
+          undo: async () => {
+            await updateNode(demoId, nodeId, prev);
+          },
+          coalesceKey: `node:${nodeId}:resize`,
+        });
+      }
       updateNode(demoId, nodeId, dims).catch((err) => {
         dropNodeOverride(nodeId);
+        if (prev) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode resize failed', err);
       });
     },
-    [demoId, setNodeOverride, dropNodeOverride],
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   const { setOverride: setConnectorOverride, dropOverride: dropConnectorOverride } =
@@ -159,15 +195,40 @@ export function DemoView({
   const onStyleNode = useCallback(
     (nodeId: string, patch: NodeStylePatch) => {
       if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      // Snapshot only the keys the caller is touching — we want undo to
+      // restore those exact fields and leave anything else alone.
+      let prev: NodeStylePatch | null = null;
+      if (node) {
+        prev = {};
+        const data = node.data as unknown as Record<string, unknown>;
+        for (const k of Object.keys(patch)) {
+          (prev as Record<string, unknown>)[k] = data[k];
+        }
+      }
       setNodeOverride(nodeId, { data: patch } as Partial<DemoNode>);
       setEditError(null);
+      markMutation();
+      if (prev) {
+        const prevPatch = prev;
+        pushUndo({
+          do: async () => {
+            await updateNode(demoId, nodeId, patch);
+          },
+          undo: async () => {
+            await updateNode(demoId, nodeId, prevPatch);
+          },
+          coalesceKey: `node:${nodeId}:style`,
+        });
+      }
       updateNode(demoId, nodeId, patch).catch((err) => {
         dropNodeOverride(nodeId);
+        if (prev) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode style failed', err);
       });
     },
-    [demoId, setNodeOverride, dropNodeOverride],
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   // Style-tab edit on a connector: color, edge style, direction. Cast through
@@ -191,18 +252,48 @@ export function DemoView({
   const onDeleteNode = useCallback(
     (nodeId: string) => {
       if (!demoId) return;
+      // Snapshot the node + every cascaded connector BEFORE the delete API
+      // call, so undo can recreate them all (preserving original ids and
+      // adjacency order). The server cascades via the same source/target
+      // filter; mirroring it here keeps the undo round-trip faithful.
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      const cascaded = (demoConnectors ?? []).filter(
+        (c) => c.source === nodeId || c.target === nodeId,
+      );
       setEditError(null);
       // Don't optimistically remove from the canvas — the SSE echo of the
       // demo file rewrite will drop the node naturally, and a failure path
       // would need to put it back. Just clear the selection so the panel
       // closes immediately.
       setSelectedId((prev) => (prev === nodeId ? null : prev));
+      markMutation();
+      if (node) {
+        const nodeSnapshot = node;
+        const connectorSnapshots = cascaded;
+        pushUndo({
+          do: async () => {
+            await deleteNode(demoId, nodeId);
+          },
+          undo: async () => {
+            await createNode(demoId, {
+              id: nodeSnapshot.id,
+              type: nodeSnapshot.type,
+              position: nodeSnapshot.position,
+              data: nodeSnapshot.data as unknown as Record<string, unknown>,
+            });
+            for (const c of connectorSnapshots) {
+              await createConnector(demoId, { ...c, id: c.id });
+            }
+          },
+        });
+      }
       deleteNode(demoId, nodeId).catch((err) => {
+        if (node) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('deleteNode failed', err);
       });
     },
-    [demoId],
+    [demoId, demoNodes, demoConnectors, pushUndo, dropUndoTop, markMutation],
   );
 
   const onDeleteConnector = useCallback(
@@ -283,52 +374,94 @@ export function DemoView({
   const onNodeLabelChange = useCallback(
     (nodeId: string, label: string) => {
       if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      const prevLabel = node?.data.label;
       setNodeOverride(nodeId, { data: { label } } as Partial<DemoNode>);
       setEditError(null);
+      markMutation();
+      if (node) {
+        pushUndo({
+          do: async () => {
+            await updateNode(demoId, nodeId, { label });
+          },
+          undo: async () => {
+            await updateNode(demoId, nodeId, { label: prevLabel });
+          },
+          coalesceKey: `node:${nodeId}:label`,
+        });
+      }
       updateNode(demoId, nodeId, { label }).catch((err) => {
         dropNodeOverride(nodeId);
+        if (node) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode label failed', err);
       });
     },
-    [demoId, setNodeOverride, dropNodeOverride],
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   // Inline description edit reuses detail.summary; we splice the new summary
   // into the existing detail object so unrelated fields (fields[],
   // dynamicSource, filePath) survive the round-trip.
-  const demoNodesForDesc = detail?.demo?.nodes;
   const onNodeDescriptionChange = useCallback(
     (nodeId: string, summary: string) => {
       if (!demoId) return;
-      const node = demoNodesForDesc?.find((n) => n.id === nodeId);
+      const node = demoNodes?.find((n) => n.id === nodeId);
       if (!node || node.type === 'shapeNode') return;
-      const nextDetail = { ...(node.data.detail ?? {}), summary };
+      const prevDetail = node.data.detail;
+      const nextDetail = { ...(prevDetail ?? {}), summary };
       setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);
       setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await updateNode(demoId, nodeId, { detail: nextDetail });
+        },
+        undo: async () => {
+          await updateNode(demoId, nodeId, { detail: prevDetail });
+        },
+        coalesceKey: `node:${nodeId}:description`,
+      });
       updateNode(demoId, nodeId, { detail: nextDetail }).catch((err) => {
         dropNodeOverride(nodeId);
+        dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode description failed', err);
       });
     },
-    [demoId, demoNodesForDesc, setNodeOverride, dropNodeOverride],
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   const onCreateShapeNode = useCallback(
     (shape: ShapeKind, position: Position, dims: { width: number; height: number }) => {
       if (!demoId) return;
       setEditError(null);
-      createNode(demoId, {
-        type: 'shapeNode',
+      // We can't pre-push the undo entry — we don't yet know the server-issued
+      // id needed for `do` (re-create with same id) and `undo` (delete by id).
+      // Push only after createNode resolves.
+      const payload = {
+        type: 'shapeNode' as const,
         position,
         data: { shape, width: dims.width, height: dims.height },
-      }).catch((err) => {
-        setEditError(err instanceof Error ? err.message : String(err));
-        console.error('createNode failed', err);
-      });
+      };
+      markMutation();
+      createNode(demoId, payload)
+        .then(({ id }) => {
+          pushUndo({
+            do: async () => {
+              await createNode(demoId, { ...payload, id });
+            },
+            undo: async () => {
+              await deleteNode(demoId, id);
+            },
+          });
+        })
+        .catch((err) => {
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createNode failed', err);
+        });
     },
-    [demoId],
+    [demoId, pushUndo, markMutation],
   );
 
   const onConnectorLabelChange = useCallback(
