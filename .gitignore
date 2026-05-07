@@ -1,6 +1,7 @@
 node_modules/
 dist/
-.anydemo/
+/.anydemo/
+**/.anydemo/sdk/
 ~/.anydemo
 *.log
 .DS_Store

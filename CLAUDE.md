@@ -31,7 +31,7 @@ bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 ## Dev / prod split
 
 - Dev: `bun run dev` runs Vite on `5173` and Hono on `4321` in parallel via `bun run --filter '*' dev`. Hono catch-all proxies non-`/api/*` requests to Vite. Vite HMR pins host/port to `5173` so the HMR WebSocket bypasses Hono — do NOT try to proxy the WebSocket through Hono.
-- Prod: `cd apps/web && bun run build` emits to `apps/studio/dist/web/`. `NODE_ENV=production` makes `apps/studio/src/server.ts` serve that bundle via `serveStatic`; end users never run Vite.
+- Prod: `cd apps/web && bun run build` emits to `apps/studio/dist/web/`. `NODE_ENV=production` makes `apps/studio/src/server.ts` serve that bundle via `serveStatic`; end users never run Vite. The bundle is gitignored, so any frontend change made between commits requires a rebuild before browser-verifying against a prod-mode studio (otherwise you'll be testing stale JS — symptom: a feature you know is in the source doesn't appear in the served HTML).
 - Web app uses `@/*` alias for `apps/web/src/*` — declared in both `apps/web/tsconfig.json` and `apps/web/vite.config.ts`. Update both when changing it.
 - shadcn/ui primitives live at `apps/web/src/components/ui/`; `cn(...)` helper at `apps/web/src/lib/utils.ts`.
 - Frontend routing is hand-rolled at `apps/web/src/lib/router.ts` (`usePathname()` + `navigate(to)`); a custom `anydemo:navigate` event re-renders all `usePathname()` consumers when `pushState` happens. Do not pull in `react-router-dom`.
@@ -39,6 +39,8 @@ bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 
 ## Conventions
 
+- Workspaces are `apps/*`, `packages/*`, AND `examples/*` (any examples that ship a `package.json`). The `examples/*` glob lets `bun install` hoist deps for verification targets like `examples/todo-demo-target/` without a separate install step. Don't add `dev` scripts to example workspaces — root `bun run dev` would otherwise spawn them alongside studio + web.
+- `.gitignore` uses `/.anydemo/` (anchored) for the root-only ignore plus `**/.anydemo/sdk/` to drop the auto-generated SDK directory wherever it appears. This keeps `examples/*/.anydemo/demo.json` tracked while still ignoring the per-repo SDK that `register` writes. Don't restore the broad `.anydemo/` rule — it would un-track every example's demo file.
 - Workspace package names are scoped `@anydemo/*`.
 - The CLI (`apps/studio/src/cli.ts`) is a hand-rolled arg parser — do not pull in commander/yargs.
 - Studio listens on `localhost:4321` by default. Registry persists at `~/.anydemo/registry.json`. PID at `~/.anydemo/anydemo.pid`. Studio address persists at `~/.anydemo/config.json` (`{ port, host }`) — `start` writes it; non-`start` subcommands read it.

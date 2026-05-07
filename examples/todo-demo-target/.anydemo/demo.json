@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "name": "Todo Demo",
+  "nodes": [
+    {
+      "id": "api-create-todo",
+      "type": "playNode",
+      "position": { "x": 80, "y": 80 },
+      "data": {
+        "label": "POST /todos",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "playAction": {
+          "kind": "http",
+          "method": "POST",
+          "url": "http://localhost:3030/todos",
+          "body": { "title": "Buy milk" }
+        },
+        "detail": {
+          "summary": "Creates a todo on the in-memory store and returns it.",
+          "fields": [
+            { "label": "Service", "value": "todo-demo-target" },
+            { "label": "Port", "value": "3030" }
+          ],
+          "dynamicSource": {
+            "kind": "http",
+            "method": "GET",
+            "url": "http://localhost:3030/admin/stats"
+          }
+        }
+      }
+    },
+    {
+      "id": "api-complete-todo",
+      "type": "playNode",
+      "position": { "x": 80, "y": 280 },
+      "data": {
+        "label": "POST /todos/:id/complete",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "playAction": {
+          "kind": "http",
+          "method": "POST",
+          "url": "http://localhost:3030/todos/seed-1/complete",
+          "body": {}
+        },
+        "detail": {
+          "summary": "Marks the seed todo (id: seed-1) complete and publishes a todo.completed event onto the in-memory bus, which the worker picks up.",
+          "fields": [
+            { "label": "Target id", "value": "seed-1" },
+            { "label": "Triggers", "value": "todo.completed event" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "todo-worker",
+      "type": "stateNode",
+      "position": { "x": 460, "y": 280 },
+      "data": {
+        "label": "todo-worker",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "detail": {
+          "summary": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
+          "fields": [
+            { "label": "Subscribes", "value": "todo.completed" },
+            { "label": "Emits", "value": "running → done" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-complete-worker", "source": "api-complete-todo", "target": "todo-worker", "type": "smoothstep" }
+  ]
+}

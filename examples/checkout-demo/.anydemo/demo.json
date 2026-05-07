@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "name": "Checkout Flow",
+  "nodes": [
+    {
+      "id": "api-checkout",
+      "type": "playNode",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "POST /checkout",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "playAction": {
+          "kind": "http",
+          "method": "POST",
+          "url": "http://localhost:3019/checkout",
+          "body": { "items": [], "customerId": "cust_1" }
+        },
+        "detail": {
+          "summary": "Creates a checkout session and emits a fulfillment event.",
+          "fields": [
+            { "label": "Service", "value": "checkout-api" },
+            { "label": "Auth", "value": "Bearer token" }
+          ],
+          "dynamicSource": {
+            "kind": "http",
+            "method": "GET",
+            "url": "http://localhost:3019/admin/checkout-stats"
+          }
+        }
+      }
+    },
+    {
+      "id": "worker-fulfillment",
+      "type": "stateNode",
+      "position": { "x": 400, "y": 100 },
+      "data": {
+        "label": "Fulfillment worker",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "detail": {
+          "summary": "Background worker that processes checkout events.",
+          "fields": [
+            { "label": "Queue", "value": "checkout.fulfillment" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "api-checkout", "target": "worker-fulfillment", "type": "smoothstep" }
+  ]
+}
