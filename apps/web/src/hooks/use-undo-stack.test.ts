@@ -2,12 +2,14 @@ import { describe, expect, it } from 'bun:test';
 import {
   COALESCE_WINDOW_MS,
   MAX_HISTORY,
+  STALE_MUTATION_WINDOW_MS,
   type UndoEntry,
   type UndoStackState,
   applyClear,
   applyDropTop,
   applyPush,
   applyRedo,
+  applyStaleClear,
   applyUndo,
 } from '@/hooks/use-undo-stack';
 
@@ -195,5 +197,58 @@ describe('applyDropTop', () => {
   it('returns the same reference when cursor is 0', () => {
     const next = applyDropTop(initial);
     expect(next).toBe(initial);
+  });
+});
+
+describe('applyStaleClear', () => {
+  it('STALE_MUTATION_WINDOW_MS = 2000', () => {
+    expect(STALE_MUTATION_WINDOW_MS).toBe(2000);
+  });
+
+  it('clears the stack when the gap exceeds the window (push then >2000ms later → cleared)', () => {
+    // Simulate a UI mutation at t=1000 that pushed an entry, followed by an
+    // external file change observed at t=4000 (gap = 3000ms > window).
+    const pushed = applyPush(initial, entry({ capturedAt: 1000 }), { now: 1000 });
+    expect(pushed.stack.length).toBe(1);
+    const next = applyStaleClear(pushed, /* lastMutationAt */ 1000, /* now */ 4000);
+    expect(next.stack).toEqual([]);
+    expect(next.cursor).toBe(0);
+  });
+
+  it('survives when checked immediately (push then check at same instant → unchanged)', () => {
+    const pushed = applyPush(initial, entry({ capturedAt: 1000 }), { now: 1000 });
+    const next = applyStaleClear(pushed, /* lastMutationAt */ 1000, /* now */ 1000);
+    expect(next).toBe(pushed);
+  });
+
+  it('survives at the exact boundary (gap === window → not stale)', () => {
+    const pushed = applyPush(initial, entry({ capturedAt: 1000 }), { now: 1000 });
+    const next = applyStaleClear(
+      pushed,
+      /* lastMutationAt */ 1000,
+      /* now */ 1000 + STALE_MUTATION_WINDOW_MS,
+    );
+    expect(next).toBe(pushed);
+  });
+
+  it('clears one millisecond past the boundary', () => {
+    const pushed = applyPush(initial, entry({ capturedAt: 1000 }), { now: 1000 });
+    const next = applyStaleClear(
+      pushed,
+      /* lastMutationAt */ 1000,
+      /* now */ 1000 + STALE_MUTATION_WINDOW_MS + 1,
+    );
+    expect(next.stack).toEqual([]);
+    expect(next.cursor).toBe(0);
+  });
+
+  it('respects a custom windowMs override', () => {
+    const pushed = applyPush(initial, entry({ capturedAt: 0 }), { now: 0 });
+    // 100ms gap with a 50ms window → stale.
+    const stale = applyStaleClear(pushed, 0, 100, 50);
+    expect(stale.stack).toEqual([]);
+    // 100ms gap with a 200ms window → fresh.
+    const fresh = applyStaleClear(pushed, 0, 100, 200);
+    expect(fresh).toBe(pushed);
   });
 });

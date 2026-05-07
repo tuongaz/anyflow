@@ -14,6 +14,14 @@ export interface UndoStackState {
 
 export const MAX_HISTORY = 100;
 export const COALESCE_WINDOW_MS = 500;
+/**
+ * Idle window after the most recent UI mutation. If a demo:reload echo arrives
+ * AFTER this window, the change is treated as external (text editor, git
+ * checkout) and the stack is cleared so undo never replays against stale state.
+ * Sized comfortably above the watcher's ~150-500ms post-mutation echo so normal
+ * UI activity never triggers a false clear.
+ */
+export const STALE_MUTATION_WINDOW_MS = 2000;
 
 const INITIAL_STATE: UndoStackState = { stack: [], cursor: 0 };
 
@@ -85,6 +93,21 @@ export const applyDropTop = (state: UndoStackState): UndoStackState => {
   const nextStack = state.stack.slice();
   nextStack.splice(state.cursor - 1, 1);
   return { stack: nextStack, cursor: state.cursor - 1 };
+};
+
+/**
+ * If `now - lastMutationAt > STALE_MUTATION_WINDOW_MS`, return a fresh empty
+ * state (caller should treat the next demo reload as external). Otherwise
+ * return the same reference so callers can compare cheaply.
+ */
+export const applyStaleClear = (
+  state: UndoStackState,
+  lastMutationAt: number,
+  now: number = Date.now(),
+  windowMs: number = STALE_MUTATION_WINDOW_MS,
+): UndoStackState => {
+  if (now - lastMutationAt > windowMs) return applyClear();
+  return state;
 };
 
 // ---- Hook ----

@@ -67,7 +67,13 @@ export function DemoView({
   const undoStack = useUndoStack();
   // Stable handles for the mutation handlers below. push/dropTop/markMutation
   // are useCallback-stable so their identity doesn't churn dep arrays.
-  const { push: pushUndo, dropTop: dropUndoTop, markMutation } = undoStack;
+  const {
+    push: pushUndo,
+    dropTop: dropUndoTop,
+    markMutation,
+    clear: clearUndo,
+    lastMutationAt: undoLastMutationAt,
+  } = undoStack;
 
   const { reset: resetNodeOverrides } = nodePending;
   const { reset: resetConnectorOverrides } = connectorPending;
@@ -106,13 +112,22 @@ export function DemoView({
   // the on-disk demo. Reconciling here (not skipping the broadcast on the
   // server) means an editor-driven change still lands cleanly: the matching
   // overrides clear, and the next render uses the server value.
+  //
+  // The stale-mutation check piggy-backs on the same effect: if the reload
+  // arrives more than STALE_MUTATION_WINDOW_MS after the most recent UI
+  // mutation, it's almost certainly external (text editor / git checkout) and
+  // any queued undo entries point at a state the file no longer has — clear
+  // them so undo never replays against stale state. `undoLastMutationAt` is a
+  // ref-getter (not a value) so it doesn't churn this effect's deps.
   useEffect(() => {
     if (demoNodes) pruneNodeOverrides(demoNodes);
-  }, [demoNodes, pruneNodeOverrides]);
+    if (Date.now() - undoLastMutationAt() > 2000) clearUndo();
+  }, [demoNodes, pruneNodeOverrides, undoLastMutationAt, clearUndo]);
 
   useEffect(() => {
     if (demoConnectors) pruneConnectorOverrides(demoConnectors);
-  }, [demoConnectors, pruneConnectorOverrides]);
+    if (Date.now() - undoLastMutationAt() > 2000) clearUndo();
+  }, [demoConnectors, pruneConnectorOverrides, undoLastMutationAt, clearUndo]);
 
   const demoId = detail?.id ?? null;
   const { setOverride: setNodeOverride, dropOverride: dropNodeOverride } = nodePending;
