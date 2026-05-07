@@ -36,6 +36,7 @@ export interface NodeStylePatch {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
 }
 
@@ -190,9 +191,7 @@ export function DetailPanel({
 
                 {filePath ? (
                   <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
-                    <div className="font-medium uppercase tracking-wide text-[10px] mb-1">
-                      Demo file
-                    </div>
+                    <div className="font-medium tracking-wide text-[10px] mb-1">Demo file</div>
                     <div className="font-mono break-all">{filePath}</div>
                   </div>
                 ) : null}
@@ -252,6 +251,7 @@ function NodeStyleTab({
 }) {
   const borderActive = (node.data.borderColor ?? 'default') as ColorToken;
   const backgroundActive = (node.data.backgroundColor ?? 'default') as ColorToken;
+  const borderStyleActive = (node.data.borderStyle ?? 'solid') as 'solid' | 'dashed' | 'dotted';
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-row gap-6">
@@ -278,6 +278,7 @@ function NodeStyleTab({
         value={node.data.borderSize}
         onChange={(n) => onApply({ borderSize: n })}
       />
+      <BorderStyleSelect active={borderStyleActive} onSelect={(s) => onApply({ borderStyle: s })} />
       <SizeInput
         label="Font size"
         testId="style-tab-font-size"
@@ -286,6 +287,35 @@ function NodeStyleTab({
         value={node.data.fontSize}
         onChange={(n) => onApply({ fontSize: n })}
       />
+    </div>
+  );
+}
+
+// Three-option select used by both NodeStyleTab and ConnectorStyleTab. The
+// connector variant has an extra 'auto' option (clears the override) so it
+// stays a separate inline select; this control is node-only.
+function BorderStyleSelect({
+  active,
+  onSelect,
+}: {
+  active: 'solid' | 'dashed' | 'dotted';
+  onSelect: (s: 'solid' | 'dashed' | 'dotted') => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
+        Border style
+      </span>
+      <select
+        data-testid="style-tab-border-style"
+        className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        value={active}
+        onChange={(e) => onSelect(e.target.value as 'solid' | 'dashed' | 'dotted')}
+      >
+        <option value="solid">Solid</option>
+        <option value="dashed">Dashed</option>
+        <option value="dotted">Dotted</option>
+      </select>
     </div>
   );
 }
@@ -318,9 +348,7 @@ function SizeInput({
   }, [value]);
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">{label}</span>
       <input
         type="number"
         min={min}
@@ -379,8 +407,8 @@ function ConnectorStyleTab({
       />
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Edge style
+        <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
+          Border style
         </span>
         <select
           data-testid="style-tab-edge-style"
@@ -401,7 +429,7 @@ function ConnectorStyleTab({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
           Direction
         </span>
         <DirectionToggle active={directionActive} onSelect={(d) => onApply({ direction: d })} />
@@ -457,9 +485,7 @@ function SwatchPicker({
   const isUnset = active === 'default';
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">{label}</span>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
@@ -643,7 +669,7 @@ function DynamicSection({
       data-status={state.status}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
           Live detail
         </span>
         <div className="flex items-center gap-2">
@@ -702,7 +728,7 @@ function RecentEventsSection({ events }: { events: NodeEventLogEntry[] }) {
       className="rounded-md border bg-card px-3 py-2 text-xs"
       data-testid="detail-panel-recent-events"
     >
-      <div className="mb-2 font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+      <div className="mb-2 font-medium tracking-wide text-[10px] text-muted-foreground">
         Recent events
       </div>
       <ul className="flex flex-col gap-1">
@@ -740,7 +766,7 @@ function RunSection({ run }: { run: NodeRunState }) {
       data-status={run.status}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
           Last run
         </span>
         <div className="flex items-center gap-2">

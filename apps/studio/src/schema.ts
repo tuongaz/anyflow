@@ -28,6 +28,7 @@ const NodeVisualBaseShape = {
   borderColor: ColorTokenSchema.optional(),
   backgroundColor: ColorTokenSchema.optional(),
   borderSize: z.number().positive().optional(),
+  borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
   fontSize: z.number().positive().optional(),
 };
 

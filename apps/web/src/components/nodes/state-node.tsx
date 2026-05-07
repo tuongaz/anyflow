@@ -54,6 +54,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
+    borderStyle: data.borderStyle,
     ...(sized ? {} : { width: DEFAULT_W }),
   };
 

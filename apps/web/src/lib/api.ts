@@ -45,6 +45,7 @@ export interface NodeVisual {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
 }
 
@@ -211,6 +212,7 @@ export interface UpdateNodeBody {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
   width?: number;
   height?: number;

@@ -47,6 +47,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
+    borderStyle: data.borderStyle,
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
   };
   const labelFontStyle: CSSProperties =
