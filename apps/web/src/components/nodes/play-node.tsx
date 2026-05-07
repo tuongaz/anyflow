@@ -6,7 +6,7 @@ import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { Loader2, Play } from 'lucide-react';
+import { Info, Loader2, Play } from 'lucide-react';
 import { type CSSProperties, useState } from 'react';
 
 export type PlayNodeData = NodeData & {
@@ -21,6 +21,13 @@ export type PlayNodeData = NodeData & {
   setResizing?: (on: boolean) => void;
   onLabelChange?: (nodeId: string, label: string) => void;
   onDescriptionChange?: (nodeId: string, summary: string) => void;
+  /**
+   * Open the inspector sidebar for this node. Wired to the Info icon in the
+   * header — clicking the node body itself no longer opens the panel; the
+   * inspect affordance is a dedicated control so selection (ring / resize /
+   * keyboard delete) and inspection are independent concerns.
+   */
+  onInspect?: (nodeId: string) => void;
 } & Record<string, unknown>;
 export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
 
@@ -28,6 +35,7 @@ type EditField = 'label' | 'description' | null;
 
 const MIN_W = 100;
 const MIN_H = 44;
+const DEFAULT_W = 200;
 
 export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const status = data.status;
@@ -40,6 +48,10 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const [editing, setEditing] = useState<EditField>(null);
   const labelEditable = !!data.onLabelChange;
   const descEditable = !!data.onDescriptionChange;
+  // When data.width/height are unset and we're not mid-resize, the React Flow
+  // wrapper has no explicit dims and we own sizing — pin a default width so a
+  // long label/description wraps inside the node instead of stretching it.
+  const sized = isResizing || data.width !== undefined || data.height !== undefined;
 
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
@@ -47,12 +59,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const containerStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
+    ...(sized ? {} : { width: DEFAULT_W }),
   };
 
   return (
     <div
       className={cn(
-        'group flex h-full w-full flex-col justify-center overflow-hidden rounded-lg border shadow-sm transition-shadow',
+        'group flex flex-col justify-center overflow-hidden rounded-lg border shadow-sm transition-shadow',
+        sized ? 'h-full w-full' : '',
         selected ? 'ring-2 ring-ring ring-offset-2' : '',
         isRunning ? 'anydemo-node-pulse' : '',
       )}
@@ -93,7 +107,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             <button
               type="button"
               className={cn(
-                'block w-full cursor-text truncate bg-transparent p-0 text-left text-[10px] font-normal leading-tight',
+                'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[10px] font-normal leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               onDoubleClick={
@@ -131,6 +145,23 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               <Play className="h-3 w-3" aria-hidden />
             )}
           </Button>
+          {data.onInspect ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-5 w-5 p-0"
+              data-testid="inspect-button"
+              aria-label="View detail"
+              title="View detail"
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onInspect?.(id);
+              }}
+            >
+              <Info className="h-3 w-3" aria-hidden />
+            </Button>
+          ) : null}
         </div>
       </div>
       <div
@@ -152,7 +183,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
           <button
             type="button"
             className={cn(
-              'block w-full cursor-text truncate bg-transparent p-0 text-left text-[9px] text-muted-foreground',
+              'block w-full cursor-text whitespace-normal break-words bg-transparent p-0 text-left text-[9px] text-muted-foreground',
               descEditable ? 'hover:opacity-80' : '',
             )}
             onDoubleClick={

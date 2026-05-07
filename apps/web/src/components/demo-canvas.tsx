@@ -39,6 +39,12 @@ export interface DemoCanvasProps {
   /** Click handler for a PlayNode's Play button. */
   onPlayNode?: (nodeId: string) => void;
   /**
+   * Click handler for a node's Info icon (top-right). Opens the inspector
+   * sidebar for the node. Decoupled from `onSelectNode` so clicking the node
+   * body selects without opening the panel.
+   */
+  onInspectNode?: (nodeId: string) => void;
+  /**
    * Optimistic per-node overrides. When present, they shallow-merge over the
    * server `nodes` (with `data` shallow-merged one level deeper). Used by the
    * parent to keep an edit visually pinned while the PATCH round-trips.
@@ -135,6 +141,7 @@ export function DemoCanvas({
   onSelectConnector,
   runs,
   onPlayNode,
+  onInspectNode,
   nodeOverrides,
   connectorOverrides,
   onNodePositionChange,
@@ -287,6 +294,7 @@ export function DemoCanvas({
             ...merged.data,
             status: dataStatusFor(runs, n.id),
             onPlay: onPlayNode,
+            onInspect: onInspectNode,
             onResize: onNodeResize,
             setResizing,
             onLabelChange: onNodeLabelChange,
@@ -307,6 +315,7 @@ export function DemoCanvas({
       selectedNodeId,
       runs,
       onPlayNode,
+      onInspectNode,
       onNodeResize,
       setResizing,
       nodeOverrides,

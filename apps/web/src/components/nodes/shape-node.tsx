@@ -1,9 +1,11 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { Button } from '@/components/ui/button';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
+import { Info } from 'lucide-react';
 import { type CSSProperties, useState } from 'react';
 
 export type ShapeNodeRuntimeData = ShapeNodeData & {
@@ -11,6 +13,8 @@ export type ShapeNodeRuntimeData = ShapeNodeData & {
   setResizing?: (on: boolean) => void;
   /** Persist a new label (PATCH /nodes/:id { label }). Optional for shape nodes. */
   onLabelChange?: (nodeId: string, label: string) => void;
+  /** Open the inspector sidebar for this node — see PlayNodeData.onInspect. */
+  onInspect?: (nodeId: string) => void;
 } & Record<string, unknown>;
 export type ShapeNodeType = Node<ShapeNodeRuntimeData, 'shapeNode'>;
 
@@ -79,6 +83,27 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
       />
       <Handle type="target" position={Position.Top} id="t" className={HANDLE_CLASS} />
       <Handle type="target" position={Position.Left} id="l" className={HANDLE_CLASS} />
+      {data.onInspect ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            'absolute top-1 right-1 z-10 h-5 w-5 p-0 opacity-0 transition-opacity',
+            'group-hover:opacity-100',
+            selected ? 'opacity-100' : '',
+          )}
+          data-testid="inspect-button"
+          aria-label="View detail"
+          title="View detail"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onInspect?.(id);
+          }}
+        >
+          <Info className="h-3 w-3" aria-hidden />
+        </Button>
+      ) : null}
       {isEditing && labelEditable ? (
         <InlineEdit
           initialValue={data.label ?? ''}
