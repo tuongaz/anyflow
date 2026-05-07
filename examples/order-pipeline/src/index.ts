@@ -19,7 +19,9 @@ const server = Bun.serve({ port: PORT, hostname: 'localhost', fetch: app.fetch }
 
 console.log(`order-pipeline listening on http://${server.hostname}:${server.port}`);
 console.log('Routes:');
-console.log('  POST /orders             → create an order, publish order.created, enqueue shipment');
+console.log(
+  '  POST /orders             → create an order, publish order.created, enqueue shipment',
+);
 console.log('  GET  /orders             → list orders');
 console.log('  GET  /orders/:id         → fetch one order');
 console.log('  POST /payments/charge    → mark an order paid (HTTP-call leg)');

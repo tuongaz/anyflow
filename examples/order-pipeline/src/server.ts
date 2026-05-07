@@ -30,9 +30,10 @@ export function createServer({ store, bus, shipments }: ServerOptions): Hono {
       typeof body.customerId === 'string' && body.customerId.length > 0
         ? body.customerId
         : 'cust-1';
-    const items = Array.isArray(body.items) && body.items.length > 0
-      ? (body.items as OrderItem[])
-      : DEFAULT_ITEMS;
+    const items =
+      Array.isArray(body.items) && body.items.length > 0
+        ? (body.items as OrderItem[])
+        : DEFAULT_ITEMS;
 
     const order = store.create({ customerId, items });
     bus.emit('order.created', {

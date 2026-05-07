@@ -3,12 +3,7 @@ export interface OrderItem {
   qty: number;
 }
 
-export type OrderStatus =
-  | 'pending'
-  | 'inventory-confirmed'
-  | 'paid'
-  | 'shipped'
-  | 'failed';
+export type OrderStatus = 'pending' | 'inventory-confirmed' | 'paid' | 'shipped' | 'failed';
 
 export interface Order {
   id: string;
@@ -25,7 +20,11 @@ export interface OrderStore {
   list(): Order[];
   get(id: string): Order | undefined;
   create(input: { id?: string; customerId: string; items: OrderItem[] }): Order;
-  setStatus(id: string, status: OrderStatus, stamps?: { paidAt?: number; shippedAt?: number }): Order | undefined;
+  setStatus(
+    id: string,
+    status: OrderStatus,
+    stamps?: { paidAt?: number; shippedAt?: number },
+  ): Order | undefined;
   stats(): {
     total: number;
     pending: number;
