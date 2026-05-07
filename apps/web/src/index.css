@@ -177,3 +177,13 @@
   opacity: 0 !important;
   pointer-events: all;
 }
+
+/* Connection-in-progress override — handles on every node stay visible
+ * during a connect or reconnect drag so drop targets are discoverable
+ * without hover-then-aim. The `anydemo-connecting` class is toggled on
+ * the React Flow wrapper from demo-canvas.tsx via onConnectStart/End and
+ * onReconnectStart/End; xyflow v12 doesn't expose a global "connecting"
+ * class, so we manage it ourselves. */
+.react-flow.anydemo-connecting .react-flow__handle {
+  opacity: 1 !important;
+}

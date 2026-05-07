@@ -26,7 +26,8 @@ const SHAPE_CLASS: Record<ShapeKind, string> = {
   sticky: 'rounded-md border-[3px] shadow-md -rotate-1',
 };
 
-const HANDLE_CLASS = '!h-2 !w-2 !bg-muted-foreground';
+const HANDLE_CLASS =
+  '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity group-hover:opacity-100';
 
 export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
@@ -82,8 +83,18 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           data.onResize?.(id, { width: params.width, height: params.height });
         }}
       />
-      <Handle type="target" position={Position.Top} id="t" className={HANDLE_CLASS} />
-      <Handle type="target" position={Position.Left} id="l" className={HANDLE_CLASS} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="t"
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="l"
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
       {isEditing && labelEditable ? (
         <InlineEdit
           initialValue={data.label ?? ''}
@@ -114,8 +125,18 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           {data.label ?? (labelEditable ? 'Double-click to label' : '')}
         </button>
       )}
-      <Handle type="source" position={Position.Right} id="r" className={HANDLE_CLASS} />
-      <Handle type="source" position={Position.Bottom} id="b" className={HANDLE_CLASS} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="r"
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="b"
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
     </div>
   );
 }

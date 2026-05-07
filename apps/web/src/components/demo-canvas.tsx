@@ -186,6 +186,11 @@ export function DemoCanvas({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
   const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
+  // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
+  // every node stay visible until the gesture releases — the source has
+  // already left hover and the user needs to discover drop targets without
+  // hover-then-aim. Toggled via onConnectStart/End + onReconnectStart/End.
+  const [connecting, setConnecting] = useState(false);
   // State drives the ghost preview render; refs back the handlers so a single
   // synchronous gesture (pointerdown→move→up in one task) reads up-to-date
   // values without waiting for a React re-render to refresh useCallback
@@ -572,8 +577,13 @@ export function DemoCanvas({
         fitView
         nodesDraggable={!!onNodePositionChange && !drawShape}
         nodesConnectable={!!onCreateConnector && !drawShape}
+        className={connecting ? 'anydemo-connecting' : undefined}
         onConnect={onConnect}
+        onConnectStart={() => setConnecting(true)}
+        onConnectEnd={() => setConnecting(false)}
         onReconnect={onReconnectConnector ? onReconnect : undefined}
+        onReconnectStart={() => setConnecting(true)}
+        onReconnectEnd={() => setConnecting(false)}
         // Generous connection radius so the user can release a connect or
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
