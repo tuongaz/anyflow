@@ -132,4 +132,9 @@ describe('connectorToEdge', () => {
     expect(edge.markerEnd?.type).toBe(MarkerType.ArrowClosed);
     expect(edge.markerStart).toBeUndefined();
   });
+
+  it('sets a 24px interactionWidth so the edge has a wider hit area for hover/click/reconnect', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    expect(connectorToEdge(c, false).interactionWidth).toBe(24);
+  });
 });

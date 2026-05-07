@@ -169,12 +169,11 @@
   border-radius: 50%;
 }
 
-/* Reconnect endpoints — make the draggable hit-targets at the end of a
- * selected edge bigger and obviously interactive. */
+/* Reconnect endpoints — hide the visual circles at edge endpoints while
+ * keeping them draggable, so the canvas stays uncluttered but the
+ * reconnect gesture still works. The widened per-edge `interactionWidth`
+ * (24 px) gives users a comfortable buffer near the endpoint. */
 .react-flow__edgeupdater {
-  r: 6;
-  cursor: grab;
-}
-.react-flow__edgeupdater:hover {
-  fill: hsl(var(--ring));
+  opacity: 0 !important;
+  pointer-events: all;
 }

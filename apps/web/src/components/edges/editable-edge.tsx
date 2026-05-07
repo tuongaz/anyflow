@@ -38,6 +38,7 @@ export function EditableEdge({
   style,
   markerEnd,
   markerStart,
+  interactionWidth,
   data,
 }: EdgeProps<EditableEdgeType>) {
   const [editing, setEditing] = useState(false);
@@ -61,6 +62,7 @@ export function EditableEdge({
         style={style}
         markerEnd={markerEnd}
         markerStart={markerStart}
+        interactionWidth={interactionWidth}
       />
       <EdgeLabelRenderer>
         <div

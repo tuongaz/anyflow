@@ -17,7 +17,13 @@ export interface DerivedEdge {
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
   selected?: boolean;
+  // Invisible wider stroke React Flow uses for hover/click/reconnect-start
+  // hit-testing. Keeps the visible stroke width unchanged while giving
+  // users a comfortable buffer to grab the edge.
+  interactionWidth?: number;
 }
+
+const EDGE_INTERACTION_WIDTH = 24;
 
 // Closed arrowhead — width/height tuned to look balanced against the 1px stroke.
 const ARROW: EdgeMarker = {
@@ -85,5 +91,6 @@ export const connectorToEdge = (
     style,
     markerStart,
     markerEnd,
+    interactionWidth: EDGE_INTERACTION_WIDTH,
   };
 };
