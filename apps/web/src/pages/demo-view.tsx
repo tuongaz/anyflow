@@ -324,6 +324,23 @@ export function DemoView({
     [demoId, setConnectorOverride, dropConnectorOverride],
   );
 
+  // Drag an edge endpoint onto another node's handle to retarget it. The
+  // patch only includes the field that changed (source/target). Optimistic:
+  // the override snaps the edge immediately; SSE echo of the rewrite reconciles.
+  const onReconnectConnector = useCallback(
+    (connId: string, patch: { source?: string; target?: string }) => {
+      if (!demoId) return;
+      setConnectorOverride(connId, patch as Partial<Connector>);
+      setEditError(null);
+      updateConnector(demoId, connId, patch).catch((err) => {
+        dropConnectorOverride(connId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateConnector reconnect failed', err);
+      });
+    },
+    [demoId, setConnectorOverride, dropConnectorOverride],
+  );
+
   // Merge pending overrides onto the selected entity so Style-tab controls
   // (active swatches, selected dropdown option) reflect the in-flight edit
   // immediately rather than waiting for the SSE echo. Defined here (above the
@@ -401,6 +418,7 @@ export function DemoView({
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
           onCreateConnector={onCreateConnector}
+          onReconnectConnector={onReconnectConnector}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

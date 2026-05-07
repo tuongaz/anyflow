@@ -118,3 +118,41 @@
     animation: inline-edit-shake 0.32s ease-in-out;
   }
 }
+
+/* React Flow visual tweaks — kept outside @layer so the selectors land at
+ * normal cascade specificity (so they're not de-prioritized below the
+ * library defaults).
+ *
+ * `.react-flow__node.connectingto` is toggled by React Flow on a node that
+ * the user is currently dragging a connection toward (drop target). The
+ * dashed outline makes the active drop target unambiguous.
+ * `.connectingfrom` fades the source slightly so the user's eye follows the
+ * cursor rather than the origin handle. */
+.react-flow__node.connectingto {
+  outline: 2px dashed hsl(var(--ring));
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.react-flow__node.connectingfrom {
+  opacity: 0.85;
+}
+
+/* Bigger pointer hit-area on connection handles without growing the visible
+ * dot. The pseudo-element extends the click target ~6px in every direction
+ * so users don't need pixel-perfect aim to start a connection. */
+.react-flow__handle::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+
+/* Reconnect endpoints — make the draggable hit-targets at the end of a
+ * selected edge bigger and obviously interactive. */
+.react-flow__edgeupdater {
+  r: 6;
+  cursor: grab;
+}
+.react-flow__edgeupdater:hover {
+  fill: hsl(var(--ring));
+}

@@ -246,6 +246,10 @@ export interface UpdateConnectorBody {
   queueName?: string;
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   url?: string;
+  /** Reconnect: retarget this edge to a different source node. */
+  source?: string;
+  /** Reconnect: retarget this edge to a different target node. */
+  target?: string;
 }
 
 export const updateConnector = async (

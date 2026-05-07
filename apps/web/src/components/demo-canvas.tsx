@@ -79,6 +79,13 @@ export interface DemoCanvasProps {
    * parent never sees them.
    */
   onCreateConnector?: (source: string, target: string) => void;
+  /**
+   * Reattach an existing connector's source or target to a different node.
+   * Wired enables React Flow's edge reconnect gesture: drag an edge endpoint
+   * onto another handle to call this with the new source/target. The patch
+   * only includes the field that changed.
+   */
+  onReconnectConnector?: (connectorId: string, patch: { source?: string; target?: string }) => void;
 }
 
 const MIN_DRAW_SIZE = 8;
@@ -137,6 +144,7 @@ export function DemoCanvas({
   onConnectorLabelChange,
   onCreateShapeNode,
   onCreateConnector,
+  onReconnectConnector,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -152,6 +160,12 @@ export function DemoCanvas({
   // synchronous gesture (pointerdown→move→up in one task) reads up-to-date
   // values without waiting for a React re-render to refresh useCallback
   // closures.
+  //
+  // Coordinates are stored in CLIENT space (window-relative) — converting
+  // to wrapper-local at down-time and back at up-time would drift if the
+  // wrapper moves between events (e.g. error banner appears, header expands,
+  // etc.). Ghost render uses the current wrapper rect to compute local
+  // offsets just for paint.
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
   const drawShapeRef = useRef<ShapeKind | null>(null);
@@ -189,14 +203,12 @@ export function DemoCanvas({
     if (!drawShapeRef.current) return;
     const target = e.target as HTMLElement | null;
     if (!target?.classList.contains('react-flow__pane')) return;
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const local = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const client = { x: e.clientX, y: e.clientY };
     drawingRef.current = true;
-    drawStartRef.current = local;
-    drawCurrentRef.current = local;
-    setDrawStart(local);
-    setDrawCurrent(local);
+    drawStartRef.current = client;
+    drawCurrentRef.current = client;
+    setDrawStart(client);
+    setDrawCurrent(client);
     // Capture the pointer so move/up land here even if the cursor leaves
     // the React Flow pane (e.g. drags up onto the toolbar). Wrapped because
     // setPointerCapture throws on synthetic (non-trusted) events used in tests.
@@ -211,11 +223,9 @@ export function DemoCanvas({
 
   const onPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!drawingRef.current) return;
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const local = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    drawCurrentRef.current = local;
-    setDrawCurrent(local);
+    const client = { x: e.clientX, y: e.clientY };
+    drawCurrentRef.current = client;
+    setDrawCurrent(client);
   }, []);
 
   const onPointerUp = useCallback(
@@ -232,12 +242,11 @@ export function DemoCanvas({
       const current = drawCurrentRef.current;
       const shape = drawShapeRef.current;
       const rfInstance = rfInstanceRef.current;
-      const rect = wrapperRef.current?.getBoundingClientRect();
       // Always exit draw mode after a gesture, even if the commit short-circuits
       // (too small, missing references). The PRD spec: "After commit (or ESC),
       // draw mode exits automatically and the cursor returns to default."
       exitDrawMode();
-      if (!start || !current || !shape || !rfInstance || !rect) return;
+      if (!start || !current || !shape || !rfInstance) return;
       const minX = Math.min(start.x, current.x);
       const minY = Math.min(start.y, current.y);
       const maxX = Math.max(start.x, current.x);
@@ -247,10 +256,10 @@ export function DemoCanvas({
       // Tiny drags (or pure clicks) don't commit — they'd produce a degenerate
       // node that's invisible until the user resizes it.
       if (width < MIN_DRAW_SIZE || height < MIN_DRAW_SIZE) return;
-      const flowPos = rfInstance.screenToFlowPosition({
-        x: rect.left + minX,
-        y: rect.top + minY,
-      });
+      // Coords are already in client space — feed directly to React Flow's
+      // screen→flow projection. Avoids drift from wrapper rect changes
+      // between pointerdown and pointerup.
+      const flowPos = rfInstance.screenToFlowPosition({ x: minX, y: minY });
       onCreateShapeNode?.(shape, flowPos, { width, height });
     },
     [exitDrawMode, onCreateShapeNode],
@@ -318,19 +327,39 @@ export function DemoCanvas({
     setRfNodes(sourceNodes);
   }, [sourceNodes]);
 
+  // selectedNodeId is the source of truth for the selection ring. React Flow
+  // dispatches its own `select` changes during resize/drag (and sometimes on
+  // dimension changes) that would briefly drop the ring. Mirror the prop into
+  // a ref and re-pin selected:true on every change so the visual stays
+  // anchored to the parent's selection state — no flicker mid-resize.
+  const selectedIdRef = useRef(selectedNodeId);
+  useEffect(() => {
+    selectedIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setRfNodes((nds) => applyNodeChanges(changes, nds));
+    setRfNodes((nds) => {
+      const next = applyNodeChanges(changes, nds);
+      const pinned = selectedIdRef.current;
+      if (!pinned) return next;
+      return next.map((n) => (n.id === pinned && !n.selected ? { ...n, selected: true } : n));
+    });
   }, []);
 
+  const reconnectableEdges = !!onReconnectConnector;
   const rfEdges = useMemo<Edge[]>(() => {
     const decorate = (c: Connector): Edge => {
       const adjacentRunning =
         statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
       const edge = connectorToEdge(c, adjacentRunning);
       if (selectedConnectorId === c.id) edge.selected = true;
+      // `reconnectable: true` enables the endpoint-drag gesture for the edge;
+      // React Flow shows reconnect handles on hover. Wired only when the
+      // parent provided an onReconnectConnector callback.
+      const next: Edge = reconnectableEdges ? { ...edge, reconnectable: true } : edge;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
-      return { ...edge, data: { ...edge.data, onLabelChange: onConnectorLabelChange } };
+      return { ...next, data: { ...next.data, onLabelChange: onConnectorLabelChange } };
     };
     const serverIds = new Set(connectors.map((c) => c.id));
     const fromServer = connectors.map((c) =>
@@ -356,7 +385,14 @@ export function DemoCanvas({
       }
     }
     return [...fromServer, ...fromOverrides];
-  }, [connectors, runs, selectedConnectorId, connectorOverrides, onConnectorLabelChange]);
+  }, [
+    connectors,
+    runs,
+    selectedConnectorId,
+    connectorOverrides,
+    onConnectorLabelChange,
+    reconnectableEdges,
+  ]);
 
   const onConnect = useCallback(
     (conn: Connection) => {
@@ -371,13 +407,37 @@ export function DemoCanvas({
     [onCreateConnector],
   );
 
+  // Drag an edge endpoint onto another handle to reattach it. React Flow
+  // computes the new connection from the gesture; we forward the diff
+  // (source or target) to the parent for persistence. The parent applies
+  // an optimistic override so the edge snaps immediately; the SSE echo of
+  // the file rewrite reconciles any drift.
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      if (!onReconnectConnector) return;
+      const { source, target } = newConnection;
+      if (!source || !target || source === target) return;
+      const patch: { source?: string; target?: string } = {};
+      if (source !== oldEdge.source) patch.source = source;
+      if (target !== oldEdge.target) patch.target = target;
+      if (!patch.source && !patch.target) return;
+      onReconnectConnector(oldEdge.id, patch);
+    },
+    [onReconnectConnector],
+  );
+
   const ghostRect = useMemo(() => {
     if (!drawStart || !drawCurrent) return null;
+    const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+    const offsetX = wrapperRect?.left ?? 0;
+    const offsetY = wrapperRect?.top ?? 0;
     const minX = Math.min(drawStart.x, drawCurrent.x);
     const minY = Math.min(drawStart.y, drawCurrent.y);
     const w = Math.abs(drawCurrent.x - drawStart.x);
     const h = Math.abs(drawCurrent.y - drawStart.y);
-    return { left: minX, top: minY, width: w, height: h };
+    // Coords are stored in client space; subtract the wrapper offset to paint
+    // the ghost via absolute positioning inside the wrapper.
+    return { left: minX - offsetX, top: minY - offsetY, width: w, height: h };
   }, [drawStart, drawCurrent]);
 
   const ghostShapeClass =
@@ -415,6 +475,11 @@ export function DemoCanvas({
         nodesDraggable={!!onNodePositionChange && !drawShape}
         nodesConnectable={!!onCreateConnector && !drawShape}
         onConnect={onConnect}
+        onReconnect={onReconnectConnector ? onReconnect : undefined}
+        // Generous connection radius so the user can release a connect or
+        // reconnect drag near a handle without pixel-perfect aim. React Flow
+        // snaps to the closest handle within this radius.
+        connectionRadius={32}
         elementsSelectable={!drawShape}
         panOnDrag={!drawShape}
         zoomOnDoubleClick={false}
@@ -424,7 +489,9 @@ export function DemoCanvas({
         onNodeClick={(_e, node) => onSelectNode(node.id)}
         onEdgeClick={(_e, edge) => onSelectConnector?.(edge.id)}
         onPaneClick={() => {
-          if (drawShape) return;
+          // Skip pane-click selection clears during draw / drag / resize so
+          // a stray release inside the pane doesn't drop the selection ring.
+          if (drawShape || draggingRef.current || resizingRef.current) return;
           onSelectNode(null);
           onSelectConnector?.(null);
         }}

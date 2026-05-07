@@ -135,8 +135,10 @@ export function InlineEdit({
 
   // `nodrag nopan nowheel` opts the editor out of React Flow's pointer/wheel
   // capture so typing isn't interpreted as a node drag, pane pan, or zoom.
+  // No border/background — the editor inherits the surrounding text style so
+  // the transition between read and edit is invisible.
   const sharedClass = cn(
-    'nodrag nopan nowheel rounded border border-input bg-background px-1.5 py-0.5 text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring',
+    'nodrag nopan nowheel block bg-transparent p-0 text-inherit outline-none border-0 focus:ring-0 focus-visible:ring-0',
     shake ? 'inline-edit-shake' : '',
     className,
   );

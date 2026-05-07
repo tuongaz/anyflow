@@ -63,6 +63,11 @@ const ConnectorPatchBodySchema = z
     queueName: z.string().optional(),
     method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
     url: z.string().optional(),
+    // Reconnect: drag an edge endpoint onto another node's handle. The
+    // post-merge DemoSchema parse rejects dangling references, so we don't
+    // need a referential check here.
+    source: z.string().min(1).optional(),
+    target: z.string().min(1).optional(),
   })
   .strict();
 type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;
