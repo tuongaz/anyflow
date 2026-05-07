@@ -14,7 +14,7 @@ export type ShapeNodeRuntimeData = ShapeNodeData & {
 } & Record<string, unknown>;
 export type ShapeNodeType = Node<ShapeNodeRuntimeData, 'shapeNode'>;
 
-const DEFAULT_SIZE: Record<ShapeKind, { width: number; height: number }> = {
+export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: number }> = {
   rectangle: { width: 200, height: 120 },
   ellipse: { width: 200, height: 120 },
   sticky: { width: 180, height: 180 },
@@ -30,7 +30,7 @@ const HANDLE_CLASS = '!h-2 !w-2 !bg-muted-foreground';
 
 export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
-  const size = DEFAULT_SIZE[shape];
+  const size = SHAPE_DEFAULT_SIZE[shape];
   const [isResizing, setIsResizing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const labelEditable = !!data.onLabelChange;

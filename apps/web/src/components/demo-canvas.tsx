@@ -1,7 +1,7 @@
 import { CanvasToolbar } from '@/components/canvas-toolbar';
 import { EditableEdge } from '@/components/edges/editable-edge';
 import { PlayNode } from '@/components/nodes/play-node';
-import { ShapeNode } from '@/components/nodes/shape-node';
+import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import type { NodeRuns } from '@/hooks/use-node-runs';
@@ -88,7 +88,10 @@ export interface DemoCanvasProps {
   onReconnectConnector?: (connectorId: string, patch: { source?: string; target?: string }) => void;
 }
 
-const MIN_DRAW_SIZE = 8;
+// Below this threshold we treat the gesture as an accidental click / tiny
+// nudge and create the shape at SHAPE_DEFAULT_SIZE instead — a single click
+// still produces a usable node rather than a 0×0 ghost.
+const MIN_DRAW_SIZE = 40;
 
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
   if (!override) return node;
@@ -251,11 +254,14 @@ export function DemoCanvas({
       const minY = Math.min(start.y, current.y);
       const maxX = Math.max(start.x, current.x);
       const maxY = Math.max(start.y, current.y);
-      const width = maxX - minX;
-      const height = maxY - minY;
-      // Tiny drags (or pure clicks) don't commit — they'd produce a degenerate
-      // node that's invisible until the user resizes it.
-      if (width < MIN_DRAW_SIZE || height < MIN_DRAW_SIZE) return;
+      const dragWidth = maxX - minX;
+      const dragHeight = maxY - minY;
+      // Below MIN_DRAW_SIZE on either axis we treat the gesture as an
+      // accidental click / tiny nudge and fall back to SHAPE_DEFAULT_SIZE
+      // for that shape so single-clicks still produce a usable node.
+      const tooSmall = dragWidth < MIN_DRAW_SIZE || dragHeight < MIN_DRAW_SIZE;
+      const width = tooSmall ? SHAPE_DEFAULT_SIZE[shape].width : dragWidth;
+      const height = tooSmall ? SHAPE_DEFAULT_SIZE[shape].height : dragHeight;
       // Coords are already in client space — feed directly to React Flow's
       // screen→flow projection. Avoids drift from wrapper rect changes
       // between pointerdown and pointerup.
@@ -275,45 +281,60 @@ export function DemoCanvas({
     resizingRef.current = on;
   }, []);
 
-  const sourceNodes = useMemo<Node[]>(
-    () =>
-      nodes.map((n) => {
-        const merged = mergeNodeOverride(n, nodeOverrides?.[n.id]);
-        const node: Node = {
-          id: merged.id,
-          type: merged.type,
-          position: merged.position,
-          data: {
-            ...merged.data,
-            status: dataStatusFor(runs, n.id),
-            onPlay: onPlayNode,
-            onResize: onNodeResize,
-            setResizing,
-            onLabelChange: onNodeLabelChange,
-            onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
-          },
-          selected: n.id === selectedNodeId,
-        };
-        // Pass explicit width/height to the React Flow node wrapper when set
-        // in data. NodeResizer dispatches dimension changes that update these
-        // during a gesture; we only persist (and hence sync them back into
-        // data) on resize-stop.
-        if (merged.data.width !== undefined) node.width = merged.data.width;
-        if (merged.data.height !== undefined) node.height = merged.data.height;
-        return node;
-      }),
-    [
-      nodes,
-      selectedNodeId,
-      runs,
-      onPlayNode,
-      onNodeResize,
-      setResizing,
-      nodeOverrides,
-      onNodeLabelChange,
-      onNodeDescriptionChange,
-    ],
-  );
+  const sourceNodes = useMemo<Node[]>(() => {
+    const buildNode = (merged: DemoNode): Node => {
+      const node: Node = {
+        id: merged.id,
+        type: merged.type,
+        position: merged.position,
+        data: {
+          ...merged.data,
+          status: dataStatusFor(runs, merged.id),
+          onPlay: onPlayNode,
+          onResize: onNodeResize,
+          setResizing,
+          onLabelChange: onNodeLabelChange,
+          onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
+        },
+        selected: merged.id === selectedNodeId,
+      };
+      // Pass explicit width/height to the React Flow node wrapper when set
+      // in data. NodeResizer dispatches dimension changes that update these
+      // during a gesture; we only persist (and hence sync them back into
+      // data) on resize-stop.
+      if (merged.data.width !== undefined) node.width = merged.data.width;
+      if (merged.data.height !== undefined) node.height = merged.data.height;
+      return node;
+    };
+    const fromServer = nodes.map((n) => buildNode(mergeNodeOverride(n, nodeOverrides?.[n.id])));
+    // Override-only entries represent optimistic/pending creations (US-007):
+    // a shape node has been drawn locally and the override carries a full
+    // DemoNode whose id is not yet on the server. Once the SSE echo of the
+    // POST resolves, the entry shows up in `nodes` and `pruneAgainst` drops
+    // the override (per US-021) — until then we render the candidate so the
+    // node appears at the dragged size with no flicker from default→dragged.
+    const serverIds = new Set(nodes.map((n) => n.id));
+    const fromOverrides: Node[] = [];
+    if (nodeOverrides) {
+      for (const [id, partial] of Object.entries(nodeOverrides)) {
+        if (serverIds.has(id)) continue;
+        const cand = partial as Partial<DemoNode>;
+        if (typeof cand.type !== 'string' || !cand.position || !cand.data) continue;
+        fromOverrides.push(buildNode({ ...cand, id } as DemoNode));
+      }
+    }
+    return [...fromServer, ...fromOverrides];
+  }, [
+    nodes,
+    selectedNodeId,
+    runs,
+    onPlayNode,
+    onNodeResize,
+    setResizing,
+    nodeOverrides,
+    onNodeLabelChange,
+    onNodeDescriptionChange,
+  ]);
 
   // React Flow needs internal node state + onNodesChange to render drag
   // motion smoothly. Without it, the controlled `nodes` prop overrides the

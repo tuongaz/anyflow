@@ -500,32 +500,49 @@ export function DemoView({
     (shape: ShapeKind, position: Position, dims: { width: number; height: number }) => {
       if (!demoId) return;
       setEditError(null);
-      // We can't pre-push the undo entry — we don't yet know the server-issued
-      // id needed for `do` (re-create with same id) and `undo` (delete by id).
-      // Push only after createNode resolves.
+      // Generate the id client-side so the optimistic override and the
+      // server echo share an id — the SSE-driven prune drops the override
+      // cleanly once they match (mirrors `onCreateConnector`).
+      const id = `node-${crypto.randomUUID()}`;
       const payload = {
+        id,
         type: 'shapeNode' as const,
         position,
         data: { shape, width: dims.width, height: dims.height },
       };
+      // Optimistic: render the new node at the dragged size BEFORE the SSE
+      // echo arrives. Without this the node briefly shows at SHAPE_DEFAULT_SIZE
+      // (the renderer's pre-`data.width` fallback) and snaps to the dragged
+      // size on the next paint.
+      const optimistic: DemoNode = {
+        id,
+        type: 'shapeNode',
+        position,
+        data: { shape, width: dims.width, height: dims.height },
+      };
+      setNodeOverride(id, optimistic as Partial<DemoNode>);
       markMutation();
+      // Push from the .then so the undo entry binds to the server-issued id
+      // (matches `onCreateConnector`). No dropTop is needed on .catch because
+      // nothing was pushed before the API resolved.
       createNode(demoId, payload)
-        .then(({ id }) => {
+        .then(({ id: returnedId }) => {
           pushUndo({
             do: async () => {
-              await createNode(demoId, { ...payload, id });
+              await createNode(demoId, { ...payload, id: returnedId });
             },
             undo: async () => {
-              await deleteNode(demoId, id);
+              await deleteNode(demoId, returnedId);
             },
           });
         })
         .catch((err) => {
+          dropNodeOverride(id);
           setEditError(err instanceof Error ? err.message : String(err));
           console.error('createNode failed', err);
         });
     },
-    [demoId, pushUndo, markMutation],
+    [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
   const onConnectorLabelChange = useCallback(
