@@ -43,11 +43,27 @@ export interface DemoNode {
   data: NodeData;
 }
 
+export type ColorToken =
+  | 'default'
+  | 'slate'
+  | 'blue'
+  | 'green'
+  | 'amber'
+  | 'red'
+  | 'purple'
+  | 'pink';
+
+export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
+export type ConnectorDirection = 'forward' | 'backward' | 'both';
+
 export interface ConnectorBase {
   id: string;
   source: string;
   target: string;
   label?: string;
+  style?: ConnectorStyle;
+  color?: ColorToken;
+  direction?: ConnectorDirection;
 }
 
 export interface HttpConnector extends ConnectorBase {
@@ -66,7 +82,11 @@ export interface QueueConnector extends ConnectorBase {
   queueName: string;
 }
 
-export type Connector = HttpConnector | EventConnector | QueueConnector;
+export interface DefaultConnector extends ConnectorBase {
+  kind: 'default';
+}
+
+export type Connector = HttpConnector | EventConnector | QueueConnector | DefaultConnector;
 
 export interface Demo {
   version: 1;

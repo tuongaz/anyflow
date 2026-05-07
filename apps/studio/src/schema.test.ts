@@ -346,6 +346,162 @@ describe('DemoSchema', () => {
     expect(issue).toBeDefined();
   });
 
+  it('round-trips a default connector with no semantic payload', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'default-conn',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        { id: 'c1', source: 'a', target: 'b', kind: 'default' as const, label: 'see also' },
+      ],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const conn = result.data.connectors[0];
+    if (conn?.kind !== 'default') throw new Error('expected default connector');
+    expect(conn.label).toBe('see also');
+  });
+
+  it('accepts connector visual fields (style/color/direction) on every kind', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'visual-connectors',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          kind: 'http' as const,
+          method: 'POST' as const,
+          url: 'http://b/',
+          style: 'dashed' as const,
+          color: 'blue' as const,
+          direction: 'forward' as const,
+        },
+        {
+          id: 'c2',
+          source: 'a',
+          target: 'b',
+          kind: 'event' as const,
+          eventName: 'a.b',
+          style: 'solid' as const,
+          direction: 'both' as const,
+        },
+        {
+          id: 'c3',
+          source: 'a',
+          target: 'b',
+          kind: 'default' as const,
+          color: 'amber' as const,
+          direction: 'backward' as const,
+        },
+      ],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.connectors).toHaveLength(3);
+  });
+
+  it('rejects an invalid connector style value', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-style',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default', style: 'wavy' }],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('rejects an invalid connector direction value', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-dir',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default', direction: 'sideways' }],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('rejects an invalid connector color token', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-color',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default', color: 'fuchsia' }],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

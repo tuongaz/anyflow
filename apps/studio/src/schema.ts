@@ -113,18 +113,33 @@ const NodeSchema = z.discriminatedUnion('type', [PlayNodeSchema, StateNodeSchema
 
 // Connector is the semantic edge between two nodes — describes HOW they are
 // connected, not just THAT they are. Discriminated on `kind`:
-//   • http  — service-to-service HTTP call (method + url echo of the playAction)
-//   • event — pub/sub event (eventName)
-//   • queue — message-queue handoff (queueName)
+//   • http    — service-to-service HTTP call (method + url echo of the playAction)
+//   • event   — pub/sub event (eventName)
+//   • queue   — message-queue handoff (queueName)
+//   • default — user-drawn, no semantic payload (UI annotation only)
 // The frontend derives a React Flow Edge from each connector at render time
 // (id/source/target are reused; `label` becomes the edge label; visual style
-// is picked from `kind`). v1 has no separate `edges[]` array — connectors are
-// the sole source of truth for inter-node connections.
+// is picked from `kind`, but per-connector `style`/`color` overrides it). v1
+// has no separate `edges[]` array — connectors are the sole source of truth
+// for inter-node connections.
+const ConnectorStyleSchema = z.enum(['solid', 'dashed', 'dotted']);
+const ConnectorDirectionSchema = z.enum(['forward', 'backward', 'both']);
+
+// Visual fields shared by every connector kind. All optional — existing
+// demo files predate them and must continue to parse. `direction` defaults
+// to 'forward' when absent (the historical behavior).
+const ConnectorVisualBaseShape = {
+  style: ConnectorStyleSchema.optional(),
+  color: ColorTokenSchema.optional(),
+  direction: ConnectorDirectionSchema.optional(),
+};
+
 const ConnectorBaseShape = {
   id: z.string().min(1),
   source: z.string().min(1),
   target: z.string().min(1),
   label: z.string().optional(),
+  ...ConnectorVisualBaseShape,
 };
 
 const HttpConnectorSchema = z.object({
@@ -146,10 +161,16 @@ const QueueConnectorSchema = z.object({
   queueName: z.string().min(1),
 });
 
+const DefaultConnectorSchema = z.object({
+  ...ConnectorBaseShape,
+  kind: z.literal('default'),
+});
+
 const ConnectorSchema = z.discriminatedUnion('kind', [
   HttpConnectorSchema,
   EventConnectorSchema,
   QueueConnectorSchema,
+  DefaultConnectorSchema,
 ]);
 
 export const DemoSchema = z
@@ -188,6 +209,9 @@ export type Connector = z.infer<typeof ConnectorSchema>;
 export type HttpConnector = z.infer<typeof HttpConnectorSchema>;
 export type EventConnector = z.infer<typeof EventConnectorSchema>;
 export type QueueConnector = z.infer<typeof QueueConnectorSchema>;
+export type DefaultConnector = z.infer<typeof DefaultConnectorSchema>;
+export type ConnectorStyle = z.infer<typeof ConnectorStyleSchema>;
+export type ConnectorDirection = z.infer<typeof ConnectorDirectionSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;

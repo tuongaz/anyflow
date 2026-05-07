@@ -54,7 +54,8 @@ describe('connectorToEdge', () => {
       url: 'http://b/',
     };
     const edge = connectorToEdge(c, false);
-    expect(edge.markerEnd.type).toBe(MarkerType.ArrowClosed);
+    expect(edge.markerEnd?.type).toBe(MarkerType.ArrowClosed);
+    expect(edge.markerStart).toBeUndefined();
   });
 
   it('preserves the connector kind in edge data for downstream filtering', () => {
@@ -66,5 +67,55 @@ describe('connectorToEdge', () => {
       queueName: 'work-queue',
     };
     expect(connectorToEdge(c, false).data.kind).toBe('queue');
+  });
+
+  it('renders a default connector as solid (no dasharray)', () => {
+    expect(styleForKind('default')).toEqual({});
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    expect(connectorToEdge(c, false).style).toEqual({});
+  });
+
+  it('lets per-connector style override the kind-derived style', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'http',
+      style: 'dashed',
+    };
+    expect(connectorToEdge(c, false).style).toEqual({ strokeDasharray: '6 4' });
+  });
+
+  it('places markerStart only when direction is backward', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      direction: 'backward',
+    };
+    const edge = connectorToEdge(c, false);
+    expect(edge.markerStart?.type).toBe(MarkerType.ArrowClosed);
+    expect(edge.markerEnd).toBeUndefined();
+  });
+
+  it('places markerStart and markerEnd when direction is both', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      direction: 'both',
+    };
+    const edge = connectorToEdge(c, false);
+    expect(edge.markerStart?.type).toBe(MarkerType.ArrowClosed);
+    expect(edge.markerEnd?.type).toBe(MarkerType.ArrowClosed);
+  });
+
+  it('treats absent direction as forward (markerEnd only)', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const edge = connectorToEdge(c, false);
+    expect(edge.markerEnd?.type).toBe(MarkerType.ArrowClosed);
+    expect(edge.markerStart).toBeUndefined();
   });
 });
