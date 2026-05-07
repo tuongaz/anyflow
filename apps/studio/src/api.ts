@@ -15,6 +15,20 @@ const RegisterBodySchema = z.object({
   demoPath: z.string().min(1),
 });
 
+const EmitBodySchema = z.object({
+  demoId: z.string().min(1),
+  nodeId: z.string().min(1),
+  status: z.enum(['running', 'done', 'error']),
+  runId: z.string().optional(),
+  payload: z.unknown().optional(),
+});
+
+const EMIT_STATUS_TO_EVENT = {
+  running: 'node:running',
+  done: 'node:done',
+  error: 'node:error',
+} as const;
+
 export interface ApiOptions {
   registry: Registry;
   events?: EventBus;
@@ -241,6 +255,42 @@ export function createApi(options: ApiOptions): Hono {
 
     const result = await fetchDynamicDetail(dynamicSource);
     return c.json(result);
+  });
+
+  api.post('/emit', async (c) => {
+    if (!events) return c.json({ error: 'events not enabled' }, 500);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+
+    const parsed = EmitBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid emit body', issues: parsed.error.issues }, 400);
+    }
+
+    const { demoId, nodeId, status, runId, payload } = parsed.data;
+    if (!registry.getById(demoId)) {
+      return c.json({ error: `Unknown demoId: ${demoId}` }, 404);
+    }
+
+    const extras =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : {};
+    const eventPayload: Record<string, unknown> = { nodeId, ...extras };
+    if (runId !== undefined) eventPayload.runId = runId;
+
+    events.broadcast({
+      type: EMIT_STATUS_TO_EVENT[status],
+      demoId,
+      payload: eventPayload,
+    });
+
+    return c.json({ ok: true });
   });
 
   api.get('/events', (c) => {

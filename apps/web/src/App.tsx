@@ -3,6 +3,7 @@ import { ReloadIndicator } from '@/components/reload-indicator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDemoData } from '@/hooks/use-demo-data';
 import { useDemos } from '@/hooks/use-demos';
+import { useNodeEvents } from '@/hooks/use-node-events';
 import { useNodeRuns } from '@/hooks/use-node-runs';
 import { useStudioEvents } from '@/hooks/use-studio-events';
 import { playNode } from '@/lib/api';
@@ -27,13 +28,22 @@ export function App() {
 
   const { detail, loading, refresh: refreshDetail } = useDemoData(demoId);
   const { runs, apply: applyRun } = useNodeRuns(demoId);
+  const { events: nodeEvents, apply: applyNodeEvent } = useNodeEvents(demoId);
 
   const onReload = useCallback(() => {
     refreshDetail();
     refreshDemos();
   }, [refreshDetail, refreshDemos]);
 
-  const { lastReload } = useStudioEvents(demoId, { onReload, onEvent: applyRun });
+  const onEvent = useCallback(
+    (event: Parameters<typeof applyRun>[0]) => {
+      applyRun(event);
+      applyNodeEvent(event);
+    },
+    [applyRun, applyNodeEvent],
+  );
+
+  const { lastReload } = useStudioEvents(demoId, { onReload, onEvent });
 
   const onPlayNode = useCallback(
     (nodeId: string) => {
@@ -76,6 +86,7 @@ export function App() {
               detail={detail}
               loading={loading}
               runs={runs}
+              nodeEvents={nodeEvents}
               onPlayNode={onPlayNode}
             />
           ) : (

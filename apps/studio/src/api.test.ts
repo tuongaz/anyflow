@@ -484,6 +484,133 @@ describe('POST /api/demos/:id/nodes/:nodeId/detail', () => {
   });
 });
 
+describe('POST /api/emit', () => {
+  const buildAppWithBus = () => {
+    const bus = createEventBus();
+    const registry = createRegistry({ path: tmpRegistry() });
+    const app = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry,
+      events: bus,
+      disableWatcher: true,
+    });
+    return { app, registry, bus };
+  };
+
+  it('broadcasts node:running for status=running and returns ok', async () => {
+    const { app, bus } = buildAppWithBus();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const captured: Array<{ type: string; payload: unknown }> = [];
+    bus.subscribe(reg.id, (e) => captured.push({ type: e.type, payload: e.payload }));
+
+    const res = await post(app, '/api/emit', {
+      demoId: reg.id,
+      nodeId: 'worker',
+      status: 'running',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.type).toBe('node:running');
+    expect((captured[0]?.payload as { nodeId: string }).nodeId).toBe('worker');
+  });
+
+  it('maps status=done → node:done and merges payload', async () => {
+    const { app, bus } = buildAppWithBus();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const captured: Array<{ type: string; payload: unknown }> = [];
+    bus.subscribe(reg.id, (e) => captured.push({ type: e.type, payload: e.payload }));
+
+    const res = await post(app, '/api/emit', {
+      demoId: reg.id,
+      nodeId: 'worker',
+      status: 'done',
+      runId: 'run-42',
+      payload: { status: 200, body: { ok: true } },
+    });
+    expect(res.status).toBe(200);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.type).toBe('node:done');
+    const payload = captured[0]?.payload as {
+      nodeId: string;
+      runId: string;
+      status: number;
+      body: unknown;
+    };
+    expect(payload.nodeId).toBe('worker');
+    expect(payload.runId).toBe('run-42');
+    expect(payload.status).toBe(200);
+    expect(payload.body).toEqual({ ok: true });
+  });
+
+  it('maps status=error → node:error', async () => {
+    const { app, bus } = buildAppWithBus();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const captured: Array<{ type: string }> = [];
+    bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+
+    const res = await post(app, '/api/emit', {
+      demoId: reg.id,
+      nodeId: 'worker',
+      status: 'error',
+      payload: { message: 'boom' },
+    });
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.type).toBe('node:error');
+  });
+
+  it('returns 404 when demoId is unknown', async () => {
+    const { app } = buildAppWithBus();
+    const res = await post(app, '/api/emit', {
+      demoId: 'does-not-exist',
+      nodeId: 'worker',
+      status: 'running',
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when status is not one of running|done|error', async () => {
+    const { app } = buildAppWithBus();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, '/api/emit', {
+      demoId: reg.id,
+      nodeId: 'worker',
+      status: 'oops',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when body is not valid JSON', async () => {
+    const { app } = buildAppWithBus();
+    const res = await app.request('/api/emit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{not-json',
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('GET /api/events', () => {
   it('returns 400 when demoId is missing', async () => {
     const { app } = buildApp();

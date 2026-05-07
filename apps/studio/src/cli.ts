@@ -12,6 +12,7 @@ import {
   writePid,
 } from './runtime.ts';
 import { DemoSchema } from './schema.ts';
+import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import { serve } from './server.ts';
 
 const DEFAULT_DEMO_PATH = '.anydemo/demo.json';
@@ -189,6 +190,13 @@ async function runRegister() {
 
   const { slug } = (await res.json()) as { id: string; slug: string };
   console.log(`Registered "${parsed.data.name}" → ${url}/d/${slug}`);
+
+  const sdkResult = writeSdkEmitIfNeeded(repoPath, parsed.data);
+  if (sdkResult.outcome === 'written') {
+    console.log(`Wrote ${sdkResult.filePath} (event-bound state node detected)`);
+  } else if (sdkResult.outcome === 'present') {
+    console.log(`SDK helper already present at ${sdkResult.filePath} (skipped)`);
+  }
 }
 
 async function ensureStudioRunning(url: string, port: number, noStart: boolean) {

@@ -1,5 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { DemoDetail, DemoSummary } from '@/lib/api';
 import { useEffect, useState } from 'react';
@@ -10,10 +11,19 @@ export interface DemoViewProps {
   detail: DemoDetail | null;
   loading: boolean;
   runs: NodeRuns;
+  nodeEvents: NodeEventLog;
   onPlayNode: (nodeId: string) => void;
 }
 
-export function DemoView({ slug, demos, detail, loading, runs, onPlayNode }: DemoViewProps) {
+export function DemoView({
+  slug,
+  demos,
+  detail,
+  loading,
+  runs,
+  nodeEvents,
+  onPlayNode,
+}: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -44,6 +54,7 @@ export function DemoView({ slug, demos, detail, loading, runs, onPlayNode }: Dem
   const demo = detail?.demo;
   const selectedNode = demo?.nodes.find((n) => n.id === selectedId) ?? null;
   const selectedRun = selectedId ? runs[selectedId] : undefined;
+  const selectedEvents = selectedId ? (nodeEvents[selectedId] ?? []) : [];
 
   return (
     <div className="relative h-full w-full">
@@ -77,6 +88,7 @@ export function DemoView({ slug, demos, detail, loading, runs, onPlayNode }: Dem
         node={selectedNode}
         filePath={detail?.filePath}
         run={selectedRun}
+        recentEvents={selectedEvents}
         onClose={() => setSelectedId(null)}
       />
     </div>

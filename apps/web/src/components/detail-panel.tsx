@@ -3,6 +3,7 @@ import { StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { useNodeDetail } from '@/hooks/use-node-detail';
+import type { NodeEventLogEntry } from '@/hooks/use-node-events';
 import type { NodeRunState } from '@/hooks/use-node-runs';
 import type { DemoNode } from '@/lib/api';
 import { RefreshCw } from 'lucide-react';
@@ -14,10 +15,19 @@ export interface DetailPanelProps {
   filePath?: string;
   /** Current run state for the selected node, when known. */
   run?: NodeRunState;
+  /** Last N node:* events for the selected node (newest first). */
+  recentEvents?: NodeEventLogEntry[];
   onClose: () => void;
 }
 
-export function DetailPanel({ demoId, node, filePath, run, onClose }: DetailPanelProps) {
+export function DetailPanel({
+  demoId,
+  node,
+  filePath,
+  run,
+  recentEvents,
+  onClose,
+}: DetailPanelProps) {
   const open = node !== null;
   const detail = node?.data.detail;
   const hasDynamicSource = !!detail?.dynamicSource;
@@ -74,6 +84,10 @@ export function DetailPanel({ demoId, node, filePath, run, onClose }: DetailPane
             ) : null}
 
             {run ? <RunSection run={run} /> : null}
+
+            {recentEvents && recentEvents.length > 0 ? (
+              <RecentEventsSection events={recentEvents} />
+            ) : null}
 
             {filePath ? (
               <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
@@ -156,6 +170,42 @@ function DynamicSkeleton() {
     </div>
   );
 }
+
+function RecentEventsSection({ events }: { events: NodeEventLogEntry[] }) {
+  return (
+    <div
+      className="rounded-md border bg-card px-3 py-2 text-xs"
+      data-testid="detail-panel-recent-events"
+    >
+      <div className="mb-2 font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+        Recent events
+      </div>
+      <ul className="flex flex-col gap-1">
+        {events.map((entry, idx) => (
+          <li
+            key={`${entry.ts}-${idx}`}
+            className="flex items-center justify-between gap-2"
+            data-testid="detail-panel-recent-event"
+            data-status={entry.status}
+          >
+            <StatusPill status={entry.status} />
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {formatTimestamp(entry.ts)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const formatTimestamp = (ts: number): string => {
+  const d = new Date(ts);
+  const hh = `${d.getHours()}`.padStart(2, '0');
+  const mm = `${d.getMinutes()}`.padStart(2, '0');
+  const ss = `${d.getSeconds()}`.padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+};
 
 function RunSection({ run }: { run: NodeRunState }) {
   return (
