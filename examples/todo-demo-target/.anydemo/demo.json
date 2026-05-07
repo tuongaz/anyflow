@@ -6,8 +6,8 @@
       "id": "api-create-todo",
       "type": "playNode",
       "position": {
-        "x": 349.059570994217,
-        "y": 244.6458781778239
+        "x": 13.180631473597458,
+        "y": 36.238209282685474
       },
       "data": {
         "label": "POST /todos",
@@ -47,8 +47,8 @@
       "id": "api-complete-todo",
       "type": "playNode",
       "position": {
-        "x": -210.69965220387303,
-        "y": -29.417654275772882
+        "x": -420.8273898368459,
+        "y": -131.91898970649137
       },
       "data": {
         "label": "POST /todos/:id/complete",
@@ -81,8 +81,8 @@
       "id": "todo-worker",
       "type": "stateNode",
       "position": {
-        "x": 294.6240488889575,
-        "y": -18.42515992930143
+        "x": 157.6167035385478,
+        "y": -237.95061581960275
       },
       "data": {
         "label": "todo-worker",
@@ -102,7 +102,11 @@
               "value": "running → done"
             }
           ]
-        }
+        },
+        "borderColor": "green",
+        "width": 249,
+        "height": 117,
+        "backgroundColor": "red"
       }
     }
   ],
@@ -113,7 +117,9 @@
       "target": "todo-worker",
       "kind": "event",
       "eventName": "todo.completed",
-      "label": "publishes todo.completed"
+      "label": "publishes todo.completed",
+      "color": "red",
+      "direction": "backward"
     }
   ]
 }

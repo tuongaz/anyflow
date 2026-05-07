@@ -56,6 +56,17 @@
         "vite": "^5.4.10",
       },
     },
+    "examples/order-pipeline": {
+      "name": "@anydemo/example-order-pipeline",
+      "version": "0.0.0",
+      "dependencies": {
+        "hono": "^4.6.14",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.1.14",
+        "typescript": "^5.6.3",
+      },
+    },
     "examples/todo-demo-target": {
       "name": "@anydemo/example-todo-demo-target",
       "version": "0.0.0",
@@ -77,6 +88,8 @@
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
+
+    "@anydemo/example-order-pipeline": ["@anydemo/example-order-pipeline@workspace:examples/order-pipeline"],
 
     "@anydemo/example-todo-demo-target": ["@anydemo/example-todo-demo-target@workspace:examples/todo-demo-target"],
 

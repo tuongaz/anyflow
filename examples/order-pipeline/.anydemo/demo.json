@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "name": "Order Pipeline",
+  "nodes": [
+    {
+      "id": "async-fanout-bg",
+      "type": "shapeNode",
+      "position": { "x": 380, "y": 20 },
+      "data": {
+        "shape": "rectangle",
+        "label": "Async fan-out",
+        "width": 320,
+        "height": 380,
+        "borderColor": "slate",
+        "backgroundColor": "slate"
+      }
+    },
+    {
+      "id": "create-order",
+      "type": "playNode",
+      "position": { "x": 0, "y": 120 },
+      "data": {
+        "label": "POST /orders",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "borderColor": "blue",
+        "playAction": {
+          "kind": "http",
+          "method": "POST",
+          "url": "http://localhost:3040/orders",
+          "body": {
+            "customerId": "cust-1",
+            "items": [
+              { "sku": "sku-shirt", "qty": 1 },
+              { "sku": "sku-mug", "qty": 2 }
+            ]
+          }
+        },
+        "detail": {
+          "summary": "Creates an order, publishes order.created on the in-process bus, AND enqueues a shipment request on the shipments queue. The single click drives all three downstream nodes.",
+          "fields": [
+            { "label": "Service", "value": "order-pipeline" },
+            { "label": "Port", "value": "3040" },
+            { "label": "Fan-out", "value": "http + event + queue" }
+          ],
+          "dynamicSource": {
+            "kind": "http",
+            "method": "GET",
+            "url": "http://localhost:3040/admin/stats"
+          }
+        }
+      }
+    },
+    {
+      "id": "charge-payment",
+      "type": "playNode",
+      "position": { "x": 420, "y": -80 },
+      "data": {
+        "label": "POST /payments/charge",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "borderColor": "green",
+        "playAction": {
+          "kind": "http",
+          "method": "POST",
+          "url": "http://localhost:3040/payments/charge",
+          "body": {}
+        },
+        "detail": {
+          "summary": "Charges the most recently-created order (or pass {orderId} explicitly). Synchronous HTTP leg — flips status pending → paid before responding.",
+          "fields": [
+            { "label": "Pricing", "value": "shirt $29 · mug $12 · book $18" },
+            { "label": "Default target", "value": "last created order" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "inventory-worker",
+      "type": "stateNode",
+      "position": { "x": 420, "y": 80 },
+      "data": {
+        "label": "inventory-worker",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "borderColor": "amber",
+        "detail": {
+          "summary": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit.",
+          "fields": [
+            { "label": "Subscribes", "value": "order.created" },
+            { "label": "Latency", "value": "~250ms" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "shipping-worker",
+      "type": "stateNode",
+      "position": { "x": 420, "y": 240 },
+      "data": {
+        "label": "shipping-worker",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "borderColor": "purple",
+        "detail": {
+          "summary": "Drains the shipments queue. Books a label (~400ms), marks the order shipped, emits running → done. A queue (vs. an event) so messages persist across consumer restarts in real deployments.",
+          "fields": [
+            { "label": "Queue", "value": "shipments" },
+            { "label": "Latency", "value": "~400ms" }
+          ]
+        }
+      }
+    }
+  ],
+  "connectors": [
+    {
+      "id": "c-orders-payments",
+      "source": "create-order",
+      "target": "charge-payment",
+      "kind": "http",
+      "method": "POST",
+      "url": "http://localhost:3040/payments/charge",
+      "label": "charge",
+      "color": "blue"
+    },
+    {
+      "id": "c-orders-inventory",
+      "source": "create-order",
+      "target": "inventory-worker",
+      "kind": "event",
+      "eventName": "order.created",
+      "label": "order.created",
+      "color": "amber"
+    },
+    {
+      "id": "c-orders-shipping",
+      "source": "create-order",
+      "target": "shipping-worker",
+      "kind": "queue",
+      "queueName": "shipments",
+      "label": "shipments",
+      "color": "purple"
+    }
+  ]
+}
