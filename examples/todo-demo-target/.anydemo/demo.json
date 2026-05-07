@@ -6,8 +6,8 @@
       "id": "api-create-todo",
       "type": "playNode",
       "position": {
-        "x": 660.1105256473926,
-        "y": 202.97861633954807
+        "x": 349.059570994217,
+        "y": 244.6458781778239
       },
       "data": {
         "label": "POST /todos",
@@ -47,8 +47,8 @@
       "id": "api-complete-todo",
       "type": "playNode",
       "position": {
-        "x": -68.25575708232533,
-        "y": 176.98064273708195
+        "x": -210.69965220387303,
+        "y": -29.417654275772882
       },
       "data": {
         "label": "POST /todos/:id/complete",
@@ -81,8 +81,8 @@
       "id": "todo-worker",
       "type": "stateNode",
       "position": {
-        "x": 344.19601708165186,
-        "y": 1.0789374988942342
+        "x": 294.6240488889575,
+        "y": -18.42515992930143
       },
       "data": {
         "label": "todo-worker",
