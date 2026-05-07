@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRegistry } from './registry.ts';
@@ -135,6 +135,39 @@ describe('GET /api/demos', () => {
     expect(list[0]?.slug).toBe('checkout-flow');
     expect(list[0]?.name).toBe('Checkout Flow');
     expect(list[0]?.valid).toBe(true);
+  });
+
+  it('flags entries whose demo file no longer exists as valid:false', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' });
+
+    rmSync(join(repoPath, '.anydemo', 'demo.json'));
+
+    const list = (await (await app.request('/api/demos')).json()) as Array<{ valid: boolean }>;
+    expect(list).toHaveLength(1);
+    expect(list[0]?.valid).toBe(false);
+  });
+
+  it('rehydrates registered demos after the registry is rebuilt from disk', async () => {
+    const registryPath = tmpRegistry();
+    const repoA = tmpRepoWithDemo();
+    const repoB = tmpRepoWithDemo({ ...VALID_DEMO, name: 'Other Flow' });
+
+    const reg1 = createRegistry({ path: registryPath });
+    const app1 = createApp({ mode: 'prod', staticRoot: './dist/web', registry: reg1 });
+    await post(app1, '/api/demos/register', { repoPath: repoA, demoPath: '.anydemo/demo.json' });
+    await post(app1, '/api/demos/register', { repoPath: repoB, demoPath: '.anydemo/demo.json' });
+
+    const reg2 = createRegistry({ path: registryPath });
+    const app2 = createApp({ mode: 'prod', staticRoot: './dist/web', registry: reg2 });
+    const list = (await (await app2.request('/api/demos')).json()) as Array<{
+      slug: string;
+      valid: boolean;
+    }>;
+    expect(list).toHaveLength(2);
+    expect(list.map((e) => e.slug).sort()).toEqual(['checkout-flow', 'other-flow']);
+    expect(list.every((e) => e.valid)).toBe(true);
   });
 });
 

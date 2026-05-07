@@ -68,14 +68,18 @@ export function createApi(options: ApiOptions): Hono {
 
   api.get('/demos', (c) => {
     return c.json(
-      registry.list().map((e) => ({
-        id: e.id,
-        slug: e.slug,
-        name: e.name,
-        repoPath: e.repoPath,
-        lastModified: e.lastModified,
-        valid: e.valid,
-      })),
+      registry.list().map((e) => {
+        const fullPath = isAbsolute(e.demoPath) ? e.demoPath : join(e.repoPath, e.demoPath);
+        const fileExists = existsSync(fullPath);
+        return {
+          id: e.id,
+          slug: e.slug,
+          name: e.name,
+          repoPath: e.repoPath,
+          lastModified: e.lastModified,
+          valid: e.valid && fileExists,
+        };
+      }),
     );
   });
 
