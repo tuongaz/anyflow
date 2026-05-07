@@ -238,15 +238,48 @@ export function DemoView({
   const onStyleConnector = useCallback(
     (connId: string, patch: ConnectorStylePatch) => {
       if (!demoId) return;
+      const conn = demoConnectors?.find((c) => c.id === connId);
+      // Snapshot only the keys the caller is touching so undo restores those
+      // exact fields and leaves anything else alone.
+      let prev: ConnectorStylePatch | null = null;
+      if (conn) {
+        prev = {};
+        const data = conn as unknown as Record<string, unknown>;
+        for (const k of Object.keys(patch)) {
+          (prev as Record<string, unknown>)[k] = data[k];
+        }
+      }
       setConnectorOverride(connId, patch as Partial<Connector>);
       setEditError(null);
+      markMutation();
+      if (prev) {
+        const prevPatch = prev;
+        pushUndo({
+          do: async () => {
+            await updateConnector(demoId, connId, patch);
+          },
+          undo: async () => {
+            await updateConnector(demoId, connId, prevPatch);
+          },
+          coalesceKey: `connector:${connId}:style`,
+        });
+      }
       updateConnector(demoId, connId, patch).catch((err) => {
         dropConnectorOverride(connId);
+        if (prev) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateConnector failed', err);
       });
     },
-    [demoId, setConnectorOverride, dropConnectorOverride],
+    [
+      demoId,
+      demoConnectors,
+      setConnectorOverride,
+      dropConnectorOverride,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
   );
 
   const onDeleteNode = useCallback(
@@ -299,14 +332,30 @@ export function DemoView({
   const onDeleteConnector = useCallback(
     (connId: string) => {
       if (!demoId) return;
+      // Snapshot the full connector BEFORE the delete API call so undo can
+      // recreate it with the original id and properties.
+      const conn = demoConnectors?.find((c) => c.id === connId);
       setEditError(null);
       setSelectedConnectorId((prev) => (prev === connId ? null : prev));
+      markMutation();
+      if (conn) {
+        const connSnapshot = conn;
+        pushUndo({
+          do: async () => {
+            await deleteConnector(demoId, connId);
+          },
+          undo: async () => {
+            await createConnector(demoId, { ...connSnapshot, id: connSnapshot.id });
+          },
+        });
+      }
       deleteConnector(demoId, connId).catch((err) => {
+        if (conn) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('deleteConnector failed', err);
       });
     },
-    [demoId],
+    [demoId, demoConnectors, pushUndo, dropUndoTop, markMutation],
   );
 
   // Delete/Backspace shortcut: removes the selected node or connector. Skipped
@@ -467,15 +516,38 @@ export function DemoView({
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
+      const conn = demoConnectors?.find((c) => c.id === connId);
+      const prevLabel = conn?.label;
       setConnectorOverride(connId, { label } as Partial<Connector>);
       setEditError(null);
+      markMutation();
+      if (conn) {
+        pushUndo({
+          do: async () => {
+            await updateConnector(demoId, connId, { label });
+          },
+          undo: async () => {
+            await updateConnector(demoId, connId, { label: prevLabel });
+          },
+          coalesceKey: `connector:${connId}:label`,
+        });
+      }
       updateConnector(demoId, connId, { label }).catch((err) => {
         dropConnectorOverride(connId);
+        if (conn) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateConnector label failed', err);
       });
     },
-    [demoId, setConnectorOverride, dropConnectorOverride],
+    [
+      demoId,
+      demoConnectors,
+      setConnectorOverride,
+      dropConnectorOverride,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
   );
 
   // Create a default connector from a handle-drag gesture (US-029). We
@@ -488,15 +560,31 @@ export function DemoView({
       if (!demoId) return;
       const id = `conn-${crypto.randomUUID()}`;
       const optimistic: DefaultConnector = { id, source, target, kind: 'default' };
+      const payload = { id, source, target, kind: 'default' as const };
       setConnectorOverride(id, optimistic as Partial<Connector>);
       setEditError(null);
-      createConnector(demoId, { id, source, target, kind: 'default' }).catch((err) => {
-        dropConnectorOverride(id);
-        setEditError(err instanceof Error ? err.message : String(err));
-        console.error('createConnector failed', err);
-      });
+      markMutation();
+      // Push from the .then so the undo entry binds to the server-issued id
+      // (matches `onCreateShapeNode`). No dropTop is needed on .catch because
+      // nothing was pushed before the API resolved.
+      createConnector(demoId, payload)
+        .then(({ id: returnedId }) => {
+          pushUndo({
+            do: async () => {
+              await createConnector(demoId, { ...payload, id: returnedId });
+            },
+            undo: async () => {
+              await deleteConnector(demoId, returnedId);
+            },
+          });
+        })
+        .catch((err) => {
+          dropConnectorOverride(id);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createConnector failed', err);
+        });
     },
-    [demoId, setConnectorOverride, dropConnectorOverride],
+    [demoId, setConnectorOverride, dropConnectorOverride, pushUndo, markMutation],
   );
 
   // Drag an edge endpoint onto another node's handle to retarget it. The
@@ -505,15 +593,41 @@ export function DemoView({
   const onReconnectConnector = useCallback(
     (connId: string, patch: { source?: string; target?: string }) => {
       if (!demoId) return;
+      const conn = demoConnectors?.find((c) => c.id === connId);
+      // Capture both endpoints so undo can reset whichever side moved (and
+      // leave the other side untouched at its original value).
+      const prev = conn ? { source: conn.source, target: conn.target } : null;
       setConnectorOverride(connId, patch as Partial<Connector>);
       setEditError(null);
+      markMutation();
+      if (prev) {
+        const prevPatch = prev;
+        pushUndo({
+          do: async () => {
+            await updateConnector(demoId, connId, patch);
+          },
+          undo: async () => {
+            await updateConnector(demoId, connId, prevPatch);
+          },
+          coalesceKey: `connector:${connId}:reconnect`,
+        });
+      }
       updateConnector(demoId, connId, patch).catch((err) => {
         dropConnectorOverride(connId);
+        if (prev) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateConnector reconnect failed', err);
       });
     },
-    [demoId, setConnectorOverride, dropConnectorOverride],
+    [
+      demoId,
+      demoConnectors,
+      setConnectorOverride,
+      dropConnectorOverride,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
   );
 
   // Merge pending overrides onto the selected entity so Style-tab controls
