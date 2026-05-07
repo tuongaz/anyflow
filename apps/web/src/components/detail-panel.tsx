@@ -1,6 +1,7 @@
 import { JsonTree } from '@/components/json-tree';
 import { StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNodeDetail } from '@/hooks/use-node-detail';
@@ -15,7 +16,7 @@ import type {
 } from '@/lib/api';
 import { COLOR_TOKENS } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
-import { ArrowLeftRight, ArrowRight, MoveLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Check, MoveLeft, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 // Curated palette order — surfaced once so swatch rows stay visually consistent
@@ -122,6 +123,11 @@ export function DetailPanel({
           // open through the entire resize.
           const target = e.target as HTMLElement | null;
           if (target?.closest('.react-flow__resize-control')) e.preventDefault();
+          // Style-tab color popovers (US-032) render their content into a
+          // portal outside the SheetContent. A click inside the popover (or
+          // on its trigger via Radix's outside-pointer detection) would
+          // otherwise close the Sheet. Keep it open.
+          if (target?.closest('[data-radix-popper-content-wrapper]')) e.preventDefault();
         }}
       >
         {node ? (
@@ -245,18 +251,20 @@ function NodeStyleTab({
   const backgroundActive = (node.data.backgroundColor ?? 'default') as ColorToken;
   return (
     <div className="flex flex-col gap-4">
-      <SwatchRow
+      <SwatchPicker
         label="Border"
         active={borderActive}
         onSelect={(token) => onApply({ borderColor: token })}
-        testIdPrefix="style-tab-border-color"
+        triggerTestId="style-tab-border-color-trigger"
+        tokenTestIdPrefix="style-tab-border-color"
         previewKind="border"
       />
-      <SwatchRow
+      <SwatchPicker
         label="Background"
         active={backgroundActive}
         onSelect={(token) => onApply({ backgroundColor: token })}
-        testIdPrefix="style-tab-background-color"
+        triggerTestId="style-tab-background-color-trigger"
+        tokenTestIdPrefix="style-tab-background-color"
         previewKind="background"
       />
       <DeleteButton onDelete={onDelete} entity="node" />
@@ -278,11 +286,12 @@ function ConnectorStyleTab({
   const directionActive = (connector.direction ?? 'forward') as ConnectorDirection;
   return (
     <div className="flex flex-col gap-4">
-      <SwatchRow
+      <SwatchPicker
         label="Color"
         active={colorActive}
         onSelect={(token) => onApply({ color: token })}
-        testIdPrefix="style-tab-color"
+        triggerTestId="style-tab-edge-color-trigger"
+        tokenTestIdPrefix="style-tab-color"
         previewKind="edge"
       />
 
@@ -320,58 +329,111 @@ function ConnectorStyleTab({
   );
 }
 
-function SwatchRow({
+type SwatchPreviewKind = 'border' | 'background' | 'edge';
+
+function swatchPreviewStyle(token: ColorToken, kind: SwatchPreviewKind) {
+  const palette = COLOR_TOKENS[token];
+  // Each preview kind picks the most readable face of the token:
+  //   • border    → ring of the border color over a card-tinted disc
+  //   • background → solid disc of the background color
+  //   • edge      → solid disc of the edge stroke color
+  if (kind === 'background')
+    return { backgroundColor: palette.background, borderColor: palette.border };
+  if (kind === 'edge') return { backgroundColor: palette.edge, borderColor: palette.edge };
+  return { borderColor: palette.border, backgroundColor: palette.background };
+}
+
+function SwatchPicker({
   label,
   active,
   onSelect,
-  testIdPrefix,
+  triggerTestId,
+  tokenTestIdPrefix,
   previewKind,
 }: {
   label: string;
   active: ColorToken;
   onSelect: (token: ColorToken) => void;
-  testIdPrefix: string;
-  previewKind: 'border' | 'background' | 'edge';
+  triggerTestId: string;
+  tokenTestIdPrefix: string;
+  previewKind: SwatchPreviewKind;
 }) {
+  const [open, setOpen] = useState(false);
+  const isUnset = active === 'default';
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <div className="flex flex-wrap gap-1.5">
-        {PALETTE_TOKENS.map((token) => {
-          const isActive = active === token;
-          const palette = COLOR_TOKENS[token];
-          // Each preview kind picks the most readable face of the token:
-          //   • border    → ring of the border color over a card-tinted disc
-          //   • background → solid disc of the background color
-          //   • edge      → solid disc of the edge stroke color
-          const previewStyle =
-            previewKind === 'background'
-              ? { backgroundColor: palette.background, borderColor: palette.border }
-              : previewKind === 'edge'
-                ? { backgroundColor: palette.edge, borderColor: palette.edge }
-                : { borderColor: palette.border, backgroundColor: palette.background };
-          return (
-            <button
-              key={token}
-              type="button"
-              onClick={() => onSelect(token)}
-              data-testid={`${testIdPrefix}-${token}`}
-              data-active={isActive}
-              aria-label={`${label} ${token}`}
-              title={token}
-              className={cn(
-                'h-7 w-7 rounded-full border-2 transition-all',
-                isActive
-                  ? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
-                  : 'hover:scale-110',
-              )}
-              style={previewStyle}
-            />
-          );
-        })}
-      </div>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            data-testid={triggerTestId}
+            data-active-token={active}
+            aria-label={`${label}: ${active}`}
+            title={active}
+            className={cn(
+              'relative h-7 w-7 self-start rounded-full border-2 transition-all',
+              'hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+            )}
+            style={swatchPreviewStyle(active, previewKind)}
+          >
+            {isUnset ? (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(45deg, transparent 45%, currentColor 45%, currentColor 55%, transparent 55%)',
+                  color: 'hsl(var(--muted-foreground))',
+                  opacity: 0.5,
+                }}
+              />
+            ) : null}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-auto p-2"
+          data-testid={`${triggerTestId}-popover`}
+        >
+          <div className="grid grid-cols-4 gap-1.5">
+            {PALETTE_TOKENS.map((token) => {
+              const isActive = active === token;
+              return (
+                <button
+                  key={token}
+                  type="button"
+                  onClick={() => {
+                    onSelect(token);
+                    setOpen(false);
+                  }}
+                  data-testid={`${tokenTestIdPrefix}-${token}`}
+                  data-active={isActive}
+                  aria-label={`${label} ${token}`}
+                  aria-pressed={isActive}
+                  title={token}
+                  className={cn(
+                    'relative flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all',
+                    isActive
+                      ? 'ring-2 ring-ring ring-offset-2 ring-offset-popover'
+                      : 'hover:scale-110',
+                  )}
+                  style={swatchPreviewStyle(token, previewKind)}
+                >
+                  {isActive ? (
+                    <Check
+                      className="h-3 w-3 drop-shadow-sm"
+                      style={{ color: 'hsl(var(--foreground))' }}
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

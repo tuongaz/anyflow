@@ -9,7 +9,7 @@ DIR ?= .
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register
+.PHONY: help install dev build typecheck lint format test clean start stop register ralph-clean
 
 help: ## Show this target list
 	@echo "AnyDemo — make targets"
@@ -56,3 +56,7 @@ register: ## Register a demo: make register DIR=<path>
 clean: ## Remove node_modules + apps/studio/dist (preserves ~/.anydemo and examples/*/.anydemo/sdk)
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules examples/*/node_modules
 	rm -rf apps/studio/dist
+
+ralph-clean: ## Clear ralph state: progress.txt, prd.json, .last-branch, archive/
+	rm -f ralph/progress.txt ralph/prd.json ralph/.last-branch
+	rm -rf ralph/archive
