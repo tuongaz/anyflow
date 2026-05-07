@@ -1,3 +1,4 @@
+import { EditableEdge } from '@/components/edges/editable-edge';
 import { PlayNode } from '@/components/nodes/play-node';
 import { ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
@@ -51,6 +52,12 @@ export interface DemoCanvasProps {
    * enables NodeResizer's resize handles inside each custom node.
    */
   onNodeResize?: (nodeId: string, dims: { width: number; height: number }) => void;
+  /** Persist a new node label (PATCH /nodes/:id { label }). */
+  onNodeLabelChange?: (nodeId: string, label: string) => void;
+  /** Persist a new node description on detail.summary. */
+  onNodeDescriptionChange?: (nodeId: string, summary: string) => void;
+  /** Persist a new connector label (PATCH /connectors/:id { label }). */
+  onConnectorLabelChange?: (connId: string, label: string) => void;
 }
 
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
@@ -73,6 +80,7 @@ const mergeConnectorOverride = (
 };
 
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
+const edgeTypes = { editableEdge: EditableEdge };
 
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
   runs?.[id]?.status ?? 'idle';
@@ -90,6 +98,9 @@ export function DemoCanvas({
   connectorOverrides,
   onNodePositionChange,
   onNodeResize,
+  onNodeLabelChange,
+  onNodeDescriptionChange,
+  onConnectorLabelChange,
 }: DemoCanvasProps) {
   // Block upstream sync while a node is mid-drag or mid-resize. NodeResizer
   // dispatches dimension changes into rfNodes during the gesture; if we then
@@ -116,6 +127,8 @@ export function DemoCanvas({
             onPlay: onPlayNode,
             onResize: onNodeResize,
             setResizing,
+            onLabelChange: onNodeLabelChange,
+            onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
           },
           selected: n.id === selectedNodeId,
         };
@@ -127,7 +140,17 @@ export function DemoCanvas({
         if (merged.data.height !== undefined) node.height = merged.data.height;
         return node;
       }),
-    [nodes, selectedNodeId, runs, onPlayNode, onNodeResize, setResizing, nodeOverrides],
+    [
+      nodes,
+      selectedNodeId,
+      runs,
+      onPlayNode,
+      onNodeResize,
+      setResizing,
+      nodeOverrides,
+      onNodeLabelChange,
+      onNodeDescriptionChange,
+    ],
   );
 
   // React Flow needs internal node state + onNodesChange to render drag
@@ -155,9 +178,17 @@ export function DemoCanvas({
           statusFor(runs, merged.target) === 'running';
         const edge = connectorToEdge(merged, adjacentRunning);
         if (selectedConnectorId === merged.id) edge.selected = true;
-        return edge;
+        // Inject the runtime label-change callback into edge.data — same
+        // channel the custom node components use for `onPlay` / `onResize`.
+        // `data` already carries the connector kind for downstream filtering;
+        // spread it into a new object to avoid mutating the connectorToEdge
+        // memo's return value.
+        return {
+          ...edge,
+          data: { ...edge.data, onLabelChange: onConnectorLabelChange },
+        };
       }),
-    [connectors, runs, selectedConnectorId, connectorOverrides],
+    [connectors, runs, selectedConnectorId, connectorOverrides, onConnectorLabelChange],
   );
 
   return (
@@ -167,6 +198,7 @@ export function DemoCanvas({
         edges={rfEdges}
         onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
         fitView
         nodesDraggable={!!onNodePositionChange}

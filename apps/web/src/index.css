@@ -100,4 +100,21 @@
   .anydemo-node-pulse {
     animation: anydemo-node-pulse 1.4s ease-in-out infinite;
   }
+  @keyframes inline-edit-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20%,
+    60% {
+      transform: translateX(-3px);
+    }
+    40%,
+    80% {
+      transform: translateX(3px);
+    }
+  }
+  .inline-edit-shake {
+    animation: inline-edit-shake 0.32s ease-in-out;
+  }
 }

@@ -4,7 +4,7 @@ import { connectorToEdge, styleForKind } from '@/lib/connector-to-edge';
 import { MarkerType } from '@xyflow/react';
 
 describe('connectorToEdge', () => {
-  it('preserves id/source/target and uses smoothstep edge type', () => {
+  it('preserves id/source/target and uses the editableEdge custom type', () => {
     const c: Connector = {
       id: 'c1',
       source: 'a',
@@ -17,7 +17,7 @@ describe('connectorToEdge', () => {
     expect(edge.id).toBe('c1');
     expect(edge.source).toBe('a');
     expect(edge.target).toBe('b');
-    expect(edge.type).toBe('smoothstep');
+    expect(edge.type).toBe('editableEdge');
   });
 
   it('passes the connector label through to the React Flow edge label', () => {

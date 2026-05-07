@@ -1,3 +1,4 @@
+import { InlineEdit } from '@/components/inline-edit';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,8 @@ import { type CSSProperties, useState } from 'react';
 export type ShapeNodeRuntimeData = ShapeNodeData & {
   onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
   setResizing?: (on: boolean) => void;
+  /** Persist a new label (PATCH /nodes/:id { label }). Optional for shape nodes. */
+  onLabelChange?: (nodeId: string, label: string) => void;
 } & Record<string, unknown>;
 export type ShapeNodeType = Node<ShapeNodeRuntimeData, 'shapeNode'>;
 
@@ -28,6 +31,8 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = DEFAULT_SIZE[shape];
   const [isResizing, setIsResizing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const labelEditable = !!data.onLabelChange;
   // While resizing OR once data.width/height are set, the React Flow wrapper
   // owns the dimensions; the inner fills via h-full w-full. Before any resize,
   // we still need an explicit size so the wrapper auto-sizes to it.
@@ -58,7 +63,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
       data-shape={shape}
     >
       <NodeResizer
-        isVisible={selected && !!data.onResize}
+        isVisible={selected && !!data.onResize && !isEditing}
         minWidth={80}
         minHeight={40}
         onResizeStart={() => {
@@ -73,9 +78,35 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
       />
       <Handle type="target" position={Position.Top} id="t" className={HANDLE_CLASS} />
       <Handle type="target" position={Position.Left} id="l" className={HANDLE_CLASS} />
-      {data.label ? (
-        <span className="break-words font-medium leading-tight">{data.label}</span>
-      ) : null}
+      {isEditing && labelEditable ? (
+        <InlineEdit
+          initialValue={data.label ?? ''}
+          field="node-label"
+          onCommit={(v) => data.onLabelChange?.(id, v)}
+          onExit={() => setIsEditing(false)}
+          className="text-sm"
+          placeholder="Label"
+        />
+      ) : (
+        <button
+          type="button"
+          className={cn(
+            'block bg-transparent p-0 font-medium leading-tight',
+            labelEditable ? 'cursor-text' : '',
+            data.label ? 'break-words' : 'text-muted-foreground/40 italic',
+          )}
+          onDoubleClick={
+            labelEditable
+              ? (e) => {
+                  e.stopPropagation();
+                  setIsEditing(true);
+                }
+              : undefined
+          }
+        >
+          {data.label ?? (labelEditable ? 'Double-click to label' : '')}
+        </button>
+      )}
       <Handle type="source" position={Position.Right} id="r" className={HANDLE_CLASS} />
       <Handle type="source" position={Position.Bottom} id="b" className={HANDLE_CLASS} />
     </div>

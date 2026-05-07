@@ -1,3 +1,4 @@
+import { InlineEdit } from '@/components/inline-edit';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
@@ -11,8 +12,14 @@ export type PlayNodeData = NodeData & {
   onPlay?: (nodeId: string) => void;
   onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
   setResizing?: (on: boolean) => void;
+  /** Persist a new label (PATCH /nodes/:id { label }). */
+  onLabelChange?: (nodeId: string, label: string) => void;
+  /** Persist a new description on detail.summary (PATCH /nodes/:id { detail }). */
+  onDescriptionChange?: (nodeId: string, summary: string) => void;
 } & Record<string, unknown>;
 export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
+
+type EditField = 'label' | 'description' | null;
 
 export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const status = data.status ?? 'idle';
@@ -20,12 +27,11 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const description = data.detail?.summary ?? data.kind;
   const playable = !!action && !!data.onPlay;
   const isRunning = status === 'running';
-  // Track an in-flight resize gesture locally so the inner card follows the
-  // React Flow wrapper's width/height the moment NodeResizer dispatches a
-  // dimension change. After resize-stop, data.width/height are set via the
-  // pending override (US-021) and we keep filling the wrapper.
   const [isResizing, setIsResizing] = useState(false);
+  const [editing, setEditing] = useState<EditField>(null);
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
+  const labelEditable = !!data.onLabelChange;
+  const descEditable = !!data.onDescriptionChange;
 
   return (
     <div
@@ -39,7 +45,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
       data-testid="play-node"
     >
       <NodeResizer
-        isVisible={selected && !!data.onResize}
+        isVisible={selected && !!data.onResize && editing === null}
         minWidth={80}
         minHeight={40}
         onResizeStart={() => {
@@ -58,7 +64,34 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         data-testid="node-header"
       >
         <div className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
-          {data.label}
+          {editing === 'label' && labelEditable ? (
+            <InlineEdit
+              initialValue={data.label}
+              field="node-label"
+              required
+              onCommit={(v) => data.onLabelChange?.(id, v)}
+              onExit={() => setEditing(null)}
+              className="text-sm font-medium"
+            />
+          ) : (
+            <button
+              type="button"
+              className={cn(
+                'block w-full cursor-text bg-transparent p-0 text-left text-sm font-medium leading-tight',
+                labelEditable ? 'hover:bg-muted/60' : '',
+              )}
+              onDoubleClick={
+                labelEditable
+                  ? (e) => {
+                      e.stopPropagation();
+                      setEditing('label');
+                    }
+                  : undefined
+              }
+            >
+              {data.label}
+            </button>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <StatusPill status={status} />
@@ -82,7 +115,35 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         </div>
       </div>
       <div className="flex-1 px-3 py-2 text-[12px] text-muted-foreground break-words">
-        {description}
+        {editing === 'description' && descEditable ? (
+          <InlineEdit
+            initialValue={data.detail?.summary ?? ''}
+            field="node-description"
+            multiline
+            onCommit={(v) => data.onDescriptionChange?.(id, v)}
+            onExit={() => setEditing(null)}
+            className="text-[12px]"
+            placeholder={data.kind}
+          />
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              'block w-full cursor-text bg-transparent p-0 text-left text-[12px] text-muted-foreground',
+              descEditable ? 'hover:bg-muted/60' : '',
+            )}
+            onDoubleClick={
+              descEditable
+                ? (e) => {
+                    e.stopPropagation();
+                    setEditing('description');
+                  }
+                : undefined
+            }
+          >
+            {description}
+          </button>
+        )}
       </div>
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-muted-foreground" />
     </div>

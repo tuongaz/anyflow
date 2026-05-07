@@ -1,3 +1,4 @@
+import { InlineEdit } from '@/components/inline-edit';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import type { NodeData } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -8,14 +9,21 @@ export type StateNodeData = NodeData & {
   status: NodeStatus;
   onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
   setResizing?: (on: boolean) => void;
+  onLabelChange?: (nodeId: string, label: string) => void;
+  onDescriptionChange?: (nodeId: string, summary: string) => void;
 } & Record<string, unknown>;
 export type StateNodeType = Node<StateNodeData, 'stateNode'>;
+
+type EditField = 'label' | 'description' | null;
 
 export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
   const status = data.status ?? 'idle';
   const description = data.detail?.summary ?? data.kind;
   const [isResizing, setIsResizing] = useState(false);
+  const [editing, setEditing] = useState<EditField>(null);
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
+  const labelEditable = !!data.onLabelChange;
+  const descEditable = !!data.onDescriptionChange;
 
   return (
     <div
@@ -29,7 +37,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
       data-testid="state-node"
     >
       <NodeResizer
-        isVisible={selected && !!data.onResize}
+        isVisible={selected && !!data.onResize && editing === null}
         minWidth={80}
         minHeight={40}
         onResizeStart={() => {
@@ -48,7 +56,34 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         data-testid="node-header"
       >
         <div className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
-          {data.label}
+          {editing === 'label' && labelEditable ? (
+            <InlineEdit
+              initialValue={data.label}
+              field="node-label"
+              required
+              onCommit={(v) => data.onLabelChange?.(id, v)}
+              onExit={() => setEditing(null)}
+              className="text-sm font-medium"
+            />
+          ) : (
+            <button
+              type="button"
+              className={cn(
+                'block w-full cursor-text bg-transparent p-0 text-left text-sm font-medium leading-tight',
+                labelEditable ? 'hover:bg-muted/60' : '',
+              )}
+              onDoubleClick={
+                labelEditable
+                  ? (e) => {
+                      e.stopPropagation();
+                      setEditing('label');
+                    }
+                  : undefined
+              }
+            >
+              {data.label}
+            </button>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <StatusPill status={status} />
@@ -59,7 +94,35 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         </div>
       </div>
       <div className="flex-1 px-3 py-2 text-[12px] text-muted-foreground break-words">
-        {description}
+        {editing === 'description' && descEditable ? (
+          <InlineEdit
+            initialValue={data.detail?.summary ?? ''}
+            field="node-description"
+            multiline
+            onCommit={(v) => data.onDescriptionChange?.(id, v)}
+            onExit={() => setEditing(null)}
+            className="text-[12px]"
+            placeholder={data.kind}
+          />
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              'block w-full cursor-text bg-transparent p-0 text-left text-[12px] text-muted-foreground',
+              descEditable ? 'hover:bg-muted/60' : '',
+            )}
+            onDoubleClick={
+              descEditable
+                ? (e) => {
+                    e.stopPropagation();
+                    setEditing('description');
+                  }
+                : undefined
+            }
+          >
+            {description}
+          </button>
+        )}
       </div>
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-muted-foreground" />
     </div>

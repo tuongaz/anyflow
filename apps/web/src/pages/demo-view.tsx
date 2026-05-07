@@ -199,6 +199,58 @@ export function DemoView({
     [demoId],
   );
 
+  // Inline label edit on a node (PlayNode/StateNode title or ShapeNode label).
+  // Empty value is filtered out by the InlineEdit's `required` flag for
+  // PlayNode/StateNode; ShapeNode labels are optional and pass through here.
+  const onNodeLabelChange = useCallback(
+    (nodeId: string, label: string) => {
+      if (!demoId) return;
+      setNodeOverride(nodeId, { data: { label } } as Partial<DemoNode>);
+      setEditError(null);
+      updateNode(demoId, nodeId, { label }).catch((err) => {
+        dropNodeOverride(nodeId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode label failed', err);
+      });
+    },
+    [demoId, setNodeOverride, dropNodeOverride],
+  );
+
+  // Inline description edit reuses detail.summary; we splice the new summary
+  // into the existing detail object so unrelated fields (fields[],
+  // dynamicSource, filePath) survive the round-trip.
+  const demoNodesForDesc = detail?.demo?.nodes;
+  const onNodeDescriptionChange = useCallback(
+    (nodeId: string, summary: string) => {
+      if (!demoId) return;
+      const node = demoNodesForDesc?.find((n) => n.id === nodeId);
+      if (!node || node.type === 'shapeNode') return;
+      const nextDetail = { ...(node.data.detail ?? {}), summary };
+      setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);
+      setEditError(null);
+      updateNode(demoId, nodeId, { detail: nextDetail }).catch((err) => {
+        dropNodeOverride(nodeId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode description failed', err);
+      });
+    },
+    [demoId, demoNodesForDesc, setNodeOverride, dropNodeOverride],
+  );
+
+  const onConnectorLabelChange = useCallback(
+    (connId: string, label: string) => {
+      if (!demoId) return;
+      setConnectorOverride(connId, { label } as Partial<Connector>);
+      setEditError(null);
+      updateConnector(demoId, connId, { label }).catch((err) => {
+        dropConnectorOverride(connId);
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateConnector label failed', err);
+      });
+    },
+    [demoId, setConnectorOverride, dropConnectorOverride],
+  );
+
   // Merge pending overrides onto the selected entity so Style-tab controls
   // (active swatches, selected dropdown option) reflect the in-flight edit
   // immediately rather than waiting for the SSE echo. Defined here (above the
@@ -271,6 +323,9 @@ export function DemoView({
           connectorOverrides={connectorOverrides}
           onNodePositionChange={onNodePositionChange}
           onNodeResize={onNodeResize}
+          onNodeLabelChange={onNodeLabelChange}
+          onNodeDescriptionChange={onNodeDescriptionChange}
+          onConnectorLabelChange={onConnectorLabelChange}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

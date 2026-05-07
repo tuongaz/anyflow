@@ -6,9 +6,12 @@ export interface DerivedEdge {
   id: string;
   source: string;
   target: string;
-  type: 'smoothstep';
+  type: 'editableEdge';
   label?: string;
   animated: boolean;
+  // `kind` drives downstream visual filtering; per-edge runtime callbacks
+  // (e.g. onLabelChange) are injected by DemoCanvas at render time so they
+  // don't churn the connectorToEdge memo.
   data: { kind: Connector['kind'] };
   style: { strokeDasharray?: string; stroke?: string };
   markerStart?: EdgeMarker;
@@ -70,7 +73,7 @@ export const connectorToEdge = (
     id: connector.id,
     source: connector.source,
     target: connector.target,
-    type: 'smoothstep',
+    type: 'editableEdge',
     label: connector.label,
     animated: isAdjacentToRunning,
     data: { kind: connector.kind },

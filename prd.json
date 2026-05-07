@@ -190,7 +190,8 @@
         "data-testid='inline-edit-input' with data-field for tests.",
         "bun run typecheck passes.",
         "Verify in browser using dev-browser skill."
-      ]
+      ],
+      "passes": true
     },
     {
       "id": "US-027",
@@ -249,6 +250,44 @@
         "StateNode's existing StatusPill behavior is unaffected — state nodes are not user-triggered, their pill remains driven by emit() events.",
         "Existing data-testid='play-button' is preserved; the conditional StatusPill on PlayNode gets a data-testid='play-node-status' so tests can assert presence/absence cleanly.",
         "Existing tests that asserted the 'Play' / 'Running…' text on the button are updated to assert the icon + aria-label instead.",
+        "bun run typecheck passes.",
+        "bun run lint passes.",
+        "Verify in browser using dev-browser skill."
+      ]
+    },
+    {
+      "id": "US-031",
+      "title": "Quiet resize affordance + selection persists through resize",
+      "description": "As a user, I don't want a visible resize border cluttering my selected node — I just want my cursor to change to a resize cursor at the edges so I know I can drag. And while I'm resizing, the inspector panel must stay open so I don't lose my place.",
+      "acceptanceCriteria": [
+        "Selected nodes do NOT show NodeResizer's default visible border lines or visible corner handles. The selected ring (existing 'ring-2 ring-ring' on the node container) stays — it's the selection indicator, not a resize hint.",
+        "When the mouse hovers near any edge or corner of a selected node, the cursor changes to the appropriate resize cursor (ew-resize / ns-resize / nwse-resize / nesw-resize). No additional iconography rendered into the node body — the cursor IS the affordance.",
+        "Implemented via React Flow's lower-level <NodeResizeControl> components (one per edge + per corner) styled to be transparent (e.g. lineClassName='!border-transparent', no visible handle styling) but each with its corresponding cursor: position='top'/'bottom' → ns-resize, 'left'/'right' → ew-resize, 'top-left'/'bottom-right' → nwse-resize, 'top-right'/'bottom-left' → nesw-resize. Equivalent custom-styled NodeResizer is acceptable as long as the visible border + handle dots are gone.",
+        "Hover hit area for each edge control is wide enough to be discoverable (suggest ~6–8px) without occluding inline-edit double-clicks on the node body.",
+        "Selection state (selectedNodeId) is preserved across the entire resize gesture — from mousedown on the resize control through mouseup, even if the mouseup lands outside the node's bounding box.",
+        "The DetailPanel (Sheet) does NOT close during or after a resize. Resize gestures must not bubble into onPaneClick (which clears selection) — confirmed by ensuring resize-control mousedown stops propagation to the React Flow pane.",
+        "DetailPanel's existing 'modal={false}' setting is unaffected — it stays a non-modal overlay and the canvas under it remains interactive during resize.",
+        "Per-side resize works correctly (dragging right edge changes width only, etc.), and the final width/height PATCH on resize-stop (per US-023) still fires exactly once per gesture.",
+        "Existing US-023 minimum-size enforcement (e.g. 80x40) still applies.",
+        "data-testid='resize-control' (with data-position='top' | 'right' | ...) on each invisible control so tests can assert presence + cursor without needing screenshot checks.",
+        "bun run typecheck passes.",
+        "bun run lint passes.",
+        "Verify in browser using dev-browser skill (specifically: select a node, resize from each edge/corner, confirm the panel stays open and no visible border lines render)."
+      ]
+    },
+    {
+      "id": "US-032",
+      "title": "Color config: single swatch trigger + popover palette",
+      "description": "As a user, I want each color setting in the Style tab to show only the currently-selected color, and clicking it should open a popover where I can pick a different one — so the panel stays compact instead of showing eight swatches per field at all times.",
+      "acceptanceCriteria": [
+        "Each color field in the Style tab (node Border, node Background, connector Color) renders a SINGLE small swatch button showing the currently-applied color token. No always-visible row of 8 swatches.",
+        "Clicking the swatch button opens a shadcn Popover anchored to the trigger; the popover contains the 8 palette tokens laid out as a small grid (e.g. 4×2).",
+        "Clicking a token in the popover PATCHes the field, applies the optimistic pending override (per US-021), and closes the popover in the same gesture.",
+        "Pressing Escape or clicking outside the popover closes it without changing the value.",
+        "When the field is unset (token absent or === 'default'), the trigger swatch shows a clear 'no color' indicator (e.g. a diagonal-line / checker pattern, or the literal 'default' token's neutral fill) so users can distinguish 'unset' from 'set to default neutral'.",
+        "Trigger swatches get data-testid='style-tab-border-color-trigger', 'style-tab-background-color-trigger', 'style-tab-edge-color-trigger'. Per-token swatches inside the popover keep the data-testid pattern from US-025 ('style-tab-border-color-blue' etc.) — they just live inside the popover now rather than always-visible.",
+        "Active token in the popover is visually distinguished (e.g. ring or checkmark) so users know which is currently applied.",
+        "This refines US-025: the 'two color-swatch rows showing 8 palette tokens' acceptance criterion in US-025 is superseded by 'two single-swatch triggers, each opening a popover with the 8 palette tokens'. All other US-025 controls (edge style dropdown, direction toggle, Delete button) are unchanged.",
         "bun run typecheck passes.",
         "bun run lint passes.",
         "Verify in browser using dev-browser skill."
@@ -323,6 +362,14 @@
     {
       "id": "FR-17",
       "text": "PlayNode's Play button is icon-only (no text label, accessible label via aria-label/title); StatusPill on PlayNode is hidden until the node has an entry in the runs map (i.e. the user has clicked Play at least once), after which it remains visible showing the latest run status until page reload or demo reload."
+    },
+    {
+      "id": "FR-18",
+      "text": "Selected nodes have no visible resize border or handles — the resize affordance is the cursor change at the edges/corners (ew-/ns-/nwse-/nesw-resize). The selection ring stays as the selection indicator. Resize gestures must not clear selectedNodeId, and the DetailPanel stays open through the entire resize from mousedown to mouseup."
+    },
+    {
+      "id": "FR-19",
+      "text": "Each color configuration field in the Style tab (node Border, node Background, connector Color) is a single trigger swatch showing the currently-selected token. Clicking the trigger opens a Popover with the 8-token palette grid; selection applies + closes the popover. Refines FR-11/US-025 (replaces the always-visible row of 8 swatches)."
     }
   ],
   "nonGoals": [
