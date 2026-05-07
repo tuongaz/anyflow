@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { EventBus } from './events.ts';
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
-import { DemoSchema } from './schema.ts';
+import { ColorTokenSchema, DemoSchema } from './schema.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
 
 const RegisterBodySchema = z.object({
@@ -27,6 +27,26 @@ const PositionBodySchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
 });
+
+// Partial node update body. Top-level `position` lands on node.position; every
+// other key lands inside node.data. Final validity is enforced by re-parsing
+// the whole demo through DemoSchema after the merge — this body schema just
+// rejects unknown top-level keys to catch typos. `detail` is loose here so
+// senders can swap the entire detail object; DemoSchema validates the shape
+// before we write.
+const NodePatchBodySchema = z
+  .object({
+    position: PositionBodySchema.optional(),
+    label: z.string().optional(),
+    detail: z.unknown().optional(),
+    borderColor: ColorTokenSchema.optional(),
+    backgroundColor: ColorTokenSchema.optional(),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
+    shape: z.enum(['rectangle', 'ellipse', 'sticky']).optional(),
+  })
+  .strict();
+type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
 
 // Per-demo serialization: read-modify-write of the demo file isn't atomic
 // across multiple PATCHes, so two concurrent drags would race
@@ -73,6 +93,41 @@ const EMIT_STATUS_TO_EVENT = {
   done: 'node:done',
   error: 'node:error',
 } as const;
+
+// Apply a partial PATCH body to a raw on-disk node. `position` lives at the
+// node root; every other key lives inside `data`. We mutate the raw parsed
+// JSON directly so unknown forward-compat fields the schema doesn't yet
+// recognize survive the round-trip untouched.
+const NODE_DATA_PATCH_KEYS = [
+  'label',
+  'detail',
+  'borderColor',
+  'backgroundColor',
+  'width',
+  'height',
+  'shape',
+] as const satisfies ReadonlyArray<keyof NodePatchBody>;
+
+const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {
+  if (updates.position !== undefined) {
+    node.position = updates.position;
+  }
+  const dataAny = node.data;
+  const data: Record<string, unknown> =
+    dataAny && typeof dataAny === 'object' && !Array.isArray(dataAny)
+      ? (dataAny as Record<string, unknown>)
+      : {};
+  let touchedData = false;
+  for (const key of NODE_DATA_PATCH_KEYS) {
+    if (updates[key] !== undefined) {
+      data[key] = updates[key];
+      touchedData = true;
+    }
+  }
+  if (touchedData) {
+    node.data = data;
+  }
+};
 
 export interface ApiOptions {
   registry: Registry;
@@ -370,6 +425,239 @@ export function createApi(options: ApiOptions): Hono {
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true, position: { x, y } });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'unknownNode':
+        return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // PATCH a single node — partial update of position, label, detail, visual
+  // fields, or shapeNode-only fields. Every UI-driven node edit (other than
+  // the high-frequency drag fast-path above) flows through here. The mutation
+  // is performed against the raw parsed JSON (so unknown v2 fields the schema
+  // doesn't yet recognize survive round-trips) and the WHOLE resulting demo
+  // is re-validated through DemoSchema before commit, preventing partial
+  // writes from breaking invariants like the connector→node superRefine.
+  api.patch('/demos/:id/nodes/:nodeId', async (c) => {
+    const id = c.req.param('id');
+    const nodeId = c.req.param('nodeId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = NodePatchBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid node patch body', issues: parsed.error.issues }, 400);
+    }
+    const updates = parsed.data;
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'unknownNode' }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as { nodes: Array<Record<string, unknown>> };
+      const onDiskNode = obj.nodes.find((n) => n.id === nodeId);
+      if (!onDiskNode) return { kind: 'unknownNode' };
+
+      mergeNodeUpdates(onDiskNode, updates);
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'unknownNode':
+        return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // POST a new node into the demo. Body is the node payload (id auto-generated
+  // server-side if absent). Atomicity + final-DemoSchema validation match the
+  // PATCH path above, so a malformed node never produces a half-written file.
+  api.post('/demos/:id/nodes', async (c) => {
+    const id = c.req.param('id');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return c.json({ error: 'Body must be an object' }, 400);
+    }
+    const newNode = { ...(body as Record<string, unknown>) };
+    if (typeof newNode.id !== 'string' || newNode.id.length === 0) {
+      newNode.id = `node-${crypto.randomUUID()}`;
+    }
+    const newId = newNode.id as string;
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as { nodes: Array<Record<string, unknown>> };
+      obj.nodes.push(newNode);
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true, id: newId });
+      case 'badJson':
+        return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo failed schema validation', issues: result.issues }, 400);
+      case 'writeFailed':
+        return c.json({ error: `Failed to write demo file: ${result.message}` }, 500);
+    }
+  });
+
+  // DELETE a node and cascade-remove every connector with source === nodeId or
+  // target === nodeId in the same atomic write. Final-DemoSchema validation
+  // is still run after the mutation — connector cascade closure means it
+  // should always pass, but the check makes the failure mode honest if the
+  // file had a pre-existing schema violation we'd otherwise paper over.
+  api.delete('/demos/:id/nodes/:nodeId', async (c) => {
+    const id = c.req.param('id');
+    const nodeId = c.req.param('nodeId');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+
+    type Outcome =
+      | { kind: 'ok' }
+      | { kind: 'badJson'; message: string }
+      | { kind: 'badSchema'; issues: unknown }
+      | { kind: 'unknownNode' }
+      | { kind: 'writeFailed'; message: string };
+
+    const result = await withDemoWriteLock<Outcome>(id, async () => {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(fullPath).json();
+      } catch (err) {
+        return {
+          kind: 'badJson',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const demoParsed = DemoSchema.safeParse(raw);
+      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+      const obj = raw as {
+        nodes: Array<{ id: string }>;
+        connectors: Array<{ source: string; target: string }>;
+      };
+      const idx = obj.nodes.findIndex((n) => n.id === nodeId);
+      if (idx < 0) return { kind: 'unknownNode' };
+      obj.nodes.splice(idx, 1);
+      obj.connectors = obj.connectors.filter((cn) => cn.source !== nodeId && cn.target !== nodeId);
+
+      const finalParse = DemoSchema.safeParse(raw);
+      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+      try {
+        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+      } catch (err) {
+        return {
+          kind: 'writeFailed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return { kind: 'ok' };
+    });
+
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true });
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':

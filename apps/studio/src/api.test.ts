@@ -718,6 +718,356 @@ describe('PATCH /api/demos/:id/nodes/:nodeId/position', () => {
   });
 });
 
+describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
+  const patch = (app: ReturnType<typeof buildApp>['app'], path: string, body: unknown) =>
+    app.request(path, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('merges a partial update into node.data and rewrites the demo file', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      label: 'POST /checkout (renamed)',
+      borderColor: 'blue',
+      backgroundColor: 'amber',
+      width: 240,
+      height: 120,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{
+        id: string;
+        position: { x: number; y: number };
+        data: {
+          label: string;
+          borderColor?: string;
+          backgroundColor?: string;
+          width?: number;
+          height?: number;
+          playAction: { kind: string };
+        };
+      }>;
+    };
+    const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
+    expect(node?.data.label).toBe('POST /checkout (renamed)');
+    expect(node?.data.borderColor).toBe('blue');
+    expect(node?.data.backgroundColor).toBe('amber');
+    expect(node?.data.width).toBe(240);
+    expect(node?.data.height).toBe(120);
+    // Untouched fields are preserved.
+    expect(node?.data.playAction.kind).toBe('http');
+    expect(node?.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('updates node.position when included in the patch body', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      position: { x: 42, y: 84 },
+    });
+    expect(res.status).toBe(200);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; position: { x: number; y: number } }>;
+    };
+    expect(onDisk.nodes[0]?.position).toEqual({ x: 42, y: 84 });
+  });
+
+  it('returns 400 with issues when the patched demo would fail schema validation', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const before = readFileSync(demoFile, 'utf8');
+
+    // borderColor token outside the enum — the body schema itself should reject this.
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      borderColor: 'neon-pink',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues?: unknown };
+    expect(body.error).toBeTruthy();
+
+    // The file must NOT have been touched on validation failure.
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('returns 400 when the resulting demo violates DemoSchema (empty label on functional node)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const before = readFileSync(demoFile, 'utf8');
+
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, { label: '' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues?: unknown };
+    expect(body.error).toContain('schema');
+
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('returns 400 when the body has an unknown top-level key', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      somethingMadeUp: true,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await patch(app, '/api/demos/nope/nodes/x', { label: 'x' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for unknown nodeId', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/missing`, { label: 'x' });
+    expect(res.status).toBe(404);
+  });
+
+  it('preserves 2-space indent + trailing newline on rewrite', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, { label: 'Renamed' });
+
+    const text = readFileSync(demoFile, 'utf8');
+    expect(text.endsWith('\n')).toBe(true);
+    expect(text).toMatch(/^\{\n {2}"version": 1,/);
+  });
+});
+
+describe('POST /api/demos/:id/nodes', () => {
+  it('appends a new node and auto-generates an id when absent', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+
+    const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+      type: 'shapeNode',
+      position: { x: 100, y: 200 },
+      data: { shape: 'rectangle', label: 'Note A' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; id: string };
+    expect(body.ok).toBe(true);
+    expect(body.id).toMatch(/^node-/);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; type: string }>;
+    };
+    expect(onDisk.nodes).toHaveLength(2);
+    const created = onDisk.nodes.find((n) => n.id === body.id);
+    expect(created?.type).toBe('shapeNode');
+  });
+
+  it('honors a caller-provided id when given', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+      id: 'sticky-note-1',
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: { shape: 'sticky' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string };
+    expect(body.id).toBe('sticky-note-1');
+  });
+
+  it('returns 400 with schema issues when the new node is malformed', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const before = readFileSync(demoFile, 'utf8');
+
+    // type 'shapeNode' but missing required `shape`.
+    const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: {},
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues?: unknown };
+    expect(body.error).toContain('schema');
+
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/demos/nope/nodes', {
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: { shape: 'rectangle' },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
+  const VALID_DEMO_TWO_NODES = {
+    version: 1,
+    name: 'Two Nodes',
+    nodes: [
+      {
+        id: 'a',
+        type: 'playNode',
+        position: { x: 0, y: 0 },
+        data: {
+          label: 'A',
+          kind: 'service',
+          stateSource: { kind: 'request' },
+          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+        },
+      },
+      {
+        id: 'b',
+        type: 'playNode',
+        position: { x: 200, y: 0 },
+        data: {
+          label: 'B',
+          kind: 'service',
+          stateSource: { kind: 'request' },
+          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+        },
+      },
+    ],
+    connectors: [
+      { id: 'a-to-b', source: 'a', target: 'b', kind: 'default' },
+      { id: 'b-to-a', source: 'b', target: 'a', kind: 'default' },
+    ],
+  };
+
+  it('removes the node and cascades adjacent connectors in one write', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_TWO_NODES);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+
+    const res = await app.request(`/api/demos/${reg.id}/nodes/a`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string }>;
+      connectors: Array<{ id: string; source: string; target: string }>;
+    };
+    expect(onDisk.nodes.map((n) => n.id)).toEqual(['b']);
+    // Both connectors referenced node 'a' as source or target — both removed.
+    expect(onDisk.connectors).toEqual([]);
+  });
+
+  it('leaves connectors that do not reference the deleted node untouched', async () => {
+    const demo = {
+      ...VALID_DEMO_TWO_NODES,
+      nodes: [
+        ...VALID_DEMO_TWO_NODES.nodes,
+        {
+          id: 'c',
+          type: 'playNode',
+          position: { x: 400, y: 0 },
+          data: {
+            label: 'C',
+            kind: 'service',
+            stateSource: { kind: 'request' },
+            playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
+          },
+        },
+      ],
+      connectors: [
+        { id: 'a-to-b', source: 'a', target: 'b', kind: 'default' },
+        { id: 'b-to-c', source: 'b', target: 'c', kind: 'default' },
+      ],
+    };
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(demo);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const res = await app.request(`/api/demos/${reg.id}/nodes/a`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string }>;
+      connectors: Array<{ id: string }>;
+    };
+    expect(onDisk.nodes.map((n) => n.id).sort()).toEqual(['b', 'c']);
+    // a-to-b is gone (source==a); b-to-c stays.
+    expect(onDisk.connectors.map((c) => c.id)).toEqual(['b-to-c']);
+  });
+
+  it('returns 404 for unknown demoId', async () => {
+    const { app } = buildApp();
+    const res = await app.request('/api/demos/nope/nodes/x', { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for unknown nodeId', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const res = await app.request(`/api/demos/${reg.id}/nodes/missing`, { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('DELETE /api/demos/:id', () => {
   it('removes the entry and returns ok', async () => {
     const { app, registry } = buildApp();
