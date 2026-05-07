@@ -338,3 +338,22 @@
 - Manual browser verification screenshot inspected in-session; deleted before commit.
 ---
 
+
+## 2026-05-07 - US-033
+- Tightened typography + denser canvas grid across all custom nodes and the React Flow background.
+- Files modified:
+  - `apps/web/src/components/nodes/play-node.tsx` — default width `w-[260px]` → `w-[200px]`; header padding `px-3 py-1.5` → `px-2 py-1`; body padding `px-3 py-2` → `px-2 py-1.5`; title text `text-sm` → `text-[11px]` (3 sites: container div, InlineEdit className, button); description body `text-[12px]` → `text-[10px]` (3 sites); Play button `h-6 w-6 p-0` → `h-5 w-5 p-0` (icon-only after US-030, kept square so icon stays centered).
+  - `apps/web/src/components/nodes/state-node.tsx` — same tweaks as PlayNode (no Play button section).
+  - `apps/web/src/components/nodes/shape-node.tsx` — wrapper class `p-3 text-sm` → `p-2 text-[11px]`; InlineEdit className `text-sm` → `text-[11px]`. Existing `DEFAULT_SIZE` already used 200x120 for rectangle/ellipse and 180x180 for sticky — no change needed (the spec's "shrinks from w-[260px] to w-[200px]" is already satisfied here).
+  - `apps/web/src/components/nodes/status-pill.tsx` — `px-2 py-0.5` → `h-5 px-1.5 py-0` (explicit h-5 forces consistent height with the play button so the header reads as a single 20px-tall row at the new sizes; padding-y collapses to 0 because h-5 + line-height now drives height).
+  - `apps/web/src/components/demo-canvas.tsx` — `<Background />` → `<Background gap={12} size={0.6} />` (denser pattern, smaller dots; default variant `'dots'` retained).
+- Quality checks: `bun test` (150/0, unchanged from US-032), `bun run typecheck` (clean), `bun run lint` (clean).
+- Browser verification (Playwright at `http://localhost:4321/d/todo-demo`): confirmed via computed styles that PlayNode width=200px, header padding=4/8/4/8 (px-2 py-1), body padding=6px 8px (py-1.5 px-2), title font-size=11px, description font-size=10px, Play button=20x20, StatusPill=h:20 px:6 font:10, StateNode width=200px + body font 10px, Background pattern circle r=0.6 (and gap=12 reflected as 24-unit pattern at 2x fitView zoom). Existing todo-demo loads cleanly with no overflow; nodes read as compact diagram boxes rather than chunky widgets. Screenshot captured + inspected in-session, then deleted before commit.
+- **Learnings for future iterations:**
+  - `text-sm`/`text-[11px]`/`text-[12px]`/`text-[10px]` on the SAME node need to be updated in THREE places: the wrapper container `className`, the `<InlineEdit className>` (so the edit field matches the static text size — otherwise the layout reflows when entering edit mode), AND the `<button>` className that holds the static text. Forgetting one site means the node visibly jumps when toggling between edit and read mode. PlayNode + StateNode have header (label) + body (description) — six sites per file.
+  - The Play button became icon-only at US-030. The PRD's literal `h-5 px-1.5` spec assumes the button still has horizontal padding; for an icon-only square button, `h-5 w-5 p-0` is the correct shrink (matches the pre-existing `h-6 w-6 p-0`). `px-1.5` would produce a non-square 24×20 button that misaligns the icon. When the spec mixes height+padding shorthand for a non-square shape but the actual button is square, prefer `h-N w-N` and ignore the `px-X` part of the spec.
+  - StatusPill needed an explicit `h-5` to match the play button's height. The pre-change `py-0.5` + `text-[10px]` produced ~14-16px tall pills; adding `h-5` and dropping padding-y to zero pins it to 20px, matching the button. Without `h-5` the header row becomes vertically uneven (pill ~14px next to button 20px).
+  - React Flow's `<Background>` renders an SVG pattern; verifying `gap=12 size=0.6` from outside the component means inspecting `.react-flow__background pattern[width]` (=`gap` × current zoom level) and `circle[r]` (=`size` × zoom). At 2x fitView zoom the pattern width was `24` not `12` — multiply mentally before asserting.
+  - `apps/web/src/components/empty-state.tsx` uses `h-6 w-6` for an icon (NOT a node component) — don't shrink it during a node-typography sweep just because the grep matches.
+- Manual browser verification screenshot inspected in-session; deleted before commit.
+---

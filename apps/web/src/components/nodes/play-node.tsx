@@ -46,7 +46,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
     <div
       className={cn(
         'group flex flex-col rounded-lg border bg-card shadow-sm transition-shadow',
-        sized ? 'h-full w-full' : 'w-[260px]',
+        sized ? 'h-full w-full' : 'w-[200px]',
         selected ? 'ring-2 ring-ring ring-offset-2' : '',
         isRunning ? 'anydemo-node-pulse' : '',
       )}
@@ -69,10 +69,10 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
       />
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-muted-foreground" />
       <div
-        className="flex items-start justify-between gap-2 rounded-t-lg border-b bg-muted/40 px-3 py-1.5"
+        className="flex items-start justify-between gap-2 rounded-t-lg border-b bg-muted/40 px-2 py-1"
         data-testid="node-header"
       >
-        <div className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
+        <div className="min-w-0 flex-1 break-words text-[11px] font-medium leading-tight">
           {editing === 'label' && labelEditable ? (
             <InlineEdit
               initialValue={data.label}
@@ -80,13 +80,13 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               required
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
-              className="text-sm font-medium"
+              className="text-[11px] font-medium"
             />
           ) : (
             <button
               type="button"
               className={cn(
-                'block w-full cursor-text bg-transparent p-0 text-left text-sm font-medium leading-tight',
+                'block w-full cursor-text bg-transparent p-0 text-left text-[11px] font-medium leading-tight',
                 labelEditable ? 'hover:bg-muted/60' : '',
               )}
               onDoubleClick={
@@ -110,7 +110,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               size="sm"
               variant="secondary"
               disabled={!playable || isRunning}
-              className="h-6 w-6 p-0"
+              className="h-5 w-5 p-0"
               data-testid="play-button"
               aria-label={buttonLabel}
               title={buttonLabel}
@@ -128,7 +128,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
           </div>
         </div>
       </div>
-      <div className="flex-1 px-3 py-2 text-[12px] text-muted-foreground break-words">
+      <div className="flex-1 px-2 py-1.5 text-[10px] text-muted-foreground break-words">
         {editing === 'description' && descEditable ? (
           <InlineEdit
             initialValue={data.detail?.summary ?? ''}
@@ -136,14 +136,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             multiline
             onCommit={(v) => data.onDescriptionChange?.(id, v)}
             onExit={() => setEditing(null)}
-            className="text-[12px]"
+            className="text-[10px]"
             placeholder={data.kind}
           />
         ) : (
           <button
             type="button"
             className={cn(
-              'block w-full cursor-text bg-transparent p-0 text-left text-[12px] text-muted-foreground',
+              'block w-full cursor-text bg-transparent p-0 text-left text-[10px] text-muted-foreground',
               descEditable ? 'hover:bg-muted/60' : '',
             )}
             onDoubleClick={

@@ -316,7 +316,7 @@
         "bun run lint passes.",
         "Verify in browser using dev-browser skill (compare before/after: node footprint smaller, canvas grid tighter, no horizontal overflow on default text)."
       ],
-      "passes": false
+      "passes": true
     }
   ],
   "functionalRequirements": [

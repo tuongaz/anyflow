@@ -21,7 +21,7 @@ export function StatusPill({
       data-status={status}
       data-testid={dataTestId}
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 font-medium text-[10px] uppercase tracking-wide',
+        'inline-flex h-5 items-center rounded-full px-1.5 py-0 font-medium text-[10px] uppercase tracking-wide',
         STYLES[status],
       )}
     >

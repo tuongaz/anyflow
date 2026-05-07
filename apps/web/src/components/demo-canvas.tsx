@@ -439,7 +439,7 @@ export function DemoCanvas({
           onNodePositionChange?.(node.id, { x: node.position.x, y: node.position.y });
         }}
       >
-        <Background />
+        <Background gap={12} size={0.6} />
         <Controls showInteractive={false} />
         {onCreateShapeNode ? (
           <Panel position="bottom-center">
