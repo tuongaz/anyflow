@@ -41,6 +41,8 @@ bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 
 - Workspace package names are scoped `@anydemo/*`.
 - The CLI (`apps/studio/src/cli.ts`) is a hand-rolled arg parser — do not pull in commander/yargs.
-- Studio listens on `localhost:4321` by default. Registry persists at `~/.anydemo/registry.json`. PID at `~/.anydemo/anydemo.pid`.
+- Studio listens on `localhost:4321` by default. Registry persists at `~/.anydemo/registry.json`. PID at `~/.anydemo/anydemo.pid`. Studio address persists at `~/.anydemo/config.json` (`{ port, host }`) — `start` writes it; non-`start` subcommands read it.
 - SSE event framing: `event: <type>\ndata: <json>\n\n`.
+- Studio runtime helpers live at `apps/studio/src/runtime.ts` (`readConfig/writeConfig/readPid/writePid/clearPid/isPidAlive/studioUrl`). Use these — don't reach into `~/.anydemo/*` directly from cli.ts or server.ts.
+- `start --daemon` self-spawns via `Bun.spawn({ cmd: [process.execPath, import.meta.path, 'start', '--port=N'], stdio: ['ignore','ignore','ignore'] })` + `proc.unref()`, then polls `/health` (10s). The detached child re-enters `start` (non-daemon) and writes its own pid; pid+config files are the only handoff between parent and child.
 - The only place the CLI mutates user repos is `.anydemo/sdk/emit.ts` writes during `register` — and only when the demo declares an event-bound state node.
