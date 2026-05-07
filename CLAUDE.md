@@ -25,7 +25,15 @@ bun run typecheck      # tsc --noEmit across all workspaces
 bun run lint           # biome check
 bun run format         # biome format --write
 bun test               # bun test (workspace-scoped tests)
+bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 ```
+
+## Dev / prod split
+
+- Dev: `bun run dev` runs Vite on `5173` and Hono on `4321` in parallel via `bun run --filter '*' dev`. Hono catch-all proxies non-`/api/*` requests to Vite. Vite HMR pins host/port to `5173` so the HMR WebSocket bypasses Hono — do NOT try to proxy the WebSocket through Hono.
+- Prod: `cd apps/web && bun run build` emits to `apps/studio/dist/web/`. `NODE_ENV=production` makes `apps/studio/src/server.ts` serve that bundle via `serveStatic`; end users never run Vite.
+- Web app uses `@/*` alias for `apps/web/src/*` — declared in both `apps/web/tsconfig.json` and `apps/web/vite.config.ts`. Update both when changing it.
+- shadcn/ui primitives live at `apps/web/src/components/ui/`; `cn(...)` helper at `apps/web/src/lib/utils.ts`.
 
 ## Conventions
 

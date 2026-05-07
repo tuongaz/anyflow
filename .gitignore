@@ -4,6 +4,7 @@ dist/
 ~/.anydemo
 *.log
 .DS_Store
+.playwright-mcp/
 
 docs
 ralph
