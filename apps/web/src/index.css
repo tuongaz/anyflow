@@ -169,6 +169,15 @@
   border-radius: 50%;
 }
 
+/* Suppress xyflow's default `cursor: crosshair` on connection handles — the
+ * canvas should never flash a "+" cursor over a node, even when the user
+ * could legitimately start a connection. The default arrow keeps the canvas
+ * feeling like a normal diagram surface. */
+.react-flow__node .react-flow__handle,
+.react-flow__node .react-flow__handle::after {
+  cursor: default;
+}
+
 /* Reconnect endpoints — hide the visual circles at edge endpoints while
  * keeping them draggable, so the canvas stays uncluttered but the
  * reconnect gesture still works. The widened per-edge `interactionWidth`

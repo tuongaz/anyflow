@@ -78,8 +78,6 @@ export interface DetailPanelProps {
   onStyleConnectorPreview?: (connId: string, patch: ConnectorStylePatch) => void;
   /** Delete the selected node (cascade-removes adjacent connectors server-side). */
   onDeleteNode?: (nodeId: string) => void;
-  /** Delete the selected connector. */
-  onDeleteConnector?: (connId: string) => void;
   onClose: () => void;
 }
 
@@ -97,7 +95,6 @@ export function DetailPanel({
   onStyleConnector,
   onStyleConnectorPreview,
   onDeleteNode,
-  onDeleteConnector,
   onClose,
 }: DetailPanelProps) {
   const open = node !== null || connector !== null;
@@ -155,6 +152,11 @@ export function DetailPanel({
           // Clicks on the pane (no .react-flow__node ancestor) still fall
           // through and trigger the default close.
           if (target?.closest('.react-flow__node')) e.preventDefault();
+          // Same treatment for connectors: clicking another edge swaps the
+          // selection, and grabbing the selected edge's endpoint to drag
+          // (.react-flow__edgeupdater) starts a reconnect gesture. Neither
+          // should close the panel.
+          if (target?.closest('.react-flow__edge')) e.preventDefault();
         }}
       >
         {node ? (
@@ -219,9 +221,7 @@ export function DetailPanel({
                   node={node}
                   onApply={(patch) => onStyleNode?.(node.id, patch)}
                   onPreview={
-                    onStyleNodePreview
-                      ? (patch) => onStyleNodePreview(node.id, patch)
-                      : undefined
+                    onStyleNodePreview ? (patch) => onStyleNodePreview(node.id, patch) : undefined
                   }
                 />
               </TabsContent>
@@ -261,7 +261,6 @@ export function DetailPanel({
                       ? (patch) => onStyleConnectorPreview(connector.id, patch)
                       : undefined
                   }
-                  onDelete={onDeleteConnector ? () => onDeleteConnector(connector.id) : undefined}
                 />
               </TabsContent>
             </div>
@@ -458,12 +457,10 @@ function ConnectorStyleTab({
   connector,
   onApply,
   onPreview,
-  onDelete,
 }: {
   connector: Connector;
   onApply: (patch: ConnectorStylePatch) => void;
   onPreview?: (patch: ConnectorStylePatch) => void;
-  onDelete?: () => void;
 }) {
   const colorActive = (connector.color ?? 'default') as ColorToken;
   // The connector style is a tri-value enum, but we also support an "auto"
@@ -521,7 +518,6 @@ function ConnectorStyleTab({
           options={DIRECTION_OPTIONS}
         />
       </StyleRow>
-      <DeleteButton onDelete={onDelete} entity="connector" />
     </div>
   );
 }
@@ -670,28 +666,6 @@ function SwatchPicker({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function DeleteButton({
-  onDelete,
-  entity,
-}: {
-  onDelete?: () => void;
-  entity: 'node' | 'connector';
-}) {
-  if (!onDelete) return null;
-  return (
-    <Button
-      type="button"
-      variant="destructive"
-      size="sm"
-      onClick={onDelete}
-      data-testid="style-tab-delete"
-      className="mt-2 self-start"
-    >
-      Delete {entity}
-    </Button>
   );
 }
 

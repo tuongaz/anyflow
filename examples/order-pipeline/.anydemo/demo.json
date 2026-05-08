@@ -3,27 +3,11 @@
   "name": "Order Pipeline",
   "nodes": [
     {
-      "id": "async-fanout-bg",
-      "type": "shapeNode",
-      "position": {
-        "x": -286.8610244166894,
-        "y": -702.4876720846773
-      },
-      "data": {
-        "shape": "rectangle",
-        "label": "Async fan-out",
-        "width": 320,
-        "height": 380,
-        "borderColor": "slate",
-        "backgroundColor": "slate"
-      }
-    },
-    {
       "id": "create-order",
       "type": "playNode",
       "position": {
-        "x": 150.60936122686277,
-        "y": -343.01788722386436
+        "x": -452.47173155198016,
+        "y": -388.9234831988689
       },
       "data": {
         "label": "POST /orders",
@@ -71,15 +55,17 @@
             "method": "GET",
             "url": "http://localhost:3040/admin/stats"
           }
-        }
+        },
+        "width": 313,
+        "height": 387
       }
     },
     {
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": 643.6363311891664,
-        "y": 94.82084271016501
+        "x": 349.8267920703413,
+        "y": 10.30029036091392
       },
       "data": {
         "label": "POST /payments/charge",
@@ -106,15 +92,17 @@
               "value": "last created order"
             }
           ]
-        }
+        },
+        "width": 252,
+        "height": 278
       }
     },
     {
       "id": "shipping-worker",
       "type": "stateNode",
       "position": {
-        "x": 104.29139900284143,
-        "y": -718.6253114802336
+        "x": 346.28917565905743,
+        "y": -1074.388347271029
       },
       "data": {
         "label": "shipping-worker",
@@ -144,8 +132,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": 868.8032092972471,
-        "y": -558.2726812885883
+        "x": 1048.1179343705203,
+        "y": -716.7488107630625
       },
       "data": {
         "label": "inventory-worker",
@@ -185,35 +173,19 @@
       "url": "http://localhost:3040/payments/charge",
       "label": "charge",
       "color": "blue",
-      "borderSize": 1,
+      "borderSize": 4,
       "path": "step",
       "targetHandle": "t"
     },
     {
       "id": "c-orders-shipping",
       "source": "create-order",
-      "target": "shipping-worker",
+      "target": "inventory-worker",
       "kind": "queue",
       "queueName": "shipments",
       "label": "shipments",
       "color": "purple",
       "targetHandle": "l"
-    },
-    {
-      "id": "conn-a7c88e56-07fe-40c3-b664-eaea9abdb606",
-      "source": "create-order",
-      "target": "shipping-worker",
-      "sourceHandle": "r",
-      "targetHandle": "l",
-      "kind": "default"
-    },
-    {
-      "id": "conn-33b24d44-ebf5-45e4-8067-0a4d7c65a363",
-      "source": "create-order",
-      "target": "shipping-worker",
-      "sourceHandle": "r",
-      "targetHandle": "l",
-      "kind": "default"
     },
     {
       "id": "conn-f32a80ad-4308-4cbd-b761-a22e99f8794d",
@@ -239,6 +211,30 @@
       "target": "charge-payment",
       "sourceHandle": "r",
       "targetHandle": "t",
+      "kind": "default"
+    },
+    {
+      "id": "conn-31cd0656-5783-42ad-8e49-180ee300950f",
+      "source": "create-order",
+      "target": "charge-payment",
+      "sourceHandle": "r",
+      "targetHandle": "t",
+      "kind": "default"
+    },
+    {
+      "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
+      "source": "create-order",
+      "target": "charge-payment",
+      "sourceHandle": "r",
+      "targetHandle": "t",
+      "kind": "default"
+    },
+    {
+      "id": "conn-01621e93-c685-4cf9-8a6c-3a219ccb277f",
+      "source": "inventory-worker",
+      "target": "shipping-worker",
+      "sourceHandle": "r",
+      "targetHandle": "l",
       "kind": "default"
     }
   ]

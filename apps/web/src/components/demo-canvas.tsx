@@ -574,8 +574,11 @@ export function DemoCanvas({
       if (isSelected) edge.selected = true;
       // `reconnectable: true` enables the endpoint-drag gesture for the edge;
       // React Flow shows reconnect handles on hover. Wired only when the
-      // parent provided an onReconnectConnector callback.
-      const next: Edge = reconnectableEdges ? { ...edge, reconnectable: true } : edge;
+      // parent provided an onReconnectConnector callback AND the edge is the
+      // currently selected one — connectors are only movable while selected,
+      // so unselected edges stay click-through and don't render endpoint
+      // handles.
+      const next: Edge = reconnectableEdges && isSelected ? { ...edge, reconnectable: true } : edge;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
       return { ...next, data: { ...next.data, onLabelChange: onConnectorLabelChange } };

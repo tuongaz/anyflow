@@ -178,7 +178,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             size="sm"
             variant="secondary"
             disabled={!playable || isRunning}
-            className="h-5 w-5 p-0"
+            className="h-8 w-8 p-0"
             data-testid="play-button"
             aria-label={buttonLabel}
             title={buttonLabel}
@@ -188,9 +188,9 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
             }}
           >
             {isRunning ? (
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             ) : (
-              <Play className="h-3 w-3" aria-hidden />
+              <Play className="h-4 w-4" aria-hidden />
             )}
           </Button>
         </div>

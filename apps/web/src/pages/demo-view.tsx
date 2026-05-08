@@ -1131,7 +1131,6 @@ export function DemoView({
         onStyleConnector={onStyleConnector}
         onStyleConnectorPreview={onStyleConnectorPreview}
         onDeleteNode={onDeleteNode}
-        onDeleteConnector={onDeleteConnector}
         onClose={() => {
           // Closing the panel clears whatever was selected — the panel and
           // the selection ring track together (clicking outside the canvas-node
