@@ -254,42 +254,55 @@ function NodeStyleTab({
   const borderStyleActive = (node.data.borderStyle ?? 'solid') as 'solid' | 'dashed' | 'dotted';
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-row gap-6">
+      {/* Border row (US-003): color + style + size on one line. flex-wrap +
+          min-w on the style select means at panel widths under ~280px the
+          select drops to its own line — sufficient for the rare narrow case. */}
+      <div className="flex flex-row flex-wrap items-end gap-3">
         <SwatchPicker
-          label="Border"
+          label="border"
           active={borderActive}
           onSelect={(token) => onApply({ borderColor: token })}
           triggerTestId="style-tab-border-color-trigger"
           tokenTestIdPrefix="style-tab-border-color"
           previewKind="border"
         />
-        <SwatchPicker
-          label="Background"
-          active={backgroundActive}
-          onSelect={(token) => onApply({ backgroundColor: token })}
-          triggerTestId="style-tab-background-color-trigger"
-          tokenTestIdPrefix="style-tab-background-color"
-          previewKind="background"
+        <BorderStyleSelect
+          active={borderStyleActive}
+          onSelect={(s) => onApply({ borderStyle: s })}
+          className="min-w-[160px] flex-1"
+        />
+        <SizeInput
+          label="border size"
+          testId="style-tab-border-size"
+          value={node.data.borderSize}
+          onChange={(n) => onApply({ borderSize: n })}
         />
       </div>
-      <SizeInput
-        label="Border size"
-        testId="style-tab-border-size"
-        value={node.data.borderSize}
-        onChange={(n) => onApply({ borderSize: n })}
+      <SwatchPicker
+        label="background"
+        active={backgroundActive}
+        onSelect={(token) => onApply({ backgroundColor: token })}
+        triggerTestId="style-tab-background-color-trigger"
+        tokenTestIdPrefix="style-tab-background-color"
+        previewKind="background"
       />
-      <BorderStyleSelect active={borderStyleActive} onSelect={(s) => onApply({ borderStyle: s })} />
       <SizeInput
-        label="Font size"
+        label="font size"
         testId="style-tab-font-size"
         min={10}
         max={32}
         value={node.data.fontSize}
         onChange={(n) => onApply({ fontSize: n })}
+        defaultDisplay={NODE_FONT_SIZE_DEFAULT}
       />
     </div>
   );
 }
+
+// Implicit body font size baked into shape-node.tsx (line 63 / 104). Mirrored
+// here so the Style-tab font input shows a meaningful default instead of an
+// empty box when the user has not set a per-node override (US-003).
+const NODE_FONT_SIZE_DEFAULT = 22;
 
 // Three-option select used by both NodeStyleTab and ConnectorStyleTab. The
 // connector variant has an extra 'auto' option (clears the override) so it
@@ -297,14 +310,16 @@ function NodeStyleTab({
 function BorderStyleSelect({
   active,
   onSelect,
+  className,
 }: {
   active: 'solid' | 'dashed' | 'dotted';
   onSelect: (s: 'solid' | 'dashed' | 'dotted') => void;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn('flex flex-col gap-1.5', className)}>
       <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-        Border style
+        border style
       </span>
       <select
         data-testid="style-tab-border-style"
@@ -325,6 +340,11 @@ function BorderStyleSelect({
 // empty while typing; committed value is parsed on every change — empty / NaN
 // / out-of-range collapses to undefined (the "clear override" signal). Range
 // is configurable via min/max props (default 1-8 px for stroke widths).
+//
+// `defaultDisplay` (US-003): when the upstream value is undefined and a
+// default is provided, the input is SEEDED with that default so the control
+// never starts empty. The user can still clear it; clearing dispatches
+// onChange(undefined) like before.
 function SizeInput({
   label,
   testId,
@@ -332,6 +352,8 @@ function SizeInput({
   onChange,
   min = 1,
   max = 8,
+  defaultDisplay,
+  className,
 }: {
   label: string;
   testId: string;
@@ -339,15 +361,23 @@ function SizeInput({
   onChange: (n: number | undefined) => void;
   min?: number;
   max?: number;
+  defaultDisplay?: number;
+  className?: string;
 }) {
-  const [text, setText] = useState<string>(value === undefined ? '' : String(value));
+  const seedText =
+    value !== undefined
+      ? String(value)
+      : defaultDisplay !== undefined
+        ? String(defaultDisplay)
+        : '';
+  const [text, setText] = useState<string>(seedText);
   // Sync local state when the upstream value changes from somewhere else (e.g.
   // selecting a different node/connector while the panel is open).
   useEffect(() => {
-    setText(value === undefined ? '' : String(value));
-  }, [value]);
+    setText(seedText);
+  }, [seedText]);
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn('flex flex-col gap-1.5', className)}>
       <span className="text-[10px] font-medium tracking-wide text-muted-foreground">{label}</span>
       <input
         type="number"
@@ -391,7 +421,7 @@ function ConnectorStyleTab({
   return (
     <div className="flex flex-col gap-4">
       <SwatchPicker
-        label="Color"
+        label="color"
         active={colorActive}
         onSelect={(token) => onApply({ color: token })}
         triggerTestId="style-tab-edge-color-trigger"
@@ -400,7 +430,7 @@ function ConnectorStyleTab({
       />
 
       <SizeInput
-        label="Stroke width"
+        label="stroke width"
         testId="style-tab-edge-size"
         value={connector.borderSize}
         onChange={(n) => onApply({ borderSize: n })}
@@ -408,7 +438,7 @@ function ConnectorStyleTab({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-          Border style
+          border style
         </span>
         <select
           data-testid="style-tab-edge-style"
@@ -430,7 +460,7 @@ function ConnectorStyleTab({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-          Direction
+          direction
         </span>
         <DirectionToggle active={directionActive} onSelect={(d) => onApply({ direction: d })} />
       </div>
@@ -494,8 +524,12 @@ function SwatchPicker({
             data-active-token={active}
             aria-label={`${label}: ${active}`}
             title={active}
+            // ring-1 ring-border (US-003) gives the swatch an always-visible
+            // outline so it reads as a clickable control rather than a flat
+            // color block — important for the 'default' token where the
+            // diagonal-stripe pattern can blend into surrounding chrome.
             className={cn(
-              'relative h-7 w-7 self-start rounded-full transition-all',
+              'relative h-7 w-7 self-start rounded-full ring-1 ring-border transition-all',
               'hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             )}
             style={swatchTriggerFillStyle(active, previewKind)}
