@@ -196,3 +196,13 @@
 .react-flow.anydemo-connecting .react-flow__handle {
   opacity: 1 !important;
 }
+
+/* Wrong-type handle drop (US-022): a connect/reconnect release on a handle
+ * whose role doesn't match the dragged endpoint. demo-canvas.tsx flips
+ * data-invalid-flash for ~250ms; the resulting red dot + halo gives the
+ * user a brief "rejected" cue before the edge restores. */
+.react-flow__handle[data-invalid-flash="true"] {
+  background-color: hsl(var(--destructive)) !important;
+  box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.35);
+  opacity: 1 !important;
+}

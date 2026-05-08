@@ -1343,6 +1343,82 @@ describe('PATCH /api/demos/:id/connectors/:connId', () => {
     expect(res.status).toBe(400);
   });
 
+  // US-022: handle ids on a connector must match the role's allowed sides.
+  // Source-side handles are 'r'/'b'; target-side are 't'/'l'. Anything else
+  // is a stranded endpoint at render time, so the API rejects it.
+  it("accepts a valid sourceHandle ('r') / targetHandle ('t')", async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_WITH_CONN);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const res = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      sourceHandle: 'r',
+      targetHandle: 't',
+    });
+    expect(res.status).toBe(200);
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<{ id: string; sourceHandle?: string; targetHandle?: string }>;
+    };
+    const conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    expect(conn?.sourceHandle).toBe('r');
+    expect(conn?.targetHandle).toBe('t');
+  });
+
+  it("rejects an invalid sourceHandle ('top-bogus') with a 400", async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_WITH_CONN);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const before = readFileSync(demoFile, 'utf8');
+
+    const res = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      sourceHandle: 'top-bogus',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues?: unknown };
+    expect(body.error).toBeTruthy();
+    // The error must mention the offending field so clients can show a
+    // useful message. Zod's enum error includes the path 'sourceHandle'.
+    const flat = JSON.stringify(body);
+    expect(flat).toContain('sourceHandle');
+    // File must not have been touched on validation failure.
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it("rejects a target-only handle id on sourceHandle ('t' on source) with a 400", async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_WITH_CONN);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    // 't' is a valid handle id but only as a target — sending it as a
+    // sourceHandle leaves a stranded endpoint, so the schema rejects it.
+    const res = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      sourceHandle: 't',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an invalid targetHandle ('r' on target) with a 400", async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_WITH_CONN);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      targetHandle: 'r',
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('returns 404 for unknown demoId', async () => {
     const { app } = buildApp();
     const res = await patch(app, '/api/demos/nope/connectors/x', { label: 'x' });
@@ -1452,6 +1528,26 @@ describe('POST /api/demos/:id/connectors', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string; issues?: unknown };
     expect(body.error).toContain('schema');
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  // US-022: post-merge DemoSchema parse rejects invalid handle ids on POST too.
+  it('returns 400 when posting a connector with an invalid sourceHandle id', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_TWO_NODES);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const before = readFileSync(demoFile, 'utf8');
+
+    const res = await post(app, `/api/demos/${reg.id}/connectors`, {
+      source: 'a',
+      target: 'b',
+      sourceHandle: 'top-bogus',
+    });
+    expect(res.status).toBe(400);
     expect(readFileSync(demoFile, 'utf8')).toBe(before);
   });
 

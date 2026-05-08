@@ -143,16 +143,22 @@ const ConnectorVisualBaseShape = {
   path: ConnectorPathSchema.optional(),
 };
 
+// Handle ids — every node kind in this codebase uses the same four-handle
+// layout: target-only on top + left, source-only on right + bottom (US-013).
+// `sourceHandle` MUST be a source-side id and `targetHandle` MUST be a
+// target-side id; sending the wrong role leaves a stranded endpoint at render
+// time, so the schema rejects it (US-022).
+export const SourceHandleIdSchema = z.enum(['r', 'b']);
+export const TargetHandleIdSchema = z.enum(['t', 'l']);
+
 const ConnectorBaseShape = {
   id: z.string().min(1),
   source: z.string().min(1),
   target: z.string().min(1),
-  // Handle ids identify which side (top/right/bottom/left) of the source/target
-  // node this connector attaches to (US-013). Optional — connectors authored
-  // before the four-handle layout omit them and React Flow falls back to the
-  // first matching handle.
-  sourceHandle: z.string().optional(),
-  targetHandle: z.string().optional(),
+  // Optional — connectors authored before the four-handle layout omit them and
+  // React Flow falls back to the first matching handle.
+  sourceHandle: SourceHandleIdSchema.optional(),
+  targetHandle: TargetHandleIdSchema.optional(),
   // US-021: tracks whether each endpoint's handle was auto-picked by the
   // facing-handle picker (true) or pinned by an explicit user handle drop
   // (false / absent). Auto-picked endpoints get re-routed when nodes move so

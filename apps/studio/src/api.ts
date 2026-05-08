@@ -6,7 +6,12 @@ import { z } from 'zod';
 import type { EventBus } from './events.ts';
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
-import { ColorTokenSchema, DemoSchema } from './schema.ts';
+import {
+  ColorTokenSchema,
+  DemoSchema,
+  SourceHandleIdSchema,
+  TargetHandleIdSchema,
+} from './schema.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
 
 const RegisterBodySchema = z.object({
@@ -75,9 +80,10 @@ const ConnectorPatchBodySchema = z
     target: z.string().min(1).optional(),
     // Reconnect to a different handle on the same (or a new) node. Handle ids
     // identify which side (top/right/bottom/left) of the node the connector
-    // attaches to (US-013).
-    sourceHandle: z.string().min(1).optional(),
-    targetHandle: z.string().min(1).optional(),
+    // attaches to (US-013); the role is locked — `sourceHandle` must be a
+    // source-side id, `targetHandle` must be a target-side id (US-022).
+    sourceHandle: SourceHandleIdSchema.optional(),
+    targetHandle: TargetHandleIdSchema.optional(),
     // US-021: auto-pick flags. The picker writes them on body-drop create /
     // reconnect; the auto-handle-rerouter clears or flips them on later edits.
     sourceHandleAutoPicked: z.boolean().optional(),

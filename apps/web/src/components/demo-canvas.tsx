@@ -248,6 +248,32 @@ const closestTargetHandleId = (
   return distTop <= distLeft ? 't' : 'l';
 };
 
+/**
+ * Imperatively flash a handle's `data-invalid-flash` attribute for ~250ms so
+ * a wrong-type drop (e.g. dragging a target endpoint onto a source-only
+ * handle) gives the user a brief red feedback before the edge restores
+ * (US-022). DOM-driven so the React tree doesn't have to know about each
+ * handle's per-flash state.
+ */
+const FLASH_DURATION_MS = 250;
+const flashInvalidHandle = (
+  wrapper: HTMLElement | null,
+  nodeId: string | null | undefined,
+  handleId: string | null | undefined,
+): void => {
+  if (!wrapper || !nodeId || !handleId) return;
+  const nodeEl = wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`);
+  if (!nodeEl) return;
+  const handleEl = nodeEl.querySelector<HTMLElement>(
+    `.react-flow__handle[data-handleid="${CSS.escape(handleId)}"]`,
+  );
+  if (!handleEl) return;
+  handleEl.setAttribute('data-invalid-flash', 'true');
+  window.setTimeout(() => {
+    handleEl.removeAttribute('data-invalid-flash');
+  }, FLASH_DURATION_MS);
+};
+
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
   if (!override) return node;
   // The override is keyed by the node's id, so its `data` (when present) is
@@ -841,6 +867,15 @@ export function DemoCanvas({
       connectSucceededRef.current = false;
       if (succeeded) return;
       if (!onCreateConnector) return;
+      // Wrong-type handle drop: the user released precisely on a handle whose
+      // role doesn't match the moving endpoint. React Flow refuses the drop
+      // (no onConnect), so we flash the handle red and bail without falling
+      // through to the body-drop fallback (US-022).
+      const toHandle = connectionState.toHandle;
+      if (toHandle && connectionState.isValid === false) {
+        flashInvalidHandle(wrapperRef.current, toHandle.nodeId, toHandle.id);
+        return;
+      }
       const fromNodeId = connectionState.fromNode?.id;
       const fromHandle = connectionState.fromHandle;
       if (!fromNodeId || !fromHandle) return;
@@ -971,6 +1006,16 @@ export function DemoCanvas({
       reconnectSucceededRef.current = false;
       if (succeeded) return;
       if (!onReconnectConnector) return;
+      // Wrong-type handle drop (US-022): the user dropped precisely on a
+      // handle whose role doesn't match the moving endpoint (e.g. dragged a
+      // target endpoint onto a source-only handle). React Flow refuses the
+      // reconnect; flash the handle red and bail so the edge restores
+      // unchanged.
+      const toHandle = connectionState.toHandle;
+      if (toHandle && connectionState.isValid === false) {
+        flashInvalidHandle(wrapperRef.current, toHandle.nodeId, toHandle.id);
+        return;
+      }
       // Resolve the cursor's screen coordinates from either branch of the
       // event union (mouse vs. final touch). FinalConnectionState.pointer
       // would be nice but it's in flow space and it's also null when toHandle
