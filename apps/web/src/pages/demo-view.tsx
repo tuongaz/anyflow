@@ -25,7 +25,7 @@ import {
   updateNode,
   updateNodePosition,
 } from '@/lib/api';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Position = { x: number; y: number };
 
@@ -152,6 +152,8 @@ export function DemoView({
     resetConnectorOverrides();
     setNodeOrderOverride(null);
     setEditError(null);
+    clipboardRef.current = null;
+    setHasClipboard(false);
     undoStack.clear();
   }, [detail?.id]);
 
@@ -761,6 +763,155 @@ export function DemoView({
     [demoId, setConnectorOverride, dropConnectorOverride, pushUndo, markMutation],
   );
 
+  // In-app clipboard for node copy/paste (US-011). Kept in a ref so we don't
+  // leak demo internals into the OS clipboard and don't have to deal with
+  // async ClipboardEvent permission prompts. The paired `hasClipboard` state
+  // mirrors whether the ref is non-null so the right-click menu's Paste item
+  // can subscribe to it (refs don't trigger re-renders). Both reset on
+  // demo-id change via the same effect that clears selection state.
+  const clipboardRef = useRef<{ nodes: DemoNode[]; connectors: Connector[] } | null>(null);
+  const [hasClipboard, setHasClipboard] = useState(false);
+
+  const onCopyNodes = useCallback(
+    (nodeIds: string[]) => {
+      if (!demoNodes) return;
+      const idSet = new Set(nodeIds);
+      const nodes = demoNodes.filter((n) => idSet.has(n.id));
+      if (nodes.length === 0) return;
+      // Connectors are copied only when BOTH endpoints are inside the copied
+      // set — connectors that touch unselected nodes would dangle on paste.
+      const connectors = (demoConnectors ?? []).filter(
+        (c) => idSet.has(c.source) && idSet.has(c.target),
+      );
+      // Deep clone via JSON so a later server-side mutation can't bleed into
+      // the clipboard payload (refs would alias the live data otherwise).
+      clipboardRef.current = JSON.parse(JSON.stringify({ nodes, connectors }));
+      setHasClipboard(true);
+    },
+    [demoNodes, demoConnectors],
+  );
+
+  // Paste the clipboard. `flowPos` (when set) anchors the paste at a specific
+  // point — used by the right-click menu's "Paste" item which records the
+  // cursor's flow-space position. When null (keyboard Ctrl/Cmd+V), every
+  // pasted node is offset by +24,+24 from its original position.
+  const onPasteNodes = useCallback(
+    (flowPos: Position | null) => {
+      if (!demoId) return;
+      const payload = clipboardRef.current;
+      if (!payload || payload.nodes.length === 0) return;
+      // Anchor the paste so flowPos lands on the topmost-leftmost original;
+      // every other pasted node maintains its relative offset to that anchor.
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      for (const n of payload.nodes) {
+        if (n.position.x < minX) minX = n.position.x;
+        if (n.position.y < minY) minY = n.position.y;
+      }
+      const offsetX = flowPos ? flowPos.x - minX : 24;
+      const offsetY = flowPos ? flowPos.y - minY : 24;
+
+      const idMap = new Map<string, string>();
+      const newNodes: DemoNode[] = payload.nodes.map((n) => {
+        const newId = `node-${crypto.randomUUID()}`;
+        idMap.set(n.id, newId);
+        return {
+          ...n,
+          id: newId,
+          position: { x: n.position.x + offsetX, y: n.position.y + offsetY },
+        } as DemoNode;
+      });
+      const newConnectors: Connector[] = payload.connectors.map((c) => {
+        const newSource = idMap.get(c.source);
+        const newTarget = idMap.get(c.target);
+        return {
+          ...c,
+          id: `conn-${crypto.randomUUID()}`,
+          source: newSource ?? c.source,
+          target: newTarget ?? c.target,
+        } as Connector;
+      });
+
+      // Optimistic overrides — render the pasted entities immediately while
+      // the POSTs are in flight. The SSE echo of the rewrite drops the
+      // overrides via pruneAgainst once server state matches.
+      for (const n of newNodes) {
+        setNodeOverride(n.id, n as Partial<DemoNode>);
+      }
+      for (const c of newConnectors) {
+        setConnectorOverride(c.id, c as Partial<Connector>);
+      }
+      // Single-select model: pin the first pasted node as the new selection
+      // so the inspector reflects the freshly-pasted entity.
+      const firstNode = newNodes[0];
+      if (firstNode) {
+        setSelectedId(firstNode.id);
+        setSelectedConnectorId(null);
+      }
+      setEditError(null);
+      markMutation();
+
+      // Fire creates: nodes first (referential integrity for connectors),
+      // then connectors. On any failure, drop overrides and surface the
+      // error banner; partial state on disk is fine since each POST is
+      // schema-validated independently.
+      (async () => {
+        try {
+          for (const n of newNodes) {
+            await createNode(demoId, {
+              id: n.id,
+              type: n.type,
+              position: n.position,
+              data: n.data as unknown as Record<string, unknown>,
+            });
+          }
+          for (const c of newConnectors) {
+            await createConnector(demoId, c);
+          }
+        } catch (err) {
+          for (const n of newNodes) dropNodeOverride(n.id);
+          for (const c of newConnectors) dropConnectorOverride(c.id);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('paste failed', err);
+        }
+      })();
+    },
+    [
+      demoId,
+      setNodeOverride,
+      dropNodeOverride,
+      setConnectorOverride,
+      dropConnectorOverride,
+      markMutation,
+    ],
+  );
+
+  // Cmd/Ctrl+C copies the selected node; Cmd/Ctrl+V pastes (offset by +24,+24)
+  // at the canvas. Skipped while focus is in any text-editing element so the
+  // browser's native copy/paste keeps working inside InlineEdit / form
+  // controls. Same focus guard as the Delete/Backspace + undo handlers above.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'c' && key !== 'v') return;
+      if (isEditableElement(document.activeElement)) return;
+      if (key === 'c') {
+        if (!selectedId) return;
+        e.preventDefault();
+        onCopyNodes([selectedId]);
+        return;
+      }
+      // 'v'
+      if (!clipboardRef.current) return;
+      e.preventDefault();
+      onPasteNodes(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedId, onCopyNodes, onPasteNodes]);
+
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
   // includes the fields that changed (source/target/sourceHandle/targetHandle).
@@ -926,6 +1077,9 @@ export function DemoView({
           onReconnectConnector={onReconnectConnector}
           onReorderNode={onReorderNode}
           onDeleteNode={onDeleteNode}
+          onCopyNode={(nodeId) => onCopyNodes([nodeId])}
+          onPasteAt={onPasteNodes}
+          hasClipboard={hasClipboard}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

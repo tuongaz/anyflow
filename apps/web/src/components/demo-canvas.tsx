@@ -9,6 +9,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import type { NodeRuns } from '@/hooks/use-node-runs';
@@ -123,6 +124,24 @@ export interface DemoCanvasProps {
    * keyboard-driven deletes.
    */
   onDeleteNode?: (nodeId: string) => void;
+  /**
+   * Copy a node into the in-app clipboard. Wiring this enables the
+   * right-click context menu's Copy entry. The canvas hands the right-clicked
+   * node id directly; multi-select copy is up to the parent (today's parent
+   * supports single-select only).
+   */
+  onCopyNode?: (nodeId: string) => void;
+  /**
+   * Paste from the in-app clipboard at a specific flow-space position (cursor
+   * location of the right-click). When the parent's clipboard is empty the
+   * call is a no-op. Keyboard paste (Ctrl/Cmd+V) is owned by the parent and
+   * doesn't go through this prop — the parent uses a +24,+24 offset there.
+   */
+  onPasteAt?: (flowPos: { x: number; y: number }) => void;
+  /** True when the in-app clipboard has content (drives the Paste item's
+   * disabled state). Snapshot-checked at menu-open time, not subscribed —
+   * the menu re-renders on every open via `contextMenuPos` setState. */
+  hasClipboard?: boolean;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -187,6 +206,9 @@ export function DemoCanvas({
   onReconnectConnector,
   onReorderNode,
   onDeleteNode,
+  onCopyNode,
+  onPasteAt,
+  hasClipboard,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -335,8 +357,15 @@ export function DemoCanvas({
   // re-positioned for every right-click; one ContextMenu instance handles
   // every node. The menu items read `contextNodeIdRef` so callbacks dispatch
   // to the right node even if state hasn't re-rendered yet.
-  const contextEnabled = !!onReorderNode || !!onDeleteNode;
+  const contextEnabled = !!onReorderNode || !!onDeleteNode || !!onCopyNode || !!onPasteAt;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  // Whether the most recent right-click landed on a node (true) vs. the empty
+  // pane (false). Used to gate per-node items (Copy / reorder / Delete) which
+  // don't make sense for an empty-canvas right-click. State (not just a ref)
+  // because the menu's children are read on render — and the menu re-renders
+  // when contextMenuPos changes, so this stays in sync via the same setState
+  // pair below.
+  const [contextOnNode, setContextOnNode] = useState(false);
   const contextNodeIdRef = useRef<string | null>(null);
   const contextTriggerRef = useRef<HTMLDivElement | null>(null);
 
@@ -371,6 +400,33 @@ export function DemoCanvas({
     if (!id || !onDeleteNode) return;
     onDeleteNode(id);
   }, [onDeleteNode]);
+
+  const handleCopyPick = useCallback(() => {
+    const id = contextNodeIdRef.current;
+    if (!id || !onCopyNode) return;
+    onCopyNode(id);
+  }, [onCopyNode]);
+
+  const handlePastePick = useCallback(() => {
+    if (!onPasteAt) return;
+    const pos = contextMenuPos;
+    const rfInstance = rfInstanceRef.current;
+    if (!pos || !rfInstance) return;
+    // Convert the right-click's client coords to flow space so the parent
+    // anchors the pasted node(s) at the cursor regardless of pan/zoom.
+    const flowPos = rfInstance.screenToFlowPosition({ x: pos.x, y: pos.y });
+    onPasteAt(flowPos);
+  }, [contextMenuPos, onPasteAt]);
+
+  // Show ⌘ on macOS, Ctrl elsewhere. Read once per render (cheap) — Radix
+  // re-mounts the menu on every open so the value is captured at the right
+  // moment. navigator may be undefined in non-browser contexts (SSR), but
+  // this component is purely client-side so the access is safe.
+  const isMac =
+    typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+  const copyShortcut = isMac ? '⌘C' : 'Ctrl+C';
+  const pasteShortcut = isMac ? '⌘V' : 'Ctrl+V';
 
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
@@ -737,6 +793,22 @@ export function DemoCanvas({
                 // dispatches the synthetic contextmenu event.
                 e.preventDefault();
                 contextNodeIdRef.current = node.id;
+                setContextOnNode(true);
+                setContextMenuPos({ x: e.clientX, y: e.clientY });
+              }
+            : undefined
+        }
+        onPaneContextMenu={
+          onPasteAt
+            ? (e) => {
+                // Right-click on empty canvas opens the same menu but with
+                // only the pane-applicable items (Paste). The "ContextMenu"
+                // event delivered here is either a synthetic ReactMouseEvent
+                // (from React Flow's wrapper) OR a native MouseEvent — both
+                // expose preventDefault + clientX/clientY.
+                e.preventDefault();
+                contextNodeIdRef.current = null;
+                setContextOnNode(false);
                 setContextMenuPos({ x: e.clientX, y: e.clientY });
               }
             : undefined
@@ -787,7 +859,26 @@ export function DemoCanvas({
             />
           </ContextMenuTrigger>
           <ContextMenuContent data-testid="node-context-menu">
-            {onReorderNode ? (
+            {contextOnNode && onCopyNode ? (
+              <ContextMenuItem data-testid="node-context-menu-copy" onSelect={handleCopyPick}>
+                Copy
+                <ContextMenuShortcut>{copyShortcut}</ContextMenuShortcut>
+              </ContextMenuItem>
+            ) : null}
+            {onPasteAt ? (
+              <ContextMenuItem
+                data-testid="node-context-menu-paste"
+                disabled={!hasClipboard}
+                onSelect={handlePastePick}
+              >
+                Paste
+                <ContextMenuShortcut>{pasteShortcut}</ContextMenuShortcut>
+              </ContextMenuItem>
+            ) : null}
+            {contextOnNode && (onCopyNode || onPasteAt) && (onReorderNode || onDeleteNode) ? (
+              <ContextMenuSeparator />
+            ) : null}
+            {contextOnNode && onReorderNode ? (
               <>
                 <ContextMenuItem
                   data-testid="node-context-menu-to-front"
@@ -815,8 +906,8 @@ export function DemoCanvas({
                 </ContextMenuItem>
               </>
             ) : null}
-            {onReorderNode && onDeleteNode ? <ContextMenuSeparator /> : null}
-            {onDeleteNode ? (
+            {contextOnNode && onReorderNode && onDeleteNode ? <ContextMenuSeparator /> : null}
+            {contextOnNode && onDeleteNode ? (
               <ContextMenuItem data-testid="node-context-menu-delete" onSelect={handleDeletePick}>
                 Delete
               </ContextMenuItem>
