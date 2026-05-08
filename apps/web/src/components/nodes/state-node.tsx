@@ -5,7 +5,7 @@ import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
 
 export type StateNodeData = NodeData & {
   /**
@@ -76,6 +76,22 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
       : {}),
   };
 
+  // US-012: dblclick anywhere on the node body enters label-edit mode. The
+  // wrapper handler bails out for handles + resize controls so connect/resize
+  // gestures keep their drag semantics, and is a no-op when ANY field is
+  // already editing (description's own dblclick stops propagation so this
+  // fallback never overrides intent on the description body).
+  const handleWrapperDoubleClick = labelEditable
+    ? (e: ReactMouseEvent<HTMLDivElement>) => {
+        if (editing !== null) return;
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('.react-flow__handle')) return;
+        if (target?.closest('.react-flow__resize-control')) return;
+        e.stopPropagation();
+        setEditing('label');
+      }
+    : undefined;
+
   return (
     <div
       className={cn(
@@ -86,6 +102,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
       style={containerStyle}
       data-status={status}
       data-testid="state-node"
+      onDoubleClick={handleWrapperDoubleClick}
     >
       <ResizeControls
         visible={!!selected && !!data.onResize}
@@ -145,14 +162,6 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               style={labelFontStyle}
-              onDoubleClick={
-                labelEditable
-                  ? (e) => {
-                      e.stopPropagation();
-                      setEditing('label');
-                    }
-                  : undefined
-              }
             >
               {data.label}
             </button>

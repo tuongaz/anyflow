@@ -4,7 +4,7 @@ import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
 
 export type ShapeNodeRuntimeData = ShapeNodeData & {
   onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
@@ -93,6 +93,21 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
     ? colorStyle
     : { ...colorStyle, width: data.width ?? size.width, height: data.height ?? size.height };
 
+  // US-012: dblclick anywhere on the node body enters label-edit mode. The
+  // wrapper handler bails out for handles + resize controls so connect/resize
+  // gestures keep their drag semantics, and is a no-op when already editing or
+  // when the node doesn't expose a label-change callback.
+  const handleWrapperDoubleClick = labelEditable
+    ? (e: ReactMouseEvent<HTMLDivElement>) => {
+        if (isEditing) return;
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('.react-flow__handle')) return;
+        if (target?.closest('.react-flow__resize-control')) return;
+        e.stopPropagation();
+        setIsEditing(true);
+      }
+    : undefined;
+
   return (
     <div
       className={cn(
@@ -103,6 +118,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
       style={style}
       data-testid="shape-node"
       data-shape={shape}
+      onDoubleClick={handleWrapperDoubleClick}
     >
       <ResizeControls
         visible={!!selected && !!data.onResize && !isEditing}
@@ -148,14 +164,6 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
             data.label ? 'break-words' : 'text-muted-foreground/40 italic',
           )}
           style={labelFontStyle}
-          onDoubleClick={
-            labelEditable
-              ? (e) => {
-                  e.stopPropagation();
-                  setIsEditing(true);
-                }
-              : undefined
-          }
         >
           {data.label ?? (labelEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
         </button>
