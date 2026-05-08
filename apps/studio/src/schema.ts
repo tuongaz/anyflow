@@ -153,6 +153,12 @@ const ConnectorBaseShape = {
   // first matching handle.
   sourceHandle: z.string().optional(),
   targetHandle: z.string().optional(),
+  // US-021: tracks whether each endpoint's handle was auto-picked by the
+  // facing-handle picker (true) or pinned by an explicit user handle drop
+  // (false / absent). Auto-picked endpoints get re-routed when nodes move so
+  // the connector keeps facing the other end; user-pinned ones never do.
+  sourceHandleAutoPicked: z.boolean().optional(),
+  targetHandleAutoPicked: z.boolean().optional(),
   label: z.string().optional(),
   ...ConnectorVisualBaseShape,
 };

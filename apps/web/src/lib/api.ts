@@ -88,6 +88,15 @@ export interface ConnectorBase {
   sourceHandle?: string;
   /** Handle id on the target node. */
   targetHandle?: string;
+  /**
+   * US-021: true when the source handle was chosen by the facing-handle
+   * picker (e.g. body-drop fallback). When true, the auto-handle-rerouter
+   * recomputes the side after node moves so the connector keeps facing the
+   * other end. Absent / false → user-pinned, never overridden.
+   */
+  sourceHandleAutoPicked?: boolean;
+  /** US-021: same as sourceHandleAutoPicked but for the target endpoint. */
+  targetHandleAutoPicked?: boolean;
   label?: string;
   style?: ConnectorStyle;
   color?: ColorToken;
@@ -271,6 +280,10 @@ export interface UpdateConnectorBody {
   sourceHandle?: string;
   /** Reconnect: pin the target endpoint to a specific target handle. */
   targetHandle?: string;
+  /** US-021: mark the source handle as auto-picked (rerouter-managed) or pinned. */
+  sourceHandleAutoPicked?: boolean;
+  /** US-021: mark the target handle as auto-picked (rerouter-managed) or pinned. */
+  targetHandleAutoPicked?: boolean;
 }
 
 export const updateConnector = async (
@@ -331,6 +344,8 @@ export interface CreateConnectorBody {
   target: string;
   sourceHandle?: string;
   targetHandle?: string;
+  sourceHandleAutoPicked?: boolean;
+  targetHandleAutoPicked?: boolean;
   kind?: Connector['kind'];
   label?: string;
   style?: ConnectorStyle;

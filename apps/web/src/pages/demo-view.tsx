@@ -747,18 +747,30 @@ export function DemoView({
     (
       source: string,
       target: string,
-      handles?: { sourceHandle?: string; targetHandle?: string },
+      handles?: {
+        sourceHandle?: string;
+        targetHandle?: string;
+        sourceHandleAutoPicked?: boolean;
+        targetHandleAutoPicked?: boolean;
+      },
     ) => {
       if (!demoId) return;
       const id = `conn-${crypto.randomUUID()}`;
       const sourceHandle = handles?.sourceHandle;
       const targetHandle = handles?.targetHandle;
+      const sourceHandleAutoPicked = handles?.sourceHandleAutoPicked;
+      const targetHandleAutoPicked = handles?.targetHandleAutoPicked;
+      const flagPart = {
+        ...(sourceHandleAutoPicked !== undefined ? { sourceHandleAutoPicked } : {}),
+        ...(targetHandleAutoPicked !== undefined ? { targetHandleAutoPicked } : {}),
+      };
       const optimistic: DefaultConnector = {
         id,
         source,
         target,
         ...(sourceHandle ? { sourceHandle } : {}),
         ...(targetHandle ? { targetHandle } : {}),
+        ...flagPart,
         kind: 'default',
       };
       const payload = {
@@ -767,6 +779,7 @@ export function DemoView({
         target,
         ...(sourceHandle ? { sourceHandle } : {}),
         ...(targetHandle ? { targetHandle } : {}),
+        ...flagPart,
         kind: 'default' as const,
       };
       setConnectorOverride(id, optimistic as Partial<Connector>);
@@ -984,18 +997,24 @@ export function DemoView({
         target?: string;
         sourceHandle?: string;
         targetHandle?: string;
+        sourceHandleAutoPicked?: boolean;
+        targetHandleAutoPicked?: boolean;
       },
     ) => {
       if (!demoId) return;
       const conn = demoConnectors?.find((c) => c.id === connId);
       // Capture all four endpoint fields so undo can reset whichever side(s)
-      // moved (and leave the unchanged side at its original value).
+      // moved (and leave the unchanged side at its original value). The
+      // auto-picked flags are also captured so an undone reroute restores
+      // the prior auto/pinned state.
       const prev = conn
         ? {
             source: conn.source,
             target: conn.target,
             sourceHandle: conn.sourceHandle,
             targetHandle: conn.targetHandle,
+            sourceHandleAutoPicked: conn.sourceHandleAutoPicked,
+            targetHandleAutoPicked: conn.targetHandleAutoPicked,
           }
         : null;
       setConnectorOverride(connId, patch as Partial<Connector>);

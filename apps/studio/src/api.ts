@@ -78,6 +78,10 @@ const ConnectorPatchBodySchema = z
     // attaches to (US-013).
     sourceHandle: z.string().min(1).optional(),
     targetHandle: z.string().min(1).optional(),
+    // US-021: auto-pick flags. The picker writes them on body-drop create /
+    // reconnect; the auto-handle-rerouter clears or flips them on later edits.
+    sourceHandleAutoPicked: z.boolean().optional(),
+    targetHandleAutoPicked: z.boolean().optional(),
   })
   .strict();
 type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;
