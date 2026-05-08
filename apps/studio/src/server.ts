@@ -89,7 +89,7 @@ export interface ServeOptions extends CreateAppOptions {
 
 export function serve(options: ServeOptions = {}) {
   const port = options.port ?? 4321;
-  const hostname = options.hostname ?? 'localhost';
+  const hostname = options.hostname ?? '0.0.0.0';
   const app = createApp(options);
   return Bun.serve({ port, hostname, fetch: app.fetch });
 }

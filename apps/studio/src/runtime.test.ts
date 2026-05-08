@@ -19,19 +19,19 @@ const tmpFile = (name: string) => {
 
 describe('readConfig', () => {
   it('returns defaults when file does not exist', () => {
-    expect(readConfig(tmpFile('config.json'))).toEqual({ port: 4321, host: 'localhost' });
+    expect(readConfig(tmpFile('config.json'))).toEqual({ port: 4321, host: '0.0.0.0' });
   });
 
   it('returns defaults when file is corrupt', () => {
     const path = tmpFile('config.json');
     writeFileSync(path, '{ not json');
-    expect(readConfig(path)).toEqual({ port: 4321, host: 'localhost' });
+    expect(readConfig(path)).toEqual({ port: 4321, host: '0.0.0.0' });
   });
 
   it('merges user-set fields with defaults', () => {
     const path = tmpFile('config.json');
     writeFileSync(path, JSON.stringify({ port: 9999 }));
-    expect(readConfig(path)).toEqual({ port: 9999, host: 'localhost' });
+    expect(readConfig(path)).toEqual({ port: 9999, host: '0.0.0.0' });
   });
 });
 

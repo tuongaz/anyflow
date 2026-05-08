@@ -7,7 +7,7 @@ export interface StudioConfig {
   host: string;
 }
 
-export const DEFAULT_CONFIG: StudioConfig = { port: 4321, host: 'localhost' };
+export const DEFAULT_CONFIG: StudioConfig = { port: 4321, host: '0.0.0.0' };
 
 export function defaultConfigPath(): string {
   return join(homedir(), '.anydemo', 'config.json');
