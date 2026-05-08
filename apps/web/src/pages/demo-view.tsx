@@ -22,6 +22,8 @@ import {
   updateNode,
   updateNodePosition,
 } from '@/lib/api';
+import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
+import type { ReactFlowInstance } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Position = { x: number; y: number };
@@ -142,6 +144,13 @@ export function DemoView({
   // overrides aren't a fit because the entire array order is what changes.
   const [nodeOrderOverride, setNodeOrderOverride] = useState<string[] | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  // React Flow instance handed up from `<DemoCanvas onRfInit>` (US-024). Used
+  // by the zoom-chord handler below — only the page owns the keyboard
+  // listener so the canvas stays free of page-level chord wiring.
+  const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const onRfInit = useCallback((instance: ReactFlowInstance) => {
+    rfInstanceRef.current = instance;
+  }, []);
   const undoStack = useUndoStack();
   // Stable handles for the mutation handlers below. push/dropTop/markMutation
   // are useCallback-stable so their identity doesn't churn dep arrays.
@@ -984,6 +993,60 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, [demoNodes, demoConnectors, onCopyNodes, onPasteNodes]);
 
+  // US-024: arrow-key nudge. Bare arrows shift every selected node by 1px on
+  // the matched axis; Shift+arrow uses 10px. Each axis-step routes through the
+  // existing onNodePositionChange path so the optimistic override + undo
+  // coalescing (coalesceKey `node:${id}:position`) collapses a burst of taps
+  // into one undo entry — same shape as a drag. Pure-connector selections
+  // resolve to no updates (no node ids match) and the chord becomes a no-op.
+  // Editable focus suppresses so InlineEdit / inputs keep the caret-move
+  // native behavior.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const delta = getNudgeDelta(e);
+      if (!delta) return;
+      if (isEditableElement(document.activeElement)) return;
+      const ids = selectedIdsRef.current;
+      if (ids.length === 0) return;
+      // Read the LIVE displayed position (override merged) so a tap-tap-tap
+      // burst keeps stacking on the in-flight position rather than the stale
+      // server snapshot. Coalescing on the undo entry preserves the original
+      // pre-burst position so a single Cmd+Z reverts the whole sequence.
+      const overrides = nodePending.overrides;
+      const liveNodes = (demoNodes ?? []).map((n) => {
+        const pos = overrides[n.id]?.position ?? n.position;
+        return { id: n.id, position: pos };
+      });
+      const updates = applyNudge(delta, ids, liveNodes);
+      if (updates.length === 0) return;
+      e.preventDefault();
+      for (const u of updates) onNodePositionChange(u.id, u.position);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [demoNodes, nodePending.overrides, onNodePositionChange]);
+
+  // US-024: zoom chords. Cmd+0 → fitView, Cmd+= (and Cmd+Shift+=) → zoomIn,
+  // Cmd+- → zoomOut. preventDefault fires even when the rfInstance isn't
+  // ready yet so the browser's native reset-zoom never escapes (the user
+  // doesn't have to click the canvas first). Editable focus suppresses for
+  // consistency with the other chords.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const action = getZoomChord(e);
+      if (!action) return;
+      if (isEditableElement(document.activeElement)) return;
+      e.preventDefault();
+      const inst = rfInstanceRef.current;
+      if (!inst) return;
+      if (action === 'fit') inst.fitView({ padding: 0.2, duration: 200 });
+      else if (action === 'in') inst.zoomIn({ duration: 150 });
+      else inst.zoomOut({ duration: 150 });
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
   // includes the fields that changed (source/target/sourceHandle/targetHandle).
@@ -1203,6 +1266,7 @@ export function DemoView({
           onStyleNodePreview={onStyleNodePreview}
           onStyleConnector={onStyleConnector}
           onStyleConnectorPreview={onStyleConnectorPreview}
+          onRfInit={onRfInit}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

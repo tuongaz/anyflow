@@ -191,6 +191,12 @@ export interface DemoCanvasProps {
   onStyleConnector?: (connId: string, patch: ConnectorStylePatch) => void;
   /** Live preview override during a slider drag (no PATCH/undo). */
   onStyleConnectorPreview?: (connId: string, patch: ConnectorStylePatch) => void;
+  /**
+   * Receive the React Flow instance once it has mounted (US-024). Lets the
+   * page-level keyboard handler call zoom methods (`fitView`, `zoomIn`,
+   * `zoomOut`) without owning the canvas itself. Called once per mount.
+   */
+  onRfInit?: (instance: ReactFlowInstance) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -339,6 +345,7 @@ export function DemoCanvas({
   onStyleNodePreview,
   onStyleConnector,
   onStyleConnectorPreview,
+  onRfInit,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1320,6 +1327,7 @@ export function DemoCanvas({
         zoomOnDoubleClick={false}
         onInit={(instance) => {
           rfInstanceRef.current = instance;
+          onRfInit?.(instance);
         }}
         onEdgesChange={onEdgesChange}
         onNodeDragStart={() => {
