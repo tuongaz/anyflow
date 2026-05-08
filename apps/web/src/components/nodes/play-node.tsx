@@ -45,12 +45,12 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   // wrapper has no explicit dims and we own sizing — pin a default width so a
   // long label/description wraps inside the node instead of stretching it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
-  // Per-node fontSize override (US-009). Label uses the value as-is; description
-  // tracks 2px below the label so the existing visual hierarchy survives.
+  // US-008: title and body now share the same font size — title is bolded
+  // instead of larger. The Style-tab fontSize override applies equally to
+  // both, so a user-set 28px bumps the title AND the body to 28px.
   const labelFontStyle: CSSProperties =
     data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
-  const descriptionFontStyle: CSSProperties =
-    data.fontSize !== undefined ? { fontSize: `${Math.max(10, data.fontSize - 2)}px` } : {};
+  const descriptionFontStyle: CSSProperties = labelFontStyle;
 
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
@@ -125,11 +125,11 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         )}
       />
       <div
-        className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1"
+        className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-2"
         data-testid="node-header"
       >
         <div
-          className="min-w-0 flex-1 text-[20px] font-normal leading-tight"
+          className="min-w-0 flex-1 text-[18px] font-semibold leading-tight"
           style={labelFontStyle}
         >
           {editing === 'label' && labelEditable ? (
@@ -139,14 +139,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               required
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
-              className="text-[20px]"
+              className="text-[18px] font-semibold"
               style={labelFontStyle}
             />
           ) : (
             <button
               type="button"
               className={cn(
-                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[20px] font-normal leading-tight',
+                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[18px] font-semibold leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               style={labelFontStyle}
