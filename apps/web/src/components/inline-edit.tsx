@@ -217,6 +217,7 @@ export function InlineEdit({
       onBlur={onBlur}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
       style={style}
       className={cn(
         'nodrag nopan nowheel block w-full bg-transparent p-0 text-inherit outline-none',

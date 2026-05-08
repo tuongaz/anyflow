@@ -78,21 +78,34 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
       : {}),
   };
 
-  // US-012: dblclick anywhere on the node body enters label-edit mode. The
-  // wrapper handler bails out for handles + resize controls so connect/resize
-  // gestures keep their drag semantics, and is a no-op when ANY field is
-  // already editing (description's own dblclick stops propagation so this
-  // fallback never overrides intent on the description body).
-  const handleWrapperDoubleClick = labelEditable
-    ? (e: ReactMouseEvent<HTMLDivElement>) => {
-        if (editing !== null) return;
-        const target = e.target as HTMLElement | null;
-        if (target?.closest('.react-flow__handle')) return;
-        if (target?.closest('.react-flow__resize-control')) return;
-        e.stopPropagation();
-        setEditing('label');
-      }
-    : undefined;
+  // US-020: region-aware double-click routing. Header → label edit; content
+  // body (including blank space below short text) → description edit; padding
+  // outside both falls back to description (when editable) so a tall node with
+  // an empty description still routes blank-area clicks to the description.
+  // Bails out for handles + resize controls so connect/resize gestures keep
+  // their drag semantics. No-op while ANY field is already editing — InlineEdit
+  // also stops propagation so a stray dblclick mid-edit doesn't switch fields.
+  const handleWrapperDoubleClick =
+    labelEditable || descEditable
+      ? (e: ReactMouseEvent<HTMLDivElement>) => {
+          if (editing !== null) return;
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('.react-flow__handle')) return;
+          if (target?.closest('.react-flow__resize-control')) return;
+          e.stopPropagation();
+          if (target?.closest('[data-testid="node-header"]')) {
+            if (labelEditable) setEditing('label');
+            return;
+          }
+          if (target?.closest('[data-testid="node-content"]')) {
+            if (descEditable) setEditing('description');
+            else if (labelEditable) setEditing('label');
+            return;
+          }
+          if (descEditable) setEditing('description');
+          else if (labelEditable) setEditing('label');
+        }
+      : undefined;
 
   return (
     <div
@@ -219,14 +232,6 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
               descEditable ? 'hover:opacity-80' : '',
             )}
             style={descriptionFontStyle}
-            onDoubleClick={
-              descEditable
-                ? (e) => {
-                    e.stopPropagation();
-                    setEditing('description');
-                  }
-                : undefined
-            }
           >
             {description}
           </button>
