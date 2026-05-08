@@ -27,6 +27,7 @@ import {
   type Connection,
   Controls,
   type Edge,
+  type EdgeChange,
   type FinalConnectionState,
   type HandleType,
   type Node,
@@ -34,6 +35,7 @@ import {
   Panel,
   ReactFlow,
   type ReactFlowInstance,
+  applyEdgeChanges,
   applyNodeChanges,
 } from '@xyflow/react';
 import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -43,12 +45,15 @@ import '@xyflow/react/dist/style.css';
 export interface DemoCanvasProps {
   nodes: DemoNode[];
   connectors: Connector[];
-  selectedNodeId: string | null;
-  onSelectNode: (id: string | null) => void;
-  /** Currently selected connector id (mutually exclusive with selectedNodeId). */
-  selectedConnectorId?: string | null;
-  /** Click handler for a connector edge; null clears the selection. */
-  onSelectConnector?: (id: string | null) => void;
+  /** Currently selected node ids (US-019: multi-select). */
+  selectedNodeIds: readonly string[];
+  /** Currently selected connector ids (US-019: multi-select). */
+  selectedConnectorIds: readonly string[];
+  /**
+   * Fired whenever React Flow's internal selection changes (click, marquee,
+   * Shift/Cmd-click toggle). The parent mirrors the arrays into its own state.
+   */
+  onSelectionChange?: (nodeIds: string[], connectorIds: string[]) => void;
   /** Per-node run state from SSE events. */
   runs?: NodeRuns;
   /** Click handler for a PlayNode's Play button. */
@@ -148,15 +153,17 @@ export interface DemoCanvasProps {
    * the menu re-renders on every open via `contextMenuPos` setState. */
   hasClipboard?: boolean;
   /**
-   * Currently inspected node (with optimistic overrides applied) — drives the
-   * canvas style strip's active state. Null when no node is selected.
+   * Currently selected nodes (with optimistic overrides applied) — drives the
+   * canvas style strip's controls and fan-out apply (US-019). Empty when no
+   * node is selected.
    */
-  selectedNode?: DemoNode | null;
+  selectedNodes?: DemoNode[];
   /**
-   * Currently inspected connector (with optimistic overrides applied) — drives
-   * the canvas style strip's active state. Null when no connector is selected.
+   * Currently selected connectors (with optimistic overrides applied) — drives
+   * the canvas style strip's controls and fan-out apply (US-019). Empty when
+   * no connector is selected.
    */
-  selectedConnector?: Connector | null;
+  selectedConnectors?: Connector[];
   /** Apply a style patch to a node (border/background/font). */
   onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
   /** Live preview override during a slider drag (no PATCH/undo). */
@@ -261,10 +268,9 @@ const dataStatusFor = (runs: NodeRuns | undefined, id: string): NodeStatus | und
 export function DemoCanvas({
   nodes,
   connectors,
-  selectedNodeId,
-  onSelectNode,
-  selectedConnectorId,
-  onSelectConnector,
+  selectedNodeIds,
+  selectedConnectorIds,
+  onSelectionChange,
   runs,
   onPlayNode,
   nodeOverrides,
@@ -282,8 +288,8 @@ export function DemoCanvas({
   onCopyNode,
   onPasteAt,
   hasClipboard,
-  selectedNode,
-  selectedConnector,
+  selectedNodes,
+  selectedConnectors,
   onStyleNode,
   onStyleNodePreview,
   onStyleConnector,
@@ -507,6 +513,15 @@ export function DemoCanvas({
   const copyShortcut = isMac ? '⌘C' : 'Ctrl+C';
   const pasteShortcut = isMac ? '⌘V' : 'Ctrl+V';
 
+  // Set lookups for the controlled selection. React Flow's internal selection
+  // is mirrored back via onSelectionChange so the parent's arrays remain the
+  // source of truth — sourceNodes/rfEdges are recomputed off these sets.
+  const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+  const selectedConnectorIdSet = useMemo(
+    () => new Set(selectedConnectorIds),
+    [selectedConnectorIds],
+  );
+
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
       const node: Node = {
@@ -522,7 +537,7 @@ export function DemoCanvas({
           onLabelChange: onNodeLabelChange,
           onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
         },
-        selected: merged.id === selectedNodeId,
+        selected: selectedNodeIdSet.has(merged.id),
       };
       // Pass explicit width/height to the React Flow node wrapper when set
       // in data. NodeResizer dispatches dimension changes that update these
@@ -552,7 +567,7 @@ export function DemoCanvas({
     return [...fromServer, ...fromOverrides];
   }, [
     nodes,
-    selectedNodeId,
+    selectedNodeIdSet,
     runs,
     onPlayNode,
     onNodeResize,
@@ -574,40 +589,125 @@ export function DemoCanvas({
     setRfNodes(sourceNodes);
   }, [sourceNodes]);
 
-  // selectedNodeId is the source of truth for the selection ring. React Flow
+  // Mirror rfNodes into a ref so onNodesChange can compute the post-change
+  // selection without waiting for setState to commit.
+  useEffect(() => {
+    rfNodesRef.current = rfNodes;
+  }, [rfNodes]);
+
+  // selectedNodeIds is the source of truth for the selection rings. React Flow
   // dispatches its own `select` changes during resize/drag (and sometimes on
   // dimension changes) that would briefly drop the ring. Mirror the prop into
   // a ref and re-pin selected:true on every change so the visual stays
-  // anchored to the parent's selection state — no flicker mid-resize.
-  const selectedIdRef = useRef(selectedNodeId);
+  // anchored to the parent's selection state — no flicker mid-resize. We
+  // skip re-pinning ids that the user explicitly toggled in this batch
+  // (Shift/Cmd-click), so deselect-via-multi-key still works (US-019).
+  const selectedIdSetRef = useRef<Set<string>>(selectedNodeIdSet);
   useEffect(() => {
-    selectedIdRef.current = selectedNodeId;
-  }, [selectedNodeId]);
+    selectedIdSetRef.current = selectedNodeIdSet;
+  }, [selectedNodeIdSet]);
+
+  // Stable handle for the parent's selection callback — the closure inside
+  // onNodesChange/onEdgesChange would otherwise capture stale arrays. Using a
+  // ref means user-driven selection changes always read the LATEST callback
+  // without retriggering the React Flow listener wiring.
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
+
+  // Mirror connector-id state into a ref for the same reason as
+  // selectedIdSetRef — the edge change handler reads the latest set without
+  // re-binding.
+  const selectedConnIdSetRef = useRef<Set<string>>(selectedConnectorIdSet);
+  useEffect(() => {
+    selectedConnIdSetRef.current = selectedConnectorIdSet;
+  }, [selectedConnectorIdSet]);
+
+  // rfNodes is also mirrored into a ref so the change handler can compute the
+  // post-applyNodeChanges selection synchronously (the setRfNodes updater
+  // function runs later and can't drive a side effect).
+  const rfNodesRef = useRef<Node[]>([]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setRfNodes((nds) => {
-      const next = applyNodeChanges(changes, nds);
-      const pinned = selectedIdRef.current;
-      if (!pinned) return next;
-      return next.map((n) => (n.id === pinned && !n.selected ? { ...n, selected: true } : n));
-    });
+    const explicitlyToggled = new Set<string>();
+    for (const c of changes) {
+      if (c.type === 'select') explicitlyToggled.add(c.id);
+    }
+    // applyNodeChanges on the current snapshot. We feed the same result to
+    // setRfNodes below so the rendered nodes match what we're propagating.
+    const next = applyNodeChanges(changes, rfNodesRef.current);
+    const pinned = selectedIdSetRef.current;
+    // Re-pin selection so resize/dimension changes don't accidentally drop
+    // the ring. Skip ids that the user just toggled (Shift/Cmd-click) so
+    // the toggle-off path actually clears the ring.
+    const repinned =
+      pinned.size === 0
+        ? next
+        : next.map((n) =>
+            pinned.has(n.id) && !explicitlyToggled.has(n.id) && !n.selected
+              ? { ...n, selected: true }
+              : n,
+          );
+    setRfNodes(repinned);
+    // Propagate user-driven selection changes up to the parent. Programmatic
+    // prop updates bypass this — ReactFlow's StoreUpdater applies them
+    // directly to the store without dispatching changes.
+    if (explicitlyToggled.size === 0) return;
+    const cb = onSelectionChangeRef.current;
+    if (!cb) return;
+    const sel = repinned.filter((n) => n.selected).map((n) => n.id);
+    const prev = selectedIdSetRef.current;
+    const sameLen = prev.size === sel.length;
+    const sameAll = sameLen && sel.every((id) => prev.has(id));
+    if (sameAll) return;
+    cb(sel, [...selectedConnIdSetRef.current]);
+  }, []);
+
+  // Edge changes — wired so user-driven edge selection (marquee, click,
+  // multi-key toggle) propagates up the same way node selection does. Without
+  // this, edges would be uncontrolled in the React Flow store and the
+  // controlled `selected` flag from props could get out of sync.
+  // rfEdges is declared further below; keep the latest reference in a ref so
+  // this callback doesn't have to wait on the declaration order.
+  const rfEdgesRef = useRef<Edge[]>([]);
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    const explicitlyToggled = new Set<string>();
+    for (const c of changes) {
+      if (c.type === 'select') explicitlyToggled.add(c.id);
+    }
+    if (explicitlyToggled.size === 0) return;
+    const cb = onSelectionChangeRef.current;
+    if (!cb) return;
+    const next = applyEdgeChanges(changes, rfEdgesRef.current);
+    const sel = next.filter((e) => e.selected).map((e) => e.id);
+    const prev = selectedConnIdSetRef.current;
+    const sameLen = prev.size === sel.length;
+    const sameAll = sameLen && sel.every((id) => prev.has(id));
+    if (sameAll) return;
+    cb([...selectedIdSetRef.current], sel);
   }, []);
 
   const reconnectableEdges = !!onReconnectConnector;
+  // Reconnect endpoint handles are only useful when EXACTLY one connector is
+  // selected — multi-select disables endpoint-drag (drag would re-route just
+  // one of the selection, which is confusing). Mirrors single-select behavior.
+  const onlySelectedConnectorId =
+    selectedConnectorIdSet.size === 1 ? [...selectedConnectorIdSet][0] : null;
   const rfEdges = useMemo<Edge[]>(() => {
     const decorate = (c: Connector): Edge => {
       const adjacentRunning =
         statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
-      const isSelected = selectedConnectorId === c.id;
+      const isSelected = selectedConnectorIdSet.has(c.id);
       const edge = connectorToEdge(c, adjacentRunning, isSelected);
       if (isSelected) edge.selected = true;
       // `reconnectable: true` enables the endpoint-drag gesture for the edge;
       // React Flow shows reconnect handles on hover. Wired only when the
-      // parent provided an onReconnectConnector callback AND the edge is the
-      // currently selected one — connectors are only movable while selected,
-      // so unselected edges stay click-through and don't render endpoint
-      // handles.
-      const next: Edge = reconnectableEdges && isSelected ? { ...edge, reconnectable: true } : edge;
+      // parent provided an onReconnectConnector callback AND this edge is the
+      // sole selected connector — multi-select disables reconnect to avoid
+      // ambiguous gestures.
+      const enableReconnect = reconnectableEdges && c.id === onlySelectedConnectorId;
+      const next: Edge = enableReconnect ? { ...edge, reconnectable: true } : edge;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
       return { ...next, data: { ...next.data, onLabelChange: onConnectorLabelChange } };
@@ -639,11 +739,18 @@ export function DemoCanvas({
   }, [
     connectors,
     runs,
-    selectedConnectorId,
+    selectedConnectorIdSet,
+    onlySelectedConnectorId,
     connectorOverrides,
     onConnectorLabelChange,
     reconnectableEdges,
   ]);
+
+  // Mirror rfEdges into a ref so onEdgesChange (declared earlier) reads the
+  // latest value without recreating the callback on every render.
+  useEffect(() => {
+    rfEdgesRef.current = rfEdges;
+  }, [rfEdges]);
 
   // `connectSucceededRef` lets onConnectEnd skip the body-drop fallback when
   // onConnect already fired (precise handle drop). Same pattern as
@@ -822,21 +929,105 @@ export function DemoCanvas({
         ? 'rounded-md border border-amber-500/60 bg-amber-200/40'
         : 'rounded-lg border-2 border-primary/60 bg-primary/10';
 
+  // Space-held pan mode (US-019). React Flow's panActivationKeyCode='Space'
+  // toggles the pane into pan-on-drag mode for the duration of the keypress;
+  // we mirror that into local state purely so the wrapper can show a
+  // grab/grabbing cursor (the rest of the behavior is owned by React Flow).
+  // Suppress the keydown when focus is in an editable element so InlineEdit's
+  // own space input still types a literal space.
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [spaceDragging, setSpaceDragging] = useState(false);
+  useEffect(() => {
+    const isEditable = (el: Element | null): boolean => {
+      if (!el) return false;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      return el instanceof HTMLElement && el.isContentEditable;
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      if (isEditable(document.activeElement)) return;
+      // Only flip the cursor — React Flow owns the actual pan gesture wiring.
+      // preventDefault stops the browser from scrolling the page on Space.
+      e.preventDefault();
+      setSpaceHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      setSpaceHeld(false);
+      setSpaceDragging(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
+  // Multi-node drag-stop: React Flow passes the full set of nodes that moved
+  // (the active drag plus every other selected node, since selected items
+  // drag together). Persist each moved node's final position individually —
+  // the parent's onNodePositionChange already coalesces undo entries per id.
+  const onNodeDragStopCb = useCallback(
+    (_e: unknown, _node: Node, draggedNodes: Node[]) => {
+      draggingRef.current = false;
+      if (!onNodePositionChange) return;
+      for (const moved of draggedNodes) {
+        onNodePositionChange(moved.id, { x: moved.position.x, y: moved.position.y });
+      }
+    },
+    [onNodePositionChange],
+  );
+
+  const onSelectionDragStartCb = useCallback(() => {
+    draggingRef.current = true;
+  }, []);
+  const onSelectionDragStopCb = useCallback(
+    (_e: unknown, draggedNodes: Node[]) => {
+      draggingRef.current = false;
+      if (!onNodePositionChange) return;
+      for (const moved of draggedNodes) {
+        onNodePositionChange(moved.id, { x: moved.position.x, y: moved.position.y });
+      }
+    },
+    [onNodePositionChange],
+  );
+
+  // Cursor for the wrapper. Draw mode → crosshair (own gesture). Space-held →
+  // grab while idle, grabbing while a Space-pan drag is in flight. Else
+  // default — selectionOnDrag means the pane shows a normal cursor and the
+  // marquee paints itself.
+  const wrapperCursor = drawShape
+    ? 'crosshair'
+    : spaceHeld
+      ? spaceDragging
+        ? 'grabbing'
+        : 'grab'
+      : undefined;
+
   return (
     <div
       data-testid="anydemo-canvas"
       ref={wrapperRef}
       className="relative h-full w-full"
-      style={drawShape ? { cursor: 'crosshair' } : undefined}
-      onPointerDown={onPointerDown}
+      style={wrapperCursor ? { cursor: wrapperCursor } : undefined}
+      onPointerDown={(e) => {
+        if (spaceHeld) setSpaceDragging(true);
+        onPointerDown(e);
+      }}
       onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
+      onPointerUp={(e) => {
+        setSpaceDragging(false);
+        onPointerUp(e);
+      }}
       onPointerCancel={() => {
         drawingRef.current = false;
         drawStartRef.current = null;
         drawCurrentRef.current = null;
         setDrawStart(null);
         setDrawCurrent(null);
+        setSpaceDragging(false);
       }}
     >
       <ReactFlow
@@ -872,30 +1063,28 @@ export function DemoCanvas({
         // by the outline (US-005), so we don't need the elevation.
         elevateNodesOnSelect={false}
         elementsSelectable={!drawShape}
-        panOnDrag={!drawShape}
+        // US-019 selection model: marquee on drag, Space to pan. With
+        // panOnDrag=false, plain pane drags create a selection rectangle;
+        // panActivationKeyCode='Space' temporarily enables pan-on-drag while
+        // Space is held. Multi-key (Meta/Shift) toggles individual items in
+        // the selection. selectionKeyCode=null avoids overloading another
+        // modifier (the marquee is already the default drag gesture).
+        selectionOnDrag={!drawShape}
+        panOnDrag={false}
+        selectionKeyCode={null}
+        multiSelectionKeyCode={drawShape ? null : ['Meta', 'Shift']}
+        panActivationKeyCode={drawShape ? null : 'Space'}
         zoomOnDoubleClick={false}
         onInit={(instance) => {
           rfInstanceRef.current = instance;
         }}
-        onNodeClick={(_e, node) => onSelectNode(node.id)}
-        onEdgeClick={(_e, edge) => onSelectConnector?.(edge.id)}
-        onPaneClick={() => {
-          // Skip pane-click selection clears during draw / drag / resize so
-          // a stray release inside the pane doesn't drop the selection ring.
-          if (drawShape || draggingRef.current || resizingRef.current) return;
-          onSelectNode(null);
-          onSelectConnector?.(null);
-        }}
+        onEdgesChange={onEdgesChange}
         onNodeDragStart={() => {
           draggingRef.current = true;
         }}
-        onNodeDragStop={(_e, node) => {
-          // Drag-while-moving lives in React Flow's internal state. We only
-          // surface (and persist) the final position on drag-stop so we don't
-          // PATCH the file on every pixel.
-          draggingRef.current = false;
-          onNodePositionChange?.(node.id, { x: node.position.x, y: node.position.y });
-        }}
+        onNodeDragStop={onNodeDragStopCb}
+        onSelectionDragStart={onSelectionDragStartCb}
+        onSelectionDragStop={onSelectionDragStopCb}
         onNodeContextMenu={
           contextEnabled
             ? (e, node) => {
@@ -936,8 +1125,8 @@ export function DemoCanvas({
               ) : null}
               {onStyleNode && onStyleConnector ? (
                 <StyleStrip
-                  nodes={selectedNode ? [selectedNode] : []}
-                  connectors={selectedConnector ? [selectedConnector] : []}
+                  nodes={selectedNodes ?? []}
+                  connectors={selectedConnectors ?? []}
                   onStyleNode={onStyleNode}
                   onStyleNodePreview={onStyleNodePreview}
                   onStyleConnector={onStyleConnector}

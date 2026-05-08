@@ -28,4 +28,4 @@ bun test               # bun test (workspace-scoped tests)
 bun run dev            # parallel: Vite (5173) + Hono studio (4321)
 ```
 
-A `Makefile` at the repo root wraps these (and the CLI subcommands) for discoverability — run `make help` to see the target list. It's sugar over the bun commands above, not a replacement; both stay in sync. `make register` takes `DIR=<path>` (not `PATH=` — that would clobber the shell `PATH` env var when Make exports command-line overrides to subshells).
+A `Makefile` at the repo root wraps these (and the CLI subcommands) for discoverability — run `make help` to see the target list. It's sugar over the bun commands above, not a replacement; both stay in sync. `make register` takes `DIR=<path>` (not `PATH=` — that would clobber the shell `PATH` env var when Make exports command-line overrides to subshells). `make ralph` runs the autonomous agent loop in `ralph/ralph.sh` with a default of 10 iterations; override with `ITERATIONS=<n>`.

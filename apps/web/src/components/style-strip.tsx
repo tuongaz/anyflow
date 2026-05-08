@@ -127,7 +127,11 @@ export function StyleStrip({
   // value; the value is purely cosmetic for the trigger swatch/icon.
   const firstNode = nodes[0];
   const firstConnector = connectors[0];
-  const isTextShape = firstNode?.type === 'shapeNode' && firstNode.data.shape === 'text';
+  // Text-shape simplification only applies to pure-node selections of a single
+  // text shape. Mixed selections (text-shape node + connector) still need the
+  // shared border controls visible, so the guard is gated on `pureNode`.
+  const isTextShape =
+    pureNode && firstNode?.type === 'shapeNode' && firstNode.data.shape === 'text';
 
   // Resolve current visual state. For pure-connector selections, the
   // border-color trigger reflects the connector's color; for pure-node

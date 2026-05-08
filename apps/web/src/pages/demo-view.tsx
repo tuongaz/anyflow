@@ -114,8 +114,23 @@ export function DemoView({
   onPlayNode,
 }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
+  // US-019: multi-select. Selection is now an array; the inspector still
+  // single-shots (1 node OR 1 connector — see derivations below) so its UX
+  // doesn't change for the existing single-select paths. The style strip and
+  // canvas selection rings honor the full arrays.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedConnectorIds, setSelectedConnectorIds] = useState<string[]>([]);
+  // Keep selection ids stable in a ref so keyboard handlers (Cmd+A / Cmd+C /
+  // Cmd+D / Delete) read the latest set without re-binding the listener on
+  // every render.
+  const selectedIdsRef = useRef(selectedIds);
+  const selectedConnectorIdsRef = useRef(selectedConnectorIds);
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
+  useEffect(() => {
+    selectedConnectorIdsRef.current = selectedConnectorIds;
+  }, [selectedConnectorIds]);
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -143,8 +158,8 @@ export function DemoView({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on demo id change.
   useEffect(() => {
-    setSelectedId(null);
-    setSelectedConnectorId(null);
+    setSelectedIds([]);
+    setSelectedConnectorIds([]);
     resetNodeOverrides();
     resetConnectorOverrides();
     setNodeOrderOverride(null);
@@ -154,19 +169,13 @@ export function DemoView({
     undoStack.clear();
   }, [detail?.id]);
 
-  // Selecting a node deselects any connector and vice versa — node + connector
-  // selection are mutually exclusive (the inspector renders one entity at a
-  // time, even though the same Sheet hosts both). Selecting a node also opens
-  // the inspector; the panel stays open as long as the user keeps interacting
-  // with the same node (or any node), and only closes when interaction lands
-  // outside the canvas-node surfaces (handled by SheetContent.onInteractOutside).
-  const onSelectNode = useCallback((id: string | null) => {
-    setSelectedId(id);
-    if (id !== null) setSelectedConnectorId(null);
-  }, []);
-  const onSelectConnector = useCallback((id: string | null) => {
-    setSelectedConnectorId(id);
-    if (id !== null) setSelectedId(null);
+  // React Flow's onSelectionChange — fires for marquee, click, multi-key
+  // toggle, pane-click clear. Mirror the arrays into our state; the canvas
+  // re-applies them as `selected` on each node/edge so the loop closes
+  // controllably.
+  const onSelectionChange = useCallback((nodeIds: string[], connectorIds: string[]) => {
+    setSelectedIds(nodeIds);
+    setSelectedConnectorIds(connectorIds);
   }, []);
 
   const demoNodes = detail?.demo?.nodes;
@@ -408,9 +417,10 @@ export function DemoView({
       setEditError(null);
       // Don't optimistically remove from the canvas — the SSE echo of the
       // demo file rewrite will drop the node naturally, and a failure path
-      // would need to put it back. Just clear the selection so the panel
-      // closes immediately.
-      setSelectedId((prev) => (prev === nodeId ? null : prev));
+      // would need to put it back. Just drop the deleted id from the
+      // selection set so the inspector closes (or the multi-selection
+      // shrinks) immediately.
+      setSelectedIds((prev) => prev.filter((id) => id !== nodeId));
       markMutation();
       if (node) {
         const nodeSnapshot = node;
@@ -487,7 +497,7 @@ export function DemoView({
       // recreate it with the original id and properties.
       const conn = demoConnectors?.find((c) => c.id === connId);
       setEditError(null);
-      setSelectedConnectorId((prev) => (prev === connId ? null : prev));
+      setSelectedConnectorIds((prev) => prev.filter((id) => id !== connId));
       markMutation();
       if (conn) {
         const connSnapshot = conn;
@@ -509,28 +519,38 @@ export function DemoView({
     [demoId, demoConnectors, pushUndo, dropUndoTop, markMutation],
   );
 
-  // Delete/Backspace shortcut: removes the selected node or connector. Skipped
-  // while focus is in any text-editing element so InlineEdit / form controls
-  // keep their normal Backspace behavior. The InlineEdit also calls
-  // e.stopPropagation(), but the activeElement guard is the durable line of
-  // defense — it covers any future input that forgets to stop the bubble.
+  // Delete/Backspace shortcut: removes EVERY selected node and connector
+  // (US-019). Skipped while focus is in any text-editing element so
+  // InlineEdit / form controls keep their normal Backspace behavior. The
+  // InlineEdit also calls e.stopPropagation(), but the activeElement guard is
+  // the durable line of defense — it covers any future input that forgets to
+  // stop the bubble. Removing a node also cascades any connectors attached to
+  // it (the server's deleteNode handler does this, mirrored optimistically by
+  // the SSE echo); we skip dispatching deletes for connectors that are
+  // already going away via cascade.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (isEditableElement(document.activeElement)) return;
-      if (selectedConnectorId) {
-        e.preventDefault();
-        onDeleteConnector(selectedConnectorId);
-        return;
-      }
-      if (selectedId) {
-        e.preventDefault();
-        onDeleteNode(selectedId);
-      }
+      const nodeIds = selectedIdsRef.current;
+      const connIds = selectedConnectorIdsRef.current;
+      if (nodeIds.length === 0 && connIds.length === 0) return;
+      e.preventDefault();
+      const cascadingNodeIdSet = new Set(nodeIds);
+      // For connector deletes, skip any whose source/target is in the doomed
+      // node set — the cascade handles them and a duplicate delete would
+      // produce a server-side 404 for the connector that's already gone.
+      const explicitConnIds = connIds.filter((id) => {
+        const c = demoConnectors?.find((cc) => cc.id === id);
+        if (!c) return false;
+        return !cascadingNodeIdSet.has(c.source) && !cascadingNodeIdSet.has(c.target);
+      });
+      for (const id of nodeIds) onDeleteNode(id);
+      for (const id of explicitConnIds) onDeleteConnector(id);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedId, selectedConnectorId, onDeleteNode, onDeleteConnector]);
+  }, [demoConnectors, onDeleteNode, onDeleteConnector]);
 
   // Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z (redo). Skipped while focus is in
   // any editable element so native browser undo handles input/textarea/
@@ -853,13 +873,12 @@ export function DemoView({
       for (const c of newConnectors) {
         setConnectorOverride(c.id, c as Partial<Connector>);
       }
-      // Single-select model: pin the first pasted node as the new selection
-      // so the inspector reflects the freshly-pasted entity.
-      const firstNode = newNodes[0];
-      if (firstNode) {
-        setSelectedId(firstNode.id);
-        setSelectedConnectorId(null);
-      }
+      // The pasted clones become the new selection (US-019). Original ids
+      // drop out; the user can immediately move/style/delete the pastes as a
+      // unit. Pasted connectors are also part of the selection so a single
+      // Delete keystroke removes the entire pasted batch.
+      setSelectedIds(newNodes.map((n) => n.id));
+      setSelectedConnectorIds(newConnectors.map((c) => c.id));
       setEditError(null);
       markMutation();
 
@@ -898,21 +917,49 @@ export function DemoView({
     ],
   );
 
-  // Cmd/Ctrl+C copies the selected node; Cmd/Ctrl+V pastes (offset by +24,+24)
-  // at the canvas. Skipped while focus is in any text-editing element so the
-  // browser's native copy/paste keeps working inside InlineEdit / form
-  // controls. Same focus guard as the Delete/Backspace + undo handlers above.
+  // US-019 keyboard chords:
+  //   • Cmd+A — select all nodes and connectors (skipped in contenteditable
+  //     so InlineEdit's native text-select still works).
+  //   • Cmd+C — copy every selected node (connectors copy implicitly when
+  //     both endpoints are in the node set).
+  //   • Cmd+V — paste at +24,+24 offset; pasted clones become the selection.
+  //   • Cmd+D — duplicate (Cmd+C followed by Cmd+V at +24,+24); single
+  //     keystroke equivalent to copy+paste.
+  // All four are skipped while focus is in any editable element so the
+  // browser's native chords keep working inside form controls / InlineEdit.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.shiftKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key !== 'c' && key !== 'v') return;
+      if (key !== 'a' && key !== 'c' && key !== 'v' && key !== 'd') return;
       if (isEditableElement(document.activeElement)) return;
-      if (key === 'c') {
-        if (!selectedId) return;
+      if (key === 'a') {
+        // Suppress when there's nothing on the canvas — let the browser do its
+        // default (which is a no-op outside an input). Otherwise pin all
+        // node/connector ids and prevent the browser from selecting page text.
+        if (!demoNodes && !demoConnectors) return;
         e.preventDefault();
-        onCopyNodes([selectedId]);
+        setSelectedIds((demoNodes ?? []).map((n) => n.id));
+        setSelectedConnectorIds((demoConnectors ?? []).map((c) => c.id));
+        return;
+      }
+      if (key === 'c') {
+        const ids = selectedIdsRef.current;
+        if (ids.length === 0) return;
+        e.preventDefault();
+        onCopyNodes(ids);
+        return;
+      }
+      if (key === 'd') {
+        // Duplicate = copy current selection then paste at +24,+24. Goes
+        // through onCopyNodes/onPasteNodes so the in-app clipboard reflects
+        // the duplicated payload (matches a manual Cmd+C → Cmd+V).
+        const ids = selectedIdsRef.current;
+        if (ids.length === 0) return;
+        e.preventDefault();
+        onCopyNodes(ids);
+        onPasteNodes(null);
         return;
       }
       // 'v'
@@ -922,7 +969,7 @@ export function DemoView({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedId, onCopyNodes, onPasteNodes]);
+  }, [demoNodes, demoConnectors, onCopyNodes, onPasteNodes]);
 
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
@@ -991,24 +1038,64 @@ export function DemoView({
   const demo = detail?.demo;
   const nodeOverrides = nodePending.overrides;
   const connectorOverrides = connectorPending.overrides;
-  // The inspector renders whatever is currently selected — clicking a node
-  // both selects it and opens the panel. Same merge pattern as connectors below.
+  // Inspector single-shot: only opens when EXACTLY one entity is selected
+  // (single node or single connector, not a mixed selection). Multi-select
+  // closes the panel; the style strip handles fan-out edits in that mode.
+  const isSinglePick =
+    (selectedIds.length === 1 && selectedConnectorIds.length === 0) ||
+    (selectedIds.length === 0 && selectedConnectorIds.length === 1);
+  const inspectorNodeId =
+    isSinglePick && selectedIds.length === 1 ? (selectedIds[0] ?? null) : null;
+  const inspectorConnectorId =
+    isSinglePick && selectedConnectorIds.length === 1 ? (selectedConnectorIds[0] ?? null) : null;
   const inspectedNode = useMemo<DemoNode | null>(() => {
-    if (!selectedId) return null;
-    const found = demo?.nodes.find((n) => n.id === selectedId);
+    if (!inspectorNodeId) return null;
+    const found = demo?.nodes.find((n) => n.id === inspectorNodeId);
     if (!found) return null;
-    const ov = nodeOverrides[selectedId];
+    const ov = nodeOverrides[inspectorNodeId];
     if (!ov) return found;
     const data = ov.data ? { ...found.data, ...ov.data } : found.data;
     return { ...found, ...ov, data } as DemoNode;
-  }, [demo, selectedId, nodeOverrides]);
-  const selectedConnector = useMemo<Connector | null>(() => {
-    if (!selectedConnectorId) return null;
-    const found = demo?.connectors.find((c) => c.id === selectedConnectorId);
+  }, [demo, inspectorNodeId, nodeOverrides]);
+  const inspectedConnector = useMemo<Connector | null>(() => {
+    if (!inspectorConnectorId) return null;
+    const found = demo?.connectors.find((c) => c.id === inspectorConnectorId);
     if (!found) return null;
-    const ov = connectorOverrides[selectedConnectorId];
+    const ov = connectorOverrides[inspectorConnectorId];
     return ov ? ({ ...found, ...ov } as Connector) : found;
-  }, [demo, selectedConnectorId, connectorOverrides]);
+  }, [demo, inspectorConnectorId, connectorOverrides]);
+
+  // Style-strip arrays: every selected entity (with optimistic overrides
+  // merged) so the strip can fan out edits across the multi-selection.
+  const selectedNodes = useMemo<DemoNode[]>(() => {
+    if (!demo || selectedIds.length === 0) return [];
+    const byId = new Map(demo.nodes.map((n) => [n.id, n]));
+    const out: DemoNode[] = [];
+    for (const id of selectedIds) {
+      const found = byId.get(id);
+      if (!found) continue;
+      const ov = nodeOverrides[id];
+      if (!ov) {
+        out.push(found);
+        continue;
+      }
+      const data = ov.data ? { ...found.data, ...ov.data } : found.data;
+      out.push({ ...found, ...ov, data } as DemoNode);
+    }
+    return out;
+  }, [demo, selectedIds, nodeOverrides]);
+  const selectedConnectorsList = useMemo<Connector[]>(() => {
+    if (!demo || selectedConnectorIds.length === 0) return [];
+    const byId = new Map(demo.connectors.map((c) => [c.id, c]));
+    const out: Connector[] = [];
+    for (const id of selectedConnectorIds) {
+      const found = byId.get(id);
+      if (!found) continue;
+      const ov = connectorOverrides[id];
+      out.push(ov ? ({ ...found, ...ov } as Connector) : found);
+    }
+    return out;
+  }, [demo, selectedConnectorIds, connectorOverrides]);
 
   // Reorder server nodes according to the optimistic z-order override
   // (US-006). Nodes not in the override (e.g. just-pasted ones whose echo
@@ -1052,8 +1139,8 @@ export function DemoView({
     );
   }
 
-  const inspectedRun = selectedId ? runs[selectedId] : undefined;
-  const inspectedEvents = selectedId ? (nodeEvents[selectedId] ?? []) : [];
+  const inspectedRun = inspectorNodeId ? runs[inspectorNodeId] : undefined;
+  const inspectedEvents = inspectorNodeId ? (nodeEvents[inspectorNodeId] ?? []) : [];
 
   return (
     <div className="relative h-full w-full">
@@ -1071,10 +1158,9 @@ export function DemoView({
         <DemoCanvas
           nodes={orderedNodes ?? demo.nodes}
           connectors={demo.connectors}
-          selectedNodeId={selectedId}
-          onSelectNode={onSelectNode}
-          selectedConnectorId={selectedConnectorId}
-          onSelectConnector={onSelectConnector}
+          selectedNodeIds={selectedIds}
+          selectedConnectorIds={selectedConnectorIds}
+          onSelectionChange={onSelectionChange}
           runs={runs}
           onPlayNode={onPlayNode}
           nodeOverrides={nodeOverrides}
@@ -1092,8 +1178,8 @@ export function DemoView({
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
           hasClipboard={hasClipboard}
-          selectedNode={inspectedNode}
-          selectedConnector={selectedConnector}
+          selectedNodes={selectedNodes}
+          selectedConnectors={selectedConnectorsList}
           onStyleNode={onStyleNode}
           onStyleNodePreview={onStyleNodePreview}
           onStyleConnector={onStyleConnector}
@@ -1125,7 +1211,7 @@ export function DemoView({
       <DetailPanel
         demoId={detail?.id ?? null}
         node={inspectedNode}
-        connector={selectedConnector}
+        connector={inspectedConnector}
         filePath={detail?.filePath}
         run={inspectedRun}
         recentEvents={inspectedEvents}
@@ -1133,8 +1219,8 @@ export function DemoView({
           // Closing the panel clears whatever was selected — the panel and
           // the selection ring track together (clicking outside the canvas-node
           // surfaces is the only path that lands here).
-          setSelectedId(null);
-          setSelectedConnectorId(null);
+          setSelectedIds([]);
+          setSelectedConnectorIds([]);
         }}
       />
     </div>
