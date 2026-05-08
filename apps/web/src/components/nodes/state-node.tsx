@@ -50,12 +50,30 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
   // the theme defaults baked into the 'default' token (--border / --card).
+  // Selection draws a 2px outline flush with the existing border (no outer
+  // ring). Outline is used (not a wider border) so layout never shifts —
+  // state-nodes have content-driven height when not yet user-resized, so
+  // growing border-width would push the outer height by 4px. The outline
+  // style defaults to dashed to match the state-node's dashed border so the
+  // selection ring reads as a continuation of the existing border style.
+  const isDefaultBorder = !data.borderColor || data.borderColor === 'default';
+  const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
+  const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
+  const effectiveBorderStyle = data.borderStyle ?? 'dashed';
   const containerStyle: CSSProperties = {
-    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
+    borderColor: resolvedBorderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     ...(sized ? {} : { width: DEFAULT_W }),
+    ...(selected
+      ? {
+          outlineWidth: '2px',
+          outlineStyle: effectiveBorderStyle,
+          outlineColor: selectionOutlineColor,
+          outlineOffset: '0px',
+        }
+      : {}),
   };
 
   return (
@@ -63,7 +81,6 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
       className={cn(
         'group flex flex-col justify-center overflow-hidden rounded-lg border-[3px] border-dashed shadow-sm transition-shadow',
         sized ? 'h-full w-full' : '',
-        selected ? 'ring-2 ring-ring ring-offset-2' : '',
         status === 'running' ? 'anydemo-node-pulse' : '',
       )}
       style={containerStyle}

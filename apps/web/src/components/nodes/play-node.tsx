@@ -55,12 +55,30 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
   // the theme defaults baked into the 'default' token (--border / --card).
+  // Selection draws a 2px outline flush with the existing border (no outer
+  // ring). Outline is used (not a wider border) so layout never shifts —
+  // play-nodes have content-driven height when not yet user-resized, so
+  // growing border-width would push the outer height by 4px. When the
+  // user's borderColor is the theme default, swap to --primary so the
+  // selection is still visually distinguishable.
+  const isDefaultBorder = !data.borderColor || data.borderColor === 'default';
+  const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
+  const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
+  const effectiveBorderStyle = data.borderStyle ?? 'solid';
   const containerStyle: CSSProperties = {
-    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
+    borderColor: resolvedBorderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     ...(sized ? {} : { width: DEFAULT_W }),
+    ...(selected
+      ? {
+          outlineWidth: '2px',
+          outlineStyle: effectiveBorderStyle,
+          outlineColor: selectionOutlineColor,
+          outlineOffset: '0px',
+        }
+      : {}),
   };
 
   return (
@@ -68,7 +86,6 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
       className={cn(
         'group flex flex-col justify-center overflow-hidden rounded-lg border-[3px] shadow-sm transition-shadow',
         sized ? 'h-full w-full' : '',
-        selected ? 'ring-2 ring-ring ring-offset-2' : '',
         isRunning ? 'anydemo-node-pulse' : '',
       )}
       style={containerStyle}

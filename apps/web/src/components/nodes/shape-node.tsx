@@ -44,12 +44,30 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   // backgroundColor: sticky defaults to amber; rect/ellipse stay transparent
   // (border-only) unless the author sets a background token explicitly.
   const effectiveBg = data.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined);
+  // Selection draws a 2px outline flush with the existing border (no outer
+  // ring). Outline is used (not a wider border) so layout never shifts —
+  // outlines don't take part in box-sizing. The outline style mirrors the
+  // border style so a dashed-bordered node also reads as dashed when
+  // selected. When the user's borderColor is the theme default, swap to
+  // --primary so the selection is still visually distinguishable.
+  const isDefaultBorder = !data.borderColor || data.borderColor === 'default';
+  const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
+  const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
+  const effectiveBorderStyle = data.borderStyle ?? 'solid';
   const colorStyle: CSSProperties = {
-    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
+    borderColor: resolvedBorderColor,
     backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
+    ...(selected
+      ? {
+          outlineWidth: '2px',
+          outlineStyle: effectiveBorderStyle,
+          outlineColor: selectionOutlineColor,
+          outlineOffset: '0px',
+        }
+      : {}),
   };
   const labelFontStyle: CSSProperties =
     data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
@@ -63,7 +81,6 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         'group relative flex items-center justify-center p-2 text-center text-[22px]',
         sized ? 'h-full w-full' : '',
         SHAPE_CLASS[shape],
-        selected ? 'ring-2 ring-ring ring-offset-2' : '',
       )}
       style={style}
       data-testid="shape-node"
