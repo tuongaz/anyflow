@@ -829,6 +829,14 @@ export function DemoCanvas({
   // onConnect already fired (precise handle drop). Same pattern as
   // `reconnectSucceededRef` below.
   const connectSucceededRef = useRef(false);
+  // US-023: drag-direction wins over React Flow's handle-type normalization.
+  // RF's Connection payload places the source-type handle's node in `source`,
+  // regardless of which node the user actually started dragging from. We
+  // capture the drag origin in onConnectStart and re-swap downstream so the
+  // persisted connector reflects the user's gesture, not RF's handle pairing.
+  const connectStartRef = useRef<{ nodeId: string | null; handleType: HandleType | null } | null>(
+    null,
+  );
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!onCreateConnector) return;
@@ -838,10 +846,49 @@ export function DemoCanvas({
       // accept them but they're never useful (a node referencing itself).
       if (source === target) return;
       connectSucceededRef.current = true;
-      // Precise handle-to-handle drop: both endpoints are user-pinned.
-      // sourceHandleAutoPicked / targetHandleAutoPicked default to false so
-      // the auto-rerouter never overrides what the user explicitly clicked
-      // (US-021).
+      // US-023: normalize against the drag-start node id captured in
+      // onConnectStart. When RF's `source` is the drag-start, no swap; the
+      // user's explicit handle clicks pin both endpoints. When RF's `source`
+      // is the drag-END (i.e. the user dragged from a target-type handle to a
+      // source-type handle, RF swapped), we re-swap so source=drag-start and
+      // target=drag-end — and re-pick BOTH handles via the facing-handle
+      // helper (the user's clicks were on roles that no longer match after
+      // the swap, so they can't be reused as pinned ids without violating
+      // the role-restricted handle schema).
+      const dragStartNodeId = connectStartRef.current?.nodeId ?? null;
+      if (dragStartNodeId && dragStartNodeId === target && dragStartNodeId !== source) {
+        const sourceNode = findNode(target);
+        const targetNode = findNode(source);
+        const pickedSource =
+          sourceNode && targetNode
+            ? pickFacingHandle(
+                nodeCenter(sourceNode),
+                nodeCenter(targetNode),
+                'source',
+                sourceNode.type,
+              )
+            : undefined;
+        const pickedTarget =
+          sourceNode && targetNode
+            ? pickFacingHandle(
+                nodeCenter(targetNode),
+                nodeCenter(sourceNode),
+                'target',
+                targetNode.type,
+              )
+            : undefined;
+        onCreateConnector(target, source, {
+          sourceHandle: pickedSource,
+          targetHandle: pickedTarget,
+          sourceHandleAutoPicked: true,
+          targetHandleAutoPicked: true,
+        });
+        return;
+      }
+      // Precise handle-to-handle drop in the canonical drag direction:
+      // both endpoints are user-pinned. sourceHandleAutoPicked /
+      // targetHandleAutoPicked default to false so the auto-rerouter never
+      // overrides what the user explicitly clicked (US-021).
       onCreateConnector(source, target, {
         sourceHandle: sourceHandle ?? undefined,
         targetHandle: targetHandle ?? undefined,
@@ -849,7 +896,7 @@ export function DemoCanvas({
         targetHandleAutoPicked: false,
       });
     },
-    [onCreateConnector],
+    [onCreateConnector, findNode],
   );
 
   // Body-drop fallback for NEW connections (US-014). When the user drags from
@@ -879,24 +926,26 @@ export function DemoCanvas({
       const fromNodeId = connectionState.fromNode?.id;
       const fromHandle = connectionState.fromHandle;
       if (!fromNodeId || !fromHandle) return;
-      // Only support source→target body-drop today — the canonical drag
-      // direction for new connections in this codebase. drag-from-target →
-      // drop-on-source would mirror this with sourceHandle resolution.
-      if (fromHandle.type !== 'source') return;
       const cursor = cursorFromConnectEvent(e);
       if (!cursor) return;
       const targetEl = nodeElAtPoint(cursor.clientX, cursor.clientY);
       if (!targetEl) return;
       const targetNodeId = targetEl.getAttribute('data-id');
       if (!targetNodeId || targetNodeId === fromNodeId) return;
+      // US-023: drag-from is always the connector source, drag-to is the
+      // target — including when the user drags from a target-type handle and
+      // releases on another node's body. In that case the start-handle id is
+      // role-incompatible with the new direction, so we pick BOTH handles via
+      // the facing-handle helper. For the canonical source-type start, we
+      // preserve the user's explicit start handle as a pinned sourceHandle.
+      const sourceNode = findNode(fromNodeId);
+      const targetNode = findNode(targetNodeId);
       // Pick the target handle via the facing-handle picker (US-021): the
       // side of the target node that points back at the source node, falling
       // back to the closest allowed target side when geometry conflicts with
       // role. The previous closestTargetHandleId only considered top/left
       // proximity to the cursor; the new picker uses centroid geometry which
       // travels well when the user drops anywhere on the body.
-      const sourceNode = findNode(fromNodeId);
-      const targetNode = findNode(targetNodeId);
       let targetHandle: string;
       if (sourceNode && targetNode) {
         targetHandle = pickFacingHandle(
@@ -912,14 +961,31 @@ export function DemoCanvas({
         const rect = targetEl.getBoundingClientRect();
         targetHandle = closestTargetHandleId(rect, cursor.clientX, cursor.clientY);
       }
-      const sourceHandle = typeof fromHandle.id === 'string' ? fromHandle.id : undefined;
+      // US-023 reverse-handle case: drag started from a target-type handle.
+      // The start handle id is invalid as a sourceHandle (target-only ids are
+      // 't'/'l'), so we pick a fresh source handle facing the drop node and
+      // mark it auto. Canonical case: keep the user's explicit start handle.
+      const reverseDrag = fromHandle.type === 'target';
+      const sourceHandle = reverseDrag
+        ? sourceNode && targetNode
+          ? pickFacingHandle(
+              nodeCenter(sourceNode),
+              nodeCenter(targetNode),
+              'source',
+              sourceNode.type,
+            )
+          : undefined
+        : typeof fromHandle.id === 'string'
+          ? fromHandle.id
+          : undefined;
       onCreateConnector(fromNodeId, targetNodeId, {
         sourceHandle,
         targetHandle,
-        // Source endpoint was the user's explicit start handle (drag origin),
-        // so it stays user-pinned. Target endpoint was picked by the geometry
-        // helper, so it's auto-managed for future re-routing.
-        sourceHandleAutoPicked: false,
+        // Canonical drag (source-type start handle): the user's explicit
+        // start handle pins the source endpoint. Reverse drag (target-type
+        // start): we picked the source handle ourselves, so it's auto. The
+        // target handle is always picked by the facing helper, so always auto.
+        sourceHandleAutoPicked: reverseDrag,
         targetHandleAutoPicked: true,
       });
     },
@@ -1212,9 +1278,16 @@ export function DemoCanvas({
         nodesConnectable={!!onCreateConnector && !drawShape}
         className={connecting ? 'anydemo-connecting' : undefined}
         onConnect={onConnect}
-        onConnectStart={() => {
+        onConnectStart={(_e, params) => {
           setConnecting(true);
           connectSucceededRef.current = false;
+          // US-023: capture the drag origin so onConnect / onConnectEnd can
+          // tell which end the user actually started from, regardless of
+          // React Flow's source-type-handle-first normalization.
+          connectStartRef.current = {
+            nodeId: params.nodeId ?? null,
+            handleType: params.handleType ?? null,
+          };
         }}
         onConnectEnd={onConnectEndCb}
         onReconnect={onReconnectConnector ? onReconnect : undefined}
