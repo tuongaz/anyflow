@@ -149,6 +149,56 @@ export interface DemoCanvasProps {
 // still produces a usable node rather than a 0×0 ghost.
 const MIN_DRAW_SIZE = 40;
 
+/**
+ * Resolve the cursor's screen-space coordinates from the mouse/touch event
+ * union React Flow forwards into onConnectEnd / onReconnectEnd. Returns null
+ * when neither branch carries a position (touch event with empty changedTouches
+ * is the only practical case).
+ */
+const cursorFromConnectEvent = (
+  e: MouseEvent | TouchEvent,
+): { clientX: number; clientY: number } | null => {
+  if ('clientX' in e) return { clientX: e.clientX, clientY: e.clientY };
+  const touch = e.changedTouches[0] ?? e.touches[0];
+  return touch ? { clientX: touch.clientX, clientY: touch.clientY } : null;
+};
+
+/**
+ * Walk the elementsFromPoint stack and return the topmost `.react-flow__node`
+ * wrapper under the cursor (or null if none). Used for body-drop fallbacks
+ * where React Flow's `connectionRadius` was too small to snap to a handle.
+ */
+const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
+  const stack = document.elementsFromPoint(clientX, clientY);
+  for (const el of stack) {
+    const nodeEl = (el as HTMLElement).closest?.('.react-flow__node');
+    if (nodeEl) return nodeEl;
+  }
+  return null;
+};
+
+/**
+ * Pick the closest TARGET handle ('t' top, 'l' left) on a node based on
+ * cursor proximity. Distances are computed from the cursor to the centers of
+ * the node's top edge and left edge — those are where the 't' and 'l'
+ * handles render in shape/play/state node components. Used by the body-drop
+ * fallback for new connections (US-014) so a release anywhere on the node
+ * still produces a sensibly-anchored connector.
+ */
+const closestTargetHandleId = (
+  rect: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number,
+): 't' | 'l' => {
+  const topCenterX = rect.left + rect.width / 2;
+  const topCenterY = rect.top;
+  const leftCenterX = rect.left;
+  const leftCenterY = rect.top + rect.height / 2;
+  const distTop = Math.hypot(clientX - topCenterX, clientY - topCenterY);
+  const distLeft = Math.hypot(clientX - leftCenterX, clientY - leftCenterY);
+  return distTop <= distLeft ? 't' : 'l';
+};
+
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
   if (!override) return node;
   // The override is keyed by the node's id, so its `data` (when present) is
@@ -563,6 +613,10 @@ export function DemoCanvas({
     reconnectableEdges,
   ]);
 
+  // `connectSucceededRef` lets onConnectEnd skip the body-drop fallback when
+  // onConnect already fired (precise handle drop). Same pattern as
+  // `reconnectSucceededRef` below.
+  const connectSucceededRef = useRef(false);
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!onCreateConnector) return;
@@ -571,9 +625,49 @@ export function DemoCanvas({
       // Reject same-node connections client-side — the schema would also
       // accept them but they're never useful (a node referencing itself).
       if (source === target) return;
+      connectSucceededRef.current = true;
       onCreateConnector(source, target, {
         sourceHandle: sourceHandle ?? undefined,
         targetHandle: targetHandle ?? undefined,
+      });
+    },
+    [onCreateConnector],
+  );
+
+  // Body-drop fallback for NEW connections (US-014). When the user drags from
+  // a source handle and releases over a node's BODY (not precisely on one of
+  // its four handles), React Flow's connectionRadius isn't enough to snap and
+  // onConnect doesn't fire. We catch that here, hit-test elementsFromPoint
+  // for the topmost `.react-flow__node`, pick the closest TARGET handle on
+  // that node based on cursor proximity to the top/left edges, and call
+  // onCreateConnector with both handles set so the persisted shape matches a
+  // precise-handle drop. Mirrors `onReconnectEndCb` for existing edges.
+  const onConnectEndCb = useCallback(
+    (e: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+      setConnecting(false);
+      const succeeded = connectSucceededRef.current;
+      connectSucceededRef.current = false;
+      if (succeeded) return;
+      if (!onCreateConnector) return;
+      const fromNodeId = connectionState.fromNode?.id;
+      const fromHandle = connectionState.fromHandle;
+      if (!fromNodeId || !fromHandle) return;
+      // Only support source→target body-drop today — the canonical drag
+      // direction for new connections in this codebase. drag-from-target →
+      // drop-on-source would mirror this with sourceHandle resolution.
+      if (fromHandle.type !== 'source') return;
+      const cursor = cursorFromConnectEvent(e);
+      if (!cursor) return;
+      const targetEl = nodeElAtPoint(cursor.clientX, cursor.clientY);
+      if (!targetEl) return;
+      const targetNodeId = targetEl.getAttribute('data-id');
+      if (!targetNodeId || targetNodeId === fromNodeId) return;
+      const rect = targetEl.getBoundingClientRect();
+      const targetHandle = closestTargetHandleId(rect, cursor.clientX, cursor.clientY);
+      const sourceHandle = typeof fromHandle.id === 'string' ? fromHandle.id : undefined;
+      onCreateConnector(fromNodeId, targetNodeId, {
+        sourceHandle,
+        targetHandle,
       });
     },
     [onCreateConnector],
@@ -651,28 +745,11 @@ export function DemoCanvas({
       // event union (mouse vs. final touch). FinalConnectionState.pointer
       // would be nice but it's in flow space and it's also null when toHandle
       // is null — so the event's own coords are the durable source.
-      let clientX: number | undefined;
-      let clientY: number | undefined;
-      if ('clientX' in e) {
-        clientX = e.clientX;
-        clientY = e.clientY;
-      } else {
-        const touch = e.changedTouches[0] ?? e.touches[0];
-        if (touch) {
-          clientX = touch.clientX;
-          clientY = touch.clientY;
-        }
-      }
+      const cursor = cursorFromConnectEvent(e);
       let droppedNodeId: string | null = connectionState.toNode?.id ?? null;
-      if (!droppedNodeId && clientX !== undefined && clientY !== undefined) {
-        const stack = document.elementsFromPoint(clientX, clientY);
-        for (const el of stack) {
-          const nodeEl = (el as HTMLElement).closest?.('.react-flow__node');
-          if (nodeEl) {
-            droppedNodeId = nodeEl.getAttribute('data-id');
-            break;
-          }
-        }
+      if (!droppedNodeId && cursor) {
+        const nodeEl = nodeElAtPoint(cursor.clientX, cursor.clientY);
+        droppedNodeId = nodeEl?.getAttribute('data-id') ?? null;
       }
       if (!droppedNodeId) return;
       // React Flow passes the type of the FIXED (anchored) end, not the
@@ -742,8 +819,11 @@ export function DemoCanvas({
         nodesConnectable={!!onCreateConnector && !drawShape}
         className={connecting ? 'anydemo-connecting' : undefined}
         onConnect={onConnect}
-        onConnectStart={() => setConnecting(true)}
-        onConnectEnd={() => setConnecting(false)}
+        onConnectStart={() => {
+          setConnecting(true);
+          connectSucceededRef.current = false;
+        }}
+        onConnectEnd={onConnectEndCb}
         onReconnect={onReconnectConnector ? onReconnect : undefined}
         onReconnectStart={() => {
           setConnecting(true);
