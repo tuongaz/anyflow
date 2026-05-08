@@ -1,9 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
-import {
-  type ConnectorStylePatch,
-  DetailPanel,
-  type NodeStylePatch,
-} from '@/components/detail-panel';
+import { DetailPanel } from '@/components/detail-panel';
+import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
@@ -1095,6 +1092,12 @@ export function DemoView({
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
           hasClipboard={hasClipboard}
+          selectedNode={inspectedNode}
+          selectedConnector={selectedConnector}
+          onStyleNode={onStyleNode}
+          onStyleNodePreview={onStyleNodePreview}
+          onStyleConnector={onStyleConnector}
+          onStyleConnectorPreview={onStyleConnectorPreview}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
@@ -1126,11 +1129,6 @@ export function DemoView({
         filePath={detail?.filePath}
         run={inspectedRun}
         recentEvents={inspectedEvents}
-        onStyleNode={onStyleNode}
-        onStyleNodePreview={onStyleNodePreview}
-        onStyleConnector={onStyleConnector}
-        onStyleConnectorPreview={onStyleConnectorPreview}
-        onDeleteNode={onDeleteNode}
         onClose={() => {
           // Closing the panel clears whatever was selected — the panel and
           // the selection ring track together (clicking outside the canvas-node

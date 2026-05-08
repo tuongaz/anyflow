@@ -5,6 +5,11 @@ import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import {
+  type ConnectorStylePatch,
+  type NodeStylePatch,
+  StyleStrip,
+} from '@/components/style-strip';
+import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -142,6 +147,24 @@ export interface DemoCanvasProps {
    * disabled state). Snapshot-checked at menu-open time, not subscribed —
    * the menu re-renders on every open via `contextMenuPos` setState. */
   hasClipboard?: boolean;
+  /**
+   * Currently inspected node (with optimistic overrides applied) — drives the
+   * canvas style strip's active state. Null when no node is selected.
+   */
+  selectedNode?: DemoNode | null;
+  /**
+   * Currently inspected connector (with optimistic overrides applied) — drives
+   * the canvas style strip's active state. Null when no connector is selected.
+   */
+  selectedConnector?: Connector | null;
+  /** Apply a style patch to a node (border/background/font). */
+  onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
+  /** Live preview override during a slider drag (no PATCH/undo). */
+  onStyleNodePreview?: (nodeId: string, patch: NodeStylePatch) => void;
+  /** Apply a style patch to a connector (color/style/direction/path/width). */
+  onStyleConnector?: (connId: string, patch: ConnectorStylePatch) => void;
+  /** Live preview override during a slider drag (no PATCH/undo). */
+  onStyleConnectorPreview?: (connId: string, patch: ConnectorStylePatch) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -259,6 +282,12 @@ export function DemoCanvas({
   onCopyNode,
   onPasteAt,
   hasClipboard,
+  selectedNode,
+  selectedConnector,
+  onStyleNode,
+  onStyleNodePreview,
+  onStyleConnector,
+  onStyleConnectorPreview,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -899,9 +928,23 @@ export function DemoCanvas({
       >
         <Background gap={12} size={0.6} />
         <Controls showInteractive={false} />
-        {onCreateShapeNode ? (
+        {onCreateShapeNode || onStyleNode || onStyleConnector ? (
           <Panel position="top-left">
-            <CanvasToolbar activeShape={drawShape} onSelectShape={setDrawShape} />
+            <div className="flex flex-col gap-2">
+              {onCreateShapeNode ? (
+                <CanvasToolbar activeShape={drawShape} onSelectShape={setDrawShape} />
+              ) : null}
+              {onStyleNode && onStyleConnector ? (
+                <StyleStrip
+                  nodes={selectedNode ? [selectedNode] : []}
+                  connectors={selectedConnector ? [selectedConnector] : []}
+                  onStyleNode={onStyleNode}
+                  onStyleNodePreview={onStyleNodePreview}
+                  onStyleConnector={onStyleConnector}
+                  onStyleConnectorPreview={onStyleConnectorPreview}
+                />
+              ) : null}
+            </div>
           </Panel>
         ) : null}
       </ReactFlow>
