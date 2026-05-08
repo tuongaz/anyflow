@@ -672,16 +672,33 @@ export function DemoView({
     [demoId, setConnectorOverride, dropConnectorOverride, pushUndo, markMutation],
   );
 
-  // Drag an edge endpoint onto another node's handle to retarget it. The
-  // patch only includes the field that changed (source/target). Optimistic:
-  // the override snaps the edge immediately; SSE echo of the rewrite reconciles.
+  // Drag an edge endpoint onto another node's handle to retarget it, OR drag
+  // it onto a different handle on the same node (US-002). The patch only
+  // includes the fields that changed (source/target/sourceHandle/targetHandle).
+  // Optimistic: the override snaps the edge immediately; SSE echo of the
+  // rewrite reconciles.
   const onReconnectConnector = useCallback(
-    (connId: string, patch: { source?: string; target?: string }) => {
+    (
+      connId: string,
+      patch: {
+        source?: string;
+        target?: string;
+        sourceHandle?: string;
+        targetHandle?: string;
+      },
+    ) => {
       if (!demoId) return;
       const conn = demoConnectors?.find((c) => c.id === connId);
-      // Capture both endpoints so undo can reset whichever side moved (and
-      // leave the other side untouched at its original value).
-      const prev = conn ? { source: conn.source, target: conn.target } : null;
+      // Capture all four endpoint fields so undo can reset whichever side(s)
+      // moved (and leave the unchanged side at its original value).
+      const prev = conn
+        ? {
+            source: conn.source,
+            target: conn.target,
+            sourceHandle: conn.sourceHandle,
+            targetHandle: conn.targetHandle,
+          }
+        : null;
       setConnectorOverride(connId, patch as Partial<Connector>);
       setEditError(null);
       markMutation();

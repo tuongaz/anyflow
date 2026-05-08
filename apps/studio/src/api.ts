@@ -72,6 +72,11 @@ const ConnectorPatchBodySchema = z
     // need a referential check here.
     source: z.string().min(1).optional(),
     target: z.string().min(1).optional(),
+    // Reconnect to a different handle on the same (or a new) node. Handle ids
+    // identify which side (top/right/bottom/left) of the node the connector
+    // attaches to (US-013).
+    sourceHandle: z.string().min(1).optional(),
+    targetHandle: z.string().min(1).optional(),
   })
   .strict();
 type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;

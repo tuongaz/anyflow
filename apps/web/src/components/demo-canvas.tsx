@@ -94,12 +94,22 @@ export interface DemoCanvasProps {
     handles?: { sourceHandle?: string; targetHandle?: string },
   ) => void;
   /**
-   * Reattach an existing connector's source or target to a different node.
-   * Wired enables React Flow's edge reconnect gesture: drag an edge endpoint
-   * onto another handle to call this with the new source/target. The patch
-   * only includes the field that changed.
+   * Reattach an existing connector's source or target to a different node, or
+   * to a different handle on the same node. Wired enables React Flow's edge
+   * reconnect gesture: drag an edge endpoint onto another handle to call this
+   * with the new source/target/handle ids. The patch only includes the fields
+   * that changed; same-node handle changes surface as `sourceHandle`-only or
+   * `targetHandle`-only patches (US-002).
    */
-  onReconnectConnector?: (connectorId: string, patch: { source?: string; target?: string }) => void;
+  onReconnectConnector?: (
+    connectorId: string,
+    patch: {
+      source?: string;
+      target?: string;
+      sourceHandle?: string;
+      targetHandle?: string;
+    },
+  ) => void;
   /**
    * Reorder a node within demo.nodes[]. Wiring this enables the right-click
    * context-menu z-order actions (Bring to front, Bring forward, Send backward,
@@ -524,12 +534,33 @@ export function DemoCanvas({
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       if (!onReconnectConnector) return;
-      const { source, target } = newConnection;
+      const { source, target, sourceHandle, targetHandle } = newConnection;
       if (!source || !target || source === target) return;
-      const patch: { source?: string; target?: string } = {};
+      const patch: {
+        source?: string;
+        target?: string;
+        sourceHandle?: string;
+        targetHandle?: string;
+      } = {};
       if (source !== oldEdge.source) patch.source = source;
       if (target !== oldEdge.target) patch.target = target;
-      if (!patch.source && !patch.target) return;
+      // Forward handle changes too — same-node reconnect (e.g. dragging the
+      // source endpoint from the right handle to the bottom handle on the
+      // SAME node) only surfaces as a sourceHandle/targetHandle diff.
+      if (typeof sourceHandle === 'string' && sourceHandle !== oldEdge.sourceHandle) {
+        patch.sourceHandle = sourceHandle;
+      }
+      if (typeof targetHandle === 'string' && targetHandle !== oldEdge.targetHandle) {
+        patch.targetHandle = targetHandle;
+      }
+      if (
+        patch.source === undefined &&
+        patch.target === undefined &&
+        patch.sourceHandle === undefined &&
+        patch.targetHandle === undefined
+      ) {
+        return;
+      }
       reconnectSucceededRef.current = true;
       onReconnectConnector(oldEdge.id, patch);
     },

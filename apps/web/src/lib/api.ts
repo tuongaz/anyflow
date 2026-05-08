@@ -262,6 +262,10 @@ export interface UpdateConnectorBody {
   source?: string;
   /** Reconnect: retarget this edge to a different target node. */
   target?: string;
+  /** Reconnect: pin the source endpoint to a specific source handle. */
+  sourceHandle?: string;
+  /** Reconnect: pin the target endpoint to a specific target handle. */
+  targetHandle?: string;
 }
 
 export const updateConnector = async (
