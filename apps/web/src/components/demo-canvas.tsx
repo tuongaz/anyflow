@@ -187,6 +187,12 @@ export interface DemoCanvasProps {
    * `zoomOut`) without owning the canvas itself. Called once per mount.
    */
   onRfInit?: (instance: ReactFlowInstance) => void;
+  /**
+   * Run the auto-layout (Tidy) action against the canvas (US-026). When
+   * omitted, the toolbar's Tidy button renders disabled (no demo loaded).
+   * Scope is decided by the caller (selection-aware in `demo-view`).
+   */
+  onTidy?: () => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -314,6 +320,7 @@ export function DemoCanvas({
   onStyleConnector,
   onStyleConnectorPreview,
   onRfInit,
+  onTidy,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1203,7 +1210,11 @@ export function DemoCanvas({
           <Panel position="top-left">
             <div className="flex flex-col gap-2">
               {onCreateShapeNode ? (
-                <CanvasToolbar activeShape={drawShape} onSelectShape={setDrawShape} />
+                <CanvasToolbar
+                  activeShape={drawShape}
+                  onSelectShape={setDrawShape}
+                  onTidy={onTidy}
+                />
               ) : null}
               {onStyleNode && onStyleConnector ? (
                 <StyleStrip

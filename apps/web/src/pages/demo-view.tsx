@@ -22,6 +22,7 @@ import {
   updateNode,
   updateNodePosition,
 } from '@/lib/api';
+import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1031,6 +1032,155 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // US-026: auto-layout (Tidy). Resolve scope, snapshot prev positions, run
+  // dagre, optimistically override every moved node, fan-out PATCHes via
+  // Promise.allSettled, and push ONE undo entry that reverts the whole batch.
+  // Width/height feed dagre's spacing; we read measured dims from the live
+  // React Flow internals when available so resized nodes get accurate gutters,
+  // falling back to data.width/data.height (then 200×120) when the canvas
+  // hasn't reported a size yet.
+  const onTidy = useCallback(
+    (scope: 'all' | 'selection') => {
+      if (!demoId || !demoNodes) return;
+      const overrides = nodePending.overrides;
+      const inst = rfInstanceRef.current;
+      const selectedSet = scope === 'selection' ? new Set(selectedIdsRef.current) : null;
+      const includedNodes = selectedSet
+        ? demoNodes.filter((n) => selectedSet.has(n.id))
+        : demoNodes;
+      if (includedNodes.length < 2) return;
+      const includedIdSet = new Set(includedNodes.map((n) => n.id));
+      const includedConnectors = (demoConnectors ?? []).filter(
+        (c) => includedIdSet.has(c.source) && includedIdSet.has(c.target),
+      );
+
+      const layoutNodes: AutoLayoutNode[] = includedNodes.map((n) => {
+        const livePos = overrides[n.id]?.position ?? n.position;
+        const internal = inst?.getInternalNode(n.id);
+        const measured = internal?.measured;
+        const dataAny = n.data as { width?: number; height?: number };
+        const width = measured?.width ?? dataAny.width ?? 200;
+        const height = measured?.height ?? dataAny.height ?? 120;
+        return { id: n.id, width, height, position: livePos };
+      });
+      const layoutEdges = includedConnectors.map((c) => ({
+        source: c.source,
+        target: c.target,
+      }));
+      const next = applyLayout(layoutNodes, layoutEdges);
+
+      // Anchor the laid-out group to its current visual top-left so a
+      // selection-scoped Tidy doesn't teleport the cluster across the canvas.
+      let prevMinX = Number.POSITIVE_INFINITY;
+      let prevMinY = Number.POSITIVE_INFINITY;
+      let nextMinX = Number.POSITIVE_INFINITY;
+      let nextMinY = Number.POSITIVE_INFINITY;
+      for (const ln of layoutNodes) {
+        if (ln.position.x < prevMinX) prevMinX = ln.position.x;
+        if (ln.position.y < prevMinY) prevMinY = ln.position.y;
+        const np = next.get(ln.id);
+        if (!np) continue;
+        if (np.x < nextMinX) nextMinX = np.x;
+        if (np.y < nextMinY) nextMinY = np.y;
+      }
+      const offsetX =
+        Number.isFinite(prevMinX) && Number.isFinite(nextMinX) ? prevMinX - nextMinX : 0;
+      const offsetY =
+        Number.isFinite(prevMinY) && Number.isFinite(nextMinY) ? prevMinY - nextMinY : 0;
+
+      // Build the moves list (only changes ≥ 1px on either axis qualify) and
+      // capture a per-id prev snapshot for the single batched undo entry.
+      const moves: { id: string; prev: Position; next: Position }[] = [];
+      for (const ln of layoutNodes) {
+        const np = next.get(ln.id);
+        if (!np) continue;
+        const targetPos = { x: np.x + offsetX, y: np.y + offsetY };
+        const dx = targetPos.x - ln.position.x;
+        const dy = targetPos.y - ln.position.y;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+        moves.push({ id: ln.id, prev: ln.position, next: targetPos });
+      }
+      if (moves.length === 0) return;
+
+      setEditError(null);
+      for (const m of moves) {
+        setNodeOverride(m.id, { position: m.next });
+      }
+      markMutation();
+      // ONE undo entry that re-applies the whole batch (do) or restores it
+      // (undo). Cmd+Z reverts every node in a single keystroke.
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled(moves.map((m) => updateNodePosition(demoId, m.id, m.next)));
+        },
+        undo: async () => {
+          await Promise.allSettled(moves.map((m) => updateNodePosition(demoId, m.id, m.prev)));
+        },
+      });
+      // Fan-out PATCHes; surface a single banner if any leg failed. Successful
+      // PATCHes still commit on disk — partial state isn't auto-rolled-back
+      // (the user can Cmd+Z the whole batch). Per-failure: drop that node's
+      // override so the canvas falls back to server state.
+      Promise.all(
+        moves.map(async (m) => {
+          try {
+            await updateNodePosition(demoId, m.id, m.next);
+            return null;
+          } catch (err) {
+            dropNodeOverride(m.id);
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ).then((failures) => {
+        const errs = failures.filter((f): f is string => f !== null);
+        const firstErr = errs[0];
+        if (!firstErr) return;
+        setEditError(
+          errs.length === 1 ? firstErr : `${errs.length} node updates failed (first: ${firstErr})`,
+        );
+        console.error('Tidy: some updateNodePosition calls failed', errs);
+      });
+    },
+    [
+      demoId,
+      demoNodes,
+      demoConnectors,
+      nodePending.overrides,
+      setNodeOverride,
+      dropNodeOverride,
+      pushUndo,
+      markMutation,
+    ],
+  );
+
+  // US-026: Cmd+Shift+L (Mac) / Ctrl+Shift+L (other) → Tidy. Selection-empty
+  // tidies the whole canvas; non-empty tidies just the selected nodes (and
+  // connectors between them). Skipped in editable elements like every other
+  // chord. preventDefault fires unconditionally so the browser's
+  // history-clear-recent-on Cmd+Shift+L (Firefox) doesn't escape.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!e.shiftKey) return;
+      if (e.altKey) return;
+      if (e.key.toLowerCase() !== 'l') return;
+      if (isEditableElement(document.activeElement)) return;
+      e.preventDefault();
+      const scope = selectedIdsRef.current.length > 0 ? 'selection' : 'all';
+      onTidy(scope);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onTidy]);
+
+  // Toolbar button click: same scope rule as the chord (selection-empty →
+  // 'all'). Handed to <DemoCanvas> below; CanvasToolbar disables the button
+  // when no demo is loaded (onTidy unset).
+  const onToolbarTidy = useCallback(() => {
+    const scope = selectedIdsRef.current.length > 0 ? 'selection' : 'all';
+    onTidy(scope);
+  }, [onTidy]);
+
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
   // includes the fields that changed (source/target/sourceHandle/targetHandle).
@@ -1270,6 +1420,7 @@ export function DemoView({
           onStyleConnector={onStyleConnector}
           onStyleConnectorPreview={onStyleConnectorPreview}
           onRfInit={onRfInit}
+          onTidy={demoNodes ? onToolbarTidy : undefined}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

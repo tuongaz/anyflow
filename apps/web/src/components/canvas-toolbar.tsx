@@ -1,12 +1,17 @@
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, Square, StickyNote, Type } from 'lucide-react';
+import { Circle, LayoutDashboard, Square, StickyNote, Type } from 'lucide-react';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
   activeShape: ShapeKind | null;
   /** Toggles draw mode for the given shape; pass null to exit. */
   onSelectShape: (shape: ShapeKind | null) => void;
+  /**
+   * Run the auto-layout (Tidy) action. When omitted, the Tidy button still
+   * renders but is disabled — used while no demo is loaded.
+   */
+  onTidy?: () => void;
 }
 
 interface ShapeEntry {
@@ -22,7 +27,9 @@ const SHAPES: ShapeEntry[] = [
   { shape: 'text', label: 'Text', Icon: Type },
 ];
 
-export function CanvasToolbar({ activeShape, onSelectShape }: CanvasToolbarProps) {
+const TIDY_LABEL = 'Tidy layout (⌘⇧L)';
+
+export function CanvasToolbar({ activeShape, onSelectShape, onTidy }: CanvasToolbarProps) {
   return (
     <div
       data-testid="canvas-toolbar"
@@ -51,6 +58,22 @@ export function CanvasToolbar({ activeShape, onSelectShape }: CanvasToolbarProps
           </button>
         );
       })}
+      <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
+      <button
+        type="button"
+        data-testid="toolbar-tidy"
+        aria-label={TIDY_LABEL}
+        title={TIDY_LABEL}
+        disabled={!onTidy}
+        onClick={() => onTidy?.()}
+        className={cn(
+          'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+          'hover:bg-accent hover:text-accent-foreground',
+          'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
+        )}
+      >
+        <LayoutDashboard className="h-4 w-4" />
+      </button>
     </div>
   );
 }
