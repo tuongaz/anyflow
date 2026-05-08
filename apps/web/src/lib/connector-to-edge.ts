@@ -17,7 +17,7 @@ export interface DerivedEdge {
   // (e.g. onLabelChange) are injected by DemoCanvas at render time so they
   // don't churn the connectorToEdge memo.
   data: { kind: Connector['kind'] };
-  style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number };
+  style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number; opacity?: number };
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
   selected?: boolean;
@@ -57,9 +57,16 @@ const STYLE_BY_NAME: Record<ConnectorStyle, { strokeDasharray?: string }> = {
 export const styleForKind = (kind: Connector['kind']): { strokeDasharray?: string } =>
   STYLE_BY_KIND[kind];
 
+// Selected connectors render with a thicker stroke (US-004) so the selection is
+// readable at a glance against the dashed/dotted/solid kinds. We also pin
+// opacity to 1 so any future muted-when-idle treatment doesn't dim the
+// selected edge.
+const SELECTED_STROKE_WIDTH = 3;
+
 export const connectorToEdge = (
   connector: Connector,
   isAdjacentToRunning: boolean,
+  selected = false,
 ): DerivedEdge => {
   // Per-connector `style` overrides the kind-derived default. This lets a
   // user-drawn 'default' connector pick up any visual style without changing
@@ -73,10 +80,13 @@ export const connectorToEdge = (
   // default token keeps the visual deterministic.
   const colorStyle = connector.color ? colorTokenStyle(connector.color, 'edge') : {};
   // Default to a heavier stroke than SVG's 1px so connectors read at canvas
-  // zoom levels; per-connector borderSize overrides.
-  const sizeStyle: { strokeWidth: number } = {
-    strokeWidth: connector.borderSize ?? 2,
-  };
+  // zoom levels; per-connector borderSize overrides. Selection bumps it up
+  // (max with the user's borderSize so we never thin a deliberately-bold edge).
+  const baseStrokeWidth = connector.borderSize ?? 2;
+  const strokeWidth = selected ? Math.max(SELECTED_STROKE_WIDTH, baseStrokeWidth) : baseStrokeWidth;
+  const sizeStyle: { strokeWidth: number; opacity?: number } = selected
+    ? { strokeWidth, opacity: 1 }
+    : { strokeWidth };
   const style = { ...dashStyle, ...colorStyle, ...sizeStyle };
   // 'forward' (or absent) → arrow at target only (historical behavior).
   // 'backward' → arrow at source only.

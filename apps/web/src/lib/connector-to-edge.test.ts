@@ -158,4 +158,43 @@ describe('connectorToEdge', () => {
     expect(edge.sourceHandle).toBeUndefined();
     expect(edge.targetHandle).toBeUndefined();
   });
+
+  it('bumps strokeWidth to 3 and pins opacity to 1 when selected (US-004)', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'http' };
+    const edge = connectorToEdge(c, false, true);
+    expect(edge.style.strokeWidth).toBe(3);
+    expect(edge.style.opacity).toBe(1);
+  });
+
+  it('preserves user-provided borderSize >= 3 when selected', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default', borderSize: 5 };
+    const edge = connectorToEdge(c, false, true);
+    expect(edge.style.strokeWidth).toBe(5);
+  });
+
+  it('keeps the connector kind dasharray when selected (event=dashed, queue=dotted)', () => {
+    const eventC: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'event',
+      eventName: 'x.y',
+    };
+    const queueC: Connector = {
+      id: 'c2',
+      source: 'a',
+      target: 'b',
+      kind: 'queue',
+      queueName: 'q',
+    };
+    expect(connectorToEdge(eventC, false, true).style.strokeDasharray).toBe('6 4');
+    expect(connectorToEdge(queueC, false, true).style.strokeDasharray).toBe('2 4');
+  });
+
+  it('does not bump strokeWidth or opacity when not selected', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'http' };
+    const edge = connectorToEdge(c, false, false);
+    expect(edge.style.strokeWidth).toBe(2);
+    expect(edge.style.opacity).toBeUndefined();
+  });
 });

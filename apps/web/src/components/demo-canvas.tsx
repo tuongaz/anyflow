@@ -463,8 +463,9 @@ export function DemoCanvas({
     const decorate = (c: Connector): Edge => {
       const adjacentRunning =
         statusFor(runs, c.source) === 'running' || statusFor(runs, c.target) === 'running';
-      const edge = connectorToEdge(c, adjacentRunning);
-      if (selectedConnectorId === c.id) edge.selected = true;
+      const isSelected = selectedConnectorId === c.id;
+      const edge = connectorToEdge(c, adjacentRunning, isSelected);
+      if (isSelected) edge.selected = true;
       // `reconnectable: true` enables the endpoint-drag gesture for the edge;
       // React Flow shows reconnect handles on hover. Wired only when the
       // parent provided an onReconnectConnector callback.
