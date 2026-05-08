@@ -149,6 +149,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
               initialValue={data.label}
               field="node-label"
               required
+              commitMode="blur-only"
               onCommit={(v) => data.onLabelChange?.(id, v)}
               onExit={() => setEditing(null)}
               className="text-[18px] font-semibold"
@@ -158,7 +159,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
             <button
               type="button"
               className={cn(
-                'block w-full whitespace-normal break-words bg-transparent p-0 text-left text-[18px] font-semibold leading-tight',
+                'block w-full whitespace-pre-wrap break-words bg-transparent p-0 text-left text-[18px] font-semibold leading-tight',
                 labelEditable ? 'hover:opacity-80' : '',
               )}
               style={labelFontStyle}

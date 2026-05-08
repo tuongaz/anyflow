@@ -10,6 +10,18 @@ export interface InlineEditProps {
   /** Allow newlines (Shift+Enter inserts one; plain Enter still finalizes). */
   multiline?: boolean;
   /**
+   * 'enter-commits' (default): plain Enter finalizes; Shift+Enter inserts a
+   * newline when `multiline` is true. Used for short fields (connector label,
+   * detail-panel inputs).
+   *
+   * 'blur-only': bare Enter inserts a newline (same as Shift+Enter); the only
+   * commit path is blur (click-outside) or Escape-cancel. Implies multiline
+   * reading semantics (`innerText`), so callers don't need to also pass
+   * `multiline`. Used for node labels (US-013) where Enter is a typing key,
+   * not a submit key.
+   */
+  commitMode?: 'enter-commits' | 'blur-only';
+  /**
    * Empty value is rejected: revert to the previous value with a shake animation
    * and exit without firing onCommit. Used for fields that the schema mandates
    * (e.g. PlayNode/StateNode label).
@@ -39,12 +51,15 @@ export function InlineEdit({
   onCommit,
   onExit,
   multiline = false,
+  commitMode = 'enter-commits',
   required = false,
   field,
   className,
   style,
   placeholder,
 }: InlineEditProps) {
+  // 'blur-only' implies multiline reading (innerText) so newlines round-trip.
+  const isMultiline = multiline || commitMode === 'blur-only';
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [shake, setShake] = useState(false);
   const [empty, setEmpty] = useState(initialValue.length === 0);
@@ -82,7 +97,7 @@ export function InlineEdit({
     // innerText resolves <br> and block boundaries to '\n'; textContent
     // ignores them. Use innerText for multiline so Shift+Enter newlines
     // round-trip; textContent for single-line keeps things simple.
-    return multiline ? el.innerText : (el.textContent ?? '');
+    return isMultiline ? el.innerText : (el.textContent ?? '');
   };
 
   const clearDebounce = () => {
@@ -139,19 +154,22 @@ export function InlineEdit({
     // Stop the keystroke from bubbling to the canvas — Backspace/Delete on the
     // canvas would otherwise trigger node deletion (US-027).
     e.stopPropagation();
-    if (e.key === 'Enter' && (!multiline || !e.shiftKey)) {
+    if (e.key === 'Enter') {
+      // 'blur-only' (US-013) treats Enter as a typing key — never commits.
+      // For 'enter-commits', Shift+Enter inserts a newline when multiline.
+      const insertNewline = commitMode === 'blur-only' || (multiline && e.shiftKey);
+      if (insertNewline) {
+        // Default contenteditable Enter inserts <br> or <div> depending on
+        // browser; force a literal newline so innerText reads stay clean.
+        e.preventDefault();
+        document.execCommand('insertText', false, '\n');
+        return;
+      }
       e.preventDefault();
       // Calling el.blur() also fires our onBlur handler — guard against the
       // double finalize so we don't issue two PATCHes for one Enter.
       skipBlurRef.current = true;
       finalize();
-      return;
-    }
-    if (e.key === 'Enter' && multiline && e.shiftKey) {
-      // Default contenteditable Enter inserts <br> or <div> depending on
-      // browser; force a literal newline so innerText reads stay clean.
-      e.preventDefault();
-      document.execCommand('insertText', false, '\n');
       return;
     }
     if (e.key === 'Escape') {

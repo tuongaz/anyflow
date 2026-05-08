@@ -150,6 +150,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         <InlineEdit
           initialValue={data.label ?? ''}
           field="node-label"
+          commitMode="blur-only"
           onCommit={(v) => data.onLabelChange?.(id, v)}
           onExit={() => setIsEditing(false)}
           className="text-[22px]"
@@ -160,7 +161,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         <button
           type="button"
           className={cn(
-            'block bg-transparent p-0 font-medium leading-tight',
+            'block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
             data.label ? 'break-words' : 'text-muted-foreground/40 italic',
           )}
           style={labelFontStyle}
