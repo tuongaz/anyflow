@@ -1,8 +1,17 @@
 import { JsonTree } from '@/components/json-tree';
 import { StatusPill } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
+import { IconToggleGroup, type IconToggleOption } from '@/components/ui/icon-toggle-group';
+import {
+  LineDashedIcon,
+  LineDottedIcon,
+  LineSolidIcon,
+  PathCurveIcon,
+  PathStepIcon,
+} from '@/components/ui/line-style-icons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNodeDetail } from '@/hooks/use-node-detail';
 import type { NodeEventLogEntry } from '@/hooks/use-node-events';
@@ -18,7 +27,7 @@ import type {
 import { COLOR_TOKENS } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { ArrowLeftRight, ArrowRight, Check, MoveLeft, RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 // Curated palette order — surfaced once so swatch rows stay visually consistent
 // and per-token data-testids match the PRD ('style-tab-border-color-blue' etc).
@@ -61,8 +70,12 @@ export interface DetailPanelProps {
   recentEvents?: NodeEventLogEntry[];
   /** Apply a Style-tab edit to the selected node (border / background). */
   onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
+  /** Live preview during a slider drag — optimistic override only, no PATCH/undo. */
+  onStyleNodePreview?: (nodeId: string, patch: NodeStylePatch) => void;
   /** Apply a Style-tab edit to the selected connector (color / style / direction). */
   onStyleConnector?: (connId: string, patch: ConnectorStylePatch) => void;
+  /** Live preview during a slider drag — optimistic override only, no PATCH/undo. */
+  onStyleConnectorPreview?: (connId: string, patch: ConnectorStylePatch) => void;
   /** Delete the selected node (cascade-removes adjacent connectors server-side). */
   onDeleteNode?: (nodeId: string) => void;
   /** Delete the selected connector. */
@@ -80,7 +93,9 @@ export function DetailPanel({
   run,
   recentEvents,
   onStyleNode,
+  onStyleNodePreview,
   onStyleConnector,
+  onStyleConnectorPreview,
   onDeleteNode,
   onDeleteConnector,
   onClose,
@@ -200,7 +215,15 @@ export function DetailPanel({
               </TabsContent>
 
               <TabsContent value="style" className="mt-0" data-testid="detail-panel-style-content">
-                <NodeStyleTab node={node} onApply={(patch) => onStyleNode?.(node.id, patch)} />
+                <NodeStyleTab
+                  node={node}
+                  onApply={(patch) => onStyleNode?.(node.id, patch)}
+                  onPreview={
+                    onStyleNodePreview
+                      ? (patch) => onStyleNodePreview(node.id, patch)
+                      : undefined
+                  }
+                />
               </TabsContent>
             </div>
           </Tabs>
@@ -233,6 +256,11 @@ export function DetailPanel({
                 <ConnectorStyleTab
                   connector={connector}
                   onApply={(patch) => onStyleConnector?.(connector.id, patch)}
+                  onPreview={
+                    onStyleConnectorPreview
+                      ? (patch) => onStyleConnectorPreview(connector.id, patch)
+                      : undefined
+                  }
                   onDelete={onDeleteConnector ? () => onDeleteConnector(connector.id) : undefined}
                 />
               </TabsContent>
@@ -247,25 +275,35 @@ export function DetailPanel({
 function NodeStyleTab({
   node,
   onApply,
+  onPreview,
 }: {
   node: DemoNode;
   onApply: (patch: NodeStylePatch) => void;
+  onPreview?: (patch: NodeStylePatch) => void;
 }) {
   const borderActive = (node.data.borderColor ?? 'default') as ColorToken;
   const backgroundActive = (node.data.backgroundColor ?? 'default') as ColorToken;
   const borderStyleActive = (node.data.borderStyle ?? 'solid') as 'solid' | 'dashed' | 'dotted';
-  // Text shapes (US-010) render chromeless — border + background controls are
-  // hidden because the renderer ignores those tokens. Font size is the only
-  // applicable visual control.
+  // Text shapes are chromeless — no border, no background. The `borderColor`
+  // field is repurposed as the text color for these shapes (see
+  // shape-node.tsx) so the same control is exposed but relabeled.
   const isTextShape = node.type === 'shapeNode' && node.data.shape === 'text';
   return (
-    <div className="flex flex-col gap-4">
-      {isTextShape ? null : (
+    <div className="flex flex-col gap-3">
+      {isTextShape ? (
+        <StyleRow label="Color">
+          <SwatchPicker
+            label="color"
+            active={borderActive}
+            onSelect={(token) => onApply({ borderColor: token })}
+            triggerTestId="style-tab-color-trigger"
+            tokenTestIdPrefix="style-tab-color"
+            previewKind="edge"
+          />
+        </StyleRow>
+      ) : (
         <>
-          {/* Border row (US-003): color + style + size on one line. flex-wrap +
-              min-w on the style select means at panel widths under ~280px the
-              select drops to its own line — sufficient for the rare narrow case. */}
-          <div className="flex flex-row flex-wrap items-end gap-3">
+          <StyleRow label="Border">
             <SwatchPicker
               label="border"
               active={borderActive}
@@ -274,230 +312,248 @@ function NodeStyleTab({
               tokenTestIdPrefix="style-tab-border-color"
               previewKind="border"
             />
-            <BorderStyleSelect
-              active={borderStyleActive}
-              onSelect={(s) => onApply({ borderStyle: s })}
-              className="min-w-[160px] flex-1"
+          </StyleRow>
+          <StyleRow label="Style">
+            <IconToggleGroup<'solid' | 'dashed' | 'dotted'>
+              ariaLabel="Border style"
+              value={borderStyleActive}
+              onChange={(s) => onApply({ borderStyle: s })}
+              options={BORDER_STYLE_OPTIONS}
             />
-            <SizeInput
-              label="border size"
-              testId="style-tab-border-size"
+          </StyleRow>
+          <StyleRow label="Width">
+            <SliderControl
               value={node.data.borderSize}
-              onChange={(n) => onApply({ borderSize: n })}
+              defaultValue={DEFAULT_BORDER_SIZE}
+              min={1}
+              max={8}
+              suffix="px"
+              onPreview={onPreview ? (n) => onPreview({ borderSize: n }) : undefined}
+              onCommit={(n) => onApply({ borderSize: n })}
+              testId="style-tab-border-size-slider"
             />
-          </div>
-          <SwatchPicker
-            label="background"
-            active={backgroundActive}
-            onSelect={(token) => onApply({ backgroundColor: token })}
-            triggerTestId="style-tab-background-color-trigger"
-            tokenTestIdPrefix="style-tab-background-color"
-            previewKind="background"
-          />
+          </StyleRow>
+          <StyleRow label="Background">
+            <SwatchPicker
+              label="background"
+              active={backgroundActive}
+              onSelect={(token) => onApply({ backgroundColor: token })}
+              triggerTestId="style-tab-background-color-trigger"
+              tokenTestIdPrefix="style-tab-background-color"
+              previewKind="background"
+            />
+          </StyleRow>
+          <StyleSeparator />
         </>
       )}
-      <SizeInput
-        label="font size"
-        testId="style-tab-font-size"
-        min={10}
-        max={32}
-        value={node.data.fontSize}
-        onChange={(n) => onApply({ fontSize: n })}
-        defaultDisplay={NODE_FONT_SIZE_DEFAULT}
-      />
+      <StyleRow label="Font size">
+        <SliderControl
+          value={node.data.fontSize}
+          defaultValue={NODE_FONT_SIZE_DEFAULT}
+          min={10}
+          max={32}
+          suffix="px"
+          onPreview={onPreview ? (n) => onPreview({ fontSize: n }) : undefined}
+          onCommit={(n) => onApply({ fontSize: n })}
+          testId="style-tab-font-size-slider"
+        />
+      </StyleRow>
     </div>
   );
 }
 
 // Implicit body font size baked into shape-node.tsx (line 63 / 104). Mirrored
-// here so the Style-tab font input shows a meaningful default instead of an
-// empty box when the user has not set a per-node override (US-003).
+// here so the Style-tab font slider has a meaningful default position when
+// the user has not set a per-node override.
 const NODE_FONT_SIZE_DEFAULT = 22;
+const DEFAULT_BORDER_SIZE = 3;
 
-// Three-option select used by both NodeStyleTab and ConnectorStyleTab. The
-// connector variant has an extra 'auto' option (clears the override) so it
-// stays a separate inline select; this control is node-only.
-function BorderStyleSelect({
-  active,
-  onSelect,
-  className,
-}: {
-  active: 'solid' | 'dashed' | 'dotted';
-  onSelect: (s: 'solid' | 'dashed' | 'dotted') => void;
-  className?: string;
-}) {
+const BORDER_STYLE_OPTIONS: IconToggleOption<'solid' | 'dashed' | 'dotted'>[] = [
+  { value: 'solid', icon: LineSolidIcon, label: 'Solid', testId: 'style-tab-border-style-solid' },
+  {
+    value: 'dashed',
+    icon: LineDashedIcon,
+    label: 'Dashed',
+    testId: 'style-tab-border-style-dashed',
+  },
+  {
+    value: 'dotted',
+    icon: LineDottedIcon,
+    label: 'Dotted',
+    testId: 'style-tab-border-style-dotted',
+  },
+];
+
+// Single-row style control: label on the left, control on the right. Keeps
+// the inspector readable at panel widths down to ~280px without breaking the
+// "every option on its own line" rule.
+function StyleRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-        border style
-      </span>
-      <select
-        data-testid="style-tab-border-style"
-        className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        value={active}
-        onChange={(e) => onSelect(e.target.value as 'solid' | 'dashed' | 'dotted')}
-      >
-        <option value="solid">Solid</option>
-        <option value="dashed">Dashed</option>
-        <option value="dotted">Dotted</option>
-      </select>
+    <div className="flex items-center gap-3">
+      <span className="w-24 shrink-0 text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="flex flex-1 items-center justify-end gap-2 min-w-0">{children}</div>
     </div>
   );
 }
 
-// Numeric stepper used by NodeStyleTab (Border size, Font size) and
-// ConnectorStyleTab (Stroke width). Local string state allows the input to be
-// empty while typing; committed value is parsed on every change — empty / NaN
-// / out-of-range collapses to undefined (the "clear override" signal). Range
-// is configurable via min/max props (default 1-8 px for stroke widths).
-//
-// `defaultDisplay` (US-003): when the upstream value is undefined and a
-// default is provided, the input is SEEDED with that default so the control
-// never starts empty. The user can still clear it; clearing dispatches
-// onChange(undefined) like before.
-function SizeInput({
-  label,
-  testId,
+function StyleSeparator() {
+  return <hr aria-hidden className="border-border/60" />;
+}
+
+// Slider with a live numeric badge to the right. Two callbacks:
+// - `onPreview` fires on every drag tick so the canvas updates live (it
+//   should only update the optimistic override — no PATCH, no undo push).
+// - `onCommit` fires once on pointer release for persistence (PATCH + undo).
+// Sync local state when the upstream value changes from elsewhere (e.g.
+// selecting a different node while the panel is open).
+function SliderControl({
   value,
-  onChange,
-  min = 1,
-  max = 8,
-  defaultDisplay,
-  className,
+  defaultValue,
+  min,
+  max,
+  suffix,
+  onPreview,
+  onCommit,
+  testId,
 }: {
-  label: string;
-  testId: string;
   value: number | undefined;
-  onChange: (n: number | undefined) => void;
-  min?: number;
-  max?: number;
-  defaultDisplay?: number;
-  className?: string;
+  defaultValue: number;
+  min: number;
+  max: number;
+  suffix?: string;
+  onPreview?: (n: number) => void;
+  onCommit: (n: number) => void;
+  testId: string;
 }) {
-  const seedText =
-    value !== undefined
-      ? String(value)
-      : defaultDisplay !== undefined
-        ? String(defaultDisplay)
-        : '';
-  const [text, setText] = useState<string>(seedText);
-  // Sync local state when the upstream value changes from somewhere else (e.g.
-  // selecting a different node/connector while the panel is open).
+  const upstream = value ?? defaultValue;
+  const [local, setLocal] = useState<number>(upstream);
   useEffect(() => {
-    setText(seedText);
-  }, [seedText]);
+    setLocal(upstream);
+  }, [upstream]);
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">{label}</span>
-      <input
-        type="number"
+    <>
+      <Slider
         min={min}
         max={max}
         step={1}
-        data-testid={testId}
-        className="h-9 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        value={text}
-        onChange={(e) => {
-          const next = e.target.value;
-          setText(next);
-          if (next === '') {
-            onChange(undefined);
-            return;
-          }
-          const n = Number.parseInt(next, 10);
-          if (!Number.isFinite(n) || n < min || n > max) {
-            onChange(undefined);
-            return;
-          }
-          onChange(n);
+        value={[local]}
+        onValueChange={([v]) => {
+          const next = v ?? min;
+          setLocal(next);
+          onPreview?.(next);
         }}
+        onValueCommit={([v]) => onCommit(v ?? min)}
+        data-testid={testId}
+        className="flex-1"
       />
-    </div>
+      <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        {local}
+        {suffix}
+      </span>
+    </>
   );
 }
 
 function ConnectorStyleTab({
   connector,
   onApply,
+  onPreview,
   onDelete,
 }: {
   connector: Connector;
   onApply: (patch: ConnectorStylePatch) => void;
+  onPreview?: (patch: ConnectorStylePatch) => void;
   onDelete?: () => void;
 }) {
   const colorActive = (connector.color ?? 'default') as ColorToken;
-  const styleActive = (connector.style ?? 'auto') as ConnectorStyle | 'auto';
+  // The connector style is a tri-value enum, but we also support an "auto"
+  // state where the kind-derived default applies. The icon-toggle group can
+  // only show the three real values, so the Auto state is surfaced as a
+  // separate reset link (rendered only when an override is present).
+  const styleActive = connector.style;
   const directionActive = (connector.direction ?? 'forward') as ConnectorDirection;
   const pathActive = (connector.path ?? 'curve') as ConnectorPath;
   return (
-    <div className="flex flex-col gap-4">
-      <SwatchPicker
-        label="color"
-        active={colorActive}
-        onSelect={(token) => onApply({ color: token })}
-        triggerTestId="style-tab-edge-color-trigger"
-        tokenTestIdPrefix="style-tab-color"
-        previewKind="edge"
-      />
-
-      <SizeInput
-        label="stroke width"
-        testId="style-tab-edge-size"
-        value={connector.borderSize}
-        onChange={(n) => onApply({ borderSize: n })}
-      />
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-          border style
-        </span>
-        <select
-          data-testid="style-tab-edge-style"
-          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          value={styleActive}
-          onChange={(e) => {
-            const v = e.target.value as ConnectorStyle | 'auto';
-            // 'Auto' clears the explicit style override so the edge falls back
-            // to the kind-derived default (per US-017 connectorToEdge logic).
-            onApply({ style: v === 'auto' ? undefined : v });
-          }}
-        >
-          <option value="auto">Auto ({connector.kind})</option>
-          <option value="solid">Solid</option>
-          <option value="dashed">Dashed</option>
-          <option value="dotted">Dotted</option>
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium tracking-wide text-muted-foreground">path</span>
-        <select
-          data-testid="style-tab-edge-path"
-          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    <div className="flex flex-col gap-3">
+      <StyleRow label="Color">
+        <SwatchPicker
+          label="color"
+          active={colorActive}
+          onSelect={(token) => onApply({ color: token })}
+          triggerTestId="style-tab-edge-color-trigger"
+          tokenTestIdPrefix="style-tab-color"
+          previewKind="edge"
+        />
+      </StyleRow>
+      <StyleRow label="Width">
+        <SliderControl
+          value={connector.borderSize}
+          defaultValue={DEFAULT_STROKE_WIDTH}
+          min={1}
+          max={8}
+          suffix="px"
+          onPreview={onPreview ? (n) => onPreview({ borderSize: n }) : undefined}
+          onCommit={(n) => onApply({ borderSize: n })}
+          testId="style-tab-stroke-width-slider"
+        />
+      </StyleRow>
+      <StyleRow label="Style">
+        <IconToggleGroup<ConnectorStyle>
+          ariaLabel="Connector style"
+          value={(styleActive ?? KIND_DEFAULT_STYLE[connector.kind]) as ConnectorStyle}
+          onChange={(s) => onApply({ style: s })}
+          options={CONNECTOR_STYLE_OPTIONS}
+        />
+      </StyleRow>
+      <StyleRow label="Path">
+        <IconToggleGroup<ConnectorPath>
+          ariaLabel="Connector path"
           value={pathActive}
-          onChange={(e) => {
-            // Always write the explicit value so the on-disk path field
-            // matches the user's selection. Sending undefined would defeat
-            // round-trip persistence (server merge skips undefined keys).
-            onApply({ path: e.target.value as ConnectorPath });
-          }}
-        >
-          <option value="curve">Curve</option>
-          <option value="step">Zigzag</option>
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium tracking-wide text-muted-foreground">
-          direction
-        </span>
-        <DirectionToggle active={directionActive} onSelect={(d) => onApply({ direction: d })} />
-      </div>
-
+          onChange={(p) => onApply({ path: p })}
+          options={PATH_OPTIONS}
+        />
+      </StyleRow>
+      <StyleRow label="Direction">
+        <IconToggleGroup<ConnectorDirection>
+          ariaLabel="Connector direction"
+          value={directionActive}
+          onChange={(d) => onApply({ direction: d })}
+          options={DIRECTION_OPTIONS}
+        />
+      </StyleRow>
       <DeleteButton onDelete={onDelete} entity="connector" />
     </div>
   );
 }
+
+const DEFAULT_STROKE_WIDTH = 2;
+
+// Mirrors connector-to-edge.ts STYLE_BY_KIND so the "Auto" highlight on the
+// border-style toggle visually matches the rendered edge before the user has
+// set an explicit override.
+const KIND_DEFAULT_STYLE: Record<Connector['kind'], ConnectorStyle> = {
+  http: 'solid',
+  event: 'dashed',
+  queue: 'dotted',
+  default: 'solid',
+};
+
+const CONNECTOR_STYLE_OPTIONS: IconToggleOption<ConnectorStyle>[] = [
+  { value: 'solid', icon: LineSolidIcon, label: 'Solid', testId: 'style-tab-edge-style-solid' },
+  { value: 'dashed', icon: LineDashedIcon, label: 'Dashed', testId: 'style-tab-edge-style-dashed' },
+  { value: 'dotted', icon: LineDottedIcon, label: 'Dotted', testId: 'style-tab-edge-style-dotted' },
+];
+
+const PATH_OPTIONS: IconToggleOption<ConnectorPath>[] = [
+  { value: 'curve', icon: PathCurveIcon, label: 'Curve', testId: 'style-tab-edge-path-curve' },
+  { value: 'step', icon: PathStepIcon, label: 'Zigzag', testId: 'style-tab-edge-path-step' },
+];
+
+const DIRECTION_OPTIONS: IconToggleOption<ConnectorDirection>[] = [
+  { value: 'backward', icon: MoveLeft, label: 'Backward', testId: 'style-tab-direction-backward' },
+  { value: 'forward', icon: ArrowRight, label: 'Forward', testId: 'style-tab-direction-forward' },
+  { value: 'both', icon: ArrowLeftRight, label: 'Both', testId: 'style-tab-direction-both' },
+];
 
 type SwatchPreviewKind = 'border' | 'background' | 'edge';
 
@@ -542,123 +598,78 @@ function SwatchPicker({
 }) {
   const [open, setOpen] = useState(false);
   const isUnset = active === 'default';
+  // The `label` prop is consumed only by the trigger's aria-label / title now —
+  // StyleRow renders the visible label, so the picker is just the swatch.
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] font-medium tracking-wide text-muted-foreground">{label}</span>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            data-testid={triggerTestId}
-            data-active-token={active}
-            aria-label={`${label}: ${active}`}
-            title={active}
-            // ring-1 ring-border (US-003) gives the swatch an always-visible
-            // outline so it reads as a clickable control rather than a flat
-            // color block — important for the 'default' token where the
-            // diagonal-stripe pattern can blend into surrounding chrome.
-            className={cn(
-              'relative h-7 w-7 self-start rounded-full ring-1 ring-border transition-all',
-              'hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-            )}
-            style={swatchTriggerFillStyle(active, previewKind)}
-          >
-            {isUnset ? (
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 rounded-full"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(45deg, transparent 45%, currentColor 45%, currentColor 55%, transparent 55%)',
-                  color: 'hsl(var(--muted-foreground))',
-                  opacity: 0.5,
-                }}
-              />
-            ) : null}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-auto p-2"
-          data-testid={`${triggerTestId}-popover`}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid={triggerTestId}
+          data-active-token={active}
+          aria-label={`${label}: ${active}`}
+          title={active}
+          // ring-1 ring-border (US-003) gives the swatch an always-visible
+          // outline so it reads as a clickable control rather than a flat
+          // color block — important for the 'default' token where the
+          // diagonal-stripe pattern can blend into surrounding chrome.
+          className={cn(
+            'relative h-7 w-7 rounded-full ring-1 ring-border transition-all',
+            'hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          )}
+          style={swatchTriggerFillStyle(active, previewKind)}
         >
-          <div className="grid grid-cols-4 gap-1.5">
-            {PALETTE_TOKENS.map((token) => {
-              const isActive = active === token;
-              return (
-                <button
-                  key={token}
-                  type="button"
-                  onClick={() => {
-                    onSelect(token);
-                    setOpen(false);
-                  }}
-                  data-testid={`${tokenTestIdPrefix}-${token}`}
-                  data-active={isActive}
-                  aria-label={`${label} ${token}`}
-                  aria-pressed={isActive}
-                  title={token}
-                  className={cn(
-                    'relative flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all',
-                    isActive
-                      ? 'ring-2 ring-ring ring-offset-2 ring-offset-popover'
-                      : 'hover:scale-110',
-                  )}
-                  style={swatchPreviewStyle(token, previewKind)}
-                >
-                  {isActive ? (
-                    <Check
-                      className="h-3 w-3 drop-shadow-sm"
-                      style={{ color: 'hsl(var(--foreground))' }}
-                    />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
-
-function DirectionToggle({
-  active,
-  onSelect,
-}: {
-  active: ConnectorDirection;
-  onSelect: (d: ConnectorDirection) => void;
-}) {
-  const options: Array<{ value: ConnectorDirection; icon: typeof ArrowRight; label: string }> = [
-    { value: 'forward', icon: ArrowRight, label: 'Forward' },
-    { value: 'backward', icon: MoveLeft, label: 'Backward' },
-    { value: 'both', icon: ArrowLeftRight, label: 'Both' },
-  ];
-  return (
-    <div className="inline-flex gap-0 rounded-md border border-input bg-background p-0.5">
-      {options.map(({ value, icon: Icon, label }) => {
-        const isActive = active === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            onClick={() => onSelect(value)}
-            data-testid={`style-tab-direction-${value}`}
-            data-active={isActive}
-            aria-label={`Direction: ${label}`}
-            title={label}
-            className={cn(
-              'flex h-7 w-9 items-center justify-center rounded transition-colors',
-              isActive
-                ? 'bg-secondary text-secondary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-            )}
-          >
-            <Icon className="h-4 w-4" />
-          </button>
-        );
-      })}
-    </div>
+          {isUnset ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 rounded-full"
+              style={{
+                backgroundImage:
+                  'linear-gradient(45deg, transparent 45%, currentColor 45%, currentColor 55%, transparent 55%)',
+                color: 'hsl(var(--muted-foreground))',
+                opacity: 0.5,
+              }}
+            />
+          ) : null}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-2" data-testid={`${triggerTestId}-popover`}>
+        <div className="grid grid-cols-4 gap-1.5">
+          {PALETTE_TOKENS.map((token) => {
+            const isActive = active === token;
+            return (
+              <button
+                key={token}
+                type="button"
+                onClick={() => {
+                  onSelect(token);
+                  setOpen(false);
+                }}
+                data-testid={`${tokenTestIdPrefix}-${token}`}
+                data-active={isActive}
+                aria-label={`${label} ${token}`}
+                aria-pressed={isActive}
+                title={token}
+                className={cn(
+                  'relative flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all',
+                  isActive
+                    ? 'ring-2 ring-ring ring-offset-2 ring-offset-popover'
+                    : 'hover:scale-110',
+                )}
+                style={swatchPreviewStyle(token, previewKind)}
+              >
+                {isActive ? (
+                  <Check
+                    className="h-3 w-3 drop-shadow-sm"
+                    style={{ color: 'hsl(var(--foreground))' }}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

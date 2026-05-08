@@ -126,7 +126,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         position={Position.Top}
         id="t"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
+          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />
@@ -135,7 +135,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         position={Position.Left}
         id="l"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
+          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />
@@ -237,7 +237,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         position={Position.Right}
         id="r"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
+          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />
@@ -246,7 +246,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         position={Position.Bottom}
         id="b"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
+          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />

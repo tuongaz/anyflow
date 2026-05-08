@@ -289,6 +289,21 @@ export function DemoView({
   const { setOverride: setConnectorOverride, dropOverride: dropConnectorOverride } =
     connectorPending;
 
+  // Live slider preview during drag — optimistic override only. The full
+  // PATCH+undo path runs once on pointer release via onStyleNode/onStyleConnector.
+  const onStyleNodePreview = useCallback(
+    (nodeId: string, patch: NodeStylePatch) => {
+      setNodeOverride(nodeId, { data: patch } as Partial<DemoNode>);
+    },
+    [setNodeOverride],
+  );
+  const onStyleConnectorPreview = useCallback(
+    (connId: string, patch: ConnectorStylePatch) => {
+      setConnectorOverride(connId, patch as Partial<Connector>);
+    },
+    [setConnectorOverride],
+  );
+
   // Style-tab edit on a node: border + background tokens. Cast the partial
   // through Partial<DemoNode> because the discriminated union prevents TS from
   // seeing that 'data' on the override matches the variant of the keyed node.
@@ -1112,7 +1127,9 @@ export function DemoView({
         run={inspectedRun}
         recentEvents={inspectedEvents}
         onStyleNode={onStyleNode}
+        onStyleNodePreview={onStyleNodePreview}
         onStyleConnector={onStyleConnector}
+        onStyleConnectorPreview={onStyleConnectorPreview}
         onDeleteNode={onDeleteNode}
         onDeleteConnector={onDeleteConnector}
         onClose={() => {

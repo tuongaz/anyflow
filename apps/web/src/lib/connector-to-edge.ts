@@ -35,11 +35,15 @@ export interface DerivedEdge {
 const EDGE_INTERACTION_WIDTH = 24;
 
 // Closed arrowhead — width/height tuned to look balanced against the 1px stroke.
-const ARROW: EdgeMarker = {
+// `color` is set per-connector so the arrow tracks the connector's stroke color
+// (without it React Flow falls back to its default marker fill, which clashes
+// with any non-default token).
+const arrowMarker = (color?: string): EdgeMarker => ({
   type: MarkerType.ArrowClosed,
   width: 18,
   height: 18,
-};
+  ...(color ? { color } : {}),
+});
 
 // Visual style per connector kind. Kept terse so the canvas reads cleanly:
 //   • http    — solid (no dasharray)
@@ -88,11 +92,13 @@ export const connectorToEdge = (
   const dashStyle = connector.style
     ? STYLE_BY_NAME[connector.style]
     : STYLE_BY_KIND[connector.kind];
-  // Color token (defaults to 'default') drives the stroke. Letting an
-  // unset color fall through to undefined would let React Flow's built-in
-  // selection styling override it; setting an explicit stroke even for the
-  // default token keeps the visual deterministic.
-  const colorStyle = connector.color ? colorTokenStyle(connector.color, 'edge') : {};
+  // Color token (defaults to 'default') drives the stroke. Always call
+  // `colorTokenStyle` — it falls back to the 'default' token internally — so
+  // an unset color still produces an explicit stroke. Skipping that branch
+  // would leave both the line AND the arrow marker color undefined, and React
+  // Flow's two defaults differ (black line + gray arrow), so they'd render
+  // mismatched even when the user picks no color at all.
+  const colorStyle = colorTokenStyle(connector.color, 'edge');
   // Default to a heavier stroke than SVG's 1px so connectors read at canvas
   // zoom levels; per-connector borderSize overrides. Selection bumps it up
   // (max with the user's borderSize so we never thin a deliberately-bold edge).
@@ -106,8 +112,10 @@ export const connectorToEdge = (
   // 'backward' → arrow at source only.
   // 'both'     → arrows at both ends.
   const direction = connector.direction ?? 'forward';
-  const markerStart = direction === 'backward' || direction === 'both' ? ARROW : undefined;
-  const markerEnd = direction === 'forward' || direction === 'both' ? ARROW : undefined;
+  const markerColor = colorStyle.stroke;
+  const arrow = arrowMarker(markerColor);
+  const markerStart = direction === 'backward' || direction === 'both' ? arrow : undefined;
+  const markerEnd = direction === 'forward' || direction === 'both' ? arrow : undefined;
   return {
     id: connector.id,
     source: connector.source,

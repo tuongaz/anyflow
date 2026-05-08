@@ -72,7 +72,9 @@ describe('connectorToEdge', () => {
   it('renders a default connector as solid (no dasharray)', () => {
     expect(styleForKind('default')).toEqual({});
     const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
-    expect(connectorToEdge(c, false).style).toEqual({ strokeWidth: 2 });
+    const edge = connectorToEdge(c, false);
+    expect(edge.style.strokeDasharray).toBeUndefined();
+    expect(edge.style.strokeWidth).toBe(2);
   });
 
   it('lets per-connector style override the kind-derived style', () => {
@@ -83,10 +85,9 @@ describe('connectorToEdge', () => {
       kind: 'http',
       style: 'dashed',
     };
-    expect(connectorToEdge(c, false).style).toEqual({
-      strokeDasharray: '6 4',
-      strokeWidth: 2,
-    });
+    const edge = connectorToEdge(c, false);
+    expect(edge.style.strokeDasharray).toBe('6 4');
+    expect(edge.style.strokeWidth).toBe(2);
   });
 
   it('uses connector.borderSize as strokeWidth when set', () => {
@@ -209,6 +210,28 @@ describe('connectorToEdge', () => {
     };
     expect(connectorToEdge(curveC, false).data.path).toBeUndefined();
     expect(connectorToEdge(stepC, false).data.path).toBe('step');
+  });
+
+  it('paints the arrow marker in the same color as the connector stroke', () => {
+    const c: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      color: 'blue',
+      direction: 'both',
+    };
+    const edge = connectorToEdge(c, false);
+    expect(edge.style.stroke).toBeTruthy();
+    expect(edge.markerStart?.color).toBe(edge.style.stroke);
+    expect(edge.markerEnd?.color).toBe(edge.style.stroke);
+  });
+
+  it('renders the default token with an explicit stroke + matching marker (no fall-through to React Flow defaults)', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const edge = connectorToEdge(c, false);
+    expect(edge.style.stroke).toBeTruthy();
+    expect(edge.markerEnd?.color).toBe(edge.style.stroke);
   });
 
   it('pins zIndex >= 1 so connectors paint above any node (US-007)', () => {

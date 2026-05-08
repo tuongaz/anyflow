@@ -56,18 +56,26 @@ export const COLOR_TOKENS = COLOR_TOKEN_MAP;
 
 export type NodeColorStyle = Pick<CSSProperties, 'borderColor' | 'backgroundColor'>;
 export type EdgeColorStyle = Pick<CSSProperties, 'stroke'>;
+export type TextColorStyle = Pick<CSSProperties, 'color'>;
 
 // Returns CSSProperties shaped for the call site:
 //   • kind 'node' → { borderColor, backgroundColor } — spread into a node container's style.
 //   • kind 'edge' → { stroke }                       — spread into a React Flow edge style.
+//   • kind 'text' → { color }                        — spread onto a text element (chromeless
+//     text shapes use this; the saturated `edge` value reads as text where the pastel
+//     `border` value would be too faint). 'default' token returns undefined so the element
+//     falls through to the surrounding theme foreground.
 // `undefined` token falls back to 'default'.
 export function colorTokenStyle(token: ColorToken | undefined, kind: 'node'): NodeColorStyle;
 export function colorTokenStyle(token: ColorToken | undefined, kind: 'edge'): EdgeColorStyle;
+export function colorTokenStyle(token: ColorToken | undefined, kind: 'text'): TextColorStyle;
 export function colorTokenStyle(
   token: ColorToken | undefined,
-  kind: 'node' | 'edge',
-): NodeColorStyle | EdgeColorStyle {
-  const entry = COLOR_TOKEN_MAP[token ?? 'default'];
+  kind: 'node' | 'edge' | 'text',
+): NodeColorStyle | EdgeColorStyle | TextColorStyle {
+  const resolved = token ?? 'default';
+  const entry = COLOR_TOKEN_MAP[resolved];
   if (kind === 'edge') return { stroke: entry.edge };
+  if (kind === 'text') return resolved === 'default' ? {} : { color: entry.edge };
   return { borderColor: entry.border, backgroundColor: entry.background };
 }

@@ -31,8 +31,12 @@ const SHAPE_CLASS: Record<ShapeKind, string> = {
   text: 'bg-transparent',
 };
 
-const HANDLE_CLASS =
-  '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity group-hover:opacity-100';
+// Handles stay hidden by default and only render on the active (selected) node
+// — the `selected && '!opacity-100'` branch in each <Handle>'s className. While
+// a connection is in progress, `.react-flow.anydemo-connecting .react-flow__handle`
+// (apps/web/src/index.css) globally forces `opacity: 1` so drop targets light
+// up across all nodes during the drag, preserving the US-014 auto-snap UX.
+const HANDLE_CLASS = '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity';
 
 export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
@@ -64,6 +68,11 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   // an 8x10px visible square + 4px outline-offset, the handles visually sit
   // at the rect's corners.
   const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
+  // For text shapes, `borderColor` is repurposed as the text color (the field
+  // is hidden as a border in the renderer, so reusing it avoids a redundant
+  // schema field). `colorTokenStyle(_, 'text')` returns {} for the default
+  // token so unset values fall through to the theme foreground.
+  const textColorStyle = isText ? colorTokenStyle(data.borderColor, 'text') : {};
   const colorStyle: CSSProperties = {
     ...(isText
       ? {}
@@ -85,8 +94,10 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         }
       : {}),
   };
-  const labelFontStyle: CSSProperties =
-    data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
+  const labelFontStyle: CSSProperties = {
+    ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
+    ...textColorStyle,
+  };
   const style: CSSProperties = sized
     ? colorStyle
     : { ...colorStyle, width: data.width ?? size.width, height: data.height ?? size.height };
