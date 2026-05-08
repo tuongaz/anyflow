@@ -21,6 +21,8 @@ import {
   type Connection,
   Controls,
   type Edge,
+  type FinalConnectionState,
+  type HandleType,
   type Node,
   type NodeChange,
   Panel,
@@ -515,6 +517,10 @@ export function DemoCanvas({
   // (source or target) to the parent for persistence. The parent applies
   // an optimistic override so the edge snaps immediately; the SSE echo of
   // the file rewrite reconciles any drift.
+  //
+  // `reconnectSucceededRef` lets onReconnectEnd skip the body-drop fallback
+  // when onReconnect already fired for this gesture (precise handle drop).
+  const reconnectSucceededRef = useRef(false);
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       if (!onReconnectConnector) return;
@@ -524,7 +530,76 @@ export function DemoCanvas({
       if (source !== oldEdge.source) patch.source = source;
       if (target !== oldEdge.target) patch.target = target;
       if (!patch.source && !patch.target) return;
+      reconnectSucceededRef.current = true;
       onReconnectConnector(oldEdge.id, patch);
+    },
+    [onReconnectConnector],
+  );
+
+  // Body-drop fallback: when the user releases the reconnect drag on a node's
+  // body (rather than precisely on one of its four handles), React Flow's
+  // connectionRadius isn't enough to snap to a handle and onReconnect doesn't
+  // fire. We catch that here, look at the cursor's screen-space pointer and
+  // hit-test which `.react-flow__node` is under it, and persist it as the new
+  // endpoint for whichever side (source/target) was being dragged. Empty-space
+  // drops resolve to no node and we no-op (the edge restores).
+  //
+  // We use elementsFromPoint(pointer) rather than connectionState.toNode
+  // because React Flow only populates toNode when a handle is within
+  // connectionRadius — so a drop on the node's body itself reports null.
+  const onReconnectEndCb = useCallback(
+    (
+      e: MouseEvent | TouchEvent,
+      oldEdge: Edge,
+      handleType: HandleType,
+      connectionState: FinalConnectionState,
+    ) => {
+      setConnecting(false);
+      const succeeded = reconnectSucceededRef.current;
+      reconnectSucceededRef.current = false;
+      if (succeeded) return;
+      if (!onReconnectConnector) return;
+      // Resolve the cursor's screen coordinates from either branch of the
+      // event union (mouse vs. final touch). FinalConnectionState.pointer
+      // would be nice but it's in flow space and it's also null when toHandle
+      // is null — so the event's own coords are the durable source.
+      let clientX: number | undefined;
+      let clientY: number | undefined;
+      if ('clientX' in e) {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      } else {
+        const touch = e.changedTouches[0] ?? e.touches[0];
+        if (touch) {
+          clientX = touch.clientX;
+          clientY = touch.clientY;
+        }
+      }
+      let droppedNodeId: string | null = connectionState.toNode?.id ?? null;
+      if (!droppedNodeId && clientX !== undefined && clientY !== undefined) {
+        const stack = document.elementsFromPoint(clientX, clientY);
+        for (const el of stack) {
+          const nodeEl = (el as HTMLElement).closest?.('.react-flow__node');
+          if (nodeEl) {
+            droppedNodeId = nodeEl.getAttribute('data-id');
+            break;
+          }
+        }
+      }
+      if (!droppedNodeId) return;
+      // React Flow passes the type of the FIXED (anchored) end, not the
+      // moving one — e.g. dragging the target endpoint anchors the source,
+      // so handleType === 'source'. Invert to determine which side moved.
+      const movingSide: 'source' | 'target' = handleType === 'source' ? 'target' : 'source';
+      if (movingSide === 'source') {
+        if (droppedNodeId === oldEdge.source) return;
+        if (droppedNodeId === oldEdge.target) return;
+        onReconnectConnector(oldEdge.id, { source: droppedNodeId });
+      } else {
+        if (droppedNodeId === oldEdge.target) return;
+        if (droppedNodeId === oldEdge.source) return;
+        onReconnectConnector(oldEdge.id, { target: droppedNodeId });
+      }
     },
     [onReconnectConnector],
   );
@@ -582,8 +657,11 @@ export function DemoCanvas({
         onConnectStart={() => setConnecting(true)}
         onConnectEnd={() => setConnecting(false)}
         onReconnect={onReconnectConnector ? onReconnect : undefined}
-        onReconnectStart={() => setConnecting(true)}
-        onReconnectEnd={() => setConnecting(false)}
+        onReconnectStart={() => {
+          setConnecting(true);
+          reconnectSucceededRef.current = false;
+        }}
+        onReconnectEnd={onReconnectEndCb}
         // Generous connection radius so the user can release a connect or
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
