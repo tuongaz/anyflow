@@ -753,42 +753,26 @@ export function DemoView({
   // prune then drops the override cleanly. On failure, drop the override and
   // surface the existing edit-error-banner.
   const onCreateConnector = useCallback(
-    (
-      source: string,
-      target: string,
-      handles?: {
-        sourceHandle?: string;
-        targetHandle?: string;
-        sourceHandleAutoPicked?: boolean;
-        targetHandleAutoPicked?: boolean;
-      },
-    ) => {
+    (source: string, target: string) => {
       if (!demoId) return;
       const id = `conn-${crypto.randomUUID()}`;
-      const sourceHandle = handles?.sourceHandle;
-      const targetHandle = handles?.targetHandle;
-      const sourceHandleAutoPicked = handles?.sourceHandleAutoPicked;
-      const targetHandleAutoPicked = handles?.targetHandleAutoPicked;
-      const flagPart = {
-        ...(sourceHandleAutoPicked !== undefined ? { sourceHandleAutoPicked } : {}),
-        ...(targetHandleAutoPicked !== undefined ? { targetHandleAutoPicked } : {}),
-      };
+      // US-025: every new connector is floating — both endpoints carry
+      // *HandleAutoPicked: true and no handle ids. The user pins a side
+      // later by reconnecting it onto a specific handle dot.
       const optimistic: DefaultConnector = {
         id,
         source,
         target,
-        ...(sourceHandle ? { sourceHandle } : {}),
-        ...(targetHandle ? { targetHandle } : {}),
-        ...flagPart,
+        sourceHandleAutoPicked: true,
+        targetHandleAutoPicked: true,
         kind: 'default',
       };
       const payload = {
         id,
         source,
         target,
-        ...(sourceHandle ? { sourceHandle } : {}),
-        ...(targetHandle ? { targetHandle } : {}),
-        ...flagPart,
+        sourceHandleAutoPicked: true,
+        targetHandleAutoPicked: true,
         kind: 'default' as const,
       };
       setConnectorOverride(id, optimistic as Partial<Connector>);
@@ -1058,8 +1042,8 @@ export function DemoView({
       patch: {
         source?: string;
         target?: string;
-        sourceHandle?: string;
-        targetHandle?: string;
+        sourceHandle?: string | null;
+        targetHandle?: string | null;
         sourceHandleAutoPicked?: boolean;
         targetHandleAutoPicked?: boolean;
       },
@@ -1080,7 +1064,26 @@ export function DemoView({
             targetHandleAutoPicked: conn.targetHandleAutoPicked,
           }
         : null;
-      setConnectorOverride(connId, patch as Partial<Connector>);
+      // Optimistic override: convert wire-format `null` (clear-on-disk
+      // signal, US-025) to `undefined` so the merged Connector type stays
+      // valid — the visual effect is the same (the field is gone).
+      const optimistic: Partial<Connector> = {
+        ...(patch.source !== undefined ? { source: patch.source } : {}),
+        ...(patch.target !== undefined ? { target: patch.target } : {}),
+        ...(patch.sourceHandle !== undefined
+          ? { sourceHandle: patch.sourceHandle === null ? undefined : patch.sourceHandle }
+          : {}),
+        ...(patch.targetHandle !== undefined
+          ? { targetHandle: patch.targetHandle === null ? undefined : patch.targetHandle }
+          : {}),
+        ...(patch.sourceHandleAutoPicked !== undefined
+          ? { sourceHandleAutoPicked: patch.sourceHandleAutoPicked }
+          : {}),
+        ...(patch.targetHandleAutoPicked !== undefined
+          ? { targetHandleAutoPicked: patch.targetHandleAutoPicked }
+          : {}),
+      };
+      setConnectorOverride(connId, optimistic);
       setEditError(null);
       markMutation();
       if (prev) {

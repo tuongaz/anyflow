@@ -82,10 +82,16 @@ const ConnectorPatchBodySchema = z
     // identify which side (top/right/bottom/left) of the node the connector
     // attaches to (US-013); the role is locked — `sourceHandle` must be a
     // source-side id, `targetHandle` must be a target-side id (US-022).
-    sourceHandle: SourceHandleIdSchema.optional(),
-    targetHandle: TargetHandleIdSchema.optional(),
-    // US-021: auto-pick flags. The picker writes them on body-drop create /
-    // reconnect; the auto-handle-rerouter clears or flips them on later edits.
+    // Nullable so a body-drop reconnect (US-025) can clear a previously-pinned
+    // handle id by sending `null`; mergeConnectorUpdates deletes the field
+    // when the value is null.
+    sourceHandle: SourceHandleIdSchema.nullable().optional(),
+    targetHandle: TargetHandleIdSchema.nullable().optional(),
+    // US-021: auto-pick flags. Originally written by the picker on body-drop
+    // create / reconnect. US-025 keeps the schema shape but redefines the
+    // semantics: `true`/absent means "render floating" against the line
+    // through the two node centers; `false` means "render pinned to the
+    // stored handle id".
     sourceHandleAutoPicked: z.boolean().optional(),
     targetHandleAutoPicked: z.boolean().optional(),
   })
@@ -255,9 +261,15 @@ const mergeConnectorUpdates = (
     }
   }
   for (const [key, value] of Object.entries(updates)) {
-    if (value !== undefined) {
-      conn[key] = value;
+    if (value === undefined) continue;
+    // US-025: explicit null in the patch body means "clear this field on
+    // disk". Used by reconnect-to-body to drop a previously-pinned handle
+    // id when the endpoint flips back to floating.
+    if (value === null) {
+      delete conn[key];
+      continue;
     }
+    conn[key] = value;
   }
 };
 

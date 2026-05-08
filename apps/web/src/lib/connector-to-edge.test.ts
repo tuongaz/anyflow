@@ -212,6 +212,40 @@ describe('connectorToEdge', () => {
     expect(connectorToEdge(stepC, false).data.path).toBe('step');
   });
 
+  // US-025: edge.data must carry the autoPicked flags so EditableEdge can
+  // pick floating vs pinned at render time. `undefined` (the migration
+  // default for pre-US-021 connectors) means floating — the absence of an
+  // explicit pin.
+  it('forwards source/target HandleAutoPicked through edge.data (US-025)', () => {
+    const floating: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      sourceHandleAutoPicked: true,
+      targetHandleAutoPicked: true,
+    };
+    const pinned: Connector = {
+      id: 'c2',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      sourceHandleAutoPicked: false,
+      targetHandleAutoPicked: false,
+      sourceHandle: 'r',
+      targetHandle: 'l',
+    };
+    const legacy: Connector = { id: 'c3', source: 'a', target: 'b', kind: 'default' };
+    expect(connectorToEdge(floating, false).data.sourceHandleAutoPicked).toBe(true);
+    expect(connectorToEdge(floating, false).data.targetHandleAutoPicked).toBe(true);
+    expect(connectorToEdge(pinned, false).data.sourceHandleAutoPicked).toBe(false);
+    expect(connectorToEdge(pinned, false).data.targetHandleAutoPicked).toBe(false);
+    // Pre-US-021 connector — no autoPicked field at all → undefined → renders
+    // as floating per the migration default.
+    expect(connectorToEdge(legacy, false).data.sourceHandleAutoPicked).toBeUndefined();
+    expect(connectorToEdge(legacy, false).data.targetHandleAutoPicked).toBeUndefined();
+  });
+
   it('paints the arrow marker in the same color as the connector stroke', () => {
     const c: Connector = {
       id: 'c1',

@@ -18,7 +18,17 @@ export interface DerivedEdge {
   // don't churn the connectorToEdge memo. `path` belongs in `data` (not
   // `style`) because it changes the SVG `d` attribute generation, not stroke
   // styling — see EditableEdge for the bezier vs smoothstep branch.
-  data: { kind: Connector['kind']; path?: ConnectorPath };
+  // `sourceHandleAutoPicked` / `targetHandleAutoPicked` (US-025): when
+  // !== false (true OR absent → floating), EditableEdge ignores React
+  // Flow's stored handle coords and recomputes the endpoint as the
+  // perimeter intersection of the line through the two node centers. When
+  // === false (user-pinned), the React-Flow-supplied coords win.
+  data: {
+    kind: Connector['kind'];
+    path?: ConnectorPath;
+    sourceHandleAutoPicked?: boolean;
+    targetHandleAutoPicked?: boolean;
+  };
   style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number; opacity?: number };
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
@@ -125,7 +135,12 @@ export const connectorToEdge = (
     type: 'editableEdge',
     label: connector.label,
     animated: isAdjacentToRunning,
-    data: { kind: connector.kind, path: connector.path },
+    data: {
+      kind: connector.kind,
+      path: connector.path,
+      sourceHandleAutoPicked: connector.sourceHandleAutoPicked,
+      targetHandleAutoPicked: connector.targetHandleAutoPicked,
+    },
     style,
     markerStart,
     markerEnd,

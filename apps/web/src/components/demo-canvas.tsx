@@ -20,9 +20,7 @@ import {
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
-import { useAutoHandleRerouter } from '@/lib/auto-handle-rerouter';
 import { connectorToEdge } from '@/lib/connector-to-edge';
-import { nodeCenter, pickFacingHandle } from '@/lib/pick-facing-handle';
 import { cn } from '@/lib/utils';
 import {
   Background,
@@ -98,23 +96,14 @@ export interface DemoCanvasProps {
    * Commit a new connector from a handle-drag gesture. Wiring this enables
    * `nodesConnectable` on the React Flow instance; absent → handles are
    * read-only. Self-connections (source === target) are rejected here so the
-   * parent never sees them. `sourceHandle`/`targetHandle` carry the
-   * handle ids React Flow attached the drag to (US-013).
+   * parent never sees them.
    *
-   * `*HandleAutoPicked` (US-021) flags whether the handle was chosen by the
-   * facing-handle picker (true) or pinned by an explicit user handle drop
-   * (false). Auto-picked endpoints get re-routed when a node moves later.
+   * US-025: new connectors are always floating — the parent persists them
+   * with `sourceHandleAutoPicked: true` / `targetHandleAutoPicked: true` and
+   * no handle ids. A user pins an endpoint by dragging it onto a specific
+   * handle dot via reconnect.
    */
-  onCreateConnector?: (
-    source: string,
-    target: string,
-    handles?: {
-      sourceHandle?: string;
-      targetHandle?: string;
-      sourceHandleAutoPicked?: boolean;
-      targetHandleAutoPicked?: boolean;
-    },
-  ) => void;
+  onCreateConnector?: (source: string, target: string) => void;
   /**
    * Reattach an existing connector's source or target to a different node, or
    * to a different handle on the same node. Wired enables React Flow's edge
@@ -122,21 +111,22 @@ export interface DemoCanvasProps {
    * with the new source/target/handle ids. The patch only includes the fields
    * that changed; same-node handle changes surface as `sourceHandle`-only or
    * `targetHandle`-only patches (US-002).
+   *
+   * US-025: a precise-handle-dot drop pins the moved endpoint
+   * (`sourceHandle`/`targetHandle` set, `*HandleAutoPicked: false`). A
+   * body-drop reconnect keeps the endpoint floating
+   * (`sourceHandle`/`targetHandle: null` to clear any prior pin,
+   * `*HandleAutoPicked: true`). `null` is the wire-format signal to clear
+   * the field on disk.
    */
   onReconnectConnector?: (
     connectorId: string,
     patch: {
       source?: string;
       target?: string;
-      sourceHandle?: string;
-      targetHandle?: string;
-      /**
-       * US-021: when present, marks whether the source handle is auto-picked
-       * (rerouter-managed) or user-pinned. Set to false on precise handle
-       * drops, true on body-drop fallbacks where the picker chose the side.
-       */
+      sourceHandle?: string | null;
+      targetHandle?: string | null;
       sourceHandleAutoPicked?: boolean;
-      /** US-021: same as sourceHandleAutoPicked but for the target endpoint. */
       targetHandleAutoPicked?: boolean;
     },
   ) => void;
@@ -230,28 +220,6 @@ const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
     if (nodeEl) return nodeEl;
   }
   return null;
-};
-
-/**
- * Pick the closest TARGET handle ('t' top, 'l' left) on a node based on
- * cursor proximity. Distances are computed from the cursor to the centers of
- * the node's top edge and left edge — those are where the 't' and 'l'
- * handles render in shape/play/state node components. Used by the body-drop
- * fallback for new connections (US-014) so a release anywhere on the node
- * still produces a sensibly-anchored connector.
- */
-const closestTargetHandleId = (
-  rect: { left: number; top: number; width: number; height: number },
-  clientX: number,
-  clientY: number,
-): 't' | 'l' => {
-  const topCenterX = rect.left + rect.width / 2;
-  const topCenterY = rect.top;
-  const leftCenterX = rect.left;
-  const leftCenterY = rect.top + rect.height / 2;
-  const distTop = Math.hypot(clientX - topCenterX, clientY - topCenterY);
-  const distLeft = Math.hypot(clientX - leftCenterX, clientY - leftCenterY);
-  return distTop <= distLeft ? 't' : 'l';
 };
 
 /**
@@ -574,21 +542,6 @@ export function DemoCanvas({
     [selectedConnectorIds],
   );
 
-  // Merged nodes/connectors for the auto-handle-rerouter (US-021). Overrides
-  // are merged here so the rerouter sees the same positions / handle ids the
-  // user is currently looking at — including in-flight optimistic edits.
-  // Patches dispatch through onReconnectConnector via rAF so a multi-drag
-  // fires once per frame at most.
-  const mergedNodesForRerouter = useMemo<DemoNode[]>(
-    () => nodes.map((n) => mergeNodeOverride(n, nodeOverrides?.[n.id])),
-    [nodes, nodeOverrides],
-  );
-  const mergedConnectorsForRerouter = useMemo<Connector[]>(
-    () => connectors.map((c) => mergeConnectorOverride(c, connectorOverrides?.[c.id])),
-    [connectors, connectorOverrides],
-  );
-  useAutoHandleRerouter(mergedNodesForRerouter, mergedConnectorsForRerouter, onReconnectConnector);
-
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
       const node: Node = {
@@ -819,19 +772,6 @@ export function DemoCanvas({
     rfEdgesRef.current = rfEdges;
   }, [rfEdges]);
 
-  // Stable lookup of the latest nodes prop for the connect/reconnect handlers.
-  // pickFacingHandle needs centroids of the source and target nodes; without
-  // a ref, the handlers' useCallback closure would capture a stale `nodes`
-  // array and the picker would compute against pre-drag positions.
-  const nodesRef = useRef<DemoNode[]>(nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-  const findNode = useCallback((id: string | null | undefined): DemoNode | null => {
-    if (!id) return null;
-    return nodesRef.current.find((n) => n.id === id) ?? null;
-  }, []);
-
   // `connectSucceededRef` lets onConnectEnd skip the body-drop fallback when
   // onConnect already fired (precise handle drop). Same pattern as
   // `reconnectSucceededRef` below.
@@ -844,76 +784,41 @@ export function DemoCanvas({
   const connectStartRef = useRef<{ nodeId: string | null; handleType: HandleType | null } | null>(
     null,
   );
+  // US-025: every new connector via onConnect is floating — drag-direction
+  // determines source/target, but neither endpoint is pinned to a handle.
+  // The user can later pin either side by reconnecting the endpoint onto a
+  // specific handle dot.
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!onCreateConnector) return;
-      const { source, target, sourceHandle, targetHandle } = conn;
+      const { source, target } = conn;
       if (!source || !target) return;
       // Reject same-node connections client-side — the schema would also
       // accept them but they're never useful (a node referencing itself).
       if (source === target) return;
       connectSucceededRef.current = true;
-      // US-023: normalize against the drag-start node id captured in
-      // onConnectStart. When RF's `source` is the drag-start, no swap; the
-      // user's explicit handle clicks pin both endpoints. When RF's `source`
-      // is the drag-END (i.e. the user dragged from a target-type handle to a
-      // source-type handle, RF swapped), we re-swap so source=drag-start and
-      // target=drag-end — and re-pick BOTH handles via the facing-handle
-      // helper (the user's clicks were on roles that no longer match after
-      // the swap, so they can't be reused as pinned ids without violating
-      // the role-restricted handle schema).
+      // US-023: drag-direction wins. When RF normalized source ↔ target
+      // (user dragged from a target-type handle to a source-type handle),
+      // re-swap so source = drag-start and target = drag-end. With floating
+      // (US-025), no handle ids are persisted so the swap is purely about
+      // which node owns the source/target slot.
       const dragStartNodeId = connectStartRef.current?.nodeId ?? null;
-      if (dragStartNodeId && dragStartNodeId === target && dragStartNodeId !== source) {
-        const sourceNode = findNode(target);
-        const targetNode = findNode(source);
-        const pickedSource =
-          sourceNode && targetNode
-            ? pickFacingHandle(
-                nodeCenter(sourceNode),
-                nodeCenter(targetNode),
-                'source',
-                sourceNode.type,
-              )
-            : undefined;
-        const pickedTarget =
-          sourceNode && targetNode
-            ? pickFacingHandle(
-                nodeCenter(targetNode),
-                nodeCenter(sourceNode),
-                'target',
-                targetNode.type,
-              )
-            : undefined;
-        onCreateConnector(target, source, {
-          sourceHandle: pickedSource,
-          targetHandle: pickedTarget,
-          sourceHandleAutoPicked: true,
-          targetHandleAutoPicked: true,
-        });
-        return;
-      }
-      // Precise handle-to-handle drop in the canonical drag direction:
-      // both endpoints are user-pinned. sourceHandleAutoPicked /
-      // targetHandleAutoPicked default to false so the auto-rerouter never
-      // overrides what the user explicitly clicked (US-021).
-      onCreateConnector(source, target, {
-        sourceHandle: sourceHandle ?? undefined,
-        targetHandle: targetHandle ?? undefined,
-        sourceHandleAutoPicked: false,
-        targetHandleAutoPicked: false,
-      });
+      const reversed =
+        dragStartNodeId !== null && dragStartNodeId === target && dragStartNodeId !== source;
+      const persistSource = reversed ? target : source;
+      const persistTarget = reversed ? source : target;
+      onCreateConnector(persistSource, persistTarget);
     },
-    [onCreateConnector, findNode],
+    [onCreateConnector],
   );
 
   // Body-drop fallback for NEW connections (US-014). When the user drags from
   // a source handle and releases over a node's BODY (not precisely on one of
   // its four handles), React Flow's connectionRadius isn't enough to snap and
   // onConnect doesn't fire. We catch that here, hit-test elementsFromPoint
-  // for the topmost `.react-flow__node`, pick the closest TARGET handle on
-  // that node based on cursor proximity to the top/left edges, and call
-  // onCreateConnector with both handles set so the persisted shape matches a
-  // precise-handle drop. Mirrors `onReconnectEndCb` for existing edges.
+  // for the topmost `.react-flow__node`, and call onCreateConnector with
+  // drag-from as source and the body-drop node as target. US-025: no handle
+  // ids — the new connector is floating.
   const onConnectEndCb = useCallback(
     (e: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
       setConnecting(false);
@@ -939,64 +844,12 @@ export function DemoCanvas({
       if (!targetEl) return;
       const targetNodeId = targetEl.getAttribute('data-id');
       if (!targetNodeId || targetNodeId === fromNodeId) return;
-      // US-023: drag-from is always the connector source, drag-to is the
-      // target — including when the user drags from a target-type handle and
-      // releases on another node's body. In that case the start-handle id is
-      // role-incompatible with the new direction, so we pick BOTH handles via
-      // the facing-handle helper. For the canonical source-type start, we
-      // preserve the user's explicit start handle as a pinned sourceHandle.
-      const sourceNode = findNode(fromNodeId);
-      const targetNode = findNode(targetNodeId);
-      // Pick the target handle via the facing-handle picker (US-021): the
-      // side of the target node that points back at the source node, falling
-      // back to the closest allowed target side when geometry conflicts with
-      // role. The previous closestTargetHandleId only considered top/left
-      // proximity to the cursor; the new picker uses centroid geometry which
-      // travels well when the user drops anywhere on the body.
-      let targetHandle: string;
-      if (sourceNode && targetNode) {
-        targetHandle = pickFacingHandle(
-          nodeCenter(targetNode),
-          nodeCenter(sourceNode),
-          'target',
-          targetNode.type,
-        );
-      } else {
-        // Defensive: if the node lookups fail (shouldn't happen — the DOM hit-
-        // test already proved both nodes exist), fall back to the cursor-
-        // proximity picker so we still produce a valid handle id.
-        const rect = targetEl.getBoundingClientRect();
-        targetHandle = closestTargetHandleId(rect, cursor.clientX, cursor.clientY);
-      }
-      // US-023 reverse-handle case: drag started from a target-type handle.
-      // The start handle id is invalid as a sourceHandle (target-only ids are
-      // 't'/'l'), so we pick a fresh source handle facing the drop node and
-      // mark it auto. Canonical case: keep the user's explicit start handle.
-      const reverseDrag = fromHandle.type === 'target';
-      const sourceHandle = reverseDrag
-        ? sourceNode && targetNode
-          ? pickFacingHandle(
-              nodeCenter(sourceNode),
-              nodeCenter(targetNode),
-              'source',
-              sourceNode.type,
-            )
-          : undefined
-        : typeof fromHandle.id === 'string'
-          ? fromHandle.id
-          : undefined;
-      onCreateConnector(fromNodeId, targetNodeId, {
-        sourceHandle,
-        targetHandle,
-        // Canonical drag (source-type start handle): the user's explicit
-        // start handle pins the source endpoint. Reverse drag (target-type
-        // start): we picked the source handle ourselves, so it's auto. The
-        // target handle is always picked by the facing helper, so always auto.
-        sourceHandleAutoPicked: reverseDrag,
-        targetHandleAutoPicked: true,
-      });
+      // US-023 + US-025: drag-from is always source, drop-node is always
+      // target — including when the user drags from a target-type handle.
+      // No handle ids are persisted; the resulting connector is floating.
+      onCreateConnector(fromNodeId, targetNodeId);
     },
-    [onCreateConnector, findNode],
+    [onCreateConnector],
   );
 
   // Drag an edge endpoint onto another handle to reattach it. React Flow
@@ -1016,8 +869,8 @@ export function DemoCanvas({
       const patch: {
         source?: string;
         target?: string;
-        sourceHandle?: string;
-        targetHandle?: string;
+        sourceHandle?: string | null;
+        targetHandle?: string | null;
         sourceHandleAutoPicked?: boolean;
         targetHandleAutoPicked?: boolean;
       } = {};
@@ -1040,10 +893,10 @@ export function DemoCanvas({
       ) {
         return;
       }
-      // US-021: a precise handle drop on either endpoint means the user
-      // pinned that side — clear the auto-picked flag so the rerouter never
-      // overrides it on subsequent moves. The unmoved side keeps its
-      // existing flag (no key set in patch → server leaves it alone).
+      // US-025: a precise handle drop pins the moved endpoint. Setting
+      // *HandleAutoPicked: false flips the edge from floating to pinned at
+      // render time. The unmoved side keeps its existing flag (no key set
+      // in patch → server leaves it alone).
       if (patch.source !== undefined || patch.sourceHandle !== undefined) {
         patch.sourceHandleAutoPicked = false;
       }
@@ -1107,48 +960,26 @@ export function DemoCanvas({
       if (movingSide === 'source') {
         if (droppedNodeId === oldEdge.source) return;
         if (droppedNodeId === oldEdge.target) return;
-        // US-021: pick the source-facing handle on the dropped node so the
-        // PATCH carries a valid sourceHandle (the previous code wrote only
-        // { source } and left the old handle id stranded on the new node,
-        // which had no handle by that id — a bug audited under US-022).
-        const droppedNode = findNode(droppedNodeId);
-        const otherEndNode = findNode(oldEdge.target);
-        const sourceHandle =
-          droppedNode && otherEndNode
-            ? pickFacingHandle(
-                nodeCenter(droppedNode),
-                nodeCenter(otherEndNode),
-                'source',
-                droppedNode.type,
-              )
-            : undefined;
+        // US-025: body-drop reconnect → floating endpoint. Clear any
+        // previously-pinned sourceHandle by sending null (the API treats
+        // null as "delete this field on disk") and set the autoPicked
+        // flag so the renderer floats this end.
         onReconnectConnector(oldEdge.id, {
           source: droppedNodeId,
-          ...(sourceHandle ? { sourceHandle } : {}),
+          sourceHandle: null,
           sourceHandleAutoPicked: true,
         });
       } else {
         if (droppedNodeId === oldEdge.target) return;
         if (droppedNodeId === oldEdge.source) return;
-        const droppedNode = findNode(droppedNodeId);
-        const otherEndNode = findNode(oldEdge.source);
-        const targetHandle =
-          droppedNode && otherEndNode
-            ? pickFacingHandle(
-                nodeCenter(droppedNode),
-                nodeCenter(otherEndNode),
-                'target',
-                droppedNode.type,
-              )
-            : undefined;
         onReconnectConnector(oldEdge.id, {
           target: droppedNodeId,
-          ...(targetHandle ? { targetHandle } : {}),
+          targetHandle: null,
           targetHandleAutoPicked: true,
         });
       }
     },
-    [onReconnectConnector, findNode],
+    [onReconnectConnector],
   );
 
   const ghostRect = useMemo(() => {

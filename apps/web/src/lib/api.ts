@@ -276,13 +276,21 @@ export interface UpdateConnectorBody {
   source?: string;
   /** Reconnect: retarget this edge to a different target node. */
   target?: string;
-  /** Reconnect: pin the source endpoint to a specific source handle. */
-  sourceHandle?: string;
-  /** Reconnect: pin the target endpoint to a specific target handle. */
-  targetHandle?: string;
-  /** US-021: mark the source handle as auto-picked (rerouter-managed) or pinned. */
+  /**
+   * Reconnect: pin the source endpoint to a specific source handle. `null`
+   * (US-025) clears the field on disk — used by reconnect-to-body to drop a
+   * previously-pinned handle id when the endpoint flips back to floating.
+   */
+  sourceHandle?: string | null;
+  /** Reconnect: pin the target endpoint to a specific target handle. `null` clears. */
+  targetHandle?: string | null;
+  /**
+   * US-025: `true`/absent means "render floating" against the line through
+   * the two node centers; `false` means "render pinned to the stored handle
+   * id". (Pre-US-025: `true` meant "rerouter-managed".)
+   */
   sourceHandleAutoPicked?: boolean;
-  /** US-021: mark the target handle as auto-picked (rerouter-managed) or pinned. */
+  /** US-025: same as sourceHandleAutoPicked but for the target endpoint. */
   targetHandleAutoPicked?: boolean;
 }
 
