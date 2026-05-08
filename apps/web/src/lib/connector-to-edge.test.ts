@@ -197,4 +197,14 @@ describe('connectorToEdge', () => {
     expect(edge.style.strokeWidth).toBe(2);
     expect(edge.style.opacity).toBeUndefined();
   });
+
+  it('pins zIndex >= 1 so connectors paint above any node (US-007)', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const idle = connectorToEdge(c, false, false);
+    const running = connectorToEdge(c, true, false);
+    const selected = connectorToEdge(c, false, true);
+    expect(idle.zIndex).toBeGreaterThanOrEqual(1);
+    expect(running.zIndex).toBe(idle.zIndex);
+    expect(selected.zIndex).toBe(idle.zIndex);
+  });
 });

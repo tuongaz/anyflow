@@ -698,6 +698,11 @@ export function DemoCanvas({
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
         connectionRadius={32}
+        // Don't elevate selected nodes above edges (US-007). React Flow's
+        // default bumps a selected node to z-index 1000+, which would push it
+        // above any connector that crosses it; selection is already conveyed
+        // by the outline (US-005), so we don't need the elevation.
+        elevateNodesOnSelect={false}
         elementsSelectable={!drawShape}
         panOnDrag={!drawShape}
         zoomOnDoubleClick={false}

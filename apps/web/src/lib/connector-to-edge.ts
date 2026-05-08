@@ -25,6 +25,9 @@ export interface DerivedEdge {
   // hit-testing. Keeps the visible stroke width unchanged while giving
   // users a comfortable buffer to grab the edge.
   interactionWidth?: number;
+  // Per-edge stacking index. Set to EDGE_Z_INDEX so connectors always paint
+  // above any node (nodes default to zIndex 0 in React Flow). See US-007.
+  zIndex: number;
 }
 
 const EDGE_INTERACTION_WIDTH = 24;
@@ -62,6 +65,15 @@ export const styleForKind = (kind: Connector['kind']): { strokeDasharray?: strin
 // opacity to 1 so any future muted-when-idle treatment doesn't dim the
 // selected edge.
 const SELECTED_STROKE_WIDTH = 3;
+
+// Per-edge zIndex. React Flow renders nodes at zIndex 0 by default and per-node
+// stacking is via array order; without this, nodes paint above edges and
+// 'Send to back' (US-006) leaves the back node occluding any connector that
+// crosses it (US-007). Pinning every edge above the node z-stack keeps
+// connectors visible regardless of where their adjacent nodes sit in the array.
+// Pair with `elevateNodesOnSelect={false}` on <ReactFlow/> (demo-canvas.tsx)
+// so a selected node's +1000 elevation can't override this.
+const EDGE_Z_INDEX = 1;
 
 export const connectorToEdge = (
   connector: Connector,
@@ -108,5 +120,6 @@ export const connectorToEdge = (
     markerStart,
     markerEnd,
     interactionWidth: EDGE_INTERACTION_WIDTH,
+    zIndex: EDGE_Z_INDEX,
   };
 };
