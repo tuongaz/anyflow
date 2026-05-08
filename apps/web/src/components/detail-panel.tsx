@@ -11,6 +11,7 @@ import type {
   ColorToken,
   Connector,
   ConnectorDirection,
+  ConnectorPath,
   ConnectorStyle,
   DemoNode,
 } from '@/lib/api';
@@ -45,6 +46,7 @@ export interface ConnectorStylePatch {
   style?: ConnectorStyle;
   direction?: ConnectorDirection;
   borderSize?: number;
+  path?: ConnectorPath;
 }
 
 export interface DetailPanelProps {
@@ -426,6 +428,7 @@ function ConnectorStyleTab({
   const colorActive = (connector.color ?? 'default') as ColorToken;
   const styleActive = (connector.style ?? 'auto') as ConnectorStyle | 'auto';
   const directionActive = (connector.direction ?? 'forward') as ConnectorDirection;
+  const pathActive = (connector.path ?? 'curve') as ConnectorPath;
   return (
     <div className="flex flex-col gap-4">
       <SwatchPicker
@@ -463,6 +466,24 @@ function ConnectorStyleTab({
           <option value="solid">Solid</option>
           <option value="dashed">Dashed</option>
           <option value="dotted">Dotted</option>
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] font-medium tracking-wide text-muted-foreground">path</span>
+        <select
+          data-testid="style-tab-edge-path"
+          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={pathActive}
+          onChange={(e) => {
+            // Always write the explicit value so the on-disk path field
+            // matches the user's selection. Sending undefined would defeat
+            // round-trip persistence (server merge skips undefined keys).
+            onApply({ path: e.target.value as ConnectorPath });
+          }}
+        >
+          <option value="curve">Curve</option>
+          <option value="step">Zigzag</option>
         </select>
       </div>
 

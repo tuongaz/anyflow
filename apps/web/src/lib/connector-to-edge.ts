@@ -1,4 +1,4 @@
-import type { Connector, ConnectorStyle } from '@/lib/api';
+import type { Connector, ConnectorPath, ConnectorStyle } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { type EdgeMarker, MarkerType } from '@xyflow/react';
 
@@ -15,8 +15,10 @@ export interface DerivedEdge {
   animated: boolean;
   // `kind` drives downstream visual filtering; per-edge runtime callbacks
   // (e.g. onLabelChange) are injected by DemoCanvas at render time so they
-  // don't churn the connectorToEdge memo.
-  data: { kind: Connector['kind'] };
+  // don't churn the connectorToEdge memo. `path` belongs in `data` (not
+  // `style`) because it changes the SVG `d` attribute generation, not stroke
+  // styling — see EditableEdge for the bezier vs smoothstep branch.
+  data: { kind: Connector['kind']; path?: ConnectorPath };
   style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number; opacity?: number };
   markerStart?: EdgeMarker;
   markerEnd?: EdgeMarker;
@@ -115,7 +117,7 @@ export const connectorToEdge = (
     type: 'editableEdge',
     label: connector.label,
     animated: isAdjacentToRunning,
-    data: { kind: connector.kind },
+    data: { kind: connector.kind, path: connector.path },
     style,
     markerStart,
     markerEnd,

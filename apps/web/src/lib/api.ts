@@ -77,6 +77,8 @@ export type DemoNode =
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
 export type ConnectorDirection = 'forward' | 'backward' | 'both';
+/** Path geometry — 'curve' (default bezier) vs 'step' (smoothstep / zigzag). */
+export type ConnectorPath = 'curve' | 'step';
 
 export interface ConnectorBase {
   id: string;
@@ -91,6 +93,8 @@ export interface ConnectorBase {
   color?: ColorToken;
   direction?: ConnectorDirection;
   borderSize?: number;
+  /** Path geometry — orthogonal to `style` (which is dash pattern). */
+  path?: ConnectorPath;
 }
 
 export interface HttpConnector extends ConnectorBase {
@@ -253,6 +257,7 @@ export interface UpdateConnectorBody {
   color?: ColorToken;
   direction?: ConnectorDirection;
   borderSize?: number;
+  path?: ConnectorPath;
   kind?: Connector['kind'];
   eventName?: string;
   queueName?: string;

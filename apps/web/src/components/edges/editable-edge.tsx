@@ -1,4 +1,5 @@
 import { InlineEdit } from '@/components/inline-edit';
+import type { ConnectorPath } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
   BaseEdge,
@@ -6,12 +7,19 @@ import {
   EdgeLabelRenderer,
   type EdgeProps,
   getBezierPath,
+  getSmoothStepPath,
 } from '@xyflow/react';
 import { useState } from 'react';
+
+// Smoothstep corner rounding — matches typical "zigzag" diagrams without
+// looking jagged. (US-017)
+const SMOOTHSTEP_BORDER_RADIUS = 8;
 
 export type EditableEdgeData = {
   /** Persist a new label (PATCH /connectors/:id { label }). */
   onLabelChange?: (id: string, label: string) => void;
+  /** Path geometry — 'curve' (default bezier) or 'step' (smoothstep). */
+  path?: ConnectorPath;
 } & Record<string, unknown>;
 
 export type EditableEdgeType = Edge<EditableEdgeData, 'editableEdge'>;
@@ -42,14 +50,28 @@ export function EditableEdge({
   data,
 }: EdgeProps<EditableEdgeType>) {
   const [editing, setEditing] = useState(false);
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  // 'step' renders as a smoothstep (right-angle / zigzag); anything else falls
+  // back to today's smooth bezier. Both branches return the same tuple shape so
+  // the EdgeLabelRenderer call site is unchanged.
+  const [edgePath, labelX, labelY] =
+    data?.path === 'step'
+      ? getSmoothStepPath({
+          sourceX,
+          sourceY,
+          sourcePosition,
+          targetX,
+          targetY,
+          targetPosition,
+          borderRadius: SMOOTHSTEP_BORDER_RADIUS,
+        })
+      : getBezierPath({
+          sourceX,
+          sourceY,
+          sourcePosition,
+          targetX,
+          targetY,
+          targetPosition,
+        });
   const onLabelChange = data?.onLabelChange;
   const labelText = typeof label === 'string' ? label : '';
   const editable = !!onLabelChange;

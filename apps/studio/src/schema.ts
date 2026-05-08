@@ -127,6 +127,10 @@ const NodeSchema = z.discriminatedUnion('type', [PlayNodeSchema, StateNodeSchema
 // for inter-node connections.
 const ConnectorStyleSchema = z.enum(['solid', 'dashed', 'dotted']);
 const ConnectorDirectionSchema = z.enum(['forward', 'backward', 'both']);
+// Path geometry — orthogonal to `style` (which means the dash pattern). Absent
+// → renders as today's smooth bezier curve. 'step' renders as a smoothstep
+// (right-angle / zigzag) path. (US-017)
+const ConnectorPathSchema = z.enum(['curve', 'step']);
 
 // Visual fields shared by every connector kind. All optional — existing
 // demo files predate them and must continue to parse. `direction` defaults
@@ -136,6 +140,7 @@ const ConnectorVisualBaseShape = {
   color: ColorTokenSchema.optional(),
   direction: ConnectorDirectionSchema.optional(),
   borderSize: z.number().positive().optional(),
+  path: ConnectorPathSchema.optional(),
 };
 
 const ConnectorBaseShape = {
@@ -222,6 +227,7 @@ export type QueueConnector = z.infer<typeof QueueConnectorSchema>;
 export type DefaultConnector = z.infer<typeof DefaultConnectorSchema>;
 export type ConnectorStyle = z.infer<typeof ConnectorStyleSchema>;
 export type ConnectorDirection = z.infer<typeof ConnectorDirectionSchema>;
+export type ConnectorPath = z.infer<typeof ConnectorPathSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;

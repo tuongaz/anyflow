@@ -198,6 +198,19 @@ describe('connectorToEdge', () => {
     expect(edge.style.opacity).toBeUndefined();
   });
 
+  it('forwards connector.path through edge.data so EditableEdge can branch geometry (US-017)', () => {
+    const curveC: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const stepC: Connector = {
+      id: 'c2',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      path: 'step',
+    };
+    expect(connectorToEdge(curveC, false).data.path).toBeUndefined();
+    expect(connectorToEdge(stepC, false).data.path).toBe('step');
+  });
+
   it('pins zIndex >= 1 so connectors paint above any node (US-007)', () => {
     const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
     const idle = connectorToEdge(c, false, false);

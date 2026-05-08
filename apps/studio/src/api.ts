@@ -62,6 +62,7 @@ const ConnectorPatchBodySchema = z
     color: ColorTokenSchema.optional(),
     direction: z.enum(['forward', 'backward', 'both']).optional(),
     borderSize: z.number().positive().optional(),
+    path: z.enum(['curve', 'step']).optional(),
     kind: ConnectorKindSchema.optional(),
     eventName: z.string().optional(),
     queueName: z.string().optional(),
