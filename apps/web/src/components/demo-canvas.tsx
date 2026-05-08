@@ -745,7 +745,7 @@ export function DemoCanvas({
         <Background gap={12} size={0.6} />
         <Controls showInteractive={false} />
         {onCreateShapeNode ? (
-          <Panel position="bottom-center">
+          <Panel position="top-left">
             <CanvasToolbar activeShape={drawShape} onSelectShape={setDrawShape} />
           </Panel>
         ) : null}

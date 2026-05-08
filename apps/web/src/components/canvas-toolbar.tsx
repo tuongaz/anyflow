@@ -25,7 +25,7 @@ export function CanvasToolbar({ activeShape, onSelectShape }: CanvasToolbarProps
   return (
     <div
       data-testid="canvas-toolbar"
-      className="pointer-events-auto flex items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
+      className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
     >
       {SHAPES.map(({ shape, label, Icon }) => {
         const active = activeShape === shape;
