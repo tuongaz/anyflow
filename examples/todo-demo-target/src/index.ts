@@ -20,7 +20,7 @@ startWorker(bus);
 
 const app = createServer({ store, bus });
 
-const server = Bun.serve({ port: PORT, hostname: 'localhost', fetch: app.fetch });
+const server = Bun.serve({ port: PORT, hostname: '0.0.0.0', fetch: app.fetch });
 
 console.log(`todo-demo-target listening on http://${server.hostname}:${server.port}`);
 console.log('Routes:');
