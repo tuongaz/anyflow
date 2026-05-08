@@ -46,7 +46,7 @@ const NodePatchBodySchema = z
     fontSize: z.number().positive().optional(),
     width: z.number().positive().optional(),
     height: z.number().positive().optional(),
-    shape: z.enum(['rectangle', 'ellipse', 'sticky']).optional(),
+    shape: z.enum(['rectangle', 'ellipse', 'sticky', 'text']).optional(),
   })
   .strict();
 type NodePatchBody = z.infer<typeof NodePatchBodySchema>;

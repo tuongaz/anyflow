@@ -58,7 +58,7 @@ export interface NodeData extends NodeVisual {
   handlerModule?: string;
 }
 
-export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky';
+export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky' | 'text';
 
 export interface ShapeNodeData extends NodeVisual {
   shape: ShapeKind;

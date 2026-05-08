@@ -97,7 +97,7 @@ const StateNodeSchema = z.object({
 // Decorative annotation node — rectangle / ellipse / sticky. No semantic
 // payload (no kind/stateSource/playAction); reuses NodeVisualBaseShape so
 // users can theme it the same way as functional nodes.
-const ShapeKindSchema = z.enum(['rectangle', 'ellipse', 'sticky']);
+const ShapeKindSchema = z.enum(['rectangle', 'ellipse', 'sticky', 'text']);
 
 const ShapeNodeDataSchema = z.object({
   shape: ShapeKindSchema,

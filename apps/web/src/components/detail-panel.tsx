@@ -252,40 +252,48 @@ function NodeStyleTab({
   const borderActive = (node.data.borderColor ?? 'default') as ColorToken;
   const backgroundActive = (node.data.backgroundColor ?? 'default') as ColorToken;
   const borderStyleActive = (node.data.borderStyle ?? 'solid') as 'solid' | 'dashed' | 'dotted';
+  // Text shapes (US-010) render chromeless — border + background controls are
+  // hidden because the renderer ignores those tokens. Font size is the only
+  // applicable visual control.
+  const isTextShape = node.type === 'shapeNode' && node.data.shape === 'text';
   return (
     <div className="flex flex-col gap-4">
-      {/* Border row (US-003): color + style + size on one line. flex-wrap +
-          min-w on the style select means at panel widths under ~280px the
-          select drops to its own line — sufficient for the rare narrow case. */}
-      <div className="flex flex-row flex-wrap items-end gap-3">
-        <SwatchPicker
-          label="border"
-          active={borderActive}
-          onSelect={(token) => onApply({ borderColor: token })}
-          triggerTestId="style-tab-border-color-trigger"
-          tokenTestIdPrefix="style-tab-border-color"
-          previewKind="border"
-        />
-        <BorderStyleSelect
-          active={borderStyleActive}
-          onSelect={(s) => onApply({ borderStyle: s })}
-          className="min-w-[160px] flex-1"
-        />
-        <SizeInput
-          label="border size"
-          testId="style-tab-border-size"
-          value={node.data.borderSize}
-          onChange={(n) => onApply({ borderSize: n })}
-        />
-      </div>
-      <SwatchPicker
-        label="background"
-        active={backgroundActive}
-        onSelect={(token) => onApply({ backgroundColor: token })}
-        triggerTestId="style-tab-background-color-trigger"
-        tokenTestIdPrefix="style-tab-background-color"
-        previewKind="background"
-      />
+      {isTextShape ? null : (
+        <>
+          {/* Border row (US-003): color + style + size on one line. flex-wrap +
+              min-w on the style select means at panel widths under ~280px the
+              select drops to its own line — sufficient for the rare narrow case. */}
+          <div className="flex flex-row flex-wrap items-end gap-3">
+            <SwatchPicker
+              label="border"
+              active={borderActive}
+              onSelect={(token) => onApply({ borderColor: token })}
+              triggerTestId="style-tab-border-color-trigger"
+              tokenTestIdPrefix="style-tab-border-color"
+              previewKind="border"
+            />
+            <BorderStyleSelect
+              active={borderStyleActive}
+              onSelect={(s) => onApply({ borderStyle: s })}
+              className="min-w-[160px] flex-1"
+            />
+            <SizeInput
+              label="border size"
+              testId="style-tab-border-size"
+              value={node.data.borderSize}
+              onChange={(n) => onApply({ borderSize: n })}
+            />
+          </div>
+          <SwatchPicker
+            label="background"
+            active={backgroundActive}
+            onSelect={(token) => onApply({ backgroundColor: token })}
+            triggerTestId="style-tab-background-color-trigger"
+            tokenTestIdPrefix="style-tab-background-color"
+            previewKind="background"
+          />
+        </>
+      )}
       <SizeInput
         label="font size"
         testId="style-tab-font-size"

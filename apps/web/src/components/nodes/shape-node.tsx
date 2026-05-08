@@ -18,12 +18,17 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
   rectangle: { width: 200, height: 120 },
   ellipse: { width: 200, height: 120 },
   sticky: { width: 180, height: 180 },
+  text: { width: 160, height: 40 },
 };
 
+// `text` deliberately omits border + background so the shape reads as a free
+// floating annotation (no chrome). Selection still draws an outline (handled
+// below by the `selected` branch on `colorStyle`).
 const SHAPE_CLASS: Record<ShapeKind, string> = {
   rectangle: 'rounded-lg border-[3px] bg-transparent',
   ellipse: 'rounded-full border-[3px] bg-transparent',
   sticky: 'rounded-md border-[3px] shadow-md -rotate-1',
+  text: 'bg-transparent',
 };
 
 const HANDLE_CLASS =
@@ -40,10 +45,17 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   // we still need an explicit size so the wrapper auto-sizes to it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
 
+  // Text shapes are chromeless: no border, no background, no border-style
+  // outline on selection. Selection still needs a visible affordance, so we
+  // draw a thin --primary outline regardless of the user's borderColor token.
+  const isText = shape === 'text';
   // borderColor: always pick from token (defaults to theme border).
   // backgroundColor: sticky defaults to amber; rect/ellipse stay transparent
-  // (border-only) unless the author sets a background token explicitly.
-  const effectiveBg = data.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined);
+  // (border-only) unless the author sets a background token explicitly. text
+  // has no background token at all.
+  const effectiveBg = isText
+    ? undefined
+    : (data.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined));
   // Selection draws a 2px outline flush with the existing border (no outer
   // ring). Outline is used (not a wider border) so layout never shifts —
   // outlines don't take part in box-sizing. The outline style mirrors the
@@ -55,17 +67,23 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
   const effectiveBorderStyle = data.borderStyle ?? 'solid';
   const colorStyle: CSSProperties = {
-    borderColor: resolvedBorderColor,
-    backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
-    borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
-    borderStyle: data.borderStyle,
+    ...(isText
+      ? {}
+      : {
+          borderColor: resolvedBorderColor,
+          backgroundColor: effectiveBg
+            ? colorTokenStyle(effectiveBg, 'node').backgroundColor
+            : undefined,
+          borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
+          borderStyle: data.borderStyle,
+        }),
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
     ...(selected
       ? {
           outlineWidth: '2px',
-          outlineStyle: effectiveBorderStyle,
-          outlineColor: selectionOutlineColor,
-          outlineOffset: '0px',
+          outlineStyle: isText ? 'solid' : effectiveBorderStyle,
+          outlineColor: isText ? 'hsl(var(--primary))' : selectionOutlineColor,
+          outlineOffset: isText ? '4px' : '0px',
         }
       : {}),
   };
@@ -120,7 +138,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
           onExit={() => setIsEditing(false)}
           className="text-[22px]"
           style={labelFontStyle}
-          placeholder="Label"
+          placeholder={isText ? 'Text' : 'Label'}
         />
       ) : (
         <button
@@ -139,7 +157,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
               : undefined
           }
         >
-          {data.label ?? (labelEditable ? 'Double-click to label' : '')}
+          {data.label ?? (labelEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
         </button>
       )}
       <Handle

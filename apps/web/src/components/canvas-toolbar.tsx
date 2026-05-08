@@ -1,6 +1,6 @@
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, Square, StickyNote } from 'lucide-react';
+import { Circle, Square, StickyNote, Type } from 'lucide-react';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
@@ -19,6 +19,7 @@ const SHAPES: ShapeEntry[] = [
   { shape: 'rectangle', label: 'Rectangle', Icon: Square },
   { shape: 'ellipse', label: 'Ellipse', Icon: Circle },
   { shape: 'sticky', label: 'Sticky note', Icon: StickyNote },
+  { shape: 'text', label: 'Text', Icon: Type },
 ];
 
 export function CanvasToolbar({ activeShape, onSelectShape }: CanvasToolbarProps) {
