@@ -28,6 +28,19 @@ const CORNER_STYLE: CSSProperties = {
   border: 'none',
 };
 
+// US-016: when cornerVariant === 'visible', the corner handles render as small
+// white squares with a 1px primary/40 border — the same color as the outer
+// selection rect drawn by the node renderer's offset outline. Slightly larger
+// than the AC's ~8px because Chromium scales the visible square down by ~1px
+// per side via the React Flow centering transform; 10px hits the visual mark.
+const VISIBLE_CORNER_STYLE: CSSProperties = {
+  width: '10px',
+  height: '10px',
+  background: 'hsl(var(--background))',
+  border: '1px solid hsl(var(--primary) / 0.6)',
+  borderRadius: '2px',
+};
+
 const LINE_POSITIONS: Array<{
   position: 'top' | 'bottom' | 'left' | 'right';
   style: CSSProperties;
@@ -52,14 +65,23 @@ export interface ResizeControlsProps {
   minHeight?: number;
   onResizeStart?: OnResizeStart;
   onResizeEnd?: OnResizeEnd;
+  /**
+   * US-016: 'visible' renders the 4 corner handles as small white squares with
+   * a 1px primary/60 border — the standard design-tool selection affordance.
+   * The 4 edge lines stay invisible (only their cursor + hit-area survive) so
+   * "only the corners" reads visually. 'invisible' (default) keeps every
+   * control transparent — affordance is purely the cursor change.
+   */
+  cornerVariant?: 'invisible' | 'visible';
 }
 
 /**
- * Eight invisible resize controls (4 edge lines + 4 corners). Each control is
- * fully transparent — the affordance IS the cursor change at the edges/corners
- * (ew-/ns-/nwse-/nesw-resize, wired via React Flow's existing CSS classes on
- * `.react-flow__resize-control.{position}`). The selection ring on the node
- * container stays as the selection indicator.
+ * Eight resize controls (4 edge lines + 4 corners). Edge lines are always
+ * transparent — the affordance is the cursor change at the edge. Corners are
+ * either transparent (default) or visible (US-016 selection rect handles).
+ * Cursor wiring is via React Flow's existing CSS classes on
+ * `.react-flow__resize-control.{position}`; the visible selection rect itself
+ * is drawn by the parent node renderer via an offset outline.
  */
 export function ResizeControls({
   visible,
@@ -67,8 +89,10 @@ export function ResizeControls({
   minHeight = 40,
   onResizeStart,
   onResizeEnd,
+  cornerVariant = 'invisible',
 }: ResizeControlsProps) {
   if (!visible) return null;
+  const cornerStyle = cornerVariant === 'visible' ? VISIBLE_CORNER_STYLE : CORNER_STYLE;
   return (
     <>
       {LINE_POSITIONS.map(({ position, style }) => (
@@ -92,7 +116,7 @@ export function ResizeControls({
           variant={ResizeControlVariant.Handle}
           minWidth={minWidth}
           minHeight={minHeight}
-          style={CORNER_STYLE}
+          style={cornerStyle}
           onResizeStart={onResizeStart}
           onResizeEnd={onResizeEnd}
         >

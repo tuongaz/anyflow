@@ -50,28 +50,24 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
   // the theme defaults baked into the 'default' token (--border / --card).
-  // Selection draws a 2px outline flush with the existing border (no outer
-  // ring). Outline is used (not a wider border) so layout never shifts —
-  // state-nodes have content-driven height when not yet user-resized, so
-  // growing border-width would push the outer height by 4px. The outline
-  // style defaults to dashed to match the state-node's dashed border so the
-  // selection ring reads as a continuation of the existing border style.
-  const isDefaultBorder = !data.borderColor || data.borderColor === 'default';
-  const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
-  const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
-  const effectiveBorderStyle = data.borderStyle ?? 'dashed';
+  // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
+  // outside the node — the standard design-tool selection box. The outline
+  // is solid (not mirroring the dashed border) so the selection box reads
+  // as a separate affordance, not an extension of the node's chrome. The
+  // four corner resize handles render at the node's own corners and the
+  // 4px outline offset lines up the visible squares with the rect corners.
   const containerStyle: CSSProperties = {
-    borderColor: resolvedBorderColor,
+    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     ...(sized ? {} : { width: DEFAULT_W }),
     ...(selected
       ? {
-          outlineWidth: '2px',
-          outlineStyle: effectiveBorderStyle,
-          outlineColor: selectionOutlineColor,
-          outlineOffset: '0px',
+          outlineWidth: '1px',
+          outlineStyle: 'solid',
+          outlineColor: 'hsl(var(--primary) / 0.4)',
+          outlineOffset: '4px',
         }
       : {}),
   };
@@ -106,6 +102,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
     >
       <ResizeControls
         visible={!!selected && !!data.onResize}
+        cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={() => {

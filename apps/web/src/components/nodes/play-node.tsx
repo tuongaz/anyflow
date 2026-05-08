@@ -55,28 +55,25 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
   // the theme defaults baked into the 'default' token (--border / --card).
-  // Selection draws a 2px outline flush with the existing border (no outer
-  // ring). Outline is used (not a wider border) so layout never shifts —
+  // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
+  // outside the node — the standard design-tool selection box. Outline is
+  // used (not a wider border or absolute overlay) so layout never shifts —
   // play-nodes have content-driven height when not yet user-resized, so
-  // growing border-width would push the outer height by 4px. When the
-  // user's borderColor is the theme default, swap to --primary so the
-  // selection is still visually distinguishable.
-  const isDefaultBorder = !data.borderColor || data.borderColor === 'default';
-  const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
-  const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
-  const effectiveBorderStyle = data.borderStyle ?? 'solid';
+  // growing border-width would push the outer height. The four corner
+  // resize handles render at the node's own corners; with the 4px outline
+  // offset, the visible 10px white squares sit at the rect's corners.
   const containerStyle: CSSProperties = {
-    borderColor: resolvedBorderColor,
+    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     ...(sized ? {} : { width: DEFAULT_W }),
     ...(selected
       ? {
-          outlineWidth: '2px',
-          outlineStyle: effectiveBorderStyle,
-          outlineColor: selectionOutlineColor,
-          outlineOffset: '0px',
+          outlineWidth: '1px',
+          outlineStyle: 'solid',
+          outlineColor: 'hsl(var(--primary) / 0.4)',
+          outlineOffset: '4px',
         }
       : {}),
   };
@@ -111,6 +108,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
     >
       <ResizeControls
         visible={!!selected && !!data.onResize}
+        cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={() => {

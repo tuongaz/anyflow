@@ -45,9 +45,9 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   // we still need an explicit size so the wrapper auto-sizes to it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
 
-  // Text shapes are chromeless: no border, no background, no border-style
-  // outline on selection. Selection still needs a visible affordance, so we
-  // draw a thin --primary outline regardless of the user's borderColor token.
+  // Text shapes are chromeless: no border, no background. Selection still
+  // needs a visible affordance — handled below by the unified outer-rect
+  // outline so text and chromed shapes share the exact same selection chrome.
   const isText = shape === 'text';
   // borderColor: always pick from token (defaults to theme border).
   // backgroundColor: sticky defaults to amber; rect/ellipse stay transparent
@@ -56,16 +56,14 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const effectiveBg = isText
     ? undefined
     : (data.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined));
-  // Selection draws a 2px outline flush with the existing border (no outer
-  // ring). Outline is used (not a wider border) so layout never shifts —
-  // outlines don't take part in box-sizing. The outline style mirrors the
-  // border style so a dashed-bordered node also reads as dashed when
-  // selected. When the user's borderColor is the theme default, swap to
-  // --primary so the selection is still visually distinguishable.
-  const isDefaultBorder = !data.borderColor || data.borderColor === 'default';
+  // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
+  // outside the node — the standard design-tool selection box. Outline is
+  // used (not a wider border or absolute overlay) so layout never shifts and
+  // every shape (chromed + chromeless text) gets the same affordance. The
+  // four corner resize handles below render at the node's own corners; with
+  // an 8x10px visible square + 4px outline-offset, the handles visually sit
+  // at the rect's corners.
   const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
-  const selectionOutlineColor = isDefaultBorder ? 'hsl(var(--primary))' : resolvedBorderColor;
-  const effectiveBorderStyle = data.borderStyle ?? 'solid';
   const colorStyle: CSSProperties = {
     ...(isText
       ? {}
@@ -80,10 +78,10 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
     ...(selected
       ? {
-          outlineWidth: '2px',
-          outlineStyle: isText ? 'solid' : effectiveBorderStyle,
-          outlineColor: isText ? 'hsl(var(--primary))' : selectionOutlineColor,
-          outlineOffset: isText ? '4px' : '0px',
+          outlineWidth: '1px',
+          outlineStyle: 'solid',
+          outlineColor: 'hsl(var(--primary) / 0.4)',
+          outlineOffset: '4px',
         }
       : {}),
   };
@@ -122,6 +120,7 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
     >
       <ResizeControls
         visible={!!selected && !!data.onResize && !isEditing}
+        cornerVariant="visible"
         minWidth={80}
         minHeight={40}
         onResizeStart={() => {
