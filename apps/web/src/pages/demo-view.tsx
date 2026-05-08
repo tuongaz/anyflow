@@ -38,6 +38,65 @@ const isEditableElement = (el: Element | null): boolean => {
   return el instanceof HTMLElement && el.isContentEditable;
 };
 
+/**
+ * Apply a z-order reorder op to a list of node ids. Mirrors the server's
+ * `reorderNodes` in `apps/studio/src/api.ts` so the optimistic UI matches what
+ * the file rewrite eventually produces. Returns null on a no-op (id missing,
+ * forward at end, backward at start, etc.) so the caller can skip the PATCH.
+ */
+export const applyReorderOpToIds = (
+  ids: readonly string[],
+  id: string,
+  op: ReorderOp,
+): string[] | null => {
+  const fromIdx = ids.indexOf(id);
+  if (fromIdx < 0) return null;
+  const len = ids.length;
+  const next = [...ids];
+  switch (op.op) {
+    case 'forward': {
+      if (fromIdx >= len - 1) return null;
+      const a = next[fromIdx];
+      const b = next[fromIdx + 1];
+      if (a === undefined || b === undefined) return null;
+      next[fromIdx] = b;
+      next[fromIdx + 1] = a;
+      return next;
+    }
+    case 'backward': {
+      if (fromIdx <= 0) return null;
+      const a = next[fromIdx];
+      const b = next[fromIdx - 1];
+      if (a === undefined || b === undefined) return null;
+      next[fromIdx] = b;
+      next[fromIdx - 1] = a;
+      return next;
+    }
+    case 'toFront': {
+      if (fromIdx === len - 1) return null;
+      const [removed] = next.splice(fromIdx, 1);
+      if (removed === undefined) return null;
+      next.push(removed);
+      return next;
+    }
+    case 'toBack': {
+      if (fromIdx === 0) return null;
+      const [removed] = next.splice(fromIdx, 1);
+      if (removed === undefined) return null;
+      next.unshift(removed);
+      return next;
+    }
+    case 'toIndex': {
+      const target = Math.min(Math.max(op.index, 0), len - 1);
+      if (target === fromIdx) return null;
+      const [removed] = next.splice(fromIdx, 1);
+      if (removed === undefined) return null;
+      next.splice(target, 0, removed);
+      return next;
+    }
+  }
+};
+
 export interface DemoViewProps {
   slug: string;
   demos: DemoSummary[];
@@ -65,6 +124,11 @@ export function DemoView({
   // (server caught up); dropped on API failure (revert to server state).
   const nodePending = usePendingOverrides<DemoNode>();
   const connectorPending = usePendingOverrides<Connector>();
+  // Optimistic z-order override (US-006). Holds the displayed node-id order
+  // while a `reorderNode` PATCH is in flight; cleared once the server's
+  // demoNodes order matches it (SSE echo of the file rewrite). Per-id
+  // overrides aren't a fit because the entire array order is what changes.
+  const [nodeOrderOverride, setNodeOrderOverride] = useState<string[] | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const undoStack = useUndoStack();
   // Stable handles for the mutation handlers below. push/dropTop/markMutation
@@ -86,6 +150,7 @@ export function DemoView({
     setSelectedConnectorId(null);
     resetNodeOverrides();
     resetConnectorOverrides();
+    setNodeOrderOverride(null);
     setEditError(null);
     undoStack.clear();
   }, [detail?.id]);
@@ -130,6 +195,22 @@ export function DemoView({
     if (demoConnectors) pruneConnectorOverrides(demoConnectors);
     if (Date.now() - undoLastMutationAt() > 2000) clearUndo();
   }, [demoConnectors, pruneConnectorOverrides, undoLastMutationAt, clearUndo]);
+
+  // Drop the optimistic z-order override once the server's nodes array order
+  // matches it (SSE echo of the file rewrite landed). If the server array
+  // doesn't match (e.g. a second click is in flight, or an external editor
+  // change reordered nodes), keep the override so the user's last pick stays
+  // pinned on screen — until the next echo either matches or supersedes it.
+  useEffect(() => {
+    if (!demoNodes || !nodeOrderOverride) return;
+    if (demoNodes.length !== nodeOrderOverride.length) return;
+    for (let i = 0; i < demoNodes.length; i++) {
+      const serverNode = demoNodes[i];
+      const overrideId = nodeOrderOverride[i];
+      if (!serverNode || serverNode.id !== overrideId) return;
+    }
+    setNodeOrderOverride(null);
+  }, [demoNodes, nodeOrderOverride]);
 
   const demoId = detail?.id ?? null;
   const { setOverride: setNodeOverride, dropOverride: dropNodeOverride } = nodePending;
@@ -346,18 +427,22 @@ export function DemoView({
     [demoId, demoNodes, demoConnectors, pushUndo, dropUndoTop, markMutation],
   );
 
-  // Right-click → "Bring to front" / "Send backward" / etc. Snapshot the
-  // node's current index BEFORE the API call so undo can pin it back via the
-  // `toIndex` op (faithful even under concurrent edits, where forward/backward
-  // alone wouldn't symmetrically invert from the middle of the array). We
-  // don't apply an optimistic override on the canvas here — a future story
-  // could (the SSE echo races vs. the user picking another item), but z-order
-  // changes are infrequent and the SSE echo lands within ~150ms.
+  // Right-click → "Bring to front" / "Send backward" / etc. Apply the reorder
+  // optimistically (US-006) so the visual stack updates within the same React
+  // tick — without waiting for the SSE echo of the file rewrite. The override
+  // is the displayed id-order; the prune effect above drops it once the server
+  // catches up. Snapshot the node's current displayed index for the `toIndex`
+  // undo, so undo restores to where the user moved away from (faithful even
+  // under concurrent edits where forward/backward couldn't symmetrically
+  // invert from the middle of the array).
   const onReorderNode = useCallback(
     (nodeId: string, op: ReorderOp) => {
-      if (!demoId) return;
-      const fromIdx = demoNodes?.findIndex((n) => n.id === nodeId) ?? -1;
-      if (fromIdx < 0) return;
+      if (!demoId || !demoNodes) return;
+      const currentIds = nodeOrderOverride ?? demoNodes.map((n) => n.id);
+      const newIds = applyReorderOpToIds(currentIds, nodeId, op);
+      if (!newIds) return;
+      const fromIdx = currentIds.indexOf(nodeId);
+      setNodeOrderOverride(newIds);
       setEditError(null);
       markMutation();
       pushUndo({
@@ -369,12 +454,16 @@ export function DemoView({
         },
       });
       reorderNode(demoId, nodeId, op).catch((err) => {
+        // Revert: drop the override entirely. The next render uses server
+        // state. The optimistic stack entry is also dropped because the do()
+        // it wraps was the just-failed call.
+        setNodeOrderOverride(null);
         dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('reorderNode failed', err);
       });
     },
-    [demoId, demoNodes, pushUndo, dropUndoTop, markMutation],
+    [demoId, demoNodes, nodeOrderOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   const onDeleteConnector = useCallback(
@@ -758,6 +847,29 @@ export function DemoView({
     return ov ? ({ ...found, ...ov } as Connector) : found;
   }, [demo, selectedConnectorId, connectorOverrides]);
 
+  // Reorder server nodes according to the optimistic z-order override
+  // (US-006). Nodes not in the override (e.g. just-pasted ones whose echo
+  // arrived after the reorder) are appended at the end so they render on top
+  // until the next echo subsumes the override.
+  const orderedNodes = useMemo<DemoNode[] | null>(() => {
+    if (!demo) return null;
+    if (!nodeOrderOverride) return demo.nodes;
+    const byId = new Map(demo.nodes.map((n) => [n.id, n]));
+    const ordered: DemoNode[] = [];
+    const seen = new Set<string>();
+    for (const id of nodeOrderOverride) {
+      const n = byId.get(id);
+      if (n) {
+        ordered.push(n);
+        seen.add(id);
+      }
+    }
+    for (const n of demo.nodes) {
+      if (!seen.has(n.id)) ordered.push(n);
+    }
+    return ordered;
+  }, [demo, nodeOrderOverride]);
+
   if (!summary) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-background p-6 text-center">
@@ -794,7 +906,7 @@ export function DemoView({
 
       {demo ? (
         <DemoCanvas
-          nodes={demo.nodes}
+          nodes={orderedNodes ?? demo.nodes}
           connectors={demo.connectors}
           selectedNodeId={selectedId}
           onSelectNode={onSelectNode}
