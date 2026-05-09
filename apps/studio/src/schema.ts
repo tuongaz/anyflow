@@ -30,6 +30,7 @@ const NodeVisualBaseShape = {
   borderSize: z.number().positive().optional(),
   borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
   fontSize: z.number().positive().optional(),
+  cornerRadius: z.number().min(0).optional(),
 };
 
 const HttpActionSchema = z.object({

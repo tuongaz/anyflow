@@ -620,6 +620,45 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(-2, 4)).success).toBe(false);
   });
 
+  it('accepts cornerRadius=12 and cornerRadius=0 on a node, rejects negative values (US-001)', () => {
+    const make = (cornerRadius: unknown) => ({
+      version: 1 as const,
+      name: 'corner-radius',
+      nodes: [
+        {
+          id: 'p',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'P',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            cornerRadius,
+          },
+        },
+      ],
+      connectors: [],
+    });
+
+    const ok12 = DemoSchema.safeParse(make(12));
+    if (!ok12.success) {
+      throw new Error(
+        `expected cornerRadius=12 to parse, got: ${JSON.stringify(ok12.error.issues)}`,
+      );
+    }
+    const node12 = ok12.data.nodes[0];
+    if (node12?.type !== 'playNode') throw new Error('expected playNode');
+    expect(node12.data.cornerRadius).toBe(12);
+
+    const ok0 = DemoSchema.safeParse(make(0));
+    if (!ok0.success) {
+      throw new Error(`expected cornerRadius=0 to parse, got: ${JSON.stringify(ok0.error.issues)}`);
+    }
+
+    expect(DemoSchema.safeParse(make(-5)).success).toBe(false);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',
