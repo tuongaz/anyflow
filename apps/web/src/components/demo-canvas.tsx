@@ -38,6 +38,7 @@ import {
   SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
+  useStoreApi,
 } from '@xyflow/react';
 import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -295,6 +296,40 @@ const mergeConnectorOverride = (
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
 const edgeTypes = { editableEdge: EditableEdge };
 
+/**
+ * US-006: bridge for ESC cancellation of in-flight connection / marquee
+ * gestures. xyflow exposes `cancelConnection` and the user-selection store
+ * fields only via the internal store, which is reachable through `useStoreApi`
+ * — and that hook only resolves inside `<ReactFlowProvider>`. Rendering this
+ * tiny child as a `<ReactFlow>` descendant lets the outer component grab the
+ * store handle through a ref without restructuring the wrapper.
+ */
+type StoreApi = ReturnType<typeof useStoreApi>;
+function StoreApiBridge({ storeApiRef }: { storeApiRef: { current: StoreApi | null } }) {
+  const storeApi = useStoreApi();
+  useEffect(() => {
+    storeApiRef.current = storeApi;
+    return () => {
+      if (storeApiRef.current === storeApi) storeApiRef.current = null;
+    };
+  }, [storeApi, storeApiRef]);
+  return null;
+}
+
+/**
+ * True when the element is a form control or contentEditable surface — used to
+ * skip canvas-level keyboard handlers while focus is in an editor (InlineEdit,
+ * detail-panel inputs, etc.). Lives here so the canvas's ESC priority chain
+ * can defer to InlineEdit's own ESC handler (priority 1: inline edit cancels
+ * before drag-create / connection / marquee / selection).
+ */
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const isEditableTarget = (el: Element | null): boolean => {
+  if (!el) return false;
+  if (EDITABLE_TAGS.has(el.tagName)) return true;
+  return el instanceof HTMLElement && el.isContentEditable;
+};
+
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
   runs?.[id]?.status ?? 'idle';
 
@@ -353,12 +388,29 @@ export function DemoCanvas({
   // gesture (the underlying flow conversion handles the transform).
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  // US-006: handle to the React Flow store (registered by <StoreApiBridge>).
+  // Used to call `cancelConnection` and clear the user-selection rect when
+  // ESC cancels an in-flight connection or marquee.
+  const storeApiRef = useRef<StoreApi | null>(null);
   const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
   // already left hover and the user needs to discover drop targets without
   // hover-then-aim. Toggled via onConnectStart/End + onReconnectStart/End.
   const [connecting, setConnecting] = useState(false);
+  // Mirror `connecting` into a ref so the global ESC handler (single window
+  // listener) reads the live value without re-binding on every render.
+  const connectingRef = useRef(false);
+  useEffect(() => {
+    connectingRef.current = connecting;
+  }, [connecting]);
+  // US-006: ESC during a connection/reconnect drag flips these flags so the
+  // body-drop fallback inside onConnectEndCb / onReconnectEndCb early-exits
+  // without persisting a connector. The synthesized mouseup we dispatch to
+  // end xyflow's document-level pointer listeners would otherwise fall
+  // through to the body-drop hit-test and create a stray edge.
+  const connectCancelledRef = useRef(false);
+  const reconnectCancelledRef = useRef(false);
   // State drives the ghost preview render; refs back the handlers so a single
   // synchronous gesture (pointerdown→move→up in one task) reads up-to-date
   // values without waiting for a React re-render to refresh useCallback
@@ -393,14 +445,98 @@ export function DemoCanvas({
     drawingRef.current = false;
   }, []);
 
+  // US-006: ESC priority chain. A single window-level keydown listener handles
+  // all in-progress cancellations in most-specific-first order, with early
+  // returns so a single keypress triggers exactly one cancellation.
+  //
+  //   1. Inline label edit — handled by InlineEdit's own onKeyDown (cancel +
+  //      stopPropagation). We additionally bail when focus is in an editable
+  //      element so a future inline editor that forgets stopPropagation still
+  //      gets the right behaviour.
+  //   2. Drag-create (toolbar shape placement) — exit draw mode, no node added.
+  //   3. Connection drag (mid edge-draw, before drop) — flag the cancel so
+  //      the body-drop fallback in onConnectEndCb is skipped, then dispatch a
+  //      synthetic mouseup so xyflow's document-level pointer listeners stop
+  //      tracking the gesture.
+  //   4. Marquee drag — restore the pre-marquee selection snapshot, clear
+  //      xyflow's userSelection state, drop our pointer-tracking refs.
+  //   5. Selection — clear node + connector selections.
   useEffect(() => {
-    if (!drawShape) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') exitDrawMode();
+      if (e.key !== 'Escape') return;
+      // 1. Inline label edit — defer to InlineEdit's own handler.
+      if (isEditableTarget(document.activeElement)) return;
+      // 2. Drag-create.
+      if (drawShapeRef.current) {
+        e.preventDefault();
+        exitDrawMode();
+        return;
+      }
+      // 3. Connection drag (or reconnect).
+      if (connectingRef.current) {
+        e.preventDefault();
+        connectCancelledRef.current = true;
+        reconnectCancelledRef.current = true;
+        // Clear xyflow's connection-store immediately so the in-flight
+        // connection line stops rendering, and end the gesture by
+        // synthesizing a mouseup on document — xyflow's onPointerUp inside
+        // XYHandle is bound to document, so this is what unwinds its
+        // closure listeners. Coords default to (0,0); the cancel flag
+        // makes onConnectEndCb early-exit before any hit-test.
+        try {
+          storeApiRef.current?.getState().cancelConnection();
+        } catch {
+          // store may not be available (test harness without provider) — fall
+          // through to mouseup dispatch which still ends the gesture.
+        }
+        document.dispatchEvent(
+          new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }),
+        );
+        setConnecting(false);
+        return;
+      }
+      // 4. Marquee drag. We treat marquee as in-progress whenever our
+      //    pointerdown-on-pane ref is set — even if xyflow hasn't moved past
+      //    paneClickDistance yet. Either way, cancellation restores the
+      //    pre-pointerdown selection snapshot so AC #4 ("selection is left
+      //    unchanged") holds in both regimes.
+      if (marqueeStartRef.current) {
+        const snapshot = marqueeSelectionSnapshotRef.current;
+        if (snapshot) {
+          e.preventDefault();
+          // Clear xyflow's user-selection state synchronously. The pointer is
+          // still down; subsequent pointermoves return early because
+          // userSelectionRect is null.
+          try {
+            storeApiRef.current?.setState({
+              userSelectionActive: false,
+              userSelectionRect: null,
+            });
+          } catch {
+            // store unavailable — selection restore below still wins on the
+            // next render via the controlled selectedNodeIds prop.
+          }
+          // Restore selection. Parent's setSelectedIds → sourceNodes recompute
+          // → setRfNodes via the `[sourceNodes]` effect → fresh node refs
+          // override xyflow's internalNode.selected mutation (US-005 pattern).
+          onSelectionChangeRef.current?.(snapshot.nodes, snapshot.connectors);
+          marqueeStartRef.current = null;
+          marqueeCurrentRef.current = null;
+          marqueeSelectionSnapshotRef.current = null;
+          return;
+        }
+      }
+      // 5. Selection clear.
+      const hadNodeSel = selectedIdSetRef.current.size > 0;
+      const hadConnSel = selectedConnIdSetRef.current.size > 0;
+      if (hadNodeSel || hadConnSel) {
+        e.preventDefault();
+        onSelectionChangeRef.current?.([], []);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawShape, exitDrawMode]);
+  }, [exitDrawMode]);
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!drawShapeRef.current) return;
@@ -943,6 +1079,13 @@ export function DemoCanvas({
       const succeeded = connectSucceededRef.current;
       connectSucceededRef.current = false;
       if (succeeded) return;
+      // US-006: ESC mid-drag cancels the connect — skip the body-drop fallback
+      // entirely so the synthesized mouseup that ended the gesture doesn't
+      // fall through and hit-test a stray edge into existence.
+      if (connectCancelledRef.current) {
+        connectCancelledRef.current = false;
+        return;
+      }
       if (!onCreateConnector) return;
       // Wrong-type handle drop: the user released precisely on a handle whose
       // role doesn't match the moving endpoint. React Flow refuses the drop
@@ -1049,6 +1192,12 @@ export function DemoCanvas({
       const succeeded = reconnectSucceededRef.current;
       reconnectSucceededRef.current = false;
       if (succeeded) return;
+      // US-006: ESC cancellation parallel of onConnectEndCb above — skip the
+      // body-drop reconnect fallback when the gesture was cancelled.
+      if (reconnectCancelledRef.current) {
+        reconnectCancelledRef.current = false;
+        return;
+      }
       if (!onReconnectConnector) return;
       // Wrong-type handle drop (US-022): the user dropped precisely on a
       // handle whose role doesn't match the moving endpoint (e.g. dragged a
@@ -1129,6 +1278,13 @@ export function DemoCanvas({
   const shiftHeldRef = useRef(false);
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
   const marqueeCurrentRef = useRef<{ x: number; y: number } | null>(null);
+  // US-006: snapshot of selection state at marquee start so ESC mid-drag can
+  // restore it. Set on pointerdown (when target is the React Flow pane and
+  // not in pan/draw mode); cleared on pointerup or after ESC restoration.
+  const marqueeSelectionSnapshotRef = useRef<{
+    nodes: string[];
+    connectors: string[];
+  } | null>(null);
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') shiftHeldRef.current = true;
@@ -1238,6 +1394,14 @@ export function DemoCanvas({
             const start = { x: e.clientX, y: e.clientY };
             marqueeStartRef.current = start;
             marqueeCurrentRef.current = start;
+            // US-006: capture pre-marquee selection so ESC can restore it.
+            // Read from refs (kept in sync with the controlled props) — props
+            // are stale across re-renders but the refs always reflect the
+            // latest committed selection.
+            marqueeSelectionSnapshotRef.current = {
+              nodes: [...selectedIdSetRef.current],
+              connectors: [...selectedConnIdSetRef.current],
+            };
           }
         }
         onPointerDown(e);
@@ -1255,12 +1419,14 @@ export function DemoCanvas({
       onPointerUp={(e) => {
         marqueeStartRef.current = null;
         marqueeCurrentRef.current = null;
+        marqueeSelectionSnapshotRef.current = null;
         setSpaceDragging(false);
         onPointerUp(e);
       }}
       onPointerCancel={() => {
         marqueeStartRef.current = null;
         marqueeCurrentRef.current = null;
+        marqueeSelectionSnapshotRef.current = null;
         drawingRef.current = false;
         drawStartRef.current = null;
         drawCurrentRef.current = null;
@@ -1375,6 +1541,7 @@ export function DemoCanvas({
             : undefined
         }
       >
+        <StoreApiBridge storeApiRef={storeApiRef} />
         <Background gap={12} size={0.6} />
         <Controls showInteractive={false} />
         {onCreateShapeNode || onStyleNode || onStyleConnector ? (
