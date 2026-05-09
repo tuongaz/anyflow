@@ -66,6 +66,14 @@ export interface ShapeNodeData extends NodeVisual {
   label?: string;
 }
 
+// Decorative image node — embeds a base64 data URL on the canvas. Mirrors
+// ImageNodeDataSchema in apps/studio/src/schema.ts; `image` is always a
+// `data:image/...` URL (validated by Zod on the studio side).
+export interface ImageNodeData extends NodeVisual {
+  image: string;
+  alt?: string;
+}
+
 interface NodeBase {
   id: string;
   position: { x: number; y: number };
@@ -74,7 +82,8 @@ interface NodeBase {
 export type DemoNode =
   | (NodeBase & { type: 'playNode'; data: NodeData })
   | (NodeBase & { type: 'stateNode'; data: NodeData })
-  | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData });
+  | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData })
+  | (NodeBase & { type: 'imageNode'; data: ImageNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
 export type ConnectorDirection = 'forward' | 'backward' | 'both';
@@ -322,7 +331,7 @@ export const updateConnector = async (
 
 export interface CreateNodeBody {
   id?: string;
-  type: 'playNode' | 'stateNode' | 'shapeNode';
+  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode';
   position: { x: number; y: number };
   data: Record<string, unknown>;
 }

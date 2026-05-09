@@ -1,5 +1,6 @@
 import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
+import { ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
@@ -347,7 +348,12 @@ const mergeConnectorOverride = (
   return { ...conn, ...override } as Connector;
 };
 
-const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
+const nodeTypes = {
+  playNode: PlayNode,
+  stateNode: StateNode,
+  shapeNode: ShapeNode,
+  imageNode: ImageNode,
+};
 const edgeTypes = { editableEdge: EditableEdge };
 
 // US-009: smoothstep corner radius — kept in sync with EditableEdge so the
@@ -954,7 +960,10 @@ export function DemoCanvas({
           onResize: onNodeResize,
           setResizing,
           onLabelChange: onNodeLabelChange,
-          onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
+          onDescriptionChange:
+            merged.type === 'shapeNode' || merged.type === 'imageNode'
+              ? undefined
+              : onNodeDescriptionChange,
           // US-015: inject autoEditOnMount on the freshly drop-popover-created
           // node so it opens in label-edit mode. The flag is consumed once at
           // mount by the node component (lazy useState initializer); leaving

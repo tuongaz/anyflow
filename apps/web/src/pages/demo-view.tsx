@@ -994,7 +994,9 @@ export function DemoView({
     (nodeId: string, label: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      const prevLabel = node?.data.label;
+      // ImageNodeData has no `label`; the union narrowing here keeps prevLabel
+      // typed as `string | undefined` so the undo entry can restore it.
+      const prevLabel = node && 'label' in node.data ? node.data.label : undefined;
       setNodeOverride(nodeId, { data: { label } } as Partial<DemoNode>);
       setEditError(null);
       markMutation();
@@ -1030,7 +1032,7 @@ export function DemoView({
     (nodeId: string, summary: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      if (!node || node.type === 'shapeNode') return;
+      if (!node || node.type === 'shapeNode' || node.type === 'imageNode') return;
       const prevDetail = node.data.detail;
       const nextDetail = { ...(prevDetail ?? {}), summary };
       setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);

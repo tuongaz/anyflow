@@ -31,9 +31,12 @@ export function DetailPanel({
   onClose,
 }: DetailPanelProps) {
   const open = node !== null || connector !== null;
-  // Shape nodes are decorative — no detail/dynamicSource/run surface.
-  const functionalNode = node && node.type !== 'shapeNode' ? node : null;
+  // Shape and image nodes are decorative — no detail/dynamicSource/run surface.
+  const functionalNode =
+    node && node.type !== 'shapeNode' && node.type !== 'imageNode' ? node : null;
   const detail = functionalNode?.data.detail;
+  // ImageNodeData has no `label`; shape/play/state nodes do (optional or required).
+  const nodeLabel = node && 'label' in node.data ? node.data.label : undefined;
   const hasDynamicSource = !!detail?.dynamicSource;
 
   const { state: dynamicState, refresh: refreshDynamic } = useNodeDetail(
@@ -88,7 +91,7 @@ export function DetailPanel({
         {node ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <SheetTitle data-testid="detail-panel-title">{node.data.label}</SheetTitle>
+              <SheetTitle data-testid="detail-panel-title">{nodeLabel ?? ''}</SheetTitle>
               <SheetDescription className="font-mono text-[11px]">
                 {node.id} · {node.type}
               </SheetDescription>
