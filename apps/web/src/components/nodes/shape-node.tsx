@@ -7,7 +7,10 @@ import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
 
 export type ShapeNodeRuntimeData = ShapeNodeData & {
-  onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
+  onResize?: (
+    nodeId: string,
+    dims: { width: number; height: number; x: number; y: number },
+  ) => void;
   setResizing?: (on: boolean) => void;
   /** Persist a new label (PATCH /nodes/:id { label }). Optional for shape nodes. */
   onLabelChange?: (nodeId: string, label: string) => void;
@@ -141,7 +144,13 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         onResizeEnd={(_e, params) => {
           setIsResizing(false);
           data.setResizing?.(false);
-          data.onResize?.(id, { width: params.width, height: params.height });
+          // US-012: include x/y so top/left resizes anchor the opposite corner.
+          data.onResize?.(id, {
+            width: params.width,
+            height: params.height,
+            x: params.x,
+            y: params.y,
+          });
         }}
       />
       <Handle

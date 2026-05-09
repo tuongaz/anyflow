@@ -294,23 +294,38 @@ export function DemoView({
   );
 
   const onNodeResize = useCallback(
-    (nodeId: string, dims: { width: number; height: number }) => {
+    (nodeId: string, dims: { width: number; height: number; x: number; y: number }) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      const prev = node ? { width: node.data.width, height: node.data.height } : undefined;
-      // Optimistic: keep the resized footprint pinned through the PATCH
-      // round-trip + SSE echo. Cast the data partial because TS can't see
-      // through the discriminated union; the override is keyed by the same
-      // node id so the variant always matches at runtime.
+      // US-012: capture both prior size AND prior position so a top/left
+      // handle resize (which moves x/y) reverts cleanly on undo.
+      const prev = node
+        ? {
+            width: node.data.width,
+            height: node.data.height,
+            position: { x: node.position.x, y: node.position.y },
+          }
+        : undefined;
+      const next = {
+        width: dims.width,
+        height: dims.height,
+        position: { x: dims.x, y: dims.y },
+      };
+      // Optimistic: keep the resized footprint AND new position pinned through
+      // the PATCH round-trip + SSE echo. Without the position override, when
+      // resizingRef clears and `setRfNodes(sourceNodes)` runs, the node would
+      // snap back to its pre-drag position with the new size — visible as
+      // the node "sliding across" the canvas after a top/left handle resize.
       setNodeOverride(nodeId, {
-        data: { width: dims.width, height: dims.height },
+        position: next.position,
+        data: { width: next.width, height: next.height },
       } as Partial<DemoNode>);
       setEditError(null);
       markMutation();
       if (prev) {
         pushUndo({
           do: async () => {
-            await updateNode(demoId, nodeId, dims);
+            await updateNode(demoId, nodeId, next);
           },
           undo: async () => {
             await updateNode(demoId, nodeId, prev);
@@ -318,7 +333,7 @@ export function DemoView({
           coalesceKey: `node:${nodeId}:resize`,
         });
       }
-      updateNode(demoId, nodeId, dims).catch((err) => {
+      updateNode(demoId, nodeId, next).catch((err) => {
         dropNodeOverride(nodeId);
         if (prev) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));

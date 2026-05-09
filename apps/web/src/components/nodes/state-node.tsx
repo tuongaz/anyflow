@@ -13,7 +13,10 @@ export type StateNodeData = NodeData & {
    * 'idle' visually (the StatusPill renders nothing for 'idle').
    */
   status?: NodeStatus;
-  onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
+  onResize?: (
+    nodeId: string,
+    dims: { width: number; height: number; x: number; y: number },
+  ) => void;
   setResizing?: (on: boolean) => void;
   onLabelChange?: (nodeId: string, label: string) => void;
   onDescriptionChange?: (nodeId: string, summary: string) => void;
@@ -125,7 +128,16 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         onResizeEnd={(_e, params) => {
           setIsResizing(false);
           data.setResizing?.(false);
-          data.onResize?.(id, { width: params.width, height: params.height });
+          // US-012: top/left handles change x/y as well as width/height —
+          // pass the full ResizeParams so the persistence layer can pin the
+          // opposite corner. Bottom-right resizes still come through with
+          // x/y unchanged from start.
+          data.onResize?.(id, {
+            width: params.width,
+            height: params.height,
+            x: params.x,
+            y: params.y,
+          });
         }}
       />
       <Handle

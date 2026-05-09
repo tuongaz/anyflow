@@ -17,7 +17,10 @@ export type PlayNodeData = NodeData & {
    */
   status?: NodeStatus;
   onPlay?: (nodeId: string) => void;
-  onResize?: (nodeId: string, dims: { width: number; height: number }) => void;
+  onResize?: (
+    nodeId: string,
+    dims: { width: number; height: number; x: number; y: number },
+  ) => void;
   setResizing?: (on: boolean) => void;
   onLabelChange?: (nodeId: string, label: string) => void;
   onDescriptionChange?: (nodeId: string, summary: string) => void;
@@ -131,7 +134,13 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         onResizeEnd={(_e, params) => {
           setIsResizing(false);
           data.setResizing?.(false);
-          data.onResize?.(id, { width: params.width, height: params.height });
+          // US-012: include x/y so top/left resizes anchor the opposite corner.
+          data.onResize?.(id, {
+            width: params.width,
+            height: params.height,
+            x: params.x,
+            y: params.y,
+          });
         }}
       />
       <Handle

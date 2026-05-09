@@ -87,10 +87,15 @@ export interface DemoCanvasProps {
   /** Fired once per drag-stop with the node's final position. */
   onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
   /**
-   * Fired once per resize-stop with the node's final dimensions. Wiring this
-   * enables NodeResizer's resize handles inside each custom node.
+   * Fired once per resize-stop with the node's final dimensions AND position.
+   * Wiring this enables NodeResizer's resize handles inside each custom node.
+   * US-012: top/left handle drags shift x/y so the opposite corner stays
+   * anchored — persistence must store both the new size and new position.
    */
-  onNodeResize?: (nodeId: string, dims: { width: number; height: number }) => void;
+  onNodeResize?: (
+    nodeId: string,
+    dims: { width: number; height: number; x: number; y: number },
+  ) => void;
   /** Persist a new node label (PATCH /nodes/:id { label }). */
   onNodeLabelChange?: (nodeId: string, label: string) => void;
   /** Persist a new node description on detail.summary. */
