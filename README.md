@@ -31,10 +31,10 @@ schema drift is impossible because the studio enforces a single Zod schema.
   broadcasts `demo:reload` to the canvas on every change.
 - **Zero config** — `anydemo register --path <repo>` registers a demo and
   drops you straight onto its canvas.
-- **Diagram-from-code skill** — a Claude Code plugin
-  (`plugins/anydemo-diagram/`) that walks any codebase and generates a
-  playable diagram with three checkpoints (scope → tier → node list). See
-  [the plugin README](./plugins/anydemo-diagram/README.md).
+- **Diagram-from-code skill** — a Claude Code plugin (lives at the repo
+  root: `.claude-plugin/`, `agents/`, `commands/`, `skills/diagram/`) that
+  walks any codebase and generates a playable diagram with three checkpoints
+  (scope → tier → node list).
 
 ## Quick start
 
@@ -44,7 +44,7 @@ Install the diagram-generation skill into your Claude Code workspace with a
 single command:
 
 ```bash
-npx skills add tuongaz/anydemo/plugins/anydemo-diagram/skills/diagram
+npx skills add tuongaz/anydemo
 ```
 
 That's it — the skill registers itself with Claude Code and you can then run
@@ -171,8 +171,8 @@ the sole source of truth for inter-node connections.
 
 ## Generate a diagram from any codebase
 
-The `anydemo-diagram` plugin (Claude Code) walks a target repo and produces a
-playable diagram. Three playability tiers:
+The bundled Claude Code plugin (skill at `skills/diagram/SKILL.md`) walks a
+target repo and produces a playable diagram. Three playability tiers:
 
 1. **Real** — `playAction`s point at your running dev server
 2. **Mock harness** — scaffolds `.anydemo/harness/` (Hono on Bun) stubbing
@@ -185,7 +185,7 @@ playable diagram. Three playability tiers:
 /diagram --tier=mock how does the auth flow work?
 ```
 
-See [`plugins/anydemo-diagram/`](./plugins/anydemo-diagram/) for details.
+See [`skills/diagram/SKILL.md`](./skills/diagram/SKILL.md) for the full pipeline contract.
 
 ## Project structure
 
@@ -200,9 +200,12 @@ anydemo/
 │   ├── order-pipeline/
 │   ├── checkout-demo/
 │   └── todo-demo-target/
-├── plugins/
-│   └── anydemo-diagram/   # Claude Code plugin: code → diagram
-└── docs/                  # Design docs (gitignored)
+├── .claude-plugin/    # Claude Code plugin manifest
+├── agents/            # Subagent definitions for the diagram pipeline
+├── commands/          # Slash commands (e.g. /diagram)
+├── skills/
+│   └── diagram/       # The anydemo-diagram skill (code → diagram)
+└── docs/              # Design docs (gitignored)
 ```
 
 ## Development
