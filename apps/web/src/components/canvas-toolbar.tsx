@@ -14,13 +14,15 @@ export interface CanvasToolbarProps {
   onTidy?: () => void;
 }
 
-interface ShapeEntry {
+export interface ToolbarShapeEntry {
   shape: ShapeKind;
   label: string;
   Icon: typeof Square;
 }
 
-const SHAPES: ShapeEntry[] = [
+// Exported so US-015's drop-on-pane popover can list the same set of creatable
+// node types (matching icons + labels) without duplicating the registry.
+export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'rectangle', label: 'Rectangle', Icon: Square },
   { shape: 'ellipse', label: 'Ellipse', Icon: Circle },
   { shape: 'sticky', label: 'Sticky note', Icon: StickyNote },
@@ -35,7 +37,7 @@ export function CanvasToolbar({ activeShape, onSelectShape, onTidy }: CanvasTool
       data-testid="canvas-toolbar"
       className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
     >
-      {SHAPES.map(({ shape, label, Icon }) => {
+      {TOOLBAR_SHAPES.map(({ shape, label, Icon }) => {
         const active = activeShape === shape;
         return (
           <button

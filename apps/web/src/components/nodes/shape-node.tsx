@@ -14,6 +14,14 @@ export type ShapeNodeRuntimeData = ShapeNodeData & {
   setResizing?: (on: boolean) => void;
   /** Persist a new label (PATCH /nodes/:id { label }). Optional for shape nodes. */
   onLabelChange?: (nodeId: string, label: string) => void;
+  /**
+   * US-015: when true on the first mount, the node enters inline label-edit
+   * mode automatically. Used by the drop-on-pane popover so the user can type
+   * a label immediately after creating a node via drag-from-handle. The flag
+   * is consumed once at mount and never re-read; flipping it later has no
+   * effect (the local `isEditing` state is owned by the InlineEdit lifecycle).
+   */
+  autoEditOnMount?: boolean;
 } & Record<string, unknown>;
 export type ShapeNodeType = Node<ShapeNodeRuntimeData, 'shapeNode'>;
 
@@ -45,7 +53,12 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = SHAPE_DEFAULT_SIZE[shape];
   const [isResizing, setIsResizing] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  // US-015: a freshly drop-popover-created node opens directly in label-edit
+  // mode so the user can type a label without an extra dblclick. The flag is
+  // read ONCE at mount via the lazy initializer; subsequent renders keep the
+  // local state regardless of whether the upstream injection clears the flag
+  // (e.g. because the parent's pendingEditNodeId moved to a different node).
+  const [isEditing, setIsEditing] = useState(() => Boolean(data.autoEditOnMount));
   const labelEditable = !!data.onLabelChange;
   // While resizing OR once data.width/height are set, the React Flow wrapper
   // owns the dimensions; the inner fills via h-full w-full. Before any resize,

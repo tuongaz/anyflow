@@ -1,5 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
@@ -130,6 +131,12 @@ export function DemoView({
   // from these instead of from selectedIds/selectedConnectorIds.
   const [panelNodeId, setPanelNodeId] = useState<string | null>(null);
   const [panelConnectorId, setPanelConnectorId] = useState<string | null>(null);
+  // US-015: id of a freshly drop-popover-created node that should mount in
+  // inline label-edit mode. Read by DemoCanvas (injected as
+  // `data.autoEditOnMount: true` on that node) and consumed once at the node's
+  // first render; we don't bother clearing it because the node's internal
+  // `isEditing` state is hooks-owned and indifferent to later renders.
+  const [pendingEditNodeId, setPendingEditNodeId] = useState<string | null>(null);
   // Keep selection ids stable in a ref so keyboard handlers (Cmd+A / Cmd+C /
   // Cmd+D / Delete) read the latest set without re-binding the listener on
   // every render.
@@ -179,6 +186,7 @@ export function DemoView({
     setSelectedConnectorIds([]);
     setPanelNodeId(null);
     setPanelConnectorId(null);
+    setPendingEditNodeId(null);
     resetNodeOverrides();
     resetConnectorOverrides();
     setNodeOrderOverride(null);
@@ -1055,6 +1063,102 @@ export function DemoView({
     [demoId, setConnectorOverride, dropConnectorOverride, pushUndo, markMutation],
   );
 
+  // US-015: drop-on-pane create-and-connect. Combines `onCreateShapeNode` and
+  // `onCreateConnector` into a single transaction so one Cmd+Z reverts the
+  // pair. The new node is sized to the shape template (SHAPE_DEFAULT_SIZE);
+  // the new connector is floating, mirroring `onCreateConnector`. The new
+  // node is also pinned as `pendingEditNodeId` so it mounts in inline label-
+  // edit mode. Failure path drops both overrides; the undo entry is only
+  // pushed once both creates succeed so undo always has stable ids.
+  const onCreateAndConnectFromPane = useCallback(
+    ({
+      sourceNodeId,
+      position,
+      shape,
+    }: {
+      sourceNodeId: string;
+      position: Position;
+      shape: ShapeKind;
+    }) => {
+      if (!demoId) return;
+      setEditError(null);
+      const newNodeId = `node-${crypto.randomUUID()}`;
+      const newConnId = `conn-${crypto.randomUUID()}`;
+      const dims = SHAPE_DEFAULT_SIZE[shape];
+      const nodePayload = {
+        id: newNodeId,
+        type: 'shapeNode' as const,
+        position,
+        data: { shape, width: dims.width, height: dims.height },
+      };
+      const connPayload: DefaultConnector = {
+        id: newConnId,
+        source: sourceNodeId,
+        target: newNodeId,
+        sourceHandleAutoPicked: true,
+        targetHandleAutoPicked: true,
+        kind: 'default',
+      };
+      // Optimistic: render the new node + edge immediately so the user sees
+      // the result before the round-trip resolves.
+      const optimisticNode: DemoNode = {
+        id: newNodeId,
+        type: 'shapeNode',
+        position,
+        data: { shape, width: dims.width, height: dims.height },
+      };
+      setNodeOverride(newNodeId, optimisticNode as Partial<DemoNode>);
+      setConnectorOverride(newConnId, connPayload as Partial<Connector>);
+      setPendingEditNodeId(newNodeId);
+      markMutation();
+      // Persist node first (referential integrity for the connector), then
+      // the connector. Push ONE undo entry from the .then so undo binds to
+      // the actually-created ids and the entry only exists if both creates
+      // succeeded.
+      (async () => {
+        try {
+          await createNode(demoId, nodePayload);
+          await createConnector(demoId, connPayload);
+          pushUndo({
+            do: async () => {
+              await createNode(demoId, nodePayload);
+              await createConnector(demoId, connPayload);
+            },
+            undo: async () => {
+              // Drop the optimistic overrides up-front so a same-tick undo
+              // (before the SSE echo of the create has pruned them) doesn't
+              // leave a phantom override-only node/connector behind. Once
+              // the deletes complete on disk, `pruneAgainst` would never
+              // drop these on its own — server has no entry to match
+              // against. After the deletes, the canvas reflects the absent
+              // state directly.
+              dropConnectorOverride(newConnId);
+              dropNodeOverride(newNodeId);
+              // Connector first (avoids server-side cascade chatter), then
+              // the node.
+              await deleteConnector(demoId, newConnId).catch(() => {});
+              await deleteNode(demoId, newNodeId).catch(() => {});
+            },
+          });
+        } catch (err) {
+          dropNodeOverride(newNodeId);
+          dropConnectorOverride(newConnId);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createAndConnectFromPane failed', err);
+        }
+      })();
+    },
+    [
+      demoId,
+      setNodeOverride,
+      dropNodeOverride,
+      setConnectorOverride,
+      dropConnectorOverride,
+      pushUndo,
+      markMutation,
+    ],
+  );
+
   // In-app clipboard for node copy/paste (US-011). Kept in a ref so we don't
   // leak demo internals into the OS clipboard and don't have to deal with
   // async ClipboardEvent permission prompts. The paired `hasClipboard` state
@@ -1708,6 +1812,8 @@ export function DemoView({
           onNodeClick={onNodeClickOpenPanel}
           onConnectorClick={onConnectorClickOpenPanel}
           onPaneClick={onPaneClickClosePanel}
+          onCreateAndConnectFromPane={onCreateAndConnectFromPane}
+          pendingEditNodeId={pendingEditNodeId}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

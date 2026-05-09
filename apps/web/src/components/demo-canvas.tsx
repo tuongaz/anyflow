@@ -1,4 +1,4 @@
-import { CanvasToolbar } from '@/components/canvas-toolbar';
+import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
 import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
@@ -17,6 +17,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
@@ -244,6 +245,29 @@ export interface DemoCanvasProps {
    * close the detail panel and clear the open-target.
    */
   onPaneClick?: () => void;
+  /**
+   * US-015: commit a new shape node at the drop position AND wire a connector
+   * from the drag's source node to the new node, all as a single undo entry.
+   * Wiring this enables the drop-on-pane popover; absent → drop on pane no-ops
+   * (legacy behaviour). The parent owns id generation, optimistic overrides,
+   * persistence, and the single undo-stack push. The canvas hands over the
+   * drag's source node id, the drop position in flow space, and the picked
+   * shape; the new node's id is owned by the parent so it can drive
+   * `pendingEditNodeId` for the auto-edit-on-mount affordance.
+   */
+  onCreateAndConnectFromPane?: (args: {
+    sourceNodeId: string;
+    position: { x: number; y: number };
+    shape: ShapeKind;
+  }) => void;
+  /**
+   * US-015: id of the most recently created node that should mount directly in
+   * inline label-edit mode (the drop-popover create flow). Injected into the
+   * matching node's data as `autoEditOnMount: true`; consumed once on mount by
+   * the node component. Subsequent renders are unaffected even if the parent
+   * leaves the id pinned.
+   */
+  pendingEditNodeId?: string | null;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -478,6 +502,8 @@ export function DemoCanvas({
   onNodeClick,
   onConnectorClick,
   onPaneClick,
+  onCreateAndConnectFromPane,
+  pendingEditNodeId,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -516,6 +542,30 @@ export function DemoCanvas({
   // so a NEW-connection drag (onConnectStart) doesn't accidentally inherit the
   // styling of an unrelated selected edge — only a real reconnect gesture does.
   const isReconnectingRef = useRef(false);
+  // US-015: drop-on-pane popover state. Set in onConnectEndCb when a new
+  // connection drag releases over empty canvas (not on a node body, not on a
+  // handle). The popover anchors at the cursor's screen position and offers
+  // the canvas-toolbar's shape set; picking one fans out to the parent's
+  // create-and-connect callback. Null when no popover is open.
+  const [dropPopover, setDropPopover] = useState<{
+    /** Cursor screen position the popover anchors to (client px). */
+    clientX: number;
+    clientY: number;
+    /** Drop position in flow space — feeds the new node's position. */
+    flowX: number;
+    flowY: number;
+    /** Source node id for the connector wired into the new node. */
+    sourceNodeId: string;
+  } | null>(null);
+  // Mirror into a ref so cross-handler closures (ESC chain, viewport-change
+  // dismissal) read the live value without re-binding.
+  const dropPopoverRef = useRef<typeof dropPopover>(null);
+  useEffect(() => {
+    dropPopoverRef.current = dropPopover;
+  }, [dropPopover]);
+  const closeDropPopover = useCallback(() => {
+    setDropPopover(null);
+  }, []);
   // US-009: memoize the connection-line component so React Flow doesn't see a
   // new identity each render and remount the line mid-drag. The component
   // closes over `isReconnectingRef`; the ref itself is stable across renders.
@@ -605,6 +655,15 @@ export function DemoCanvas({
           new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }),
         );
         setConnecting(false);
+        return;
+      }
+      // 3a. US-015: drop-on-pane popover. Closing here (rather than relying
+      //     solely on Radix's onEscapeKeyDown) handles the case where focus is
+      //     still on the canvas after the drag — Radix only intercepts ESC
+      //     when focus is inside the popover content.
+      if (dropPopoverRef.current) {
+        e.preventDefault();
+        setDropPopover(null);
         return;
       }
       // 4. Marquee drag. We treat marquee as in-progress whenever our
@@ -845,6 +904,11 @@ export function DemoCanvas({
           setResizing,
           onLabelChange: onNodeLabelChange,
           onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
+          // US-015: inject autoEditOnMount on the freshly drop-popover-created
+          // node so it opens in label-edit mode. The flag is consumed once at
+          // mount by the node component (lazy useState initializer); leaving
+          // it set on later renders is harmless.
+          autoEditOnMount: pendingEditNodeId === merged.id ? true : undefined,
         },
         selected: selectedNodeIdSet.has(merged.id),
       };
@@ -884,6 +948,7 @@ export function DemoCanvas({
     nodeOverrides,
     onNodeLabelChange,
     onNodeDescriptionChange,
+    pendingEditNodeId,
   ]);
 
   // React Flow needs internal node state + onNodesChange to render drag
@@ -1237,15 +1302,35 @@ export function DemoCanvas({
       const cursor = cursorFromConnectEvent(e);
       if (!cursor) return;
       const targetEl = nodeElAtPoint(cursor.clientX, cursor.clientY);
-      if (!targetEl) return;
-      const targetNodeId = targetEl.getAttribute('data-id');
-      if (!targetNodeId || targetNodeId === fromNodeId) return;
-      // US-023 + US-025: drag-from is always source, drop-node is always
-      // target — including when the user drags from a target-type handle.
-      // No handle ids are persisted; the resulting connector is floating.
-      onCreateConnector(fromNodeId, targetNodeId);
+      if (targetEl) {
+        const targetNodeId = targetEl.getAttribute('data-id');
+        if (!targetNodeId || targetNodeId === fromNodeId) return;
+        // US-023 + US-025: drag-from is always source, drop-node is always
+        // target — including when the user drags from a target-type handle.
+        // No handle ids are persisted; the resulting connector is floating.
+        onCreateConnector(fromNodeId, targetNodeId);
+        return;
+      }
+      // US-015: drop on empty canvas → open the create-and-connect popover at
+      // the cursor. The picked shape becomes a new node at the drop position,
+      // wired from the source. Skipped when the parent didn't wire the
+      // callback (preserves the legacy "drop on pane → no-op" behaviour).
+      if (!onCreateAndConnectFromPane) return;
+      const rfInstance = rfInstanceRef.current;
+      if (!rfInstance) return;
+      const flowPos = rfInstance.screenToFlowPosition({
+        x: cursor.clientX,
+        y: cursor.clientY,
+      });
+      setDropPopover({
+        clientX: cursor.clientX,
+        clientY: cursor.clientY,
+        flowX: flowPos.x,
+        flowY: flowPos.y,
+        sourceNodeId: fromNodeId,
+      });
     },
-    [onCreateConnector],
+    [onCreateConnector, onCreateAndConnectFromPane],
   );
 
   // Drag an edge endpoint onto another handle to reattach it. React Flow
@@ -1676,6 +1761,14 @@ export function DemoCanvas({
           rfInstanceRef.current = instance;
           onRfInit?.(instance);
         }}
+        onMove={() => {
+          // US-015: panning or zooming the canvas dismisses the drop-popover —
+          // the anchor's flow-space coordinates would otherwise drift away
+          // from the viewport translation. Read from the ref to avoid
+          // re-binding on every popover open/close (onMove fires every frame
+          // while the user pans/zooms).
+          if (dropPopoverRef.current) setDropPopover(null);
+        }}
         onEdgesChange={onEdgesChange}
         onNodeDragStart={() => {
           draggingRef.current = true;
@@ -1843,6 +1936,74 @@ export function DemoCanvas({
             ) : null}
           </ContextMenuContent>
         </ContextMenu>
+      ) : null}
+      {onCreateAndConnectFromPane ? (
+        <Popover
+          open={!!dropPopover}
+          onOpenChange={(open) => {
+            // Radix-driven dismissals (outside-click, ESC inside the popover,
+            // programmatic close on commit) all funnel through here. Map the
+            // close back to clearing our state so the next drop can re-anchor.
+            if (!open) setDropPopover(null);
+          }}
+        >
+          {/* PopoverAnchor is a 0×0 fixed-position element pinned to the cursor
+              at drop time; the Popover content positions relative to it. */}
+          <PopoverAnchor asChild>
+            <div
+              data-testid="drop-popover-anchor"
+              aria-hidden
+              className="pointer-events-none fixed"
+              style={{
+                left: dropPopover?.clientX ?? 0,
+                top: dropPopover?.clientY ?? 0,
+                width: 0,
+                height: 0,
+              }}
+            />
+          </PopoverAnchor>
+          <PopoverContent
+            data-testid="drop-popover"
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            className="w-auto p-1"
+            onOpenAutoFocus={(e) => {
+              // Don't pull focus into the popover — keep it on the canvas so
+              // the wrapper-level ESC handler still receives keypresses.
+              e.preventDefault();
+            }}
+          >
+            <div role="menu" aria-label="Create connected node" className="flex flex-col gap-0.5">
+              {TOOLBAR_SHAPES.map(({ shape, label, Icon }) => (
+                <button
+                  key={shape}
+                  type="button"
+                  role="menuitem"
+                  data-testid={`drop-popover-shape-${shape}`}
+                  onClick={() => {
+                    const dp = dropPopover;
+                    if (!dp) return;
+                    onCreateAndConnectFromPane({
+                      sourceNodeId: dp.sourceNodeId,
+                      position: { x: dp.flowX, y: dp.flowY },
+                      shape,
+                    });
+                    setDropPopover(null);
+                  }}
+                  className={cn(
+                    'flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
+                    'hover:bg-accent hover:text-accent-foreground',
+                    'focus:bg-accent focus:text-accent-foreground focus:outline-none',
+                  )}
+                >
+                  <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       ) : null}
     </div>
   );
