@@ -64,8 +64,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": 629.6167849006229,
-        "y": -1480.388347271029
+        "x": 241.61678490062286,
+        "y": -1746.388347271029
       },
       "data": {
         "label": "POST /payments/charge",
@@ -224,10 +224,10 @@
     {
       "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
       "source": "create-order",
-      "target": "charge-payment",
+      "target": "inventory-worker",
       "sourceHandle": "r",
-      "targetHandle": "t",
-      "kind": "default"
+      "kind": "default",
+      "targetHandleAutoPicked": true
     },
     {
       "id": "conn-01621e93-c685-4cf9-8a6c-3a219ccb277f",
