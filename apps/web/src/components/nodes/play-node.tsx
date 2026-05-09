@@ -1,6 +1,6 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
-import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
+import type { NodeStatus } from '@/components/nodes/status-pill';
 import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
@@ -13,9 +13,12 @@ export type PlayNodeData = NodeData & {
   /**
    * Undefined when this node has no entry in the runs map (i.e. the user has
    * never clicked Play on it). Once a run is dispatched, status becomes
-   * 'running' → 'done'/'error'. The pill is hidden for 'idle'.
+   * 'running' → 'done'/'error'. Status is communicated visually via the Play
+   * button itself (US-018) — no separate status chip.
    */
   status?: NodeStatus;
+  /** Filled when status === 'error' — surfaced as the play-button tooltip. */
+  errorMessage?: string;
   onPlay?: (nodeId: string) => void;
   onResize?: (
     nodeId: string,
@@ -39,7 +42,17 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
   const description = data.detail?.summary ?? data.kind;
   const playable = !!action && !!data.onPlay;
   const isRunning = status === 'running';
-  const buttonLabel = isRunning ? 'Running…' : 'Play';
+  const isError = status === 'error';
+  // US-018: failed runs surface their reason as the button tooltip — replaces
+  // the removed status chip. Falls back to a generic "Failed" if the SSE
+  // event arrived without a message.
+  const buttonLabel = isRunning
+    ? 'Running…'
+    : isError
+      ? data.errorMessage
+        ? `Failed: ${data.errorMessage}`
+        : 'Failed'
+      : 'Play';
   const [isResizing, setIsResizing] = useState(false);
   const [editing, setEditing] = useState<EditField>(null);
   const labelEditable = !!data.onLabelChange;
@@ -194,14 +207,20 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <StatusPill status={status ?? 'idle'} data-testid="play-node-status" />
           <Button
             type="button"
             size="sm"
             variant="secondary"
             disabled={!playable || isRunning}
-            className="h-8 w-8 p-0"
+            // US-018: circular play button. On error, a thick red border
+            // wraps the circle — replaces the standalone status chip. The
+            // play glyph (or running spinner) stays visible inside.
+            className={cn(
+              'h-8 w-8 rounded-full p-0',
+              isError && 'border-2 border-rose-500 dark:border-rose-400',
+            )}
             data-testid="play-button"
+            data-status={status ?? 'idle'}
             aria-label={buttonLabel}
             title={buttonLabel}
             onClick={(e) => {

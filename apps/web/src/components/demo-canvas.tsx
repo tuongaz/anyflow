@@ -465,6 +465,14 @@ const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
 const dataStatusFor = (runs: NodeRuns | undefined, id: string): NodeStatus | undefined =>
   runs?.[id]?.status;
 
+/**
+ * Per-node error message injected into a node's `data` slot when the most
+ * recent run failed. PlayNode (US-018) surfaces it as the play-button
+ * tooltip in place of the removed status chip.
+ */
+const dataErrorMessageFor = (runs: NodeRuns | undefined, id: string): string | undefined =>
+  runs?.[id]?.status === 'error' ? runs[id]?.error : undefined;
+
 export function DemoCanvas({
   nodes,
   connectors,
@@ -973,6 +981,7 @@ export function DemoCanvas({
         data: {
           ...merged.data,
           status: dataStatusFor(runs, merged.id),
+          errorMessage: dataErrorMessageFor(runs, merged.id),
           onPlay: onPlayNode,
           onResize: onNodeResize,
           setResizing,
