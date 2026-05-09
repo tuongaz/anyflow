@@ -29,6 +29,7 @@ import {
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
+import { toSvg } from 'html-to-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Position = { x: number; y: number };
@@ -40,6 +41,17 @@ const isEditableElement = (el: Element | null): boolean => {
   if (!el) return false;
   if (EDITABLE_TAGS.has(el.tagName)) return true;
   return el instanceof HTMLElement && el.isContentEditable;
+};
+
+/**
+ * Sanitize a string for use as a download filename. Replaces filesystem-unsafe
+ * characters (slashes, control chars, etc.) with underscores and trims to a
+ * reasonable length so the resulting `<demo-name>.svg` works across platforms.
+ */
+const sanitizeFileName = (name: string): string => {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars from a filename is the intent
+  const cleaned = name.replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').trim();
+  return cleaned.length > 0 ? cleaned.slice(0, 80) : 'demo';
 };
 
 /**
@@ -1804,6 +1816,49 @@ export function DemoView({
     }
   }, [demoId]);
 
+  // US-013: capture the canvas as an SVG and download it. We fitView so the
+  // entire graph is in frame, snapshot the previous viewport so we can restore
+  // it after, then call html-to-image on the `.react-flow__viewport` element.
+  // The viewport's siblings (Controls, MiniMap, Panel-mounted toolbar/style
+  // strip) are outside the captured DOM subtree by construction; the filter
+  // is a safety net in case xyflow ever moves them under the viewport.
+  const onExportSvg = useCallback(async (): Promise<void> => {
+    const rf = rfInstanceRef.current;
+    if (!rf) return;
+    const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport');
+    if (!viewportEl) return;
+    const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
+    setEditError(null);
+    const prev = rf.getViewport();
+    try {
+      await rf.fitView({ duration: 0, padding: 0.1 });
+      // Wait one frame so the new transform is reflected in the DOM before
+      // html-to-image samples computed styles.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const dataUrl = await toSvg(viewportEl, {
+        cacheBust: true,
+        filter: (node) => {
+          if (!(node instanceof Element)) return true;
+          if (node.classList.contains('react-flow__minimap')) return false;
+          if (node.classList.contains('react-flow__controls')) return false;
+          if (node.classList.contains('react-flow__panel')) return false;
+          return true;
+        },
+      });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${sanitizeFileName(demoName)}.svg`;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      rf.setViewport(prev, { duration: 0 });
+    }
+  }, [detail, slug]);
+
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
   // includes the fields that changed (source/target/sourceHandle/targetHandle).
@@ -2082,6 +2137,7 @@ export function DemoView({
           onCreateAndConnectFromPane={onCreateAndConnectFromPane}
           pendingEditNodeId={pendingEditNodeId}
           onResetDemo={demoId ? onResetDemo : undefined}
+          onExportSvg={demoId ? onExportSvg : undefined}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

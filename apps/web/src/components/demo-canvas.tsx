@@ -296,6 +296,14 @@ export interface DemoCanvasProps {
    * omitted, URL drags are ignored.
    */
   onIngestImageUrl?: (url: string, position: { x: number; y: number }) => void;
+  /**
+   * US-013: capture the canvas viewport and download it as an SVG file.
+   * Wiring this enables the Export SVG button in the canvas toolbar; absent →
+   * button is hidden. The parent owns the fitView/setViewport dance, the
+   * html-to-image capture, and the download trigger so the canvas stays free
+   * of dependency on the export library.
+   */
+  onExportSvg?: () => Promise<unknown> | unknown;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -548,6 +556,7 @@ export function DemoCanvas({
   onResetDemo,
   onCreateImageNode,
   onIngestImageUrl,
+  onExportSvg,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1997,6 +2006,7 @@ export function DemoCanvas({
                   activeShape={drawShape}
                   onSelectShape={setDrawShape}
                   onTidy={onTidy}
+                  onExportSvg={onExportSvg}
                 />
               ) : null}
               {onStyleNode && onStyleConnector ? (

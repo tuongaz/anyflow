@@ -1,6 +1,15 @@
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, LayoutDashboard, Square, StickyNote, Type } from 'lucide-react';
+import {
+  Circle,
+  FileImage,
+  LayoutDashboard,
+  Loader2,
+  Square,
+  StickyNote,
+  Type,
+} from 'lucide-react';
+import { useCallback, useState } from 'react';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
@@ -12,6 +21,12 @@ export interface CanvasToolbarProps {
    * renders but is disabled — used while no demo is loaded.
    */
   onTidy?: () => void;
+  /**
+   * US-013: capture the canvas viewport and download an SVG. When omitted,
+   * the Export SVG button is hidden (no demo loaded). Returning a promise
+   * lets the toolbar show an in-flight spinner until the export settles.
+   */
+  onExportSvg?: () => Promise<unknown> | unknown;
 }
 
 export interface ToolbarShapeEntry {
@@ -30,8 +45,20 @@ export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
 ];
 
 const TIDY_LABEL = 'Tidy layout (⌘⇧L)';
+const EXPORT_SVG_LABEL = 'Export SVG';
 
-export function CanvasToolbar({ activeShape, onSelectShape, onTidy }: CanvasToolbarProps) {
+export function CanvasToolbar({
+  activeShape,
+  onSelectShape,
+  onTidy,
+  onExportSvg,
+}: CanvasToolbarProps) {
+  const [exporting, setExporting] = useState(false);
+  const handleExportSvg = useCallback(() => {
+    if (!onExportSvg || exporting) return;
+    setExporting(true);
+    Promise.resolve(onExportSvg()).finally(() => setExporting(false));
+  }, [onExportSvg, exporting]);
   return (
     <div
       data-testid="canvas-toolbar"
@@ -76,6 +103,27 @@ export function CanvasToolbar({ activeShape, onSelectShape, onTidy }: CanvasTool
       >
         <LayoutDashboard className="h-4 w-4" />
       </button>
+      {onExportSvg ? (
+        <button
+          type="button"
+          data-testid="toolbar-export-svg"
+          aria-label={EXPORT_SVG_LABEL}
+          title={EXPORT_SVG_LABEL}
+          disabled={exporting}
+          onClick={handleExportSvg}
+          className={cn(
+            'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+            'hover:bg-accent hover:text-accent-foreground',
+            'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
+          )}
+        >
+          {exporting ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <FileImage className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }
