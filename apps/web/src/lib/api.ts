@@ -232,6 +232,7 @@ export interface UpdateNodeBody {
   borderSize?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
+  cornerRadius?: number;
   width?: number;
   height?: number;
   shape?: ShapeKind;
