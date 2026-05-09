@@ -280,11 +280,11 @@ export interface DemoCanvasProps {
    */
   onResetDemo?: () => Promise<unknown>;
   /**
-   * US-010: commit a new imageNode created from a paste/drag-drop ingestion.
-   * The canvas owns the clipboard listener and the screen→flow translation;
-   * the parent owns id generation, optimistic overrides, persistence, and the
-   * undo entry (mirrors `onCreateShapeNode`). When omitted the paste listener
-   * is inert.
+   * US-010 / US-011: commit a new imageNode created from paste-from-clipboard
+   * or drag-drop file ingestion. The canvas owns the listeners + screen→flow
+   * translation; the parent owns id generation, optimistic overrides,
+   * persistence, and the undo entry (mirrors `onCreateShapeNode`). When
+   * omitted both ingestion paths are inert.
    */
   onCreateImageNode?: (image: string, position: { x: number; y: number }) => void;
 }
@@ -611,6 +611,68 @@ export function DemoCanvas({
     };
     document.addEventListener('paste', handler);
     return () => document.removeEventListener('paste', handler);
+  }, [onCreateImageNode]);
+  // US-011: drag-drop image files from the OS onto the canvas. Listeners are
+  // attached to the wrapper directly (drop events fire on the actual drop
+  // target, unlike paste which bubbles to document). `dragover` is required
+  // to call preventDefault so the browser permits the subsequent `drop`; we
+  // gate that on a `Files` payload so internal canvas drag gestures (node
+  // drag, connector drag, draw-shape drag) keep their default behaviour. On
+  // drop we filter for image/* files, read each via FileReader.readAsDataURL,
+  // and fan out additional drops by +24/+24 in flow space so multi-file drops
+  // don't stack on top of each other. The drop point itself is translated to
+  // flow space via the React Flow instance and centered on the image so the
+  // node visually anchors at the cursor (matches the paste UX).
+  useEffect(() => {
+    if (!onCreateImageNode) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const isFilesDrag = (e: DragEvent): boolean => {
+      const types = e.dataTransfer?.types;
+      if (!types) return false;
+      for (let i = 0; i < types.length; i++) {
+        if (types[i] === 'Files') return true;
+      }
+      return false;
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!isFilesDrag(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (e: DragEvent) => {
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      const imageFiles: File[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file?.type.startsWith('image/')) imageFiles.push(file);
+      }
+      if (imageFiles.length === 0) return;
+      const rfInstance = rfInstanceRef.current;
+      if (!rfInstance) return;
+      e.preventDefault();
+      const baseFlow = rfInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      imageFiles.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          if (typeof dataUrl !== 'string') return;
+          const offset = index * 24;
+          onCreateImageNode(dataUrl, {
+            x: baseFlow.x - IMAGE_DEFAULT_SIZE.width / 2 + offset,
+            y: baseFlow.y - IMAGE_DEFAULT_SIZE.height / 2 + offset,
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+    wrapper.addEventListener('dragover', onDragOver);
+    wrapper.addEventListener('drop', onDrop);
+    return () => {
+      wrapper.removeEventListener('dragover', onDragOver);
+      wrapper.removeEventListener('drop', onDrop);
+    };
   }, [onCreateImageNode]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
