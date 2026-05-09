@@ -47,6 +47,7 @@ export interface NodeVisual {
   borderSize?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
+  cornerRadius?: number;
 }
 
 export interface NodeData extends NodeVisual {

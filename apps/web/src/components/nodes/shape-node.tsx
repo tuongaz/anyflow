@@ -83,6 +83,10 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   // four corner resize handles below render at the node's own corners; with
   // an 8x10px visible square + 4px outline-offset, the handles visually sit
   // at the rect's corners.
+  // US-004: cornerRadius only applies to shapes that have a square-ish border
+  // we can round — rectangle and sticky. Ellipse keeps its rounded-full (50%)
+  // and text has no border to round, so we leave them alone.
+  const supportsCornerRadius = shape === 'rectangle' || shape === 'sticky';
   const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
   // For text shapes, `borderColor` is repurposed as the text color (the field
   // is hidden as a border in the renderer, so reusing it avoids a redundant
@@ -99,6 +103,8 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
             : undefined,
           borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
           borderStyle: data.borderStyle,
+          borderRadius:
+            supportsCornerRadius && data.cornerRadius !== undefined ? data.cornerRadius : undefined,
         }),
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
     ...(selected
