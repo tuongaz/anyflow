@@ -1,5 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import { IMAGE_DEFAULT_SIZE } from '@/components/nodes/image-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
@@ -1108,6 +1109,54 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-010: commit a new imageNode at a flow-space position (paste / drag-drop
+  // entry point). Mirrors `onCreateShapeNode`: client-side id, optimistic
+  // override at the requested size, single undo entry pushed from the .then so
+  // it binds to the server-issued id.
+  const onCreateImageNode = useCallback(
+    (image: string, position: Position) => {
+      if (!demoId) return;
+      setEditError(null);
+      const id = `node-${crypto.randomUUID()}`;
+      const data = {
+        image,
+        width: IMAGE_DEFAULT_SIZE.width,
+        height: IMAGE_DEFAULT_SIZE.height,
+      };
+      const payload = {
+        id,
+        type: 'imageNode' as const,
+        position,
+        data,
+      };
+      const optimistic: DemoNode = {
+        id,
+        type: 'imageNode',
+        position,
+        data,
+      };
+      setNodeOverride(id, optimistic as Partial<DemoNode>);
+      markMutation();
+      createNode(demoId, payload)
+        .then(({ id: returnedId }) => {
+          pushUndo({
+            do: async () => {
+              await createNode(demoId, { ...payload, id: returnedId });
+            },
+            undo: async () => {
+              await deleteNode(demoId, returnedId);
+            },
+          });
+        })
+        .catch((err) => {
+          dropNodeOverride(id);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createNode (image) failed', err);
+        });
+    },
+    [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
@@ -1965,6 +2014,7 @@ export function DemoView({
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
+          onCreateImageNode={demoId ? onCreateImageNode : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
           onReorderNode={onReorderNode}

@@ -1,6 +1,6 @@
 import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
-import { ImageNode } from '@/components/nodes/image-node';
+import { IMAGE_DEFAULT_SIZE, ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
@@ -279,6 +279,14 @@ export interface DemoCanvasProps {
    * round-trips.
    */
   onResetDemo?: () => Promise<unknown>;
+  /**
+   * US-010: commit a new imageNode created from a paste/drag-drop ingestion.
+   * The canvas owns the clipboard listener and the screen→flow translation;
+   * the parent owns id generation, optimistic overrides, persistence, and the
+   * undo entry (mirrors `onCreateShapeNode`). When omitted the paste listener
+   * is inert.
+   */
+  onCreateImageNode?: (image: string, position: { x: number; y: number }) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -529,6 +537,7 @@ export function DemoCanvas({
   onCreateAndConnectFromPane,
   pendingEditNodeId,
   onResetDemo,
+  onCreateImageNode,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -556,6 +565,53 @@ export function DemoCanvas({
       setResetting(false);
     });
   }, [onResetDemo, resetting]);
+  // US-010: paste an image from the clipboard onto the canvas. Listens at the
+  // document level (paste events bubble there regardless of focus) and skips
+  // pastes that originate inside an editable target — InlineEdit / form inputs
+  // keep their native paste behaviour. The new imageNode is centered on the
+  // wrapper's viewport center, translated to flow space via the React Flow
+  // instance, then offset by half the default size so the node is visually
+  // centered. The parent owns persistence + undo via `onCreateImageNode`.
+  useEffect(() => {
+    if (!onCreateImageNode) return;
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as Element | null;
+      if (isEditableTarget(target)) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      let imageFile: File | null = null;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item) continue;
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          imageFile = item.getAsFile();
+          if (imageFile) break;
+        }
+      }
+      if (!imageFile) return;
+      const wrapper = wrapperRef.current;
+      const rfInstance = rfInstanceRef.current;
+      if (!wrapper || !rfInstance) return;
+      e.preventDefault();
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        if (typeof dataUrl !== 'string') return;
+        const rect = wrapper.getBoundingClientRect();
+        const center = rfInstance.screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        onCreateImageNode(dataUrl, {
+          x: center.x - IMAGE_DEFAULT_SIZE.width / 2,
+          y: center.y - IMAGE_DEFAULT_SIZE.height / 2,
+        });
+      };
+      reader.readAsDataURL(imageFile);
+    };
+    document.addEventListener('paste', handler);
+    return () => document.removeEventListener('paste', handler);
+  }, [onCreateImageNode]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
   // already left hover and the user needs to discover drop targets without
