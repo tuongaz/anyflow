@@ -1,5 +1,5 @@
 import { ProjectSwitcher } from '@/components/project-switcher';
-import type { DemoSummary } from '@/lib/api';
+import type { CreateProjectResult, DemoSummary } from '@/lib/api';
 import { navigate } from '@/lib/router';
 import type { ReactNode } from 'react';
 
@@ -7,9 +7,10 @@ export interface HeaderProps {
   demos: DemoSummary[];
   currentSlug?: string;
   trailing?: ReactNode;
+  onProjectCreated?: (result: CreateProjectResult) => void;
 }
 
-export function Header({ demos, currentSlug, trailing }: HeaderProps) {
+export function Header({ demos, currentSlug, trailing, onProjectCreated }: HeaderProps) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
       <button
@@ -21,7 +22,11 @@ export function Header({ demos, currentSlug, trailing }: HeaderProps) {
       </button>
       <div className="flex items-center gap-3">
         {trailing}
-        {demos.length > 0 ? <ProjectSwitcher demos={demos} currentSlug={currentSlug} /> : null}
+        <ProjectSwitcher
+          demos={demos}
+          currentSlug={currentSlug}
+          onProjectCreated={onProjectCreated}
+        />
       </div>
     </header>
   );

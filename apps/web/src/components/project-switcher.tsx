@@ -1,3 +1,4 @@
+import { CreateProjectDialog } from '@/components/create-project-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -6,21 +7,24 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
   CommandShortcut,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import type { DemoSummary } from '@/lib/api';
+import type { CreateProjectResult, DemoSummary } from '@/lib/api';
 import { navigate } from '@/lib/router';
-import { ChevronsUpDown } from 'lucide-react';
+import { ChevronsUpDown, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export interface ProjectSwitcherProps {
   demos: DemoSummary[];
   currentSlug?: string;
+  onProjectCreated?: (result: CreateProjectResult) => void;
 }
 
-export function ProjectSwitcher({ demos, currentSlug }: ProjectSwitcherProps) {
+export function ProjectSwitcher({ demos, currentSlug, onProjectCreated }: ProjectSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,54 +39,83 @@ export function ProjectSwitcher({ demos, currentSlug }: ProjectSwitcherProps) {
 
   const current = demos.find((d) => d.slug === currentSlug);
 
+  const handleCreated = (result: CreateProjectResult) => {
+    onProjectCreated?.(result);
+    navigate(`/d/${result.slug}`);
+  };
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          aria-label="Switch demo"
-          aria-expanded={open}
-          className="gap-2"
-          data-testid="project-switcher-trigger"
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Switch demo"
+            aria-expanded={open}
+            className="gap-2"
+            data-testid="project-switcher-trigger"
+          >
+            <span className="max-w-[180px] truncate text-sm">{current?.name ?? 'Select demo'}</span>
+            <CommandShortcut>⌘K</CommandShortcut>
+            <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={6}
+          className="w-[320px] p-0"
+          data-testid="project-switcher-popover"
         >
-          <span className="max-w-[180px] truncate text-sm">{current?.name ?? 'Select demo'}</span>
-          <CommandShortcut>⌘K</CommandShortcut>
-          <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={6}
-        className="w-[320px] p-0"
-        data-testid="project-switcher-popover"
-      >
-        <Command>
-          <CommandInput placeholder="Search demos..." />
-          <CommandList>
-            <CommandEmpty>No demos.</CommandEmpty>
-            <CommandGroup heading="Demos">
-              {demos.map((demo) => (
+          <Command>
+            <CommandInput placeholder="Search demos..." />
+            <CommandList>
+              <CommandEmpty>No demos.</CommandEmpty>
+              {demos.length > 0 ? (
+                <CommandGroup heading="Demos">
+                  {demos.map((demo) => (
+                    <CommandItem
+                      key={demo.id}
+                      value={`${demo.name} ${demo.slug}`}
+                      onSelect={() => {
+                        setOpen(false);
+                        navigate(`/d/${demo.slug}`);
+                      }}
+                      className="flex flex-col items-start gap-0.5"
+                    >
+                      <span className="font-medium">{demo.name}</span>
+                      <span className="text-xs text-muted-foreground truncate w-full">
+                        {demo.repoPath}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ) : null}
+              {demos.length > 0 ? <CommandSeparator /> : null}
+              <CommandGroup>
                 <CommandItem
-                  key={demo.id}
-                  value={`${demo.name} ${demo.slug}`}
+                  value="+ create new project"
                   onSelect={() => {
                     setOpen(false);
-                    navigate(`/d/${demo.slug}`);
+                    setCreateOpen(true);
                   }}
-                  className="flex flex-col items-start gap-0.5"
+                  data-testid="project-switcher-create"
+                  className="flex items-center gap-2 text-sm"
                 >
-                  <span className="font-medium">{demo.name}</span>
-                  <span className="text-xs text-muted-foreground truncate w-full">
-                    {demo.repoPath}
-                  </span>
+                  <Plus className="h-4 w-4 opacity-70" />
+                  <span className="font-medium">Create new project</span>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      <CreateProjectDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={handleCreated}
+      />
+    </>
   );
 }

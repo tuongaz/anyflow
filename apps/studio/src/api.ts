@@ -1,4 +1,4 @@
-import { existsSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
@@ -8,16 +8,25 @@ import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
 import {
   ColorTokenSchema,
+  type Demo,
   DemoSchema,
   SourceHandleIdSchema,
   TargetHandleIdSchema,
 } from './schema.ts';
+import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
+
+const DEFAULT_DEMO_RELATIVE_PATH = '.anydemo/demo.json';
 
 const RegisterBodySchema = z.object({
   name: z.string().min(1).optional(),
   repoPath: z.string().min(1),
   demoPath: z.string().min(1),
+});
+
+const CreateProjectBodySchema = z.object({
+  name: z.string().min(1),
+  folderPath: z.string().min(1),
 });
 
 const EmitBodySchema = z.object({
@@ -333,6 +342,110 @@ export function createApi(options: ApiOptions): Hono {
     watcher?.watch(entry.id);
 
     return c.json({ id: entry.id, slug: entry.slug });
+  });
+
+  // POST /api/projects — UI-driven "Create new project" flow (US-020). Two
+  // branches based on whether the target folder already has an AnyDemo
+  // project set up at `<folderPath>/.anydemo/demo.json`:
+  //   1. Existing setup: read + validate the on-disk demo and register it
+  //      as-is (no overwrite, no scaffolding). The user-supplied `name`
+  //      becomes the registry display name; the on-disk demo's `name` is
+  //      preserved on disk.
+  //   2. Fresh scaffold: mkdir -p the folder + .anydemo/, write a default
+  //      scaffold demo.json keyed off `name`, and run the same SDK-emit
+  //      helper write the CLI register flow uses (a no-op for an empty
+  //      scaffold, but kept for parity).
+  api.post('/projects', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+
+    const parsed = CreateProjectBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid create project body', issues: parsed.error.issues }, 400);
+    }
+
+    const { name, folderPath } = parsed.data;
+    if (!isAbsolute(folderPath)) {
+      return c.json({ error: 'folderPath must be an absolute filesystem path' }, 400);
+    }
+
+    const demoFullPath = join(folderPath, DEFAULT_DEMO_RELATIVE_PATH);
+    const hasExistingProject = existsSync(demoFullPath);
+
+    if (hasExistingProject) {
+      let raw: unknown;
+      try {
+        raw = await Bun.file(demoFullPath).json();
+      } catch (err) {
+        return c.json(
+          {
+            error: `Existing demo file is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+          },
+          400,
+        );
+      }
+      const demoParse = DemoSchema.safeParse(raw);
+      if (!demoParse.success) {
+        return c.json(
+          {
+            error: 'Existing demo file failed schema validation',
+            issues: demoParse.error.issues,
+          },
+          400,
+        );
+      }
+
+      const lastModified = statSync(demoFullPath).mtimeMs;
+      const entry = registry.upsert({
+        name,
+        repoPath: folderPath,
+        demoPath: DEFAULT_DEMO_RELATIVE_PATH,
+        valid: true,
+        lastModified,
+      });
+      watcher?.watch(entry.id);
+      return c.json({ id: entry.id, slug: entry.slug, scaffolded: false });
+    }
+
+    const scaffold: Demo = {
+      version: 1,
+      name,
+      nodes: [],
+      connectors: [],
+    };
+
+    try {
+      mkdirSync(join(folderPath, '.anydemo'), { recursive: true });
+      writeFileSync(demoFullPath, `${JSON.stringify(scaffold, null, 2)}\n`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `Failed to scaffold project at ${folderPath}: ${message}` }, 500);
+    }
+
+    // Use the same SDK-emit code path as the CLI register flow. For a
+    // fresh scaffold with no event-bound state nodes this returns
+    // 'skipped' and writes nothing — kept for parity with CLI register.
+    try {
+      writeSdkEmitIfNeeded(folderPath, scaffold);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `Failed to write SDK helper: ${message}` }, 500);
+    }
+
+    const lastModified = statSync(demoFullPath).mtimeMs;
+    const entry = registry.upsert({
+      name,
+      repoPath: folderPath,
+      demoPath: DEFAULT_DEMO_RELATIVE_PATH,
+      valid: true,
+      lastModified,
+    });
+    watcher?.watch(entry.id);
+    return c.json({ id: entry.id, slug: entry.slug, scaffolded: true });
   });
 
   api.get('/demos', (c) => {

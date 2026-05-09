@@ -6,7 +6,7 @@ import { useDemos } from '@/hooks/use-demos';
 import { useNodeEvents } from '@/hooks/use-node-events';
 import { useNodeRuns } from '@/hooks/use-node-runs';
 import { useStudioEvents } from '@/hooks/use-studio-events';
-import { playNode } from '@/lib/api';
+import { type CreateProjectResult, playNode } from '@/lib/api';
 import { pickInitialDemo, readLastProjectId, writeLastProjectId } from '@/lib/last-project';
 import { navigate, usePathname } from '@/lib/router';
 import { DemoView } from '@/pages/demo-view';
@@ -45,6 +45,14 @@ export function App() {
   );
 
   const { lastReload } = useStudioEvents(demoId, { onReload, onEvent });
+
+  const onProjectCreated = useCallback(
+    (result: CreateProjectResult) => {
+      writeLastProjectId(result.id);
+      refreshDemos();
+    },
+    [refreshDemos],
+  );
 
   // US-001: when landing on '/', auto-redirect to the last-used project (or
   // the first available one). Runs once demos resolve to an array.
@@ -92,6 +100,7 @@ export function App() {
           demos={demos}
           currentSlug={slug ?? undefined}
           trailing={demoId ? <ReloadIndicator lastReload={lastReload} /> : null}
+          onProjectCreated={onProjectCreated}
         />
         <main className="min-h-0 flex-1">
           {slug ? (
