@@ -29,7 +29,8 @@ import {
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
-import { toSvg } from 'html-to-image';
+import { toPng, toSvg } from 'html-to-image';
+import { jsPDF } from 'jspdf';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Position = { x: number; y: number };
@@ -1859,6 +1860,57 @@ export function DemoView({
     }
   }, [detail, slug]);
 
+  // US-014: capture the canvas as a PNG via html-to-image, then embed it into
+  // a jsPDF document sized to the captured aspect ratio (landscape if wider
+  // than tall). Same fitView/restore + filter dance as onExportSvg above —
+  // only the encoding differs.
+  const onExportPdf = useCallback(async (): Promise<void> => {
+    const rf = rfInstanceRef.current;
+    if (!rf) return;
+    const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport');
+    if (!viewportEl) return;
+    const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
+    setEditError(null);
+    const prev = rf.getViewport();
+    try {
+      await rf.fitView({ duration: 0, padding: 0.1 });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const dataUrl = await toPng(viewportEl, {
+        cacheBust: true,
+        filter: (node) => {
+          if (!(node instanceof Element)) return true;
+          if (node.classList.contains('react-flow__minimap')) return false;
+          if (node.classList.contains('react-flow__controls')) return false;
+          if (node.classList.contains('react-flow__panel')) return false;
+          return true;
+        },
+      });
+      // Probe the captured image's natural pixel dimensions so the PDF page
+      // matches the aspect ratio without distortion. Decoding happens in the
+      // browser; failures (rare for our own data URL) bubble up to editError.
+      const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => reject(new Error('Failed to decode captured image'));
+        img.src = dataUrl;
+      });
+      const orientation: 'landscape' | 'portrait' =
+        dims.width > dims.height ? 'landscape' : 'portrait';
+      const doc = new jsPDF({
+        orientation,
+        unit: 'px',
+        format: [dims.width, dims.height],
+        hotfixes: ['px_scaling'],
+      });
+      doc.addImage(dataUrl, 'PNG', 0, 0, dims.width, dims.height);
+      doc.save(`${sanitizeFileName(demoName)}.pdf`);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      rf.setViewport(prev, { duration: 0 });
+    }
+  }, [detail, slug]);
+
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
   // includes the fields that changed (source/target/sourceHandle/targetHandle).
@@ -2138,6 +2190,7 @@ export function DemoView({
           pendingEditNodeId={pendingEditNodeId}
           onResetDemo={demoId ? onResetDemo : undefined}
           onExportSvg={demoId ? onExportSvg : undefined}
+          onExportPdf={demoId ? onExportPdf : undefined}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

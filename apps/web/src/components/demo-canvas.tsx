@@ -304,6 +304,14 @@ export interface DemoCanvasProps {
    * of dependency on the export library.
    */
   onExportSvg?: () => Promise<unknown> | unknown;
+  /**
+   * US-014: capture the canvas viewport and download it as a PDF file.
+   * Wiring this enables the Export PDF button in the canvas toolbar; absent →
+   * button is hidden. The parent owns the fitView/setViewport dance, the
+   * html-to-image capture, and the jsPDF generation so the canvas stays free
+   * of dependency on the export libraries.
+   */
+  onExportPdf?: () => Promise<unknown> | unknown;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -557,6 +565,7 @@ export function DemoCanvas({
   onCreateImageNode,
   onIngestImageUrl,
   onExportSvg,
+  onExportPdf,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -2007,6 +2016,7 @@ export function DemoCanvas({
                   onSelectShape={setDrawShape}
                   onTidy={onTidy}
                   onExportSvg={onExportSvg}
+                  onExportPdf={onExportPdf}
                 />
               ) : null}
               {onStyleNode && onStyleConnector ? (

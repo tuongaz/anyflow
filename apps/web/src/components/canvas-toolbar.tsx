@@ -5,6 +5,7 @@ import {
   FileImage,
   LayoutDashboard,
   Loader2,
+  Printer,
   Square,
   StickyNote,
   Type,
@@ -27,6 +28,12 @@ export interface CanvasToolbarProps {
    * lets the toolbar show an in-flight spinner until the export settles.
    */
   onExportSvg?: () => Promise<unknown> | unknown;
+  /**
+   * US-014: capture the canvas viewport and download a PDF. When omitted,
+   * the Export PDF button is hidden (no demo loaded). Returning a promise
+   * lets the toolbar show an in-flight spinner until the export settles.
+   */
+  onExportPdf?: () => Promise<unknown> | unknown;
 }
 
 export interface ToolbarShapeEntry {
@@ -46,19 +53,27 @@ export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
 
 const TIDY_LABEL = 'Tidy layout (⌘⇧L)';
 const EXPORT_SVG_LABEL = 'Export SVG';
+const EXPORT_PDF_LABEL = 'Export PDF';
 
 export function CanvasToolbar({
   activeShape,
   onSelectShape,
   onTidy,
   onExportSvg,
+  onExportPdf,
 }: CanvasToolbarProps) {
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const handleExportSvg = useCallback(() => {
     if (!onExportSvg || exporting) return;
     setExporting(true);
     Promise.resolve(onExportSvg()).finally(() => setExporting(false));
   }, [onExportSvg, exporting]);
+  const handleExportPdf = useCallback(() => {
+    if (!onExportPdf || exportingPdf) return;
+    setExportingPdf(true);
+    Promise.resolve(onExportPdf()).finally(() => setExportingPdf(false));
+  }, [onExportPdf, exportingPdf]);
   return (
     <div
       data-testid="canvas-toolbar"
@@ -121,6 +136,27 @@ export function CanvasToolbar({
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (
             <FileImage className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      ) : null}
+      {onExportPdf ? (
+        <button
+          type="button"
+          data-testid="toolbar-export-pdf"
+          aria-label={EXPORT_PDF_LABEL}
+          title={EXPORT_PDF_LABEL}
+          disabled={exportingPdf}
+          onClick={handleExportPdf}
+          className={cn(
+            'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+            'hover:bg-accent hover:text-accent-foreground',
+            'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
+          )}
+        >
+          {exportingPdf ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Printer className="h-4 w-4" aria-hidden="true" />
           )}
         </button>
       ) : null}
