@@ -1649,10 +1649,11 @@ export function DemoCanvas({
         // explicit `reconnectable: true` on the selected edge (set in `rfEdges`)
         // be the only switch that turns EdgeAnchor on.
         edgesReconnectable={false}
-        // Don't elevate selected nodes above edges (US-007). React Flow's
-        // default bumps a selected node to z-index 1000+, which would push it
-        // above any connector that crosses it; selection is already conveyed
-        // by the outline (US-005), so we don't need the elevation.
+        // Keep selected nodes at the same z-stack level as their siblings
+        // (US-014). React Flow's default would bump a selected node to
+        // z-index 1000+, but selection is already conveyed by the outline
+        // (US-005) and US-014 pins every node above every edge regardless
+        // of selection — no extra node-vs-node elevation needed.
         elevateNodesOnSelect={false}
         elementsSelectable={!drawShape}
         // US-019 selection model: marquee on drag, Space to pan. With

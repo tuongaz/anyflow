@@ -268,14 +268,18 @@ describe('connectorToEdge', () => {
     expect(edge.markerEnd?.color).toBe(edge.style.stroke);
   });
 
-  it('pins zIndex >= 1 so connectors paint above any node (US-007)', () => {
+  it('does not set a per-edge zIndex so connectors paint behind nodes (US-014)', () => {
     const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
     const idle = connectorToEdge(c, false, false);
     const running = connectorToEdge(c, true, false);
     const selected = connectorToEdge(c, false, true);
-    expect(idle.zIndex).toBeGreaterThanOrEqual(1);
-    expect(running.zIndex).toBe(idle.zIndex);
-    expect(selected.zIndex).toBe(idle.zIndex);
+    // Per AC: rely on React Flow's default DOM order (.react-flow__edges
+    // renders before .react-flow__nodes) instead of per-edge zIndex hacks.
+    // A `zIndex` field on the derived edge would set inline style on each
+    // edge's <svg>, lifting it above the nodes layer.
+    expect((idle as unknown as Record<string, unknown>).zIndex).toBeUndefined();
+    expect((running as unknown as Record<string, unknown>).zIndex).toBeUndefined();
+    expect((selected as unknown as Record<string, unknown>).zIndex).toBeUndefined();
   });
 
   // US-023 regression guard: drag-direction is the canonical mapping for new
