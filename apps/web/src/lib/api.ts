@@ -489,6 +489,29 @@ export const createProject = async (body: CreateProjectBody): Promise<CreateProj
   return (await res.json()) as CreateProjectResult;
 };
 
+export interface ResetDemoResult {
+  ok: true;
+  calledResetAction: boolean;
+}
+
+export const resetDemo = async (demoId: string): Promise<ResetDemoResult> => {
+  const res = await fetch(`/api/demos/${demoId}/reset`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/reset → ${res.status}`);
+  }
+  return (await res.json()) as ResetDemoResult;
+};
+
 export const playNode = async (demoId: string, nodeId: string): Promise<PlayResult> => {
   const res = await fetch(`/api/demos/${demoId}/play/${nodeId}`, {
     method: 'POST',

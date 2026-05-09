@@ -28,6 +28,7 @@ import {
   Background,
   type Connection,
   type ConnectionLineComponentProps,
+  ControlButton,
   Controls,
   type Edge,
   type EdgeChange,
@@ -45,6 +46,7 @@ import {
   useStore,
   useStoreApi,
 } from '@xyflow/react';
+import { Loader2, RotateCcw } from 'lucide-react';
 import {
   type ComponentType,
   type PointerEvent,
@@ -268,6 +270,15 @@ export interface DemoCanvasProps {
    * leaves the id pinned.
    */
   pendingEditNodeId?: string | null;
+  /**
+   * US-009: fire the demo's reset action and broadcast a `demo:reload` event
+   * (POST /api/demos/:id/reset). When wired, the Controls panel renders a
+   * Reset button next to zoom/fit; absent → button is hidden. The parent owns
+   * demoId resolution and error surfacing — the canvas just tracks the
+   * in-flight state locally so the button shows a spinner while the request
+   * round-trips.
+   */
+  onResetDemo?: () => Promise<unknown>;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -517,6 +528,7 @@ export function DemoCanvas({
   onPaneClick,
   onCreateAndConnectFromPane,
   pendingEditNodeId,
+  onResetDemo,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -531,6 +543,19 @@ export function DemoCanvas({
   // Used to call `cancelConnection` when ESC cancels an in-flight connection.
   const storeApiRef = useRef<StoreApi | null>(null);
   const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
+  // US-009: in-flight flag for the Reset button inside the Controls panel.
+  // While true the button is disabled and shows a spinner; the parent's
+  // onResetDemo promise drives the lifecycle (settle → clear). Errors are
+  // surfaced by the parent (editError banner in demo-view), so we just
+  // swallow the rejection here — the local flag still resets either way.
+  const [resetting, setResetting] = useState(false);
+  const handleResetClick = useCallback(() => {
+    if (!onResetDemo || resetting) return;
+    setResetting(true);
+    Promise.resolve(onResetDemo()).finally(() => {
+      setResetting(false);
+    });
+  }, [onResetDemo, resetting]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
   // already left hover and the user needs to discover drop targets without
@@ -1767,7 +1792,24 @@ export function DemoCanvas({
       >
         <StoreApiBridge storeApiRef={storeApiRef} />
         <Background gap={12} size={0.6} />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false}>
+          {onResetDemo ? (
+            <ControlButton
+              data-testid="canvas-reset-demo"
+              type="button"
+              aria-label="Reset demo"
+              title="Reset demo"
+              disabled={resetting}
+              onClick={handleResetClick}
+            >
+              {resetting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              )}
+            </ControlButton>
+          ) : null}
+        </Controls>
         {onCreateShapeNode || onStyleNode || onStyleConnector ? (
           <Panel position="top-left">
             <div className="flex flex-col gap-2">
