@@ -12,3 +12,4 @@ apps/studio/README.md
 
 docs
 ralph
+.claude/scheduled_tasks.lock
