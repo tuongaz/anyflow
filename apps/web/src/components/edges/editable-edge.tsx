@@ -22,11 +22,10 @@ const SMOOTHSTEP_BORDER_RADIUS = 8;
 // US-011 / US-024: shift in flow units applied to the EdgeAnchor circle's
 // cx/cy (mirrors xyflow's `shiftX/shiftY(centerX, radius, position)` with
 // radius = the `reconnectRadius` prop on <ReactFlow>, which we set to 10 in
-// demo-canvas.tsx — matching the 20px visible diameter from the shared
-// --anydemo-handle-size token). Keep these in lock-step with that prop so
-// the visible reconnect dot's center sits half a diameter outside the
-// floating endpoint — same offset xyflow uses for its (default) anchor
-// placement.
+// demo-canvas.tsx). The visible portal dot is sized smaller via the shared
+// --anydemo-handle-size token but stays concentric with the SVG hit circle.
+// Keep this in lock-step with `reconnectRadius` so the reconnect drag and
+// the visible dot share the same anchor position outside the node corner.
 const RECONNECT_ANCHOR_SHIFT = 10;
 const shiftAnchorForSide = (
   baseX: number,
