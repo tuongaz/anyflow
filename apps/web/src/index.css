@@ -187,14 +187,45 @@
   opacity: 0.85;
 }
 
-/* Bigger pointer hit-area on connection handles without growing the visible
- * dot. The pseudo-element extends the click target ~6px in every direction
- * so users don't need pixel-perfect aim to start a connection. */
+/* US-023: outlet handles get a white fill + neutral-border grey 1.5px stroke
+ * to match the connector reconnect endpoint dots from US-019 — both read as
+ * draggable handles in the same visual language. The size is bumped via
+ * Tailwind classes per-Handle (`!h-5 !w-5` ≈ 20px) in state/play/shape node
+ * renderers, and the transform offsets below stack the dots `~outlineOffset`
+ * outward from the node body so their CENTER continues to sit on the outer
+ * selection-rect edge midpoint (consistent with US-007). */
+.react-flow__node .react-flow__handle {
+  background: #ffffff !important;
+  border: 1.5px solid hsl(var(--border)) !important;
+}
+
+/* Bigger pointer hit-area on connection handles. The pseudo-element extends
+ * the click target ~6px in every direction so users don't need pixel-perfect
+ * aim — with the US-023 20px visible dot, the resulting ~32px hit target
+ * stays well above the visible affordance. */
 .react-flow__handle::after {
   content: "";
   position: absolute;
   inset: -6px;
   border-radius: 50%;
+}
+
+/* US-023: outlet dots render above every other canvas element — including
+ * any neighbouring node that might overlap the parent node's body. xyflow
+ * renders each node as an absolute-positioned element with its own stacking
+ * context (via `transform`), so a z-index on the handle alone can never
+ * cross node boundaries. The only declarative way to pull outlet dots above
+ * an overlapping sibling node is to lift the parent node's stacking context.
+ *
+ * Two sources lift a node: an explicit user selection (`.selected`) and an
+ * in-flight connection drag where this node is the SOURCE (handles must stay
+ * visible to anchor the user's gesture). `elevateNodesOnSelect={false}` on
+ * <ReactFlow> keeps the inline z-index at 0 by default, so this rule has a
+ * clean baseline to override. The `!important` beats xyflow's inline style
+ * (inline without !important loses to !important in a stylesheet). */
+.react-flow__node.selected,
+.react-flow__node[data-connect-source="true"] {
+  z-index: 1000 !important;
 }
 
 /* Suppress xyflow's default `cursor: crosshair` on connection handles — the

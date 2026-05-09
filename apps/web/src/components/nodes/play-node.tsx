@@ -160,19 +160,13 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         type="target"
         position={Position.Top}
         id="t"
-        className={cn(
-          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
-          selected && '!opacity-100',
-        )}
+        className={cn('!h-5 !w-5 opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="l"
-        className={cn(
-          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
-          selected && '!opacity-100',
-        )}
+        className={cn('!h-5 !w-5 opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <div
         className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2 py-2"
@@ -269,19 +263,13 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         type="source"
         position={Position.Right}
         id="r"
-        className={cn(
-          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
-          selected && '!opacity-100',
-        )}
+        className={cn('!h-5 !w-5 opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="b"
-        className={cn(
-          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
-          selected && '!opacity-100',
-        )}
+        className={cn('!h-5 !w-5 opacity-0 transition-opacity', selected && '!opacity-100')}
       />
     </div>
   );
