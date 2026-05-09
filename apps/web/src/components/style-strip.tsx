@@ -45,6 +45,15 @@ export interface StyleStripProps {
   connectors: Connector[];
   onStyleNode: (nodeId: string, patch: NodeStylePatch) => void;
   onStyleNodePreview?: (nodeId: string, patch: NodeStylePatch) => void;
+  /**
+   * US-008: atomic multi-node apply. When present and a multi-node selection is
+   * active, the strip routes the user's pick through this single call so the
+   * caller can commit the batch as one undo-stack entry. Falls back to a
+   * per-node loop over `onStyleNode` when omitted (legacy behaviour).
+   */
+  onStyleNodes?: (nodeIds: string[], patch: NodeStylePatch) => void;
+  /** US-008: atomic multi-node live preview during a slider drag. */
+  onStyleNodesPreview?: (nodeIds: string[], patch: NodeStylePatch) => void;
   onStyleConnector: (connId: string, patch: ConnectorStylePatch) => void;
   onStyleConnectorPreview?: (connId: string, patch: ConnectorStylePatch) => void;
 }
@@ -112,6 +121,8 @@ export function StyleStrip({
   connectors,
   onStyleNode,
   onStyleNodePreview,
+  onStyleNodes,
+  onStyleNodesPreview,
   onStyleConnector,
   onStyleConnectorPreview,
 }: StyleStripProps) {
@@ -170,12 +181,36 @@ export function StyleStrip({
     for (const node of nodes) onStyleNodePreview?.(node.id, { borderSize: n });
     for (const c of connectors) onStyleConnectorPreview?.(c.id, { borderSize: n });
   };
+  // US-008: prefer the atomic batch API for multi-node selections so the apply
+  // commits as a single undo-stack entry. Single-node selections still go
+  // through the per-node API (behaviour unchanged).
   const applyFontSize = (n: number) => {
-    for (const node of nodes) onStyleNode(node.id, { fontSize: n });
+    if (nodes.length > 1 && onStyleNodes) {
+      onStyleNodes(
+        nodes.map((node) => node.id),
+        { fontSize: n },
+      );
+    } else {
+      for (const node of nodes) onStyleNode(node.id, { fontSize: n });
+    }
   };
   const previewFontSize = (n: number) => {
-    for (const node of nodes) onStyleNodePreview?.(node.id, { fontSize: n });
+    if (nodes.length > 1 && onStyleNodesPreview) {
+      onStyleNodesPreview(
+        nodes.map((node) => node.id),
+        { fontSize: n },
+      );
+    } else {
+      for (const node of nodes) onStyleNodePreview?.(node.id, { fontSize: n });
+    }
   };
+  // US-008: detect mixed font sizes across the selection so the slider can
+  // render an indeterminate placeholder until the user picks a value. Treat
+  // unset (undefined) as the default so a node with explicit 22 and one
+  // without are considered equal.
+  const fontSizeIndeterminate =
+    nodes.length > 1 &&
+    new Set(nodes.map((n) => n.data.fontSize ?? NODE_FONT_SIZE_DEFAULT)).size > 1;
   const applyConnectorPath = (path: ConnectorPath) => {
     for (const c of connectors) onStyleConnector(c.id, { path });
   };
@@ -301,6 +336,7 @@ export function StyleStrip({
               min={10}
               max={32}
               suffix="px"
+              indeterminate={fontSizeIndeterminate}
               onPreview={previewFontSize}
               onCommit={applyFontSize}
               testId="style-tab-font-size-slider"
@@ -530,12 +566,18 @@ function PopoverButton({
 // Mirrors detail-panel.tsx SliderControl so the strip's slider behaves
 // identically (live optimistic preview + commit on release). Same testIds on
 // the slider element so older Playwright snapshots keep working.
+//
+// US-008: when `indeterminate` is true (mixed values across a multi-node
+// selection), the readout shows "Mixed" until the user moves the slider, at
+// which point the slider transitions to determinate and fans out the picked
+// value to every selected node.
 function SliderControl({
   value,
   defaultValue,
   min,
   max,
   suffix,
+  indeterminate,
   onPreview,
   onCommit,
   testId,
@@ -545,15 +587,22 @@ function SliderControl({
   min: number;
   max: number;
   suffix?: string;
+  indeterminate?: boolean;
   onPreview?: (n: number) => void;
   onCommit: (n: number) => void;
   testId: string;
 }) {
   const upstream = value ?? defaultValue;
   const [local, setLocal] = useState<number>(upstream);
+  // Tracks whether the user has touched the slider in the current open cycle.
+  // Indeterminate mode resets this back to false when the upstream selection
+  // changes (different mixed set → re-show the placeholder).
+  const [picked, setPicked] = useState<boolean>(false);
   useEffect(() => {
     setLocal(upstream);
+    setPicked(false);
   }, [upstream]);
+  const showPlaceholder = indeterminate && !picked;
   return (
     <div className="flex w-48 items-center gap-3">
       <Slider
@@ -564,15 +613,26 @@ function SliderControl({
         onValueChange={([v]) => {
           const next = v ?? min;
           setLocal(next);
+          setPicked(true);
           onPreview?.(next);
         }}
         onValueCommit={([v]) => onCommit(v ?? min)}
         data-testid={testId}
-        className="flex-1"
+        data-indeterminate={showPlaceholder ? 'true' : undefined}
+        className={cn('flex-1', showPlaceholder && 'opacity-60')}
       />
-      <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        {local}
-        {suffix}
+      <span
+        data-testid={`${testId}-value`}
+        className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground"
+      >
+        {showPlaceholder ? (
+          'Mixed'
+        ) : (
+          <>
+            {local}
+            {suffix}
+          </>
+        )}
       </span>
     </div>
   );

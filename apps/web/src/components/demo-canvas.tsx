@@ -179,6 +179,10 @@ export interface DemoCanvasProps {
   onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
   /** Live preview override during a slider drag (no PATCH/undo). */
   onStyleNodePreview?: (nodeId: string, patch: NodeStylePatch) => void;
+  /** US-008: atomic multi-node apply (single undo entry). */
+  onStyleNodes?: (nodeIds: string[], patch: NodeStylePatch) => void;
+  /** US-008: live preview for a multi-node selection. */
+  onStyleNodesPreview?: (nodeIds: string[], patch: NodeStylePatch) => void;
   /** Apply a style patch to a connector (color/style/direction/path/width). */
   onStyleConnector?: (connId: string, patch: ConnectorStylePatch) => void;
   /** Live preview override during a slider drag (no PATCH/undo). */
@@ -371,6 +375,8 @@ export function DemoCanvas({
   selectedConnectors,
   onStyleNode,
   onStyleNodePreview,
+  onStyleNodes,
+  onStyleNodesPreview,
   onStyleConnector,
   onStyleConnectorPreview,
   onRfInit,
@@ -1560,6 +1566,8 @@ export function DemoCanvas({
                   connectors={selectedConnectors ?? []}
                   onStyleNode={onStyleNode}
                   onStyleNodePreview={onStyleNodePreview}
+                  onStyleNodes={onStyleNodes}
+                  onStyleNodesPreview={onStyleNodesPreview}
                   onStyleConnector={onStyleConnector}
                   onStyleConnectorPreview={onStyleConnectorPreview}
                 />

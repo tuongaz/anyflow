@@ -339,6 +339,16 @@ export function DemoView({
     },
     [setNodeOverride],
   );
+  // US-008: live preview for a multi-node selection — fan out the override to
+  // every selected node so they update together while the slider drags.
+  const onStyleNodesPreview = useCallback(
+    (nodeIds: string[], patch: NodeStylePatch) => {
+      for (const id of nodeIds) {
+        setNodeOverride(id, { data: patch } as Partial<DemoNode>);
+      }
+    },
+    [setNodeOverride],
+  );
   const onStyleConnectorPreview = useCallback(
     (connId: string, patch: ConnectorStylePatch) => {
       setConnectorOverride(connId, patch as Partial<Connector>);
@@ -386,6 +396,61 @@ export function DemoView({
       });
     },
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
+  );
+
+  // US-008: atomic style-edit across a multi-node selection. Snapshots prev
+  // for every targeted node, fans out optimistic overrides + PATCHes, and
+  // pushes ONE undo entry so a single Cmd+Z reverts the whole group change.
+  // Mirrors the onTidy batch pattern below.
+  const onStyleNodes = useCallback(
+    (nodeIds: string[], patch: NodeStylePatch) => {
+      if (!demoId) return;
+      if (nodeIds.length === 0) return;
+      const targets = nodeIds
+        .map((id) => {
+          const node = demoNodes?.find((n) => n.id === id);
+          if (!node) return null;
+          const data = node.data as unknown as Record<string, unknown>;
+          const prev: NodeStylePatch = {};
+          for (const k of Object.keys(patch)) {
+            (prev as Record<string, unknown>)[k] = data[k];
+          }
+          return { id, prev };
+        })
+        .filter((t): t is { id: string; prev: NodeStylePatch } => t !== null);
+      if (targets.length === 0) return;
+      for (const t of targets) {
+        setNodeOverride(t.id, { data: patch } as Partial<DemoNode>);
+      }
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled(targets.map((t) => updateNode(demoId, t.id, patch)));
+        },
+        undo: async () => {
+          await Promise.allSettled(targets.map((t) => updateNode(demoId, t.id, t.prev)));
+        },
+      });
+      // Fire-and-forget fan-out. On per-node failure, drop that node's
+      // override so the canvas falls back to server state and surface a
+      // single banner.
+      Promise.all(
+        targets.map(async (t) => {
+          try {
+            await updateNode(demoId, t.id, patch);
+            return null;
+          } catch (err) {
+            dropNodeOverride(t.id);
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ).then((errs) => {
+        const first = errs.find((e): e is string => e !== null);
+        if (first) setEditError(first);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
   // Style-tab edit on a connector: color, edge style, direction. Cast through
@@ -1441,6 +1506,8 @@ export function DemoView({
           selectedConnectors={selectedConnectorsList}
           onStyleNode={onStyleNode}
           onStyleNodePreview={onStyleNodePreview}
+          onStyleNodes={onStyleNodes}
+          onStyleNodesPreview={onStyleNodesPreview}
           onStyleConnector={onStyleConnector}
           onStyleConnectorPreview={onStyleConnectorPreview}
           onRfInit={onRfInit}
