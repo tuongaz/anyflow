@@ -1,5 +1,5 @@
 import { CanvasToolbar } from '@/components/canvas-toolbar';
-import { EditableEdge } from '@/components/edges/editable-edge';
+import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
 import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import {
   Background,
   type Connection,
+  type ConnectionLineComponentProps,
   Controls,
   type Edge,
   type EdgeChange,
@@ -38,9 +39,20 @@ import {
   SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
+  getBezierPath,
+  getSmoothStepPath,
+  useStore,
   useStoreApi,
 } from '@xyflow/react';
-import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ComponentType,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import '@xyflow/react/dist/style.css';
 
@@ -300,6 +312,72 @@ const mergeConnectorOverride = (
 const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
 const edgeTypes = { editableEdge: EditableEdge };
 
+// US-009: smoothstep corner radius — kept in sync with EditableEdge so the
+// reconnect-time connection line traces the same zigzag profile as the
+// committed edge.
+const SMOOTHSTEP_BORDER_RADIUS = 8;
+
+/**
+ * US-009: custom connection-line component used while a reconnect drag is in
+ * flight. xyflow unmounts the original edge for the duration of the gesture
+ * (see EdgeWrapper: `!reconnecting && <EdgeComponent />`) and substitutes a
+ * default thin grey bezier — visually disconnected from the edge being
+ * modified. We mark the user-selected reconnectable edge with `reconnectable:
+ * true` (in `rfEdges`), so during a reconnect drag it's the unique edge with
+ * that flag. We mirror the edge's `style` (stroke color / width / dasharray)
+ * and `data.path` (curve vs zigzag) onto the in-flight line so the drag looks
+ * like the original edge sliding to follow the cursor.
+ *
+ * For NEW connection drags (onConnect, not onReconnect) the edge being
+ * "reconnected" is null even when an unrelated edge happens to be selected:
+ * we gate on a ref that's set in onReconnectStart and cleared in
+ * onReconnectEnd, so a new-connection drag retains xyflow's default styling.
+ */
+const buildReconnectAwareConnectionLine = (isReconnectingRef: {
+  current: boolean;
+}): ComponentType<ConnectionLineComponentProps> => {
+  return function ReconnectAwareConnectionLine({
+    fromX,
+    fromY,
+    toX,
+    toY,
+    fromPosition,
+    toPosition,
+    connectionLineStyle,
+  }: ConnectionLineComponentProps) {
+    // useStore subscribes the line to edge mutations so style edits to the
+    // selected edge mid-drag (theoretical, not currently exposed) propagate.
+    // The ref guard makes a new-connection drag fall through to the default
+    // styling even when an unrelated edge is selected and `reconnectable: true`
+    // — only a real reconnect gesture inherits the edge's style.
+    const reconnectingEdge = useStore((s) =>
+      isReconnectingRef.current ? (s.edges.find((e) => e.reconnectable === true) ?? null) : null,
+    );
+    const data = reconnectingEdge?.data as EditableEdgeData | undefined;
+    const isStep = data?.path === 'step';
+    const [path] = isStep
+      ? getSmoothStepPath({
+          sourceX: fromX,
+          sourceY: fromY,
+          sourcePosition: fromPosition,
+          targetX: toX,
+          targetY: toY,
+          targetPosition: toPosition,
+          borderRadius: SMOOTHSTEP_BORDER_RADIUS,
+        })
+      : getBezierPath({
+          sourceX: fromX,
+          sourceY: fromY,
+          sourcePosition: fromPosition,
+          targetX: toX,
+          targetY: toY,
+          targetPosition: toPosition,
+        });
+    const style = reconnectingEdge?.style ?? connectionLineStyle ?? undefined;
+    return <path d={path} fill="none" className="react-flow__connection-path" style={style} />;
+  };
+};
+
 /**
  * US-006: bridge for ESC cancellation of in-flight connection / marquee
  * gestures. xyflow exposes `cancelConnection` and the user-selection store
@@ -417,6 +495,18 @@ export function DemoCanvas({
   // through to the body-drop hit-test and create a stray edge.
   const connectCancelledRef = useRef(false);
   const reconnectCancelledRef = useRef(false);
+  // US-009: true while a RECONNECT drag is in flight (set in onReconnectStart,
+  // cleared in onReconnectEnd). Read by the custom connection-line component
+  // so a NEW-connection drag (onConnectStart) doesn't accidentally inherit the
+  // styling of an unrelated selected edge — only a real reconnect gesture does.
+  const isReconnectingRef = useRef(false);
+  // US-009: memoize the connection-line component so React Flow doesn't see a
+  // new identity each render and remount the line mid-drag. The component
+  // closes over `isReconnectingRef`; the ref itself is stable across renders.
+  const connectionLineComponent = useMemo(
+    () => buildReconnectAwareConnectionLine(isReconnectingRef),
+    [],
+  );
   // State drives the ghost preview render; refs back the handlers so a single
   // synchronous gesture (pointerdown→move→up in one task) reads up-to-date
   // values without waiting for a React re-render to refresh useCallback
@@ -1195,6 +1285,10 @@ export function DemoCanvas({
       connectionState: FinalConnectionState,
     ) => {
       setConnecting(false);
+      // US-009: clear reconnect-in-flight flag so a follow-on new-connection
+      // drag (a real onConnectStart, not a reconnect) sees a default-styled
+      // connection line.
+      isReconnectingRef.current = false;
       const succeeded = reconnectSucceededRef.current;
       reconnectSucceededRef.current = false;
       if (succeeded) return;
@@ -1469,8 +1563,13 @@ export function DemoCanvas({
         onReconnectStart={() => {
           setConnecting(true);
           reconnectSucceededRef.current = false;
+          // US-009: mark that this drag is a reconnect (vs new connection) so
+          // the custom connection-line component mirrors the reconnecting
+          // edge's style. Cleared in onReconnectEnd.
+          isReconnectingRef.current = true;
         }}
         onReconnectEnd={onReconnectEndCb}
+        connectionLineComponent={connectionLineComponent}
         // Generous connection radius so the user can release a connect or
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
