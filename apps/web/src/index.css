@@ -141,6 +141,33 @@
   cursor: text;
 }
 
+/* US-002: canvas pane cursor.
+ *
+ * React Flow applies these classes to `.react-flow__pane` based on mode:
+ *   - `.selection` whenever `selectionOnDrag={true}` (default cursor: pointer)
+ *   - `.draggable` while `panActivationKeyCode='Space'` is held (cursor: grab)
+ *   - `.dragging` while a pan is in flight (cursor: grabbing)
+ *
+ * The library rules all share the same specificity, and `.selection` is
+ * defined LAST in source order — so when Space is held alongside
+ * selectionOnDrag, the pointer-hand cursor wins instead of grab. We override
+ * with higher-specificity selectors (`.react-flow .react-flow__pane.X`,
+ * specificity 0,0,3,0 vs library's 0,0,2,0) so the behavior matches:
+ *   - idle pane (selectionOnDrag, no Space)  → default arrow
+ *   - Space held                              → grab
+ *   - Space + dragging                        → grabbing
+ *
+ * draw-mode crosshair is set inline on the wrapper in demo-canvas.tsx. */
+.react-flow .react-flow__pane.selection {
+  cursor: default;
+}
+.react-flow .react-flow__pane.draggable {
+  cursor: grab;
+}
+.react-flow .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
 /* React Flow visual tweaks — kept outside @layer so the selectors land at
  * normal cascade specificity (so they're not de-prioritized below the
  * library defaults).
