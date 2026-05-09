@@ -659,6 +659,84 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(-5)).success).toBe(false);
   });
 
+  it('parses a demo containing one imageNode with a base64 data URL (US-002)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'image-demo',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 10, y: 20 },
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+            alt: 'pixel',
+            width: 200,
+            height: 150,
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'imageNode') throw new Error('expected imageNode');
+    expect(node.data.image.startsWith('data:image/png;base64,')).toBe(true);
+    expect(node.data.alt).toBe('pixel');
+  });
+
+  it('rejects an imageNode whose image is not a data URL (US-002)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-image',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: { image: 'https://example.com/cat.png' },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a connector pointing at an imageNode id (US-002)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'image-conn',
+      nodes: [
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 100, y: 0 },
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+          },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 's', target: 'img-1', kind: 'default' as const }],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.connectors).toHaveLength(1);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',
