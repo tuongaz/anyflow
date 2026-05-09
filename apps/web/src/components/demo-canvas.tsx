@@ -686,19 +686,31 @@ export function DemoCanvas({
       const minY = Math.min(start.y, current.y);
       const maxX = Math.max(start.x, current.x);
       const maxY = Math.max(start.y, current.y);
-      const dragWidth = maxX - minX;
-      const dragHeight = maxY - minY;
-      // Below MIN_DRAW_SIZE on either axis we treat the gesture as an
-      // accidental click / tiny nudge and fall back to SHAPE_DEFAULT_SIZE
-      // for that shape so single-clicks still produce a usable node.
-      const tooSmall = dragWidth < MIN_DRAW_SIZE || dragHeight < MIN_DRAW_SIZE;
-      const width = tooSmall ? SHAPE_DEFAULT_SIZE[shape].width : dragWidth;
-      const height = tooSmall ? SHAPE_DEFAULT_SIZE[shape].height : dragHeight;
-      // Coords are already in client space — feed directly to React Flow's
-      // screen→flow projection. Avoids drift from wrapper rect changes
-      // between pointerdown and pointerup.
-      const flowPos = rfInstance.screenToFlowPosition({ x: minX, y: minY });
-      onCreateShapeNode?.(shape, flowPos, { width, height });
+      const dragScreenWidth = maxX - minX;
+      const dragScreenHeight = maxY - minY;
+      // US-010: convert both corners through screenToFlowPosition so the
+      // committed width/height are in FLOW units. The ghost preview is drawn
+      // in client px (`canvas-draw-ghost`), and React Flow renders the node
+      // at `width × zoom` client px — passing the raw screen-px drag would
+      // make the placed node visually larger (or smaller) than the ghost
+      // whenever zoom ≠ 1. With both corners projected, the committed
+      // logical size is exactly the ghost's screen extent ÷ zoom, so the
+      // result paints at the same client-pixel size as the ghost. This is
+      // the standard React Flow drag-create pattern (RF docs:
+      // https://reactflow.dev/examples/interaction/drag-and-drop).
+      const flowMin = rfInstance.screenToFlowPosition({ x: minX, y: minY });
+      const flowMax = rfInstance.screenToFlowPosition({ x: maxX, y: maxY });
+      const dragFlowWidth = flowMax.x - flowMin.x;
+      const dragFlowHeight = flowMax.y - flowMin.y;
+      // MIN_DRAW_SIZE stays in screen pixels — it's a UX threshold for
+      // distinguishing "intentional drag" from "accidental click", which the
+      // user perceives in screen-space, not flow-space. Below the threshold
+      // on either axis we fall back to SHAPE_DEFAULT_SIZE (already in flow
+      // units) so single-clicks still produce a usable node.
+      const tooSmall = dragScreenWidth < MIN_DRAW_SIZE || dragScreenHeight < MIN_DRAW_SIZE;
+      const width = tooSmall ? SHAPE_DEFAULT_SIZE[shape].width : dragFlowWidth;
+      const height = tooSmall ? SHAPE_DEFAULT_SIZE[shape].height : dragFlowHeight;
+      onCreateShapeNode?.(shape, flowMin, { width, height });
     },
     [exitDrawMode, onCreateShapeNode],
   );
