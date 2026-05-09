@@ -295,12 +295,31 @@ button:disabled {
  *
  * Paired with `reconnectRadius={10}` so the SVG `r=10` (20px diameter hit
  * region) matches the visible portal-dot diameter from the shared
- * --anydemo-handle-size token. */
+ * --anydemo-handle-size token.
+ *
+ * US-027: override xyflow's default `cursor: move` on the reconnect anchor
+ * (style.css `.react-flow__edgeupdater { cursor: move }`). Hovering the
+ * endpoint dot — and continuing through a reconnect drag — keeps the
+ * default arrow cursor rather than flashing to move/grabbing. */
 .react-flow__edgeupdater {
   fill: transparent;
   stroke: transparent;
   opacity: 1;
   pointer-events: all;
+  cursor: default;
+}
+
+/* US-027: connector edge body shows the default arrow cursor on hover —
+ * NOT pointer (xyflow's default for `.react-flow__edge.selectable`) and
+ * NOT move/grab. Edges are still clickable and selectable; the cursor just
+ * doesn't telegraph it. The endpoint dots from US-024 keep their own
+ * cursor (default, set above on `.react-flow__edgeupdater`) so the whole
+ * connector affordance feels uniform. Pane Space-pan rules (US-002) live
+ * on `.react-flow__pane` only and aren't affected by this rule. */
+.react-flow__edge,
+.react-flow__edge.selectable,
+.react-flow__edge .react-flow__edge-path {
+  cursor: default;
 }
 
 /* US-024: visible connector endpoint dot rendered via <ViewportPortal>
