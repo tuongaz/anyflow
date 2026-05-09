@@ -225,14 +225,44 @@
   pointer-events: all;
 }
 
-/* Connection-in-progress override — handles on every node stay visible
- * during a connect or reconnect drag so drop targets are discoverable
- * without hover-then-aim. The `anydemo-connecting` class is toggled on
- * the React Flow wrapper from demo-canvas.tsx via onConnectStart/End and
- * onReconnectStart/End; xyflow v12 doesn't expose a global "connecting"
- * class, so we manage it ourselves. */
-.react-flow.anydemo-connecting .react-flow__handle {
-  opacity: 1 !important;
+/* Connection-in-progress overrides (US-017).
+ *
+ *   1. Hide outlet dots on every NON-source node so the user isn't
+ *      distracted by handles on candidates while aiming. The source's own
+ *      handles are unaffected — its `data-connect-source="true"` attribute
+ *      excludes it from this rule, and selected-source handles continue to
+ *      show via their per-Handle `selected && '!opacity-100'` class.
+ *   2. Highlight the candidate target node (the topmost `.react-flow__node`
+ *      under the cursor mid-drag) with a thicker outline on its inner shape
+ *      element so the user clearly sees which node will receive the drop.
+ *      Targets the inner `> div` (where each node renderer paints its own
+ *      selection outline) so the highlight follows the shape's rounding —
+ *      ellipses get an oval ring, sticky/rect get a rectangular ring, etc.
+ *      The 3px width clearly dominates the 1px selection outline so the
+ *      candidate-target highlight remains distinct even on a selected node.
+ *
+ * `data-connect-source` is set on the source node element in onConnectStart
+ * and cleared in onConnectEnd. `data-connect-target` is set/cleared
+ * imperatively from the document-level pointermove tracker we install while
+ * `connecting` is true — same pattern as `data-invalid-flash` above, but
+ * lifecycle-bound rather than time-bound. */
+.react-flow.anydemo-connecting
+  .react-flow__node:not([data-connect-source="true"])
+  .react-flow__handle {
+  opacity: 0 !important;
+}
+.react-flow.anydemo-connecting .react-flow__node[data-connect-target="true"] > div {
+  outline-width: 3px !important;
+  outline-style: solid !important;
+  outline-color: hsl(var(--primary)) !important;
+  outline-offset: 4px !important;
+}
+/* Suppress xyflow's built-in snap-target dashed outline (rule above) while
+ * a connection drag is in flight — the new candidate-target highlight on
+ * `data-connect-target` covers both the body-drop and handle-snap cases,
+ * so layering the two outlines just makes the indicator noisy. */
+.react-flow.anydemo-connecting .react-flow__node.connectingto {
+  outline: none;
 }
 
 /* Wrong-type handle drop (US-022): a connect/reconnect release on a handle

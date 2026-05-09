@@ -573,6 +573,80 @@ export function DemoCanvas({
     () => buildReconnectAwareConnectionLine(isReconnectingRef),
     [],
   );
+  // US-017: imperative DOM markers driven by pointermove tracking during a
+  // connection / reconnect drag. `data-connect-source` is set on the source
+  // node so its outlets stay visible (other nodes' outlets are hidden via
+  // CSS). `data-connect-target` is set on whichever node is currently under
+  // the cursor (excluding the source) so the candidate-target highlight
+  // tracks the user's aim. Both are cleared in `clearConnectMarkers` on
+  // gesture end (drop/cancel). Refs back the markers so the cleanup function
+  // doesn't have to re-walk every node element.
+  const connectSourceNodeIdRef = useRef<string | null>(null);
+  const connectTargetNodeIdRef = useRef<string | null>(null);
+  const setConnectSource = useCallback((nodeId: string | null) => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) {
+      connectSourceNodeIdRef.current = nodeId;
+      return;
+    }
+    const prev = connectSourceNodeIdRef.current;
+    if (prev && prev !== nodeId) {
+      const prevEl = wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(prev)}"]`);
+      prevEl?.removeAttribute('data-connect-source');
+    }
+    if (nodeId) {
+      const el = wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`);
+      el?.setAttribute('data-connect-source', 'true');
+    }
+    connectSourceNodeIdRef.current = nodeId;
+  }, []);
+  const setConnectTarget = useCallback((nodeId: string | null) => {
+    const wrapper = wrapperRef.current;
+    const prev = connectTargetNodeIdRef.current;
+    if (prev === nodeId) return;
+    if (wrapper && prev) {
+      const prevEl = wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(prev)}"]`);
+      prevEl?.removeAttribute('data-connect-target');
+    }
+    if (wrapper && nodeId) {
+      const el = wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`);
+      el?.setAttribute('data-connect-target', 'true');
+    }
+    connectTargetNodeIdRef.current = nodeId;
+  }, []);
+  const clearConnectMarkers = useCallback(() => {
+    setConnectSource(null);
+    setConnectTarget(null);
+  }, [setConnectSource, setConnectTarget]);
+  // Track the cursor's hovered node while a connect or reconnect drag is in
+  // flight. xyflow's connection line is owned by document-level pointer
+  // listeners inside `@xyflow/system` XYHandle, so we ride the same channel
+  // (pointermove on document) to stay in sync without fighting React Flow
+  // for ownership of the gesture. Listener mounts only while `connecting`
+  // is true and unmounts on end / cancel — no idle-time cost.
+  useEffect(() => {
+    if (!connecting) {
+      setConnectTarget(null);
+      return;
+    }
+    const onMove = (e: globalThis.PointerEvent) => {
+      const nodeEl = nodeElAtPoint(e.clientX, e.clientY);
+      const id = nodeEl?.getAttribute('data-id') ?? null;
+      // The source node should not also be highlighted as a target — dropping
+      // back on the source is rejected by both onConnect (same-node guard at
+      // demo-canvas:1241) and the body-drop fallback (lines 1307, 1452, 1465),
+      // so showing it as a candidate would mislead the user.
+      if (id && id === connectSourceNodeIdRef.current) {
+        setConnectTarget(null);
+        return;
+      }
+      setConnectTarget(id);
+    };
+    document.addEventListener('pointermove', onMove);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+    };
+  }, [connecting, setConnectTarget]);
   // State drives the ghost preview render; refs back the handlers so a single
   // synchronous gesture (pointerdown→move→up in one task) reads up-to-date
   // values without waiting for a React re-render to refresh useCallback
@@ -1265,6 +1339,12 @@ export function DemoCanvas({
   const onConnectEndCb = useCallback(
     (e: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
       setConnecting(false);
+      // US-017: clear the source/target DOM markers once the gesture ends so
+      // the candidate-target highlight and outlet-hiding rule stop applying.
+      // The pointermove tracker also clears its own state via the
+      // `[connecting]` effect, but we clear here too so the markers go away
+      // synchronously even if React batches the `setConnecting(false)` render.
+      clearConnectMarkers();
       const succeeded = connectSucceededRef.current;
       connectSucceededRef.current = false;
       if (succeeded) return;
@@ -1330,7 +1410,7 @@ export function DemoCanvas({
         sourceNodeId: fromNodeId,
       });
     },
-    [onCreateConnector, onCreateAndConnectFromPane],
+    [onCreateConnector, onCreateAndConnectFromPane, clearConnectMarkers],
   );
 
   // Drag an edge endpoint onto another handle to reattach it. React Flow
@@ -1409,6 +1489,10 @@ export function DemoCanvas({
       connectionState: FinalConnectionState,
     ) => {
       setConnecting(false);
+      // US-017: same reasoning as onConnectEndCb — clear markers immediately
+      // on gesture end so a successful reconnect doesn't leave a stale
+      // candidate-target outline behind.
+      clearConnectMarkers();
       // US-009: clear reconnect-in-flight flag so a follow-on new-connection
       // drag (a real onConnectStart, not a reconnect) sees a default-styled
       // connection line.
@@ -1470,7 +1554,7 @@ export function DemoCanvas({
         });
       }
     },
-    [onReconnectConnector],
+    [onReconnectConnector, clearConnectMarkers],
   );
 
   const ghostRect = useMemo(() => {
@@ -1704,16 +1788,25 @@ export function DemoCanvas({
             nodeId: params.nodeId ?? null,
             handleType: params.handleType ?? null,
           };
+          // US-017: mark the source node so its own outlets stay visible
+          // (others get hidden via CSS) for the duration of the drag.
+          setConnectSource(params.nodeId ?? null);
         }}
         onConnectEnd={onConnectEndCb}
         onReconnect={onReconnectConnector ? onReconnect : undefined}
-        onReconnectStart={() => {
+        onReconnectStart={(_e, edge, handleType) => {
           setConnecting(true);
           reconnectSucceededRef.current = false;
           // US-009: mark that this drag is a reconnect (vs new connection) so
           // the custom connection-line component mirrors the reconnecting
           // edge's style. Cleared in onReconnectEnd.
           isReconnectingRef.current = true;
+          // US-017: the anchored end of the edge plays the "source" role for
+          // outlet visibility — its outlets stay visible, others are hidden
+          // via CSS. xyflow passes `handleType` as the type of the FIXED
+          // (anchored) end, so the anchored node id is the matching side.
+          const anchoredNodeId = handleType === 'source' ? edge.source : edge.target;
+          setConnectSource(anchoredNodeId);
         }}
         onReconnectEnd={onReconnectEndCb}
         connectionLineComponent={connectionLineComponent}
