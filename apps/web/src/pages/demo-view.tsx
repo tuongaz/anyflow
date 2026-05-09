@@ -4,6 +4,7 @@ import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
+import { usePendingDeletions } from '@/hooks/use-pending-deletions';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
 import { useUndoStack } from '@/hooks/use-undo-stack';
 import {
@@ -153,6 +154,12 @@ export function DemoView({
   // (server caught up); dropped on API failure (revert to server state).
   const nodePending = usePendingOverrides<DemoNode>();
   const connectorPending = usePendingOverrides<Connector>();
+  // US-016: optimistic-delete sets. `mark()` BEFORE firing the DELETE API
+  // call so the entity disappears from the canvas in the same React tick;
+  // pruned on the next demo:reload echo (server confirmed delete) or
+  // unmarked on API failure (rollback restores the entity).
+  const nodeDeletions = usePendingDeletions();
+  const connectorDeletions = usePendingDeletions();
   // Optimistic z-order override (US-006). Holds the displayed node-id order
   // while a `reorderNode` PATCH is in flight; cleared once the server's
   // demoNodes order matches it (SSE echo of the file rewrite). Per-id
@@ -179,6 +186,8 @@ export function DemoView({
 
   const { reset: resetNodeOverrides } = nodePending;
   const { reset: resetConnectorOverrides } = connectorPending;
+  const { reset: resetNodeDeletions } = nodeDeletions;
+  const { reset: resetConnectorDeletions } = connectorDeletions;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on demo id change.
   useEffect(() => {
@@ -189,6 +198,8 @@ export function DemoView({
     setPendingEditNodeId(null);
     resetNodeOverrides();
     resetConnectorOverrides();
+    resetNodeDeletions();
+    resetConnectorDeletions();
     setNodeOrderOverride(null);
     setEditError(null);
     clipboardRef.current = null;
@@ -226,6 +237,8 @@ export function DemoView({
   const demoConnectors = detail?.demo?.connectors;
   const { pruneAgainst: pruneNodeOverrides } = nodePending;
   const { pruneAgainst: pruneConnectorOverrides } = connectorPending;
+  const { pruneAgainst: pruneNodeDeletions } = nodeDeletions;
+  const { pruneAgainst: pruneConnectorDeletions } = connectorDeletions;
 
   // After every demo reload, drop override fields whose values already match
   // the on-disk demo. Reconciling here (not skipping the broadcast on the
@@ -239,14 +252,29 @@ export function DemoView({
   // them so undo never replays against stale state. `undoLastMutationAt` is a
   // ref-getter (not a value) so it doesn't churn this effect's deps.
   useEffect(() => {
-    if (demoNodes) pruneNodeOverrides(demoNodes);
+    if (demoNodes) {
+      pruneNodeOverrides(demoNodes);
+      // US-016: drop optimistic-delete ids the server has confirmed gone.
+      // If a node is still in the snapshot the delete is in flight and the
+      // suppression must stay until SSE catches up.
+      pruneNodeDeletions(demoNodes);
+    }
     if (Date.now() - undoLastMutationAt() > 2000) clearUndo();
-  }, [demoNodes, pruneNodeOverrides, undoLastMutationAt, clearUndo]);
+  }, [demoNodes, pruneNodeOverrides, pruneNodeDeletions, undoLastMutationAt, clearUndo]);
 
   useEffect(() => {
-    if (demoConnectors) pruneConnectorOverrides(demoConnectors);
+    if (demoConnectors) {
+      pruneConnectorOverrides(demoConnectors);
+      pruneConnectorDeletions(demoConnectors);
+    }
     if (Date.now() - undoLastMutationAt() > 2000) clearUndo();
-  }, [demoConnectors, pruneConnectorOverrides, undoLastMutationAt, clearUndo]);
+  }, [
+    demoConnectors,
+    pruneConnectorOverrides,
+    pruneConnectorDeletions,
+    undoLastMutationAt,
+    clearUndo,
+  ]);
 
   // Drop the optimistic z-order override once the server's nodes array order
   // matches it (SSE echo of the file rewrite landed). If the server array
@@ -590,6 +618,19 @@ export function DemoView({
     ],
   );
 
+  const {
+    mark: markNodeDeleted,
+    markMany: markNodesDeleted,
+    unmark: unmarkNodeDeleted,
+    unmarkMany: unmarkNodesDeleted,
+  } = nodeDeletions;
+  const {
+    mark: markConnectorDeleted,
+    markMany: markConnectorsDeleted,
+    unmark: unmarkConnectorDeleted,
+    unmarkMany: unmarkConnectorsDeleted,
+  } = connectorDeletions;
+
   const onDeleteNode = useCallback(
     (nodeId: string) => {
       if (!demoId) return;
@@ -598,44 +639,67 @@ export function DemoView({
       // adjacency order). The server cascades via the same source/target
       // filter; mirroring it here keeps the undo round-trip faithful.
       const node = demoNodes?.find((n) => n.id === nodeId);
+      if (!node) return;
       const cascaded = (demoConnectors ?? []).filter(
         (c) => c.source === nodeId || c.target === nodeId,
       );
+      const cascadedIds = cascaded.map((c) => c.id);
+      const cascadedIdSet = new Set(cascadedIds);
       setEditError(null);
-      // Don't optimistically remove from the canvas — the SSE echo of the
-      // demo file rewrite will drop the node naturally, and a failure path
-      // would need to put it back. Just drop the deleted id from the
-      // selection set so the inspector closes (or the multi-selection
-      // shrinks) immediately.
+      // US-016: optimistic delete. Hide the node + every cascaded connector
+      // from the canvas immediately; the SSE echo will reconcile the server's
+      // confirmation, and the API failure handler reverts via `unmark`.
+      markNodeDeleted(nodeId);
+      if (cascadedIds.length > 0) markConnectorsDeleted(cascadedIds);
       setSelectedIds((prev) => prev.filter((id) => id !== nodeId));
+      setSelectedConnectorIds((prev) => prev.filter((id) => !cascadedIdSet.has(id)));
+      if (panelNodeId === nodeId) setPanelNodeId(null);
+      if (panelConnectorId && cascadedIdSet.has(panelConnectorId)) setPanelConnectorId(null);
       markMutation();
-      if (node) {
-        const nodeSnapshot = node;
-        const connectorSnapshots = cascaded;
-        pushUndo({
-          do: async () => {
-            await deleteNode(demoId, nodeId);
-          },
-          undo: async () => {
-            await createNode(demoId, {
-              id: nodeSnapshot.id,
-              type: nodeSnapshot.type,
-              position: nodeSnapshot.position,
-              data: nodeSnapshot.data as unknown as Record<string, unknown>,
-            });
-            for (const c of connectorSnapshots) {
-              await createConnector(demoId, { ...c, id: c.id });
-            }
-          },
-        });
-      }
+      const nodeSnapshot = node;
+      const connectorSnapshots = cascaded;
+      pushUndo({
+        do: async () => {
+          markNodeDeleted(nodeId);
+          if (cascadedIds.length > 0) markConnectorsDeleted(cascadedIds);
+          await deleteNode(demoId, nodeId);
+        },
+        undo: async () => {
+          unmarkNodeDeleted(nodeId);
+          if (cascadedIds.length > 0) unmarkConnectorsDeleted(cascadedIds);
+          await createNode(demoId, {
+            id: nodeSnapshot.id,
+            type: nodeSnapshot.type,
+            position: nodeSnapshot.position,
+            data: nodeSnapshot.data as unknown as Record<string, unknown>,
+          });
+          for (const c of connectorSnapshots) {
+            await createConnector(demoId, { ...c, id: c.id });
+          }
+        },
+      });
       deleteNode(demoId, nodeId).catch((err) => {
-        if (node) dropUndoTop();
+        unmarkNodeDeleted(nodeId);
+        if (cascadedIds.length > 0) unmarkConnectorsDeleted(cascadedIds);
+        dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('deleteNode failed', err);
       });
     },
-    [demoId, demoNodes, demoConnectors, pushUndo, dropUndoTop, markMutation],
+    [
+      demoId,
+      demoNodes,
+      demoConnectors,
+      panelNodeId,
+      panelConnectorId,
+      markNodeDeleted,
+      markConnectorsDeleted,
+      unmarkNodeDeleted,
+      unmarkConnectorsDeleted,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
   );
 
   // Right-click → "Bring to front" / "Send backward" / etc. Apply the reorder
@@ -683,27 +747,41 @@ export function DemoView({
       // Snapshot the full connector BEFORE the delete API call so undo can
       // recreate it with the original id and properties.
       const conn = demoConnectors?.find((c) => c.id === connId);
+      if (!conn) return;
       setEditError(null);
+      // US-016: hide the connector from the canvas immediately.
+      markConnectorDeleted(connId);
       setSelectedConnectorIds((prev) => prev.filter((id) => id !== connId));
+      if (panelConnectorId === connId) setPanelConnectorId(null);
       markMutation();
-      if (conn) {
-        const connSnapshot = conn;
-        pushUndo({
-          do: async () => {
-            await deleteConnector(demoId, connId);
-          },
-          undo: async () => {
-            await createConnector(demoId, { ...connSnapshot, id: connSnapshot.id });
-          },
-        });
-      }
+      const connSnapshot = conn;
+      pushUndo({
+        do: async () => {
+          markConnectorDeleted(connId);
+          await deleteConnector(demoId, connId);
+        },
+        undo: async () => {
+          unmarkConnectorDeleted(connId);
+          await createConnector(demoId, { ...connSnapshot, id: connSnapshot.id });
+        },
+      });
       deleteConnector(demoId, connId).catch((err) => {
-        if (conn) dropUndoTop();
+        unmarkConnectorDeleted(connId);
+        dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('deleteConnector failed', err);
       });
     },
-    [demoId, demoConnectors, pushUndo, dropUndoTop, markMutation],
+    [
+      demoId,
+      demoConnectors,
+      panelConnectorId,
+      markConnectorDeleted,
+      unmarkConnectorDeleted,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
   );
 
   // US-013: atomic multi-target delete. Snapshots every doomed node + every
@@ -741,15 +819,32 @@ export function DemoView({
         return;
       }
       setEditError(null);
+      // US-016: optimistic batch delete. Hide every doomed node + every
+      // explicit/cascaded connector from the canvas immediately. The server
+      // replay cascades; the SSE echo eventually drops everything from the
+      // demo snapshot, at which point pruneAgainst clears the suppressions.
+      const allDoomedNodeIds = nodeSnapshots.map((n) => n.id);
+      const allDoomedConnIds = [
+        ...cascadedConnectors.map((c) => c.id),
+        ...explicitConnSnapshots.map((c) => c.id),
+      ];
+      if (allDoomedNodeIds.length > 0) markNodesDeleted(allDoomedNodeIds);
+      if (allDoomedConnIds.length > 0) markConnectorsDeleted(allDoomedConnIds);
       // Trim selection so the inspector closes / multi-selection shrinks
-      // immediately. We don't optimistically remove from the canvas — the
-      // SSE echo of the file rewrite drops them naturally, and the server
-      // replays cascades.
+      // immediately.
       setSelectedIds((prev) => prev.filter((id) => !cascadingNodeIdSet.has(id)));
       const explicitConnIdSet = new Set(explicitConnSnapshots.map((c) => c.id));
       setSelectedConnectorIds((prev) =>
         prev.filter((id) => !explicitConnIdSet.has(id) && !cascadedConnIdSet.has(id)),
       );
+      // Close the inspector when its target is doomed.
+      if (panelNodeId && cascadingNodeIdSet.has(panelNodeId)) setPanelNodeId(null);
+      if (
+        panelConnectorId &&
+        (explicitConnIdSet.has(panelConnectorId) || cascadedConnIdSet.has(panelConnectorId))
+      ) {
+        setPanelConnectorId(null);
+      }
       markMutation();
       // ONE undo entry. `do` re-runs the batch deletes; `undo` re-creates
       // every node first (so connector endpoints exist on disk) and then
@@ -758,10 +853,14 @@ export function DemoView({
       // those automatically when the node is deleted.
       pushUndo({
         do: async () => {
+          if (allDoomedNodeIds.length > 0) markNodesDeleted(allDoomedNodeIds);
+          if (allDoomedConnIds.length > 0) markConnectorsDeleted(allDoomedConnIds);
           await Promise.allSettled(nodeSnapshots.map((n) => deleteNode(demoId, n.id)));
           await Promise.allSettled(explicitConnSnapshots.map((c) => deleteConnector(demoId, c.id)));
         },
         undo: async () => {
+          if (allDoomedNodeIds.length > 0) unmarkNodesDeleted(allDoomedNodeIds);
+          if (allDoomedConnIds.length > 0) unmarkConnectorsDeleted(allDoomedConnIds);
           for (const n of nodeSnapshots) {
             await createNode(demoId, {
               id: n.id,
@@ -777,12 +876,26 @@ export function DemoView({
       });
       // Fire the deletes in parallel. Partial failure surfaces a banner; the
       // user can Cmd+Z the whole batch.
+      // US-016: per-target rollback. When a delete fails, restore that
+      // entity's visibility (and its cascaded connectors, for nodes) by
+      // dropping it from the optimistic-delete set. Other successful
+      // entities stay hidden until SSE prunes them.
+      const cascadedByNodeId = new Map<string, string[]>();
+      for (const n of nodeSnapshots) {
+        cascadedByNodeId.set(
+          n.id,
+          cascadedConnectors.filter((c) => c.source === n.id || c.target === n.id).map((c) => c.id),
+        );
+      }
       Promise.all([
         ...nodeSnapshots.map(async (n) => {
           try {
             await deleteNode(demoId, n.id);
             return null;
           } catch (err) {
+            unmarkNodeDeleted(n.id);
+            const cascadedForN = cascadedByNodeId.get(n.id) ?? [];
+            if (cascadedForN.length > 0) unmarkConnectorsDeleted(cascadedForN);
             return err instanceof Error ? err.message : String(err);
           }
         }),
@@ -791,6 +904,7 @@ export function DemoView({
             await deleteConnector(demoId, c.id);
             return null;
           } catch (err) {
+            unmarkConnectorDeleted(c.id);
             return err instanceof Error ? err.message : String(err);
           }
         }),
@@ -799,7 +913,21 @@ export function DemoView({
         if (firstErr) setEditError(firstErr);
       });
     },
-    [demoId, demoNodes, demoConnectors, pushUndo, markMutation],
+    [
+      demoId,
+      demoNodes,
+      demoConnectors,
+      panelNodeId,
+      panelConnectorId,
+      markNodesDeleted,
+      markConnectorsDeleted,
+      unmarkNodeDeleted,
+      unmarkNodesDeleted,
+      unmarkConnectorDeleted,
+      unmarkConnectorsDeleted,
+      pushUndo,
+      markMutation,
+    ],
   );
 
   // Delete/Backspace shortcut: removes EVERY selected node and connector
@@ -1660,6 +1788,8 @@ export function DemoView({
   const demo = detail?.demo;
   const nodeOverrides = nodePending.overrides;
   const connectorOverrides = connectorPending.overrides;
+  const deletedNodeIds = nodeDeletions.ids;
+  const deletedConnectorIds = connectorDeletions.ids;
   // Inspector single-shot: only opens when EXACTLY one entity is selected
   // (single node or single connector, not a mixed selection). Multi-select
   // US-003: panel target comes from explicit click events (panelNodeId /
@@ -1667,23 +1797,28 @@ export function DemoView({
   // and the style strip; opening the inspector is now a separate signal so
   // dragging a node doesn't pop the panel open. The lookup-returns-null
   // path also closes the panel automatically when the referenced entity is
-  // removed (delete, undo, demo reload).
+  // removed (delete, undo, demo reload). US-016: also returns null while the
+  // entity is in the optimistic-delete set so a just-deleted node's panel
+  // closes within the same tick — without waiting for the SSE echo to drop
+  // the entity from `demo.nodes`.
   const inspectedNode = useMemo<DemoNode | null>(() => {
     if (!panelNodeId) return null;
+    if (deletedNodeIds.has(panelNodeId)) return null;
     const found = demo?.nodes.find((n) => n.id === panelNodeId);
     if (!found) return null;
     const ov = nodeOverrides[panelNodeId];
     if (!ov) return found;
     const data = ov.data ? { ...found.data, ...ov.data } : found.data;
     return { ...found, ...ov, data } as DemoNode;
-  }, [demo, panelNodeId, nodeOverrides]);
+  }, [demo, panelNodeId, nodeOverrides, deletedNodeIds]);
   const inspectedConnector = useMemo<Connector | null>(() => {
     if (!panelConnectorId) return null;
+    if (deletedConnectorIds.has(panelConnectorId)) return null;
     const found = demo?.connectors.find((c) => c.id === panelConnectorId);
     if (!found) return null;
     const ov = connectorOverrides[panelConnectorId];
     return ov ? ({ ...found, ...ov } as Connector) : found;
-  }, [demo, panelConnectorId, connectorOverrides]);
+  }, [demo, panelConnectorId, connectorOverrides, deletedConnectorIds]);
 
   // Style-strip arrays: every selected entity (with optimistic overrides
   // merged) so the strip can fan out edits across the multi-selection.
@@ -1740,6 +1875,28 @@ export function DemoView({
     return ordered;
   }, [demo, nodeOrderOverride]);
 
+  // US-016: hide optimistically-deleted nodes/connectors before the canvas
+  // sees them. A pending node delete also suppresses every connector touching
+  // it (cascade), so the user never sees a dangling edge mid-flight even if
+  // the connector wasn't explicitly marked.
+  const visibleNodes = useMemo<DemoNode[] | null>(() => {
+    const base = orderedNodes ?? demo?.nodes ?? null;
+    if (!base) return null;
+    if (deletedNodeIds.size === 0) return base;
+    return base.filter((n) => !deletedNodeIds.has(n.id));
+  }, [orderedNodes, demo, deletedNodeIds]);
+  const visibleConnectors = useMemo<Connector[] | null>(() => {
+    const base = demo?.connectors ?? null;
+    if (!base) return null;
+    if (deletedConnectorIds.size === 0 && deletedNodeIds.size === 0) return base;
+    return base.filter(
+      (c) =>
+        !deletedConnectorIds.has(c.id) &&
+        !deletedNodeIds.has(c.source) &&
+        !deletedNodeIds.has(c.target),
+    );
+  }, [demo, deletedConnectorIds, deletedNodeIds]);
+
   if (!summary) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-background p-6 text-center">
@@ -1776,8 +1933,8 @@ export function DemoView({
 
       {demo ? (
         <DemoCanvas
-          nodes={orderedNodes ?? demo.nodes}
-          connectors={demo.connectors}
+          nodes={visibleNodes ?? demo.nodes}
+          connectors={visibleConnectors ?? demo.connectors}
           selectedNodeIds={selectedIds}
           selectedConnectorIds={selectedConnectorIds}
           onSelectionChange={onSelectionChange}
