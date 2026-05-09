@@ -193,6 +193,24 @@ export interface DemoCanvasProps {
    * Scope is decided by the caller (selection-aware in `demo-view`).
    */
   onTidy?: () => void;
+  /**
+   * US-003: fired on a real click on a node (mousedown + mouseup without
+   * crossing the drag threshold). React Flow's `onNodeClick` fires only for
+   * actual clicks — drags don't trigger it — so this is the channel parents
+   * use to drive the detail panel without coupling it to selection.
+   */
+  onNodeClick?: (nodeId: string) => void;
+  /**
+   * US-003: fired on a real click on a connector. Mirrors `onNodeClick` for
+   * edges — used by the parent to open the detail panel for an edge without
+   * tying panel state to multi-select changes.
+   */
+  onConnectorClick?: (connectorId: string) => void;
+  /**
+   * US-003: fired on a click on the empty canvas pane. Used by the parent to
+   * close the detail panel and clear the open-target.
+   */
+  onPaneClick?: () => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -321,6 +339,9 @@ export function DemoCanvas({
   onStyleConnectorPreview,
   onRfInit,
   onTidy,
+  onNodeClick,
+  onConnectorClick,
+  onPaneClick,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1174,6 +1195,15 @@ export function DemoCanvas({
         onNodeDragStop={onNodeDragStopCb}
         onSelectionDragStart={onSelectionDragStartCb}
         onSelectionDragStop={onSelectionDragStopCb}
+        // US-003: route React Flow's click-only events to the parent so the
+        // detail panel can be driven by explicit clicks instead of selection
+        // changes. xyflow's `onNodeClick`/`onEdgeClick` fire only for real
+        // clicks (mousedown + mouseup without crossing the drag threshold);
+        // node-drag gestures don't trigger them, so a drag no longer opens
+        // the panel as a side effect.
+        onNodeClick={onNodeClick ? (_e, node) => onNodeClick(node.id) : undefined}
+        onEdgeClick={onConnectorClick ? (_e, edge) => onConnectorClick(edge.id) : undefined}
+        onPaneClick={onPaneClick}
         onNodeContextMenu={
           contextEnabled
             ? (e, node) => {

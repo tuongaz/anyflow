@@ -123,6 +123,13 @@ export function DemoView({
   // canvas selection rings honor the full arrays.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedConnectorIds, setSelectedConnectorIds] = useState<string[]>([]);
+  // US-003: detail panel target is decoupled from selection so a node-drag
+  // (which selects the dragged node) doesn't open the panel as a side effect.
+  // Set on real click events from the canvas; cleared on pane click, panel
+  // close, and demo switch. inspectedNode/inspectedConnector below derive
+  // from these instead of from selectedIds/selectedConnectorIds.
+  const [panelNodeId, setPanelNodeId] = useState<string | null>(null);
+  const [panelConnectorId, setPanelConnectorId] = useState<string | null>(null);
   // Keep selection ids stable in a ref so keyboard handlers (Cmd+A / Cmd+C /
   // Cmd+D / Delete) read the latest set without re-binding the listener on
   // every render.
@@ -170,6 +177,8 @@ export function DemoView({
   useEffect(() => {
     setSelectedIds([]);
     setSelectedConnectorIds([]);
+    setPanelNodeId(null);
+    setPanelConnectorId(null);
     resetNodeOverrides();
     resetConnectorOverrides();
     setNodeOrderOverride(null);
@@ -186,6 +195,23 @@ export function DemoView({
   const onSelectionChange = useCallback((nodeIds: string[], connectorIds: string[]) => {
     setSelectedIds(nodeIds);
     setSelectedConnectorIds(connectorIds);
+  }, []);
+
+  // US-003: explicit click handlers drive the detail panel. xyflow fires
+  // these only for click gestures (no drag), so a node-drag-start no longer
+  // pops the inspector open. Clicking a node opens its panel; clicking an
+  // edge opens the edge's panel; clicking the empty pane closes both.
+  const onNodeClickOpenPanel = useCallback((nodeId: string) => {
+    setPanelNodeId(nodeId);
+    setPanelConnectorId(null);
+  }, []);
+  const onConnectorClickOpenPanel = useCallback((connectorId: string) => {
+    setPanelConnectorId(connectorId);
+    setPanelNodeId(null);
+  }, []);
+  const onPaneClickClosePanel = useCallback(() => {
+    setPanelNodeId(null);
+    setPanelConnectorId(null);
   }, []);
 
   const demoNodes = detail?.demo?.nodes;
@@ -1275,30 +1301,28 @@ export function DemoView({
   const connectorOverrides = connectorPending.overrides;
   // Inspector single-shot: only opens when EXACTLY one entity is selected
   // (single node or single connector, not a mixed selection). Multi-select
-  // closes the panel; the style strip handles fan-out edits in that mode.
-  const isSinglePick =
-    (selectedIds.length === 1 && selectedConnectorIds.length === 0) ||
-    (selectedIds.length === 0 && selectedConnectorIds.length === 1);
-  const inspectorNodeId =
-    isSinglePick && selectedIds.length === 1 ? (selectedIds[0] ?? null) : null;
-  const inspectorConnectorId =
-    isSinglePick && selectedConnectorIds.length === 1 ? (selectedConnectorIds[0] ?? null) : null;
+  // US-003: panel target comes from explicit click events (panelNodeId /
+  // panelConnectorId), NOT from selectedIds. Selection still drives the ring
+  // and the style strip; opening the inspector is now a separate signal so
+  // dragging a node doesn't pop the panel open. The lookup-returns-null
+  // path also closes the panel automatically when the referenced entity is
+  // removed (delete, undo, demo reload).
   const inspectedNode = useMemo<DemoNode | null>(() => {
-    if (!inspectorNodeId) return null;
-    const found = demo?.nodes.find((n) => n.id === inspectorNodeId);
+    if (!panelNodeId) return null;
+    const found = demo?.nodes.find((n) => n.id === panelNodeId);
     if (!found) return null;
-    const ov = nodeOverrides[inspectorNodeId];
+    const ov = nodeOverrides[panelNodeId];
     if (!ov) return found;
     const data = ov.data ? { ...found.data, ...ov.data } : found.data;
     return { ...found, ...ov, data } as DemoNode;
-  }, [demo, inspectorNodeId, nodeOverrides]);
+  }, [demo, panelNodeId, nodeOverrides]);
   const inspectedConnector = useMemo<Connector | null>(() => {
-    if (!inspectorConnectorId) return null;
-    const found = demo?.connectors.find((c) => c.id === inspectorConnectorId);
+    if (!panelConnectorId) return null;
+    const found = demo?.connectors.find((c) => c.id === panelConnectorId);
     if (!found) return null;
-    const ov = connectorOverrides[inspectorConnectorId];
+    const ov = connectorOverrides[panelConnectorId];
     return ov ? ({ ...found, ...ov } as Connector) : found;
-  }, [demo, inspectorConnectorId, connectorOverrides]);
+  }, [demo, panelConnectorId, connectorOverrides]);
 
   // Style-strip arrays: every selected entity (with optimistic overrides
   // merged) so the strip can fan out edits across the multi-selection.
@@ -1374,8 +1398,8 @@ export function DemoView({
     );
   }
 
-  const inspectedRun = inspectorNodeId ? runs[inspectorNodeId] : undefined;
-  const inspectedEvents = inspectorNodeId ? (nodeEvents[inspectorNodeId] ?? []) : [];
+  const inspectedRun = panelNodeId ? runs[panelNodeId] : undefined;
+  const inspectedEvents = panelNodeId ? (nodeEvents[panelNodeId] ?? []) : [];
 
   return (
     <div className="relative h-full w-full">
@@ -1421,6 +1445,9 @@ export function DemoView({
           onStyleConnectorPreview={onStyleConnectorPreview}
           onRfInit={onRfInit}
           onTidy={demoNodes ? onToolbarTidy : undefined}
+          onNodeClick={onNodeClickOpenPanel}
+          onConnectorClick={onConnectorClickOpenPanel}
+          onPaneClick={onPaneClickClosePanel}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
@@ -1453,11 +1480,11 @@ export function DemoView({
         run={inspectedRun}
         recentEvents={inspectedEvents}
         onClose={() => {
-          // Closing the panel clears whatever was selected — the panel and
-          // the selection ring track together (clicking outside the canvas-node
-          // surfaces is the only path that lands here).
-          setSelectedIds([]);
-          setSelectedConnectorIds([]);
+          // US-003: panel state is decoupled from selection — closing the
+          // panel only clears the open-target. The user's selection ring
+          // (and the style strip it drives) is preserved.
+          setPanelNodeId(null);
+          setPanelConnectorId(null);
         }}
       />
     </div>
