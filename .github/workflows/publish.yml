@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish anydemo to npm
+    name: Publish @tuongaz/anydemo to npm
     runs-on: ubuntu-latest
 
     steps:
@@ -81,4 +81,4 @@ jobs:
           GIT_REF: ${{ github.ref }}
         run: |
           tag="${GIT_REF#refs/tags/v}"
-          echo "Published anydemo@${tag} to https://www.npmjs.com/package/anydemo" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published @tuongaz/anydemo@${tag} to https://www.npmjs.com/package/@tuongaz/anydemo" >> "$GITHUB_STEP_SUMMARY"

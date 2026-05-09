@@ -40,16 +40,16 @@ schema drift is impossible because the studio enforces a single Zod schema.
 
 ### Use it (no clone needed)
 
-The studio + CLI ship as the [`anydemo`](https://www.npmjs.com/package/anydemo)
+The studio + CLI ship as the [`@tuongaz/anydemo`](https://www.npmjs.com/package/@tuongaz/anydemo)
 package on npm:
 
 ```bash
 # Start the studio (downloads anydemo on first run)
-npx anydemo start
+npx @tuongaz/anydemo start
 
 # In your project repo, register a .anydemo/demo.json:
 cd path/to/your/repo
-npx anydemo register --path .
+npx @tuongaz/anydemo register --path .
 ```
 
 The CLI prints a URL like `http://localhost:4321/d/<slug>` — open it and play.
@@ -59,7 +59,7 @@ The CLI prints a URL like `http://localhost:4321/d/<slug>` — open it and play.
 > (slower one-time startup). For instant startup, install Bun once:
 > `curl -fsSL https://bun.sh/install | bash`.
 
-You can also use `bunx anydemo …` if you already have Bun installed.
+You can also use `bunx @tuongaz/anydemo …` if you already have Bun installed.
 
 ### Develop on AnyDemo itself
 
@@ -130,7 +130,7 @@ A demo is a single JSON file at `<your-repo>/.anydemo/demo.json`:
 Register it:
 
 ```bash
-npx anydemo register --path <your-repo>
+npx @tuongaz/anydemo register --path <your-repo>
 ```
 
 The CLI validates against `DemoSchema`, registers with the studio, and (if
@@ -216,9 +216,9 @@ make help        # list every target
 ### CLI
 
 ```bash
-npx anydemo start [--port 4321] [--daemon]   # start the studio
-npx anydemo stop                              # stop the daemon
-npx anydemo register --path <repo>            # register a demo
+npx @tuongaz/anydemo start [--port 4321] [--daemon]   # start the studio
+npx @tuongaz/anydemo stop                              # stop the daemon
+npx @tuongaz/anydemo register --path <repo>            # register a demo
 ```
 
 When developing on AnyDemo itself, the local `bun run apps/studio/src/cli.ts`
