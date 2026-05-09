@@ -33,6 +33,16 @@
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+
+    /* US-024: shared visual tokens for the white-fill / grey-border dot
+     * affordance used by BOTH node outlet handles AND connector endpoint
+     * dots. Single source of truth — change here and both places follow.
+     * Theme-aware via `hsl(var(--border))`, which already branches per
+     * light/dark mode through the existing `--border` token. */
+    --anydemo-handle-fill: #ffffff;
+    --anydemo-handle-border-color: hsl(var(--border));
+    --anydemo-handle-border-width: 1.5px;
+    --anydemo-handle-size: 20px;
   }
 
   .dark {
@@ -187,16 +197,18 @@
   opacity: 0.85;
 }
 
-/* US-023: outlet handles get a white fill + neutral-border grey 1.5px stroke
- * to match the connector reconnect endpoint dots from US-019 — both read as
- * draggable handles in the same visual language. The size is bumped via
- * Tailwind classes per-Handle (`!h-5 !w-5` ≈ 20px) in state/play/shape node
- * renderers, and the transform offsets below stack the dots `~outlineOffset`
- * outward from the node body so their CENTER continues to sit on the outer
- * selection-rect edge midpoint (consistent with US-007). */
+/* US-023 / US-024: outlet handles use the shared --anydemo-handle-* tokens
+ * defined in :root so both they AND the connector endpoint dots read as the
+ * same affordance. Same diameter (20px), same white fill, same grey 1.5px
+ * border. Change the tokens once and both call-sites follow. The transform
+ * offsets below stack the dots `~outlineOffset` outward from the node body
+ * so their CENTER continues to sit on the outer selection-rect edge
+ * midpoint (consistent with US-007). */
 .react-flow__node .react-flow__handle {
-  background: #ffffff !important;
-  border: 1.5px solid hsl(var(--border)) !important;
+  background: var(--anydemo-handle-fill) !important;
+  border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color) !important;
+  width: var(--anydemo-handle-size) !important;
+  height: var(--anydemo-handle-size) !important;
 }
 
 /* Bigger pointer hit-area on connection handles. The pseudo-element extends
@@ -237,26 +249,45 @@
   cursor: default;
 }
 
-/* US-011 / US-019: visible reconnect endpoint dots when an edge is selected.
- * xyflow's EdgeAnchor renders only when `edge.reconnectable === true` — we
- * set that flag in demo-canvas.tsx ONLY on the single-selected connector,
- * so these dots appear exclusively for the active edge and disappear on
- * deselect.
+/* US-024: xyflow's EdgeAnchor SVG circles are kept for HIT-TESTING only —
+ * they're transparent visually. The visible white-fill / grey-border dot
+ * is rendered separately via <ViewportPortal> in editable-edge.tsx so it
+ * can layer above every node and edge regardless of which one happens to
+ * overlap. Keeping the SVG circle at the same flow position with
+ * `pointer-events: all` means xyflow's reconnect-drag machinery still
+ * picks up clicks/drags on the dot in the common (non-overlapping) case.
  *
- * Paired with `reconnectRadius={6}` so the SVG `r=6` (12px diameter fill)
- * matches the visual weight of node-outlet handles from US-007. US-019:
- * white fill + neutral-border grey 1.5px stroke read as a draggable handle.
- * The colour stays the same across idle, hover, and reconnect drag — there
- * are no theme-tinted overrides for those states. `pointer-events: all`
- * with the painted stroke gives a ~15px hit target around the 12px visible
- * fill — slightly tighter than US-011's 24px transparent-stroke target, in
- * exchange for the visible border the design calls for. */
+ * Paired with `reconnectRadius={10}` so the SVG `r=10` (20px diameter hit
+ * region) matches the visible portal-dot diameter from the shared
+ * --anydemo-handle-size token. */
 .react-flow__edgeupdater {
-  fill: #ffffff;
-  stroke: hsl(var(--border));
-  stroke-width: 1.5px;
+  fill: transparent;
+  stroke: transparent;
   opacity: 1;
   pointer-events: all;
+}
+
+/* US-024: visible connector endpoint dot rendered via <ViewportPortal>
+ * (DOM order AFTER `.react-flow__nodes` inside `.react-flow__viewport`)
+ * so it layers above every node and edge in the canvas. The high z-index
+ * (combined with `position: absolute`) creates its own stacking context
+ * that outranks the `z-index: 1000` used by selected nodes (US-023) and
+ * keeps the dot visible even when a sibling node overlaps the endpoint.
+ *
+ * Uses the shared --anydemo-handle-* tokens so visuals stay identical to
+ * the node outlet dots — same diameter, fill, and border. Pointer events
+ * are disabled so clicks pass through to the underlying SVG anchor circle
+ * (`.react-flow__edgeupdater`) which xyflow uses for the reconnect-drag
+ * gesture. The dot itself is purely visual. */
+.anydemo-connector-endpoint-dot {
+  position: absolute;
+  width: var(--anydemo-handle-size);
+  height: var(--anydemo-handle-size);
+  background: var(--anydemo-handle-fill);
+  border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2000;
 }
 
 /* Connection-in-progress overrides (US-017).
@@ -312,10 +343,10 @@
 /* US-007: when a node is selected, its 4 connection handles relocate from
  * the node body's edge midpoints to the OUTER selection-rectangle's edge
  * midpoints — 4px outward, matching the `outlineOffset: 4px` on each node
- * container. Combined with the bumped handle size (`!h-3 !w-3` ≈ 12px)
- * applied per-Handle in the node renderers, this gives the outlets the
- * same visual weight as the visible resize-corner squares (US-016) and
- * anchors them to the selection rect rather than the node chrome.
+ * container. Combined with the size set by `--anydemo-handle-size` (20px,
+ * shared with connector endpoint dots — US-024), this gives the outlets
+ * the same visual weight as the visible resize-corner squares (US-016)
+ * and anchors them to the selection rect rather than the node chrome.
  *
  * The translate stacks: xyflow's per-side default `translate(-50%, -50%)`
  * (or its 50% variants for bottom/right) keeps the dot CENTERED on the

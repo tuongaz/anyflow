@@ -8,6 +8,7 @@ import {
   EdgeLabelRenderer,
   type EdgeProps,
   Position,
+  ViewportPortal,
   getBezierPath,
   getSmoothStepPath,
   useInternalNode,
@@ -18,13 +19,15 @@ import { useEffect, useState } from 'react';
 // looking jagged. (US-017)
 const SMOOTHSTEP_BORDER_RADIUS = 8;
 
-// US-011: shift in flow units applied to the EdgeAnchor circle's cx/cy
-// (mirrors xyflow's `shiftX/shiftY(centerX, radius, position)` with radius =
-// the `reconnectRadius` prop on <ReactFlow>, which we set to 6 in
-// demo-canvas.tsx). Keep these in lock-step with that prop so the visible
-// reconnect dot's center sits half a diameter outside the floating endpoint
-// — same offset xyflow uses for its (default) anchor placement.
-const RECONNECT_ANCHOR_SHIFT = 6;
+// US-011 / US-024: shift in flow units applied to the EdgeAnchor circle's
+// cx/cy (mirrors xyflow's `shiftX/shiftY(centerX, radius, position)` with
+// radius = the `reconnectRadius` prop on <ReactFlow>, which we set to 10 in
+// demo-canvas.tsx — matching the 20px visible diameter from the shared
+// --anydemo-handle-size token). Keep these in lock-step with that prop so
+// the visible reconnect dot's center sits half a diameter outside the
+// floating endpoint — same offset xyflow uses for its (default) anchor
+// placement.
+const RECONNECT_ANCHOR_SHIFT = 10;
 const shiftAnchorForSide = (
   baseX: number,
   baseY: number,
@@ -81,6 +84,13 @@ export type EditableEdgeData = {
   sourceHandleAutoPicked?: boolean;
   /** US-025: same as sourceHandleAutoPicked but for the target endpoint. */
   targetHandleAutoPicked?: boolean;
+  /**
+   * US-024: when true, render visible white-fill / grey-border endpoint
+   * dots in a <ViewportPortal> above every node and edge. Mirrors the
+   * `reconnectable` flag on the edge itself (set by demo-canvas.tsx for
+   * the sole-selected connector).
+   */
+  reconnectable?: boolean;
 } & Record<string, unknown>;
 
 export type EditableEdgeType = Edge<EditableEdgeData, 'editableEdge'>;
@@ -228,6 +238,16 @@ export function EditableEdge({
   const labelText = typeof label === 'string' ? label : '';
   const editable = !!onLabelChange;
 
+  // US-024: when this edge is reconnectable (sole-selected connector), render
+  // visible white-fill / grey-border endpoint dots in a <ViewportPortal> so
+  // they layer above every node and edge in the canvas — including any
+  // sibling node that overlaps the floating endpoint. The DOM-level SVG
+  // anchor circles (`.react-flow__edgeupdater`) stay in place underneath as
+  // transparent hit targets for xyflow's reconnect-drag machinery.
+  const showEndpointDots = data?.reconnectable === true;
+  const sourceDot = showEndpointDots ? shiftAnchorForSide(sX, sY, sourceSide) : null;
+  const targetDot = showEndpointDots ? shiftAnchorForSide(tX, tY, targetSide) : null;
+
   return (
     <>
       <BaseEdge
@@ -238,6 +258,22 @@ export function EditableEdge({
         markerStart={markerStart}
         interactionWidth={interactionWidth}
       />
+      {showEndpointDots && sourceDot && targetDot ? (
+        <ViewportPortal>
+          <div
+            className="anydemo-connector-endpoint-dot"
+            style={{
+              transform: `translate(-50%, -50%) translate(${sourceDot.cx}px, ${sourceDot.cy}px)`,
+            }}
+          />
+          <div
+            className="anydemo-connector-endpoint-dot"
+            style={{
+              transform: `translate(-50%, -50%) translate(${targetDot.cx}px, ${targetDot.cy}px)`,
+            }}
+          />
+        </ViewportPortal>
+      ) : null}
       <EdgeLabelRenderer>
         <div
           className="nodrag nopan nowheel pointer-events-auto absolute"

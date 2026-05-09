@@ -1142,7 +1142,16 @@ export function DemoCanvas({
       const next: Edge = enableReconnect ? { ...edge, reconnectable: true } : edge;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
-      return { ...next, data: { ...next.data, onLabelChange: onConnectorLabelChange } };
+      // US-024: also pass `reconnectable` so the edge component knows when
+      // to render the visible portal endpoint dots.
+      return {
+        ...next,
+        data: {
+          ...next.data,
+          onLabelChange: onConnectorLabelChange,
+          reconnectable: enableReconnect,
+        },
+      };
     };
     const serverIds = new Set(connectors.map((c) => c.id));
     const fromServer = connectors.map((c) =>
@@ -1645,11 +1654,12 @@ export function DemoCanvas({
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
         connectionRadius={32}
-        // US-011: shrink the EdgeAnchor SVG circle so the visible reconnect
-        // dot (rendered via `.react-flow__edgeupdater` CSS) is 12px diameter,
-        // matching node-outlet handles from US-007. The hit area is widened
-        // separately via the CSS rule's transparent 12px stroke.
-        reconnectRadius={6}
+        // US-024: SVG EdgeAnchor circle r=10 → 20px hit-region diameter,
+        // matching the visible portal-rendered endpoint dot (which uses the
+        // shared --anydemo-handle-size: 20px token, also driving outlet
+        // handle size). The SVG circle itself is rendered transparent via
+        // `.react-flow__edgeupdater` CSS — only the portal dot is visible.
+        reconnectRadius={10}
         // US-011: by default xyflow's `edgesReconnectable` is true, which makes
         // EVERY edge render EdgeAnchor circles regardless of selection.
         // Previously this was masked by `.react-flow__edgeupdater { opacity: 0 }`,
