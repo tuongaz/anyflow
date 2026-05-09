@@ -7,10 +7,11 @@ import { useNodeEvents } from '@/hooks/use-node-events';
 import { useNodeRuns } from '@/hooks/use-node-runs';
 import { useStudioEvents } from '@/hooks/use-studio-events';
 import { playNode } from '@/lib/api';
-import { usePathname } from '@/lib/router';
+import { pickInitialDemo, readLastProjectId, writeLastProjectId } from '@/lib/last-project';
+import { navigate, usePathname } from '@/lib/router';
 import { DemoView } from '@/pages/demo-view';
 import { StudioHome } from '@/pages/studio-home';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 const matchDemoSlug = (pathname: string): string | null => {
   if (!pathname.startsWith('/d/')) return null;
@@ -44,6 +45,20 @@ export function App() {
   );
 
   const { lastReload } = useStudioEvents(demoId, { onReload, onEvent });
+
+  // US-001: when landing on '/', auto-redirect to the last-used project (or
+  // the first available one). Runs once demos resolve to an array.
+  useEffect(() => {
+    if (pathname !== '/') return;
+    if (demos === null) return;
+    const target = pickInitialDemo(demos, readLastProjectId());
+    if (target) navigate(`/d/${target.slug}`);
+  }, [pathname, demos]);
+
+  // US-001: persist whichever project is currently open so we can reopen it next visit.
+  useEffect(() => {
+    if (currentSummary) writeLastProjectId(currentSummary.id);
+  }, [currentSummary]);
 
   const onPlayNode = useCallback(
     (nodeId: string) => {
