@@ -620,6 +620,168 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(-2, 4)).success).toBe(false);
   });
 
+  it('accepts cornerRadius=12 and cornerRadius=0 on a node, rejects negative values (US-001)', () => {
+    const make = (cornerRadius: unknown) => ({
+      version: 1 as const,
+      name: 'corner-radius',
+      nodes: [
+        {
+          id: 'p',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'P',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            cornerRadius,
+          },
+        },
+      ],
+      connectors: [],
+    });
+
+    const ok12 = DemoSchema.safeParse(make(12));
+    if (!ok12.success) {
+      throw new Error(
+        `expected cornerRadius=12 to parse, got: ${JSON.stringify(ok12.error.issues)}`,
+      );
+    }
+    const node12 = ok12.data.nodes[0];
+    if (node12?.type !== 'playNode') throw new Error('expected playNode');
+    expect(node12.data.cornerRadius).toBe(12);
+
+    const ok0 = DemoSchema.safeParse(make(0));
+    if (!ok0.success) {
+      throw new Error(`expected cornerRadius=0 to parse, got: ${JSON.stringify(ok0.error.issues)}`);
+    }
+
+    expect(DemoSchema.safeParse(make(-5)).success).toBe(false);
+  });
+
+  it('parses a demo containing one imageNode with a base64 data URL (US-002)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'image-demo',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 10, y: 20 },
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+            alt: 'pixel',
+            width: 200,
+            height: 150,
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'imageNode') throw new Error('expected imageNode');
+    expect(node.data.image.startsWith('data:image/png;base64,')).toBe(true);
+    expect(node.data.alt).toBe('pixel');
+  });
+
+  it('rejects an imageNode whose image is not a data URL (US-002)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-image',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: { image: 'https://example.com/cat.png' },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a connector pointing at an imageNode id (US-002)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'image-conn',
+      nodes: [
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 100, y: 0 },
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+          },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 's', target: 'img-1', kind: 'default' as const }],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.connectors).toHaveLength(1);
+  });
+
+  it('parses a demo with a top-level resetAction (US-003)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'reset-demo',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+      resetAction: { kind: 'http' as const, method: 'POST' as const, url: '/reset' },
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.resetAction?.kind).toBe('http');
+    expect(result.data.resetAction?.method).toBe('POST');
+    expect(result.data.resetAction?.url).toBe('/reset');
+  });
+
+  it('parses a demo without resetAction (back-compat for US-003)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'no-reset',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.resetAction).toBeUndefined();
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

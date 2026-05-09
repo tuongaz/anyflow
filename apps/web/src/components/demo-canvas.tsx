@@ -1,5 +1,6 @@
 import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
+import { IMAGE_DEFAULT_SIZE, ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
@@ -27,6 +28,7 @@ import {
   Background,
   type Connection,
   type ConnectionLineComponentProps,
+  ControlButton,
   Controls,
   type Edge,
   type EdgeChange,
@@ -44,6 +46,7 @@ import {
   useStore,
   useStoreApi,
 } from '@xyflow/react';
+import { Loader2, RotateCcw } from 'lucide-react';
 import {
   type ComponentType,
   type PointerEvent,
@@ -267,6 +270,48 @@ export interface DemoCanvasProps {
    * leaves the id pinned.
    */
   pendingEditNodeId?: string | null;
+  /**
+   * US-009: fire the demo's reset action and broadcast a `demo:reload` event
+   * (POST /api/demos/:id/reset). When wired, the Controls panel renders a
+   * Reset button next to zoom/fit; absent → button is hidden. The parent owns
+   * demoId resolution and error surfacing — the canvas just tracks the
+   * in-flight state locally so the button shows a spinner while the request
+   * round-trips.
+   */
+  onResetDemo?: () => Promise<unknown>;
+  /**
+   * US-010 / US-011: commit a new imageNode created from paste-from-clipboard
+   * or drag-drop file ingestion. The canvas owns the listeners + screen→flow
+   * translation; the parent owns id generation, optimistic overrides,
+   * persistence, and the undo entry (mirrors `onCreateShapeNode`). When
+   * omitted both ingestion paths are inert.
+   */
+  onCreateImageNode?: (image: string, position: { x: number; y: number }) => void;
+  /**
+   * US-012: ingest an http(s) URL dropped on the canvas (e.g. dragging an
+   * <img> from a webpage). The canvas extracts the URL from `text/uri-list`
+   * or `text/plain` and translates the drop point to flow space; the parent
+   * owns the fetch → blob → base64 conversion (so fetch failures can flow
+   * through the same `editError` surface as other create-node errors). When
+   * omitted, URL drags are ignored.
+   */
+  onIngestImageUrl?: (url: string, position: { x: number; y: number }) => void;
+  /**
+   * US-013: capture the canvas viewport and download it as an SVG file.
+   * Wiring this enables the Export SVG button in the canvas toolbar; absent →
+   * button is hidden. The parent owns the fitView/setViewport dance, the
+   * html-to-image capture, and the download trigger so the canvas stays free
+   * of dependency on the export library.
+   */
+  onExportSvg?: () => Promise<unknown> | unknown;
+  /**
+   * US-014: capture the canvas viewport and download it as a PDF file.
+   * Wiring this enables the Export PDF button in the canvas toolbar; absent →
+   * button is hidden. The parent owns the fitView/setViewport dance, the
+   * html-to-image capture, and the jsPDF generation so the canvas stays free
+   * of dependency on the export libraries.
+   */
+  onExportPdf?: () => Promise<unknown> | unknown;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -347,7 +392,12 @@ const mergeConnectorOverride = (
   return { ...conn, ...override } as Connector;
 };
 
-const nodeTypes = { playNode: PlayNode, stateNode: StateNode, shapeNode: ShapeNode };
+const nodeTypes = {
+  playNode: PlayNode,
+  stateNode: StateNode,
+  shapeNode: ShapeNode,
+  imageNode: ImageNode,
+};
 const edgeTypes = { editableEdge: EditableEdge };
 
 // US-009: smoothstep corner radius — kept in sync with EditableEdge so the
@@ -511,6 +561,11 @@ export function DemoCanvas({
   onPaneClick,
   onCreateAndConnectFromPane,
   pendingEditNodeId,
+  onResetDemo,
+  onCreateImageNode,
+  onIngestImageUrl,
+  onExportSvg,
+  onExportPdf,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -525,6 +580,179 @@ export function DemoCanvas({
   // Used to call `cancelConnection` when ESC cancels an in-flight connection.
   const storeApiRef = useRef<StoreApi | null>(null);
   const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
+  // US-009: in-flight flag for the Reset button inside the Controls panel.
+  // While true the button is disabled and shows a spinner; the parent's
+  // onResetDemo promise drives the lifecycle (settle → clear). Errors are
+  // surfaced by the parent (editError banner in demo-view), so we just
+  // swallow the rejection here — the local flag still resets either way.
+  const [resetting, setResetting] = useState(false);
+  const handleResetClick = useCallback(() => {
+    if (!onResetDemo || resetting) return;
+    setResetting(true);
+    Promise.resolve(onResetDemo()).finally(() => {
+      setResetting(false);
+    });
+  }, [onResetDemo, resetting]);
+  // US-010: paste an image from the clipboard onto the canvas. Listens at the
+  // document level (paste events bubble there regardless of focus) and skips
+  // pastes that originate inside an editable target — InlineEdit / form inputs
+  // keep their native paste behaviour. The new imageNode is centered on the
+  // wrapper's viewport center, translated to flow space via the React Flow
+  // instance, then offset by half the default size so the node is visually
+  // centered. The parent owns persistence + undo via `onCreateImageNode`.
+  useEffect(() => {
+    if (!onCreateImageNode) return;
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as Element | null;
+      if (isEditableTarget(target)) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      let imageFile: File | null = null;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item) continue;
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          imageFile = item.getAsFile();
+          if (imageFile) break;
+        }
+      }
+      if (!imageFile) return;
+      const wrapper = wrapperRef.current;
+      const rfInstance = rfInstanceRef.current;
+      if (!wrapper || !rfInstance) return;
+      e.preventDefault();
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        if (typeof dataUrl !== 'string') return;
+        const rect = wrapper.getBoundingClientRect();
+        const center = rfInstance.screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        onCreateImageNode(dataUrl, {
+          x: center.x - IMAGE_DEFAULT_SIZE.width / 2,
+          y: center.y - IMAGE_DEFAULT_SIZE.height / 2,
+        });
+      };
+      reader.readAsDataURL(imageFile);
+    };
+    document.addEventListener('paste', handler);
+    return () => document.removeEventListener('paste', handler);
+  }, [onCreateImageNode]);
+  // US-011 / US-012: drag-drop image ingestion. Listeners are attached to the
+  // wrapper directly (drop events fire on the actual drop target, unlike
+  // paste which bubbles to document). `dragover` is required to call
+  // preventDefault so the browser permits the subsequent `drop`; we gate that
+  // on a payload that we know how to handle (Files for US-011, text/uri-list
+  // or text/plain for US-012) so internal canvas drag gestures (node drag,
+  // connector drag, draw-shape drag) keep their default behaviour.
+  //
+  // On drop the file branch wins when image/* files are present (US-011);
+  // otherwise we fall back to the URL branch (US-012) and pass the first
+  // http(s) URL up to the parent, which owns the fetch → base64 conversion
+  // so fetch failures (CORS, network, non-image content-type) surface
+  // through the same editError banner as other create-node errors.
+  useEffect(() => {
+    if (!onCreateImageNode && !onIngestImageUrl) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const hasType = (e: DragEvent, t: string): boolean => {
+      const types = e.dataTransfer?.types;
+      if (!types) return false;
+      for (let i = 0; i < types.length; i++) {
+        if (types[i] === t) return true;
+      }
+      return false;
+    };
+    const isCandidateDrag = (e: DragEvent): boolean => {
+      if (onCreateImageNode && hasType(e, 'Files')) return true;
+      if (onIngestImageUrl && (hasType(e, 'text/uri-list') || hasType(e, 'text/plain'))) {
+        return true;
+      }
+      return false;
+    };
+    const pickHttpUrl = (text: string): string | null => {
+      if (!text) return null;
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        if (/^https?:\/\//i.test(line)) return line;
+      }
+      return null;
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!isCandidateDrag(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (e: DragEvent) => {
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      // File branch (US-011) — runs first so a drag carrying both files and a
+      // text payload (e.g. some browsers attach a fallback text/plain) keeps
+      // the local file as the source of truth.
+      if (onCreateImageNode) {
+        const files = dt.files;
+        if (files && files.length > 0) {
+          const imageFiles: File[] = [];
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file?.type.startsWith('image/')) imageFiles.push(file);
+          }
+          if (imageFiles.length > 0) {
+            const rfInstance = rfInstanceRef.current;
+            if (!rfInstance) return;
+            e.preventDefault();
+            const baseFlow = rfInstance.screenToFlowPosition({
+              x: e.clientX,
+              y: e.clientY,
+            });
+            imageFiles.forEach((file, index) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const dataUrl = reader.result;
+                if (typeof dataUrl !== 'string') return;
+                const offset = index * 24;
+                onCreateImageNode(dataUrl, {
+                  x: baseFlow.x - IMAGE_DEFAULT_SIZE.width / 2 + offset,
+                  y: baseFlow.y - IMAGE_DEFAULT_SIZE.height / 2 + offset,
+                });
+              };
+              reader.readAsDataURL(file);
+            });
+            return;
+          }
+        }
+      }
+      // URL branch (US-012) — dragging an <img> from a webpage exposes the
+      // image src on text/uri-list (and usually a duplicate on text/plain).
+      // Prefer text/uri-list per RFC 2483.
+      if (onIngestImageUrl) {
+        const url =
+          pickHttpUrl(dt.getData('text/uri-list')) ?? pickHttpUrl(dt.getData('text/plain'));
+        if (url) {
+          const rfInstance = rfInstanceRef.current;
+          if (!rfInstance) return;
+          e.preventDefault();
+          const baseFlow = rfInstance.screenToFlowPosition({
+            x: e.clientX,
+            y: e.clientY,
+          });
+          onIngestImageUrl(url, {
+            x: baseFlow.x - IMAGE_DEFAULT_SIZE.width / 2,
+            y: baseFlow.y - IMAGE_DEFAULT_SIZE.height / 2,
+          });
+        }
+      }
+    };
+    wrapper.addEventListener('dragover', onDragOver);
+    wrapper.addEventListener('drop', onDrop);
+    return () => {
+      wrapper.removeEventListener('dragover', onDragOver);
+      wrapper.removeEventListener('drop', onDrop);
+    };
+  }, [onCreateImageNode, onIngestImageUrl]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
   // already left hover and the user needs to discover drop targets without
@@ -954,7 +1182,10 @@ export function DemoCanvas({
           onResize: onNodeResize,
           setResizing,
           onLabelChange: onNodeLabelChange,
-          onDescriptionChange: merged.type === 'shapeNode' ? undefined : onNodeDescriptionChange,
+          onDescriptionChange:
+            merged.type === 'shapeNode' || merged.type === 'imageNode'
+              ? undefined
+              : onNodeDescriptionChange,
           // US-015: inject autoEditOnMount on the freshly drop-popover-created
           // node so it opens in label-edit mode. The flag is consumed once at
           // mount by the node component (lazy useState initializer); leaving
@@ -1666,10 +1897,11 @@ export function DemoCanvas({
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
         connectionRadius={32}
-        // US-024: SVG EdgeAnchor circle r=10 → 20px hit-region diameter,
-        // matching the visible portal-rendered endpoint dot (which uses the
-        // shared --anydemo-handle-size: 20px token, also driving outlet
-        // handle size). The SVG circle itself is rendered transparent via
+        // US-024: SVG EdgeAnchor circle r=10 → 20px hit-region diameter, kept
+        // intentionally larger than the visible portal-rendered endpoint dot
+        // (sized via the shared --anydemo-handle-size token, also driving
+        // outlet handle size) so the user gets a generous click target. The
+        // SVG circle itself is rendered transparent via
         // `.react-flow__edgeupdater` CSS — only the portal dot is visible.
         reconnectRadius={10}
         // US-011: by default xyflow's `edgesReconnectable` is true, which makes
@@ -1758,7 +1990,24 @@ export function DemoCanvas({
       >
         <StoreApiBridge storeApiRef={storeApiRef} />
         <Background gap={12} size={0.6} />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false}>
+          {onResetDemo ? (
+            <ControlButton
+              data-testid="canvas-reset-demo"
+              type="button"
+              aria-label="Reset demo"
+              title="Reset demo"
+              disabled={resetting}
+              onClick={handleResetClick}
+            >
+              {resetting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              )}
+            </ControlButton>
+          ) : null}
+        </Controls>
         {onCreateShapeNode || onStyleNode || onStyleConnector ? (
           <Panel position="top-left">
             <div className="flex flex-col gap-2">
@@ -1767,6 +2016,8 @@ export function DemoCanvas({
                   activeShape={drawShape}
                   onSelectShape={setDrawShape}
                   onTidy={onTidy}
+                  onExportSvg={onExportSvg}
+                  onExportPdf={onExportPdf}
                 />
               ) : null}
               {onStyleNode && onStyleConnector ? (

@@ -30,6 +30,7 @@ const NodeVisualBaseShape = {
   borderSize: z.number().positive().optional(),
   borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
   fontSize: z.number().positive().optional(),
+  cornerRadius: z.number().min(0).optional(),
 };
 
 const HttpActionSchema = z.object({
@@ -112,7 +113,32 @@ const ShapeNodeSchema = z.object({
   data: ShapeNodeDataSchema,
 });
 
-const NodeSchema = z.discriminatedUnion('type', [PlayNodeSchema, StateNodeSchema, ShapeNodeSchema]);
+// Decorative image node — embeds a base64 data URL on the canvas. No semantic
+// payload; reuses NodeVisualBaseShape so it themes the same way as other nodes.
+const ImageNodeDataSchema = z.object({
+  image: z
+    .string()
+    .min(1)
+    .refine((s) => s.startsWith('data:image/'), {
+      message: 'image must be a data URL starting with "data:image/"',
+    }),
+  alt: z.string().optional(),
+  ...NodeVisualBaseShape,
+});
+
+const ImageNodeSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('imageNode'),
+  position: PositionSchema,
+  data: ImageNodeDataSchema,
+});
+
+const NodeSchema = z.discriminatedUnion('type', [
+  PlayNodeSchema,
+  StateNodeSchema,
+  ShapeNodeSchema,
+  ImageNodeSchema,
+]);
 
 // Connector is the semantic edge between two nodes — describes HOW they are
 // connected, not just THAT they are. Discriminated on `kind`:
@@ -206,6 +232,10 @@ export const DemoSchema = z
     name: z.string().min(1),
     nodes: z.array(NodeSchema),
     connectors: z.array(ConnectorSchema),
+    // Optional declarative endpoint the studio POSTs to when the user resets
+    // the demo. Lets the running app reset its own in-memory state alongside
+    // the canvas reload broadcast (US-003 / US-008).
+    resetAction: HttpActionSchema.optional(),
   })
   .superRefine((demo, ctx) => {
     const nodeIds = new Set(demo.nodes.map((n) => n.id));
@@ -230,6 +260,7 @@ export const DemoSchema = z
 export type Demo = z.infer<typeof DemoSchema>;
 export type DemoNode = z.infer<typeof NodeSchema>;
 export type ShapeNode = z.infer<typeof ShapeNodeSchema>;
+export type ImageNode = z.infer<typeof ImageNodeSchema>;
 export type ShapeKind = z.infer<typeof ShapeKindSchema>;
 export type ColorToken = z.infer<typeof ColorTokenSchema>;
 export type Connector = z.infer<typeof ConnectorSchema>;
@@ -242,4 +273,5 @@ export type ConnectorDirection = z.infer<typeof ConnectorDirectionSchema>;
 export type ConnectorPath = z.infer<typeof ConnectorPathSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
+export type ResetAction = z.infer<typeof HttpActionSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;

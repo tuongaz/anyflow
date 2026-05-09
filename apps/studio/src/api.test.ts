@@ -358,6 +358,132 @@ describe('POST /api/demos/:id/play/:nodeId', () => {
   });
 });
 
+describe('POST /api/demos/:id/reset', () => {
+  const startStubServer = (
+    handler: (req: Request) => Response | Promise<Response>,
+  ): { url: string; stop: () => void } => {
+    const server = Bun.serve({ port: 0, fetch: handler });
+    return {
+      url: `http://${server.hostname}:${server.port}`,
+      stop: () => server.stop(true),
+    };
+  };
+
+  const demoWithResetAction = (action: { method: string; url: string; body?: unknown }) => ({
+    ...VALID_DEMO,
+    resetAction: { kind: 'http', ...action },
+  });
+
+  const buildAppWithBus = () => {
+    const bus = createEventBus();
+    const registry = createRegistry({ path: tmpRegistry() });
+    const app = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry,
+      events: bus,
+      disableWatcher: true,
+    });
+    return { app, registry, bus };
+  };
+
+  it('returns 200 and broadcasts demo:reload when the demo has no resetAction', async () => {
+    const { app, bus } = buildAppWithBus();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const captured: Array<{ type: string }> = [];
+    bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+
+    const res = await post(app, `/api/demos/${reg.id}/reset`, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; calledResetAction: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.calledResetAction).toBe(false);
+
+    expect(captured.map((e) => e.type)).toEqual(['demo:reload']);
+  });
+
+  it('fires the resetAction with method+url+body and broadcasts demo:reload', async () => {
+    let receivedMethod: string | undefined;
+    let receivedPath: string | undefined;
+    let receivedBody: string | undefined;
+    let receivedContentType: string | null | undefined;
+    const stub = startStubServer(async (req) => {
+      receivedMethod = req.method;
+      receivedPath = new URL(req.url).pathname;
+      receivedContentType = req.headers.get('content-type');
+      receivedBody = await req.text();
+      return Response.json({ ok: true });
+    });
+    try {
+      const { app, bus } = buildAppWithBus();
+      const repoPath = tmpRepoWithDemo(
+        demoWithResetAction({
+          method: 'POST',
+          url: `${stub.url}/reset`,
+          body: { fresh: true },
+        }),
+      );
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const captured: Array<{ type: string }> = [];
+      bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+
+      const res = await post(app, `/api/demos/${reg.id}/reset`, {});
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { ok: boolean; calledResetAction: boolean };
+      expect(body.ok).toBe(true);
+      expect(body.calledResetAction).toBe(true);
+
+      expect(receivedMethod).toBe('POST');
+      expect(receivedPath).toBe('/reset');
+      expect(receivedContentType).toContain('application/json');
+      expect(JSON.parse(receivedBody ?? '')).toEqual({ fresh: true });
+
+      expect(captured.map((e) => e.type)).toEqual(['demo:reload']);
+    } finally {
+      stub.stop();
+    }
+  });
+
+  it('returns 502 but still broadcasts demo:reload when the resetAction returns 500', async () => {
+    const stub = startStubServer(() => new Response('boom', { status: 500 }));
+    try {
+      const { app, bus } = buildAppWithBus();
+      const repoPath = tmpRepoWithDemo(
+        demoWithResetAction({ method: 'POST', url: `${stub.url}/reset` }),
+      );
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const captured: Array<{ type: string }> = [];
+      bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+
+      const res = await post(app, `/api/demos/${reg.id}/reset`, {});
+      expect(res.status).toBe(502);
+      const body = (await res.json()) as { error: string; calledResetAction: boolean };
+      expect(body.calledResetAction).toBe(true);
+      expect(body.error).toContain('500');
+
+      expect(captured.map((e) => e.type)).toEqual(['demo:reload']);
+    } finally {
+      stub.stop();
+    }
+  });
+
+  it('returns 404 for an unknown demoId', async () => {
+    const { app } = buildAppWithBus();
+    const res = await post(app, '/api/demos/does-not-exist/reset', {});
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('POST /api/demos/:id/nodes/:nodeId/detail', () => {
   const startStubServer = (
     handler: (req: Request) => Response | Promise<Response>,

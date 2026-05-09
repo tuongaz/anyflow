@@ -83,6 +83,7 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
+    borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,
     ...(sized ? {} : { width: DEFAULT_W }),
     ...(selected
       ? {

@@ -18,7 +18,7 @@ export interface SdkWriteResult {
  */
 export function writeSdkEmitIfNeeded(repoPath: string, demo: Demo): SdkWriteResult {
   const hasEventState = demo.nodes.some(
-    (n) => n.type !== 'shapeNode' && n.data.stateSource.kind === 'event',
+    (n) => n.type !== 'shapeNode' && n.type !== 'imageNode' && n.data.stateSource.kind === 'event',
   );
   if (!hasEventState) return { outcome: 'skipped', filePath: null };
 

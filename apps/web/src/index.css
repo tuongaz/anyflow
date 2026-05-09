@@ -42,7 +42,7 @@
     --anydemo-handle-fill: #ffffff;
     --anydemo-handle-border-color: #000;
     --anydemo-handle-border-width: 1.5px;
-    --anydemo-handle-size: 20px;
+    --anydemo-handle-size: 12px;
   }
 
   .dark {
@@ -235,7 +235,7 @@ button:disabled {
 
 /* US-023 / US-024 / US-028: outlet handles use the shared --anydemo-handle-*
  * tokens defined in :root so both they AND the connector endpoint dots read
- * as the same affordance. Same diameter (20px), same white fill, same black
+ * as the same affordance. Same diameter (12px), same white fill, same black
  * 1.5px border. Change the tokens once and both call-sites follow. The transform
  * offsets below stack the dots `~outlineOffset` outward from the node body
  * so their CENTER continues to sit on the outer selection-rect edge
@@ -248,13 +248,13 @@ button:disabled {
 }
 
 /* Bigger pointer hit-area on connection handles. The pseudo-element extends
- * the click target ~6px in every direction so users don't need pixel-perfect
- * aim — with the US-023 20px visible dot, the resulting ~32px hit target
+ * the click target ~10px in every direction so users don't need pixel-perfect
+ * aim — with the US-023 12px visible dot, the resulting ~32px hit target
  * stays well above the visible affordance. */
 .react-flow__handle::after {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -10px;
   border-radius: 50%;
 }
 
@@ -294,8 +294,9 @@ button:disabled {
  * picks up clicks/drags on the dot in the common (non-overlapping) case.
  *
  * Paired with `reconnectRadius={10}` so the SVG `r=10` (20px diameter hit
- * region) matches the visible portal-dot diameter from the shared
- * --anydemo-handle-size token.
+ * region) sits concentric with the smaller visible portal-dot (sized via the
+ * shared --anydemo-handle-size token), giving the user a generous click area
+ * without enlarging the visible affordance.
  *
  * US-027: override xyflow's default `cursor: move` on the reconnect anchor
  * (style.css `.react-flow__edgeupdater { cursor: move }`). Hovering the
@@ -398,10 +399,9 @@ button:disabled {
 /* US-007: when a node is selected, its 4 connection handles relocate from
  * the node body's edge midpoints to the OUTER selection-rectangle's edge
  * midpoints — 4px outward, matching the `outlineOffset: 4px` on each node
- * container. Combined with the size set by `--anydemo-handle-size` (20px,
- * shared with connector endpoint dots — US-024), this gives the outlets
- * the same visual weight as the visible resize-corner squares (US-016)
- * and anchors them to the selection rect rather than the node chrome.
+ * container. Combined with the size set by `--anydemo-handle-size` (12px,
+ * shared with connector endpoint dots — US-024), this anchors the outlets
+ * to the selection rect rather than the node chrome.
  *
  * The translate stacks: xyflow's per-side default `translate(-50%, -50%)`
  * (or its 50% variants for bottom/right) keeps the dot CENTERED on the

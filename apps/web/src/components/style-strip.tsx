@@ -19,7 +19,7 @@ import type {
 } from '@/lib/api';
 import { COLOR_TOKENS } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
-import { ArrowLeftRight, ArrowRight, Check, MoveLeft, Type } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Check, MoveLeft, Squircle, Type } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 
 export interface NodeStylePatch {
@@ -28,6 +28,7 @@ export interface NodeStylePatch {
   borderSize?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
+  cornerRadius?: number;
 }
 
 export interface ConnectorStylePatch {
@@ -62,6 +63,10 @@ export interface StyleStripProps {
 const NODE_FONT_SIZE_DEFAULT = 22;
 const DEFAULT_BORDER_SIZE = 3;
 const DEFAULT_STROKE_WIDTH = 2;
+// US-005: opt-in default for the Corners slider when a node has no
+// `cornerRadius` set yet — picked to feel like a soft rounded-rect rather
+// than the harsher 0px the schema would imply.
+const DEFAULT_CORNER_RADIUS = 8;
 
 // Mirrors connector-to-edge.ts STYLE_BY_KIND so the active highlight matches
 // the rendered edge before the user has set an explicit override.
@@ -211,6 +216,18 @@ export function StyleStrip({
   const fontSizeIndeterminate =
     nodes.length > 1 &&
     new Set(nodes.map((n) => n.data.fontSize ?? NODE_FONT_SIZE_DEFAULT)).size > 1;
+  // US-005: corner-radius apply/preview. Mirrors the borderSize fan-out
+  // (per-node loop) so multi-select drags update every selected node and
+  // the live preview surfaces optimistic overrides during the drag.
+  const applyCornerRadius = (n: number) => {
+    for (const node of nodes) onStyleNode(node.id, { cornerRadius: n });
+  };
+  const previewCornerRadius = (n: number) => {
+    for (const node of nodes) onStyleNodePreview?.(node.id, { cornerRadius: n });
+  };
+  const cornerRadiusIndeterminate =
+    nodes.length > 1 &&
+    new Set(nodes.map((n) => n.data.cornerRadius ?? DEFAULT_CORNER_RADIUS)).size > 1;
   const applyConnectorPath = (path: ConnectorPath) => {
     for (const c of connectors) onStyleConnector(c.id, { path });
   };
@@ -340,6 +357,27 @@ export function StyleStrip({
               onPreview={previewFontSize}
               onCommit={applyFontSize}
               testId="style-tab-font-size-slider"
+            />
+          </PopoverButton>
+        ) : null}
+
+        {hasNodes && !isTextShape ? (
+          <PopoverButton
+            testId="style-strip-corner-radius"
+            tooltip="Corners"
+            ariaLabel="corner radius"
+            renderIcon={() => <Squircle className="h-4 w-4" />}
+          >
+            <SliderControl
+              value={firstNode?.data.cornerRadius}
+              defaultValue={DEFAULT_CORNER_RADIUS}
+              min={0}
+              max={32}
+              suffix="px"
+              indeterminate={cornerRadiusIndeterminate}
+              onPreview={previewCornerRadius}
+              onCommit={applyCornerRadius}
+              testId="style-tab-corner-radius-slider"
             />
           </PopoverButton>
         ) : null}

@@ -58,6 +58,7 @@ const NodePatchBodySchema = z
     borderSize: z.number().positive().optional(),
     borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
     fontSize: z.number().positive().optional(),
+    cornerRadius: z.number().min(0).optional(),
     width: z.number().positive().optional(),
     height: z.number().positive().optional(),
     shape: z.enum(['rectangle', 'ellipse', 'sticky', 'text']).optional(),
@@ -165,6 +166,7 @@ const NODE_DATA_PATCH_KEYS = [
   'borderSize',
   'borderStyle',
   'fontSize',
+  'cornerRadius',
   'width',
   'height',
   'shape',
@@ -562,7 +564,7 @@ export function createApi(options: ApiOptions): Hono {
 
     const node = parsed.data.nodes.find((n) => n.id === nodeId);
     if (!node) return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
-    if (node.type === 'shapeNode' || !node.data.playAction) {
+    if (node.type === 'shapeNode' || node.type === 'imageNode' || !node.data.playAction) {
       return c.json({ error: `Node ${nodeId} has no playAction` }, 400);
     }
 
@@ -573,6 +575,86 @@ export function createApi(options: ApiOptions): Hono {
       action: node.data.playAction,
     });
     return c.json(result);
+  });
+
+  // POST /api/demos/:id/reset — fires the demo's `resetAction` (if declared)
+  // so the running app can wipe its in-memory state, then broadcasts a
+  // `demo:reload` event so all connected canvases re-fetch the demo from disk.
+  // The reload broadcast happens unconditionally whenever the demo loads — a
+  // failed resetAction (network error or status>=400) surfaces as a 502 to the
+  // caller but does NOT suppress the reload, so the canvas state still
+  // refreshes. URL handling matches `playAction`: the action's `url` is fetched
+  // verbatim with no studio-side resolution.
+  api.post('/demos/:id/reset', async (c) => {
+    const id = c.req.param('id');
+    const entry = registry.getById(id);
+    if (!entry) return c.json({ error: 'unknown demo' }, 404);
+    if (!events) return c.json({ error: 'events not enabled' }, 500);
+
+    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+    if (!existsSync(fullPath)) {
+      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    }
+    let raw: unknown;
+    try {
+      raw = await Bun.file(fullPath).json();
+    } catch (err) {
+      return c.json(
+        {
+          error: `Demo file is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        400,
+      );
+    }
+    const parsed = DemoSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: 'Demo failed schema validation', issues: parsed.error.issues }, 400);
+    }
+
+    const resetAction = parsed.data.resetAction;
+    let calledResetAction = false;
+    let resetActionError: string | undefined;
+
+    if (resetAction) {
+      calledResetAction = true;
+      try {
+        const init: RequestInit = {
+          method: resetAction.method,
+          headers: { 'content-type': 'application/json' },
+        };
+        if (resetAction.body !== undefined) {
+          init.body = JSON.stringify(resetAction.body);
+        }
+        const upstream = await fetch(resetAction.url, init);
+        if (upstream.status >= 400) {
+          let upstreamBody = '';
+          try {
+            upstreamBody = await upstream.text();
+          } catch {
+            // best-effort body read for the error message
+          }
+          const trimmed = upstreamBody.trim().slice(0, 200);
+          resetActionError = trimmed
+            ? `Reset action returned ${upstream.status}: ${trimmed}`
+            : `Reset action returned ${upstream.status}`;
+        }
+      } catch (err) {
+        resetActionError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    // Broadcast unconditionally — even when resetAction failed, the canvas
+    // should still refresh from disk in case the user just edited the file.
+    events.broadcast({
+      type: 'demo:reload',
+      demoId: id,
+      payload: {},
+    });
+
+    if (resetActionError) {
+      return c.json({ error: resetActionError, calledResetAction }, 502);
+    }
+    return c.json({ ok: true, calledResetAction });
   });
 
   api.post('/demos/:id/nodes/:nodeId/detail', async (c) => {
@@ -605,7 +687,10 @@ export function createApi(options: ApiOptions): Hono {
     const node = parsed.data.nodes.find((n) => n.id === nodeId);
     if (!node) return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
 
-    const dynamicSource = node.type === 'shapeNode' ? undefined : node.data.detail?.dynamicSource;
+    const dynamicSource =
+      node.type === 'shapeNode' || node.type === 'imageNode'
+        ? undefined
+        : node.data.detail?.dynamicSource;
     if (!dynamicSource) {
       return c.json({ error: `Node ${nodeId} has no dynamicSource` }, 404);
     }

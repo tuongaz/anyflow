@@ -1,5 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import { IMAGE_DEFAULT_SIZE } from '@/components/nodes/image-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
@@ -20,6 +21,7 @@ import {
   deleteConnector,
   deleteNode,
   reorderNode,
+  resetDemo,
   updateConnector,
   updateNode,
   updateNodePosition,
@@ -27,6 +29,8 @@ import {
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
+import { toPng, toSvg } from 'html-to-image';
+import { jsPDF } from 'jspdf';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Position = { x: number; y: number };
@@ -38,6 +42,17 @@ const isEditableElement = (el: Element | null): boolean => {
   if (!el) return false;
   if (EDITABLE_TAGS.has(el.tagName)) return true;
   return el instanceof HTMLElement && el.isContentEditable;
+};
+
+/**
+ * Sanitize a string for use as a download filename. Replaces filesystem-unsafe
+ * characters (slashes, control chars, etc.) with underscores and trims to a
+ * reasonable length so the resulting `<demo-name>.svg` works across platforms.
+ */
+const sanitizeFileName = (name: string): string => {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars from a filename is the intent
+  const cleaned = name.replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').trim();
+  return cleaned.length > 0 ? cleaned.slice(0, 80) : 'demo';
 };
 
 /**
@@ -994,7 +1009,9 @@ export function DemoView({
     (nodeId: string, label: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      const prevLabel = node?.data.label;
+      // ImageNodeData has no `label`; the union narrowing here keeps prevLabel
+      // typed as `string | undefined` so the undo entry can restore it.
+      const prevLabel = node && 'label' in node.data ? node.data.label : undefined;
       setNodeOverride(nodeId, { data: { label } } as Partial<DemoNode>);
       setEditError(null);
       markMutation();
@@ -1030,7 +1047,7 @@ export function DemoView({
     (nodeId: string, summary: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      if (!node || node.type === 'shapeNode') return;
+      if (!node || node.type === 'shapeNode' || node.type === 'imageNode') return;
       const prevDetail = node.data.detail;
       const nextDetail = { ...(prevDetail ?? {}), summary };
       setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);
@@ -1103,6 +1120,97 @@ export function DemoView({
         });
     },
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
+  // US-010: commit a new imageNode at a flow-space position (paste / drag-drop
+  // entry point). Mirrors `onCreateShapeNode`: client-side id, optimistic
+  // override at the requested size, single undo entry pushed from the .then so
+  // it binds to the server-issued id.
+  const onCreateImageNode = useCallback(
+    (image: string, position: Position) => {
+      if (!demoId) return;
+      setEditError(null);
+      const id = `node-${crypto.randomUUID()}`;
+      const data = {
+        image,
+        width: IMAGE_DEFAULT_SIZE.width,
+        height: IMAGE_DEFAULT_SIZE.height,
+      };
+      const payload = {
+        id,
+        type: 'imageNode' as const,
+        position,
+        data,
+      };
+      const optimistic: DemoNode = {
+        id,
+        type: 'imageNode',
+        position,
+        data,
+      };
+      setNodeOverride(id, optimistic as Partial<DemoNode>);
+      markMutation();
+      createNode(demoId, payload)
+        .then(({ id: returnedId }) => {
+          pushUndo({
+            do: async () => {
+              await createNode(demoId, { ...payload, id: returnedId });
+            },
+            undo: async () => {
+              await deleteNode(demoId, returnedId);
+            },
+          });
+        })
+        .catch((err) => {
+          dropNodeOverride(id);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createNode (image) failed', err);
+        });
+    },
+    [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
+  // US-012: ingest an http(s) URL dropped on the canvas. The canvas hands us
+  // the URL it pulled from text/uri-list or text/plain plus the translated
+  // drop position. We fetch the URL, validate it's actually an image (Content-
+  // Type or known image extension), convert to a base64 data URL, and feed it
+  // through the same `onCreateImageNode` path (so persistence + undo behave
+  // identically to paste / file-drop). Failures surface via `editError`.
+  const onIngestImageUrl = useCallback(
+    async (url: string, position: Position) => {
+      if (!demoId) return;
+      setEditError(null);
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch ${url}: ${resp.status} ${resp.statusText}`);
+        }
+        const contentType = resp.headers.get('content-type') ?? '';
+        const isImageContentType = contentType.toLowerCase().startsWith('image/');
+        const hasImageExt = /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(url);
+        if (!isImageContentType && !hasImageExt) {
+          throw new Error(
+            `URL did not return an image (content-type: ${contentType || 'unknown'})`,
+          );
+        }
+        const blob = await resp.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result === 'string') resolve(result);
+            else reject(new Error('FileReader returned non-string result'));
+          };
+          reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+        });
+        onCreateImageNode(dataUrl, position);
+      } catch (err) {
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('ingestImageUrl failed', err);
+      }
+    },
+    [demoId, onCreateImageNode],
   );
 
   const onConnectorLabelChange = useCallback(
@@ -1694,6 +1802,115 @@ export function DemoView({
     onTidy(scope);
   }, [onTidy]);
 
+  // US-009: fire the demo's reset action and broadcast a `demo:reload` so the
+  // canvas refreshes from disk. The SSE listener in App.tsx handles the reload
+  // — this just triggers the request and surfaces failures via the editError
+  // banner. Returns a promise so the canvas's Reset button can track its
+  // in-flight state until the request settles.
+  const onResetDemo = useCallback(async (): Promise<void> => {
+    if (!demoId) return;
+    setEditError(null);
+    try {
+      await resetDemo(demoId);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    }
+  }, [demoId]);
+
+  // US-013: capture the canvas as an SVG and download it. We fitView so the
+  // entire graph is in frame, snapshot the previous viewport so we can restore
+  // it after, then call html-to-image on the `.react-flow__viewport` element.
+  // The viewport's siblings (Controls, MiniMap, Panel-mounted toolbar/style
+  // strip) are outside the captured DOM subtree by construction; the filter
+  // is a safety net in case xyflow ever moves them under the viewport.
+  const onExportSvg = useCallback(async (): Promise<void> => {
+    const rf = rfInstanceRef.current;
+    if (!rf) return;
+    const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport');
+    if (!viewportEl) return;
+    const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
+    setEditError(null);
+    const prev = rf.getViewport();
+    try {
+      await rf.fitView({ duration: 0, padding: 0.1 });
+      // Wait one frame so the new transform is reflected in the DOM before
+      // html-to-image samples computed styles.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const dataUrl = await toSvg(viewportEl, {
+        cacheBust: true,
+        filter: (node) => {
+          if (!(node instanceof Element)) return true;
+          if (node.classList.contains('react-flow__minimap')) return false;
+          if (node.classList.contains('react-flow__controls')) return false;
+          if (node.classList.contains('react-flow__panel')) return false;
+          return true;
+        },
+      });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${sanitizeFileName(demoName)}.svg`;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      rf.setViewport(prev, { duration: 0 });
+    }
+  }, [detail, slug]);
+
+  // US-014: capture the canvas as a PNG via html-to-image, then embed it into
+  // a jsPDF document sized to the captured aspect ratio (landscape if wider
+  // than tall). Same fitView/restore + filter dance as onExportSvg above —
+  // only the encoding differs.
+  const onExportPdf = useCallback(async (): Promise<void> => {
+    const rf = rfInstanceRef.current;
+    if (!rf) return;
+    const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport');
+    if (!viewportEl) return;
+    const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
+    setEditError(null);
+    const prev = rf.getViewport();
+    try {
+      await rf.fitView({ duration: 0, padding: 0.1 });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const dataUrl = await toPng(viewportEl, {
+        cacheBust: true,
+        filter: (node) => {
+          if (!(node instanceof Element)) return true;
+          if (node.classList.contains('react-flow__minimap')) return false;
+          if (node.classList.contains('react-flow__controls')) return false;
+          if (node.classList.contains('react-flow__panel')) return false;
+          return true;
+        },
+      });
+      // Probe the captured image's natural pixel dimensions so the PDF page
+      // matches the aspect ratio without distortion. Decoding happens in the
+      // browser; failures (rare for our own data URL) bubble up to editError.
+      const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => reject(new Error('Failed to decode captured image'));
+        img.src = dataUrl;
+      });
+      const orientation: 'landscape' | 'portrait' =
+        dims.width > dims.height ? 'landscape' : 'portrait';
+      const doc = new jsPDF({
+        orientation,
+        unit: 'px',
+        format: [dims.width, dims.height],
+        hotfixes: ['px_scaling'],
+      });
+      doc.addImage(dataUrl, 'PNG', 0, 0, dims.width, dims.height);
+      doc.save(`${sanitizeFileName(demoName)}.pdf`);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      rf.setViewport(prev, { duration: 0 });
+    }
+  }, [detail, slug]);
+
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
   // includes the fields that changed (source/target/sourceHandle/targetHandle).
@@ -1947,6 +2164,8 @@ export function DemoView({
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
+          onCreateImageNode={demoId ? onCreateImageNode : undefined}
+          onIngestImageUrl={demoId ? onIngestImageUrl : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
           onReorderNode={onReorderNode}
@@ -1969,6 +2188,9 @@ export function DemoView({
           onPaneClick={onPaneClickClosePanel}
           onCreateAndConnectFromPane={onCreateAndConnectFromPane}
           pendingEditNodeId={pendingEditNodeId}
+          onResetDemo={demoId ? onResetDemo : undefined}
+          onExportSvg={demoId ? onExportSvg : undefined}
+          onExportPdf={demoId ? onExportPdf : undefined}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

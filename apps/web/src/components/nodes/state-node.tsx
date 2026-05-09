@@ -64,6 +64,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
+    borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,
     ...(sized ? {} : { width: DEFAULT_W }),
     ...(selected
       ? {
