@@ -10,10 +10,10 @@
       },
     },
     "apps/studio": {
-      "name": "@anydemo/studio",
-      "version": "0.0.0",
+      "name": "@tuongaz/anydemo",
+      "version": "0.1.0",
       "bin": {
-        "anydemo": "./src/cli.ts",
+        "anydemo": "./bin/anydemo.mjs",
       },
       "dependencies": {
         "hono": "^4.6.14",
@@ -98,8 +98,6 @@
     "@anydemo/example-todo-demo-target": ["@anydemo/example-todo-demo-target@workspace:examples/todo-demo-target"],
 
     "@anydemo/sdk": ["@anydemo/sdk@workspace:packages/sdk"],
-
-    "@anydemo/studio": ["@anydemo/studio@workspace:apps/studio"],
 
     "@anydemo/web": ["@anydemo/web@workspace:apps/web"],
 
@@ -348,6 +346,8 @@
     "@rollup/rollup-win32-x64-gnu": ["@rollup/rollup-win32-x64-gnu@4.60.3", "", { "os": "win32", "cpu": "x64" }, "sha512-E5Eb5H/DpxaoXH++Qkv28RcUJboMopmdDUALBczvHMf7hNIxaDZqwY5lK12UK1BHacSmvupoEWGu+n993Z0y1A=="],
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.60.3", "", { "os": "win32", "cpu": "x64" }, "sha512-hPt/bgL5cE+Qp+/TPHBqptcAgPzgj46mPcg/16zNUmbQk0j+mOEQV/+Lqu8QRtDV3Ek95Q6FeFITpuhl6OTsAA=="],
+
+    "@tuongaz/anydemo": ["@tuongaz/anydemo@workspace:apps/studio"],
 
     "@types/babel__core": ["@types/babel__core@7.20.5", "", { "dependencies": { "@babel/parser": "^7.20.7", "@babel/types": "^7.20.7", "@types/babel__generator": "*", "@types/babel__template": "*", "@types/babel__traverse": "*" } }, "sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA=="],
 
