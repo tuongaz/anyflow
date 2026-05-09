@@ -75,6 +75,24 @@ export interface ResizeControlsProps {
   cornerVariant?: 'invisible' | 'visible';
 }
 
+// US-005: when `visible` is false, the controls stay MOUNTED (cheap) and just
+// switch to non-interactive styles. The previous implementation `return null`d
+// when not visible — which made React unmount + remount all 8
+// NodeResizeControl elements (24 DOM mutations per cycle) every time `selected`
+// flipped during a marquee. xyflow's marquee start emits `select: false`
+// (resetSelectedElements) immediately followed by `select: true`
+// (getSelectionChanges) for nodes already in the rect; even though our
+// onNodesChange filter (US-005) keeps the FINAL committed state at
+// `selected: true`, React still commits the transient `selected: false` render
+// in between — and that intermediate commit is what unmounts the children.
+// Always rendering avoids the unmount entirely. The visual + functional gating
+// happens via inline style: pointer-events: none disables the resize cursor
+// and drag-start; opacity: 0 on the visible-variant corners hides the squares.
+const HIDDEN_OVERRIDE: CSSProperties = {
+  pointerEvents: 'none',
+  cursor: 'default',
+};
+
 /**
  * Eight resize controls (4 edge lines + 4 corners). Edge lines are always
  * transparent — the affordance is the cursor change at the edge. Corners are
@@ -91,8 +109,12 @@ export function ResizeControls({
   onResizeEnd,
   cornerVariant = 'invisible',
 }: ResizeControlsProps) {
-  if (!visible) return null;
-  const cornerStyle = cornerVariant === 'visible' ? VISIBLE_CORNER_STYLE : CORNER_STYLE;
+  const baseCornerStyle = cornerVariant === 'visible' ? VISIBLE_CORNER_STYLE : CORNER_STYLE;
+  const lineStyle = (style: CSSProperties): CSSProperties =>
+    visible ? style : { ...style, ...HIDDEN_OVERRIDE };
+  const cornerStyle: CSSProperties = visible
+    ? baseCornerStyle
+    : { ...baseCornerStyle, opacity: 0, ...HIDDEN_OVERRIDE };
   return (
     <>
       {LINE_POSITIONS.map(({ position, style }) => (
@@ -102,7 +124,7 @@ export function ResizeControls({
           variant={ResizeControlVariant.Line}
           minWidth={minWidth}
           minHeight={minHeight}
-          style={style}
+          style={lineStyle(style)}
           onResizeStart={onResizeStart}
           onResizeEnd={onResizeEnd}
         >

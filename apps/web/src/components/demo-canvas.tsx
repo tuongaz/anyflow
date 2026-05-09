@@ -639,7 +639,11 @@ export function DemoCanvas({
   }, [sourceNodes]);
 
   // Mirror rfNodes into a ref so onNodesChange can compute the post-change
-  // selection without waiting for setState to commit.
+  // selection without waiting for setState to commit. Also kept in sync
+  // synchronously inside onNodesChange — xyflow can fire that handler twice
+  // in one synchronous task (resetSelectedElements + getSelectionChanges at
+  // marquee start) and the second call must operate on the first call's
+  // result, not on the pre-commit ref value (US-005).
   useEffect(() => {
     rfNodesRef.current = rfNodes;
   }, [rfNodes]);
@@ -679,24 +683,26 @@ export function DemoCanvas({
   const rfNodesRef = useRef<Node[]>([]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    // US-004: during a marquee gesture xyflow can emit a `select: true` for a
-    // node that isn't actually inside the marquee rectangle (its
-    // `forceInitialRender` shortcut treats nodes whose handleBounds haven't
-    // settled yet as visible-everywhere, which then sweeps them into a partial-
-    // mode marquee). Drop those false-positives by checking each pickup
-    // against the live `.react-flow__selection` rectangle on screen. Only
-    // applies while the marquee element exists; outside a marquee everything
-    // passes through unchanged.
+    // Marquee-aware filter. Computes the live marquee rect from our own
+    // pointer-tracking refs (set in the wrapper's pointerdown/move handlers);
+    // xyflow's `.react-flow__selection` DOM isn't yet in the tree when this
+    // first fires from the marquee start, so DOM-based detection would miss
+    // the critical resetSelectedElements + initial getSelectionChanges calls.
     //
-    // When Shift is held we ALSO drop `select: false` changes, which lets the
-    // prior selection survive xyflow's resetSelectedElements call at marquee
-    // start (xyflow's marquee always replaces, regardless of multi-selection
-    // key — we add the additive behaviour here).
-    // Compute the marquee rect from our own pointer-tracking refs (set in
-    // the wrapper's pointerdown/move handlers). xyflow's
-    // `.react-flow__selection` DOM element isn't yet rendered when onNodesChange
-    // first fires from the marquee start, so DOM-based detection misses the
-    // critical resetSelectedElements + initial getSelectionChanges calls.
+    // - US-004: drop xyflow's `forceInitialRender` false-positives — a node
+    //   whose handleBounds haven't settled yet gets swept into a partial-mode
+    //   marquee even when it doesn't overlap; hit-test rules those out.
+    //   Shift-marquee additionally drops ALL `select: false` changes so the
+    //   prior selection survives xyflow's resetSelectedElements (xyflow's
+    //   marquee always replaces, regardless of multi-selection key).
+    // - US-005: in a normal (non-Shift) marquee, drop `select: false` for
+    //   nodes still inside the rect. xyflow's marquee start emits select:false
+    //   (resetSelectedElements) immediately followed by select:true
+    //   (getSelectionChanges) for the same nodes — without dropping the
+    //   deselect, the .selected class flickers off→on between renders, which
+    //   makes <ResizeControls visible={selected}> unmount + remount its 8
+    //   NodeResizeControl elements (4 line + 4 corner) on every cycle. That
+    //   mount/unmount thrash is the visible flash.
     const marqueeStart = marqueeStartRef.current;
     const marqueeCurrent = marqueeCurrentRef.current;
     const marqueeRect =
@@ -709,27 +715,46 @@ export function DemoCanvas({
           }
         : null;
     const shiftMarquee = !!marqueeRect && shiftHeldRef.current;
+    // US-005: ids whose `select: false` we dropped in the filter below. xyflow's
+    // `getSelectionChanges` mutates `internalNode.selected = false` directly on
+    // the lookup BEFORE invoking onNodesChange, so dropping the change in our
+    // filter alone isn't enough — when our setRfNodes prop comes back, xyflow's
+    // `adoptUserNodes(checkEquality: true)` reuses the same internalNode (because
+    // the userNode reference is unchanged) and the `selected: false` mutation
+    // sticks until the next render. The fix: stamp these ids with a fresh
+    // userNode reference + `selected: true` so adoptUserNodes detects a ref
+    // change, rebuilds the internalNode from our prop, and restores selected.
+    const droppedDeselectIds = new Set<string>();
     const filteredChanges = !marqueeRect
       ? changes
       : changes.filter((c) => {
           if (c.type !== 'select') return true;
-          if (c.selected) {
-            const nodeEl = wrapperRef.current?.querySelector(
-              `.react-flow__node[data-id="${CSS.escape(c.id)}"]`,
-            );
-            if (!nodeEl) return true;
-            const nodeRect = nodeEl.getBoundingClientRect();
-            const ox =
-              Math.min(marqueeRect.right, nodeRect.right) -
-              Math.max(marqueeRect.left, nodeRect.left);
-            const oy =
-              Math.min(marqueeRect.bottom, nodeRect.bottom) -
-              Math.max(marqueeRect.top, nodeRect.top);
-            return ox > 0 && oy > 0;
+          const nodeEl = wrapperRef.current?.querySelector(
+            `.react-flow__node[data-id="${CSS.escape(c.id)}"]`,
+          );
+          // Can't measure: for select:true keep (xyflow's call); for
+          // select:false fall back to existing behaviour (drop iff Shift).
+          if (!nodeEl) {
+            if (c.selected) return true;
+            if (shiftMarquee) {
+              droppedDeselectIds.add(c.id);
+              return false;
+            }
+            return true;
           }
-          // c.selected === false (deselect). During a Shift-marquee the prior
-          // selection must survive — drop these. Outside Shift, honor it.
-          return !shiftMarquee;
+          const nodeRect = nodeEl.getBoundingClientRect();
+          const ox =
+            Math.min(marqueeRect.right, nodeRect.right) - Math.max(marqueeRect.left, nodeRect.left);
+          const oy =
+            Math.min(marqueeRect.bottom, nodeRect.bottom) - Math.max(marqueeRect.top, nodeRect.top);
+          const inRect = ox > 0 && oy > 0;
+          if (c.selected) return inRect;
+          // c.selected === false. Shift-marquee preserves the prior selection
+          // entirely. Plain marquee preserves only nodes still in the rect —
+          // those will get a select:true emitted in the same tick anyway.
+          const drop = shiftMarquee || inRect;
+          if (drop) droppedDeselectIds.add(c.id);
+          return !drop;
         });
     const explicitlyToggled = new Set<string>();
     for (const c of filteredChanges) {
@@ -739,17 +764,29 @@ export function DemoCanvas({
     // setRfNodes below so the rendered nodes match what we're propagating.
     const next = applyNodeChanges(filteredChanges, rfNodesRef.current);
     const pinned = selectedIdSetRef.current;
-    // Re-pin selection so resize/dimension changes don't accidentally drop
-    // the ring. Skip ids that the user just toggled (Shift/Cmd-click) so
-    // the toggle-off path actually clears the ring.
+    // Re-pin selection. Two cases:
+    //  - resize/dimension changes can transiently drop the `selected` flag —
+    //    restore it for nodes in `pinned` that the user didn't explicitly
+    //    toggle (US-019).
+    //  - dropped-deselects (US-005): xyflow already mutated the lookup's
+    //    `selected: false`; force a fresh userNode ref with `selected: true`
+    //    so adoptUserNodes rebuilds the internalNode on the next render.
     const repinned =
-      pinned.size === 0
+      pinned.size === 0 && droppedDeselectIds.size === 0
         ? next
-        : next.map((n) =>
-            pinned.has(n.id) && !explicitlyToggled.has(n.id) && !n.selected
-              ? { ...n, selected: true }
-              : n,
-          );
+        : next.map((n) => {
+            if (droppedDeselectIds.has(n.id)) return { ...n, selected: true };
+            if (pinned.has(n.id) && !explicitlyToggled.has(n.id) && !n.selected) {
+              return { ...n, selected: true };
+            }
+            return n;
+          });
+    // Keep the ref in sync synchronously so a second onNodesChange in the
+    // same task (xyflow does this at marquee start: resetSelectedElements
+    // immediately followed by getSelectionChanges) composes against the
+    // freshest result — otherwise applyNodeChanges would re-apply against
+    // the stale pre-commit value and overwrite this call's fresh refs.
+    rfNodesRef.current = repinned;
     setRfNodes(repinned);
     // Propagate user-driven selection changes up to the parent. Programmatic
     // prop updates bypass this — ReactFlow's StoreUpdater applies them
