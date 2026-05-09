@@ -38,7 +38,30 @@ schema drift is impossible because the studio enforces a single Zod schema.
 
 ## Quick start
 
-Requires **[Bun](https://bun.sh) ≥ 1.3**.
+### Use it (no clone needed)
+
+The studio + CLI ship as the [`anydemo`](https://www.npmjs.com/package/anydemo)
+package on npm:
+
+```bash
+# Start the studio (downloads anydemo on first run)
+npx anydemo start
+
+# In your project repo, register a .anydemo/demo.json:
+cd path/to/your/repo
+npx anydemo register --path .
+```
+
+The CLI prints a URL like `http://localhost:4321/d/<slug>` — open it and play.
+
+> **Note:** the CLI runs on Bun. If you don't have [Bun](https://bun.sh)
+> installed, the launcher will bootstrap it via `npx bun` on first use
+> (slower one-time startup). For instant startup, install Bun once:
+> `curl -fsSL https://bun.sh/install | bash`.
+
+You can also use `bunx anydemo …` if you already have Bun installed.
+
+### Develop on AnyDemo itself
 
 ```bash
 git clone https://github.com/tuongaz/anydemo.git
@@ -54,9 +77,6 @@ Open `http://localhost:5173` in your browser. Then register an example:
 make example-order-pipeline   # runs the demo target on port 3040
 make register DIR=examples/order-pipeline
 ```
-
-The CLI prints a URL like `http://localhost:4321/d/order-pipeline` —
-open it and click **POST /orders** to play.
 
 ## Authoring a demo
 
@@ -110,7 +130,7 @@ A demo is a single JSON file at `<your-repo>/.anydemo/demo.json`:
 Register it:
 
 ```bash
-anydemo register --path <your-repo>
+npx anydemo register --path <your-repo>
 ```
 
 The CLI validates against `DemoSchema`, registers with the studio, and (if
@@ -196,10 +216,13 @@ make help        # list every target
 ### CLI
 
 ```bash
-anydemo start [--port 4321] [--daemon]   # start the studio
-anydemo stop                              # stop the daemon
-anydemo register --path <repo>            # register a demo
+npx anydemo start [--port 4321] [--daemon]   # start the studio
+npx anydemo stop                              # stop the daemon
+npx anydemo register --path <repo>            # register a demo
 ```
+
+When developing on AnyDemo itself, the local `bun run apps/studio/src/cli.ts`
+is faster (no npm dispatch).
 
 `make register DIR=<path>` is a thin wrapper. Use `DIR=` (not `PATH=` —
 that would clobber the shell `$PATH`).

@@ -1,16 +1,43 @@
 {
-  "name": "@anydemo/studio",
-  "version": "0.0.0",
-  "private": true,
+  "name": "anydemo",
+  "version": "0.1.0",
+  "description": "Local studio that hosts file-defined demos as React Flow canvases wired to a running app via REST + SSE + Zod schema.",
+  "keywords": [
+    "anydemo",
+    "react-flow",
+    "diagram",
+    "architecture",
+    "playable",
+    "studio",
+    "hono",
+    "bun"
+  ],
+  "homepage": "https://github.com/tuongaz/anydemo#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tuongaz/anydemo.git",
+    "directory": "apps/studio"
+  },
+  "bugs": {
+    "url": "https://github.com/tuongaz/anydemo/issues"
+  },
+  "license": "UNLICENSED",
+  "author": "Tuong Le",
   "type": "module",
   "bin": {
-    "anydemo": "./src/cli.ts"
+    "anydemo": "./bin/anydemo.mjs"
+  },
+  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "README.md"],
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "dev": "bun run src/cli.ts start",
     "start": "bun run src/cli.ts start",
-    "test": "bun test"
+    "test": "bun test",
+    "build:web": "cd ../web && bun run build",
+    "prepublishOnly": "bun run build:web && cp ../../README.md ./README.md"
   },
   "dependencies": {
     "hono": "^4.6.14",

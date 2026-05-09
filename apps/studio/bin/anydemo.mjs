@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+// AnyDemo CLI launcher.
+//
+// The CLI is written for Bun (uses Bun.serve, Bun.file, Bun.spawn). This
+// thin Node shim makes `npx anydemo …` work even if the user doesn't have
+// Bun installed yet — it falls back to `npx bun` to bootstrap Bun on first
+// run.
+//
+// Recommended: install Bun once (https://bun.sh) for fast startup.
+
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const cli = join(here, '..', 'src', 'cli.ts');
+const args = process.argv.slice(2);
+
+let res = spawnSync('bun', [cli, ...args], { stdio: 'inherit' });
+
+if (res.error && res.error.code === 'ENOENT') {
+  console.error('anydemo: Bun not found in PATH. Bootstrapping via `npx bun`…');
+  console.error('         For instant startup, install Bun: https://bun.sh\n');
+  res = spawnSync('npx', ['--yes', 'bun', cli, ...args], { stdio: 'inherit' });
+}
+
+if (res.error) {
+  console.error(`anydemo: failed to launch CLI: ${res.error.message}`);
+  process.exit(1);
+}
+
+process.exit(res.status ?? 1);
