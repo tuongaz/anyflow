@@ -133,7 +133,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         position={Position.Top}
         id="t"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
+          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />
@@ -142,7 +142,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         position={Position.Left}
         id="l"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
+          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />
@@ -218,7 +218,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         position={Position.Right}
         id="r"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
+          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />
@@ -227,7 +227,7 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         position={Position.Bottom}
         id="b"
         className={cn(
-          '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity',
+          '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity',
           selected && '!opacity-100',
         )}
       />

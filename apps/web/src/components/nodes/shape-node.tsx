@@ -36,7 +36,7 @@ const SHAPE_CLASS: Record<ShapeKind, string> = {
 // a connection is in progress, `.react-flow.anydemo-connecting .react-flow__handle`
 // (apps/web/src/index.css) globally forces `opacity: 1` so drop targets light
 // up across all nodes during the drag, preserving the US-014 auto-snap UX.
-const HANDLE_CLASS = '!h-2 !w-2 !bg-muted-foreground opacity-0 transition-opacity';
+const HANDLE_CLASS = '!h-3 !w-3 !bg-muted-foreground opacity-0 transition-opacity';
 
 export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;

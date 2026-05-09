@@ -233,3 +233,31 @@
   box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.35);
   opacity: 1 !important;
 }
+
+/* US-007: when a node is selected, its 4 connection handles relocate from
+ * the node body's edge midpoints to the OUTER selection-rectangle's edge
+ * midpoints — 4px outward, matching the `outlineOffset: 4px` on each node
+ * container. Combined with the bumped handle size (`!h-3 !w-3` ≈ 12px)
+ * applied per-Handle in the node renderers, this gives the outlets the
+ * same visual weight as the visible resize-corner squares (US-016) and
+ * anchors them to the selection rect rather than the node chrome.
+ *
+ * The translate stacks: xyflow's per-side default `translate(-50%, -50%)`
+ * (or its 50% variants for bottom/right) keeps the dot CENTERED on the
+ * body edge, then our extra translate shifts it 4px further outward.
+ *
+ * Unselected nodes get neither rule — handles stay at the default body
+ * position (and remain `opacity-0` per their per-Handle className) so
+ * non-selected behavior is unchanged. */
+.react-flow__node.selected .react-flow__handle-top {
+  transform: translate(-50%, -50%) translate(0, -4px);
+}
+.react-flow__node.selected .react-flow__handle-bottom {
+  transform: translate(-50%, 50%) translate(0, 4px);
+}
+.react-flow__node.selected .react-flow__handle-left {
+  transform: translate(-50%, -50%) translate(-4px, 0);
+}
+.react-flow__node.selected .react-flow__handle-right {
+  transform: translate(50%, -50%) translate(4px, 0);
+}
