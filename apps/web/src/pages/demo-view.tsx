@@ -1157,6 +1157,49 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-012: ingest an http(s) URL dropped on the canvas. The canvas hands us
+  // the URL it pulled from text/uri-list or text/plain plus the translated
+  // drop position. We fetch the URL, validate it's actually an image (Content-
+  // Type or known image extension), convert to a base64 data URL, and feed it
+  // through the same `onCreateImageNode` path (so persistence + undo behave
+  // identically to paste / file-drop). Failures surface via `editError`.
+  const onIngestImageUrl = useCallback(
+    async (url: string, position: Position) => {
+      if (!demoId) return;
+      setEditError(null);
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch ${url}: ${resp.status} ${resp.statusText}`);
+        }
+        const contentType = resp.headers.get('content-type') ?? '';
+        const isImageContentType = contentType.toLowerCase().startsWith('image/');
+        const hasImageExt = /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(url);
+        if (!isImageContentType && !hasImageExt) {
+          throw new Error(
+            `URL did not return an image (content-type: ${contentType || 'unknown'})`,
+          );
+        }
+        const blob = await resp.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result === 'string') resolve(result);
+            else reject(new Error('FileReader returned non-string result'));
+          };
+          reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+        });
+        onCreateImageNode(dataUrl, position);
+      } catch (err) {
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('ingestImageUrl failed', err);
+      }
+    },
+    [demoId, onCreateImageNode],
+  );
+
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
@@ -2015,6 +2058,7 @@ export function DemoView({
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
           onCreateImageNode={demoId ? onCreateImageNode : undefined}
+          onIngestImageUrl={demoId ? onIngestImageUrl : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
           onReorderNode={onReorderNode}
