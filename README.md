@@ -38,6 +38,18 @@ schema drift is impossible because the studio enforces a single Zod schema.
 
 ## Quick start
 
+### Install the skill
+
+Install the diagram-generation skill into your Claude Code workspace with a
+single command:
+
+```bash
+npx skills add tuongaz/anydemo/plugins/anydemo-diagram/skills/diagram
+```
+
+That's it — the skill registers itself with Claude Code and you can then run
+`/diagram` against any repo to generate a playable AnyDemo diagram.
+
 ### Use it (no clone needed)
 
 The studio + CLI ship as the [`@tuongaz/anydemo`](https://www.npmjs.com/package/@tuongaz/anydemo)
