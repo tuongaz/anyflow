@@ -35,6 +35,7 @@ import {
   Panel,
   ReactFlow,
   type ReactFlowInstance,
+  SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
 } from '@xyflow/react';
@@ -678,13 +679,65 @@ export function DemoCanvas({
   const rfNodesRef = useRef<Node[]>([]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
+    // US-004: during a marquee gesture xyflow can emit a `select: true` for a
+    // node that isn't actually inside the marquee rectangle (its
+    // `forceInitialRender` shortcut treats nodes whose handleBounds haven't
+    // settled yet as visible-everywhere, which then sweeps them into a partial-
+    // mode marquee). Drop those false-positives by checking each pickup
+    // against the live `.react-flow__selection` rectangle on screen. Only
+    // applies while the marquee element exists; outside a marquee everything
+    // passes through unchanged.
+    //
+    // When Shift is held we ALSO drop `select: false` changes, which lets the
+    // prior selection survive xyflow's resetSelectedElements call at marquee
+    // start (xyflow's marquee always replaces, regardless of multi-selection
+    // key — we add the additive behaviour here).
+    // Compute the marquee rect from our own pointer-tracking refs (set in
+    // the wrapper's pointerdown/move handlers). xyflow's
+    // `.react-flow__selection` DOM element isn't yet rendered when onNodesChange
+    // first fires from the marquee start, so DOM-based detection misses the
+    // critical resetSelectedElements + initial getSelectionChanges calls.
+    const marqueeStart = marqueeStartRef.current;
+    const marqueeCurrent = marqueeCurrentRef.current;
+    const marqueeRect =
+      marqueeStart && marqueeCurrent
+        ? {
+            left: Math.min(marqueeStart.x, marqueeCurrent.x),
+            top: Math.min(marqueeStart.y, marqueeCurrent.y),
+            right: Math.max(marqueeStart.x, marqueeCurrent.x),
+            bottom: Math.max(marqueeStart.y, marqueeCurrent.y),
+          }
+        : null;
+    const shiftMarquee = !!marqueeRect && shiftHeldRef.current;
+    const filteredChanges = !marqueeRect
+      ? changes
+      : changes.filter((c) => {
+          if (c.type !== 'select') return true;
+          if (c.selected) {
+            const nodeEl = wrapperRef.current?.querySelector(
+              `.react-flow__node[data-id="${CSS.escape(c.id)}"]`,
+            );
+            if (!nodeEl) return true;
+            const nodeRect = nodeEl.getBoundingClientRect();
+            const ox =
+              Math.min(marqueeRect.right, nodeRect.right) -
+              Math.max(marqueeRect.left, nodeRect.left);
+            const oy =
+              Math.min(marqueeRect.bottom, nodeRect.bottom) -
+              Math.max(marqueeRect.top, nodeRect.top);
+            return ox > 0 && oy > 0;
+          }
+          // c.selected === false (deselect). During a Shift-marquee the prior
+          // selection must survive — drop these. Outside Shift, honor it.
+          return !shiftMarquee;
+        });
     const explicitlyToggled = new Set<string>();
-    for (const c of changes) {
+    for (const c of filteredChanges) {
       if (c.type === 'select') explicitlyToggled.add(c.id);
     }
     // applyNodeChanges on the current snapshot. We feed the same result to
     // setRfNodes below so the rendered nodes match what we're propagating.
-    const next = applyNodeChanges(changes, rfNodesRef.current);
+    const next = applyNodeChanges(filteredChanges, rfNodesRef.current);
     const pinned = selectedIdSetRef.current;
     // Re-pin selection so resize/dimension changes don't accidentally drop
     // the ring. Skip ids that the user just toggled (Shift/Cmd-click) so
@@ -1031,6 +1084,29 @@ export function DemoCanvas({
         ? 'rounded-md border border-amber-500/60 bg-amber-200/40'
         : 'rounded-lg border-2 border-primary/60 bg-primary/10';
 
+  // US-004: Shift-marquee adds to the existing selection, and we filter
+  // xyflow's `forceInitialRender` over-selection. Tracked via refs because
+  // both checks need to fire INSIDE `onNodesChange`, which runs synchronously
+  // from xyflow's first pointermove — before React has committed the
+  // pointerdown render that would put `.react-flow__selection` in the DOM.
+  const shiftHeldRef = useRef(false);
+  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const marqueeCurrentRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') shiftHeldRef.current = true;
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') shiftHeldRef.current = false;
+    };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, []);
+
   // Space-held pan mode (US-019). React Flow's panActivationKeyCode='Space'
   // toggles the pane into pan-on-drag mode for the duration of the keypress;
   // we mirror that into local state purely so the wrapper can show a
@@ -1116,14 +1192,38 @@ export function DemoCanvas({
       style={wrapperCursor ? { cursor: wrapperCursor } : undefined}
       onPointerDown={(e) => {
         if (spaceHeld) setSpaceDragging(true);
+        // US-004: track marquee gesture in client-space refs so onNodesChange
+        // can compute intersections / detect Shift-marquee BEFORE xyflow's
+        // `.react-flow__selection` element exists in the DOM.
+        if (!drawShape && !spaceHeld) {
+          const target = e.target as HTMLElement | null;
+          if (target?.classList.contains('react-flow__pane')) {
+            const start = { x: e.clientX, y: e.clientY };
+            marqueeStartRef.current = start;
+            marqueeCurrentRef.current = start;
+          }
+        }
         onPointerDown(e);
+      }}
+      onPointerMoveCapture={(e) => {
+        // Capture phase so the ref is fresh BEFORE xyflow's pane onPointerMove
+        // (bubble) runs resetSelectedElements / getSelectionChanges. Without
+        // this, the first marquee step would still see start==current and
+        // drop every valid pickup as a 0×0 rect.
+        if (marqueeStartRef.current) {
+          marqueeCurrentRef.current = { x: e.clientX, y: e.clientY };
+        }
       }}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => {
+        marqueeStartRef.current = null;
+        marqueeCurrentRef.current = null;
         setSpaceDragging(false);
         onPointerUp(e);
       }}
       onPointerCancel={() => {
+        marqueeStartRef.current = null;
+        marqueeCurrentRef.current = null;
         drawingRef.current = false;
         drawStartRef.current = null;
         drawCurrentRef.current = null;
@@ -1178,7 +1278,11 @@ export function DemoCanvas({
         // Space is held. Multi-key (Meta/Shift) toggles individual items in
         // the selection. selectionKeyCode=null avoids overloading another
         // modifier (the marquee is already the default drag gesture).
+        // US-004: partial-intersection mode — a node is picked up by the
+        // marquee as soon as the rectangle overlaps it, instead of having
+        // to fully contain it (xyflow's `Full` default).
         selectionOnDrag={!drawShape}
+        selectionMode={SelectionMode.Partial}
         panOnDrag={false}
         selectionKeyCode={null}
         multiSelectionKeyCode={drawShape ? null : ['Meta', 'Shift']}
