@@ -258,6 +258,14 @@ export function DemoView({
 
   const demoId = detail?.id ?? null;
   const { setOverride: setNodeOverride, dropOverride: dropNodeOverride } = nodePending;
+  // Read live displayed position for a node (override merged) so a multi-node
+  // drag's snapshot reflects the in-flight visual state, not the stale server
+  // value. The override is what the user sees move on the canvas.
+  const nodeOverridesRef = useRef(nodePending.overrides);
+  useEffect(() => {
+    nodeOverridesRef.current = nodePending.overrides;
+  }, [nodePending.overrides]);
+
   const onNodePositionChange = useCallback(
     (nodeId: string, position: Position) => {
       if (!demoId) return;
@@ -291,6 +299,61 @@ export function DemoView({
       });
     },
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
+  );
+
+  // US-013: atomic multi-node move (drag-stop with multiple nodes moving
+  // together, or arrow-key nudge of a multi-node selection). Snapshots prev
+  // for every targeted node, fans out optimistic overrides + PATCHes, and
+  // pushes ONE undo entry so a single Cmd+Z reverts the whole group move.
+  // Mirrors the onTidy / onStyleNodes batch pattern.
+  const onNodePositionsChange = useCallback(
+    (updates: { id: string; position: Position }[]) => {
+      if (!demoId) return;
+      if (updates.length === 0) return;
+      const overrides = nodeOverridesRef.current;
+      const targets = updates
+        .map((u) => {
+          const node = demoNodes?.find((n) => n.id === u.id);
+          if (!node) return null;
+          // Capture the LIVE pre-move position (override > server) so undo
+          // restores the visual position the user started the drag from. If
+          // an in-flight optimistic move is still pending its server echo,
+          // the override wins.
+          const prev = overrides[u.id]?.position ?? node.position;
+          return { id: u.id, prev, next: u.position };
+        })
+        .filter((t): t is { id: string; prev: Position; next: Position } => t !== null);
+      if (targets.length === 0) return;
+      for (const t of targets) {
+        setNodeOverride(t.id, { position: t.next });
+      }
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled(targets.map((t) => updateNodePosition(demoId, t.id, t.next)));
+        },
+        undo: async () => {
+          await Promise.allSettled(targets.map((t) => updateNodePosition(demoId, t.id, t.prev)));
+        },
+      });
+      // Fan-out PATCHes; surface a single banner if any leg failed.
+      Promise.all(
+        targets.map(async (t) => {
+          try {
+            await updateNodePosition(demoId, t.id, t.next);
+            return null;
+          } catch (err) {
+            dropNodeOverride(t.id);
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ).then((failures) => {
+        const firstErr = failures.find((f): f is string => f !== null);
+        if (firstErr) setEditError(firstErr);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
   const onNodeResize = useCallback(
@@ -635,15 +698,109 @@ export function DemoView({
     [demoId, demoConnectors, pushUndo, dropUndoTop, markMutation],
   );
 
+  // US-013: atomic multi-target delete. Snapshots every doomed node + every
+  // cascaded connector + every explicitly-selected connector, fires the deletes
+  // in parallel, and pushes ONE undo entry that re-creates the whole batch on
+  // Cmd+Z (single keystroke restores N nodes + their connectors). Mirrors the
+  // onTidy / onStyleNodes batch shape.
+  const onDeleteSelection = useCallback(
+    (nodeIds: string[], connectorIds: string[]) => {
+      if (!demoId) return;
+      if (nodeIds.length === 0 && connectorIds.length === 0) return;
+      const cascadingNodeIdSet = new Set(nodeIds);
+      const nodeSnapshots = nodeIds
+        .map((id) => demoNodes?.find((n) => n.id === id))
+        .filter((n): n is DemoNode => !!n);
+      // Cascaded connectors: any connector whose source/target is in the
+      // doomed node set. The server cascades these as part of deleteNode;
+      // mirror it locally so undo can restore them all.
+      const cascadedConnectors = (demoConnectors ?? []).filter(
+        (c) => cascadingNodeIdSet.has(c.source) || cascadingNodeIdSet.has(c.target),
+      );
+      // Explicit connector deletes: only ids NOT covered by a node cascade.
+      // Otherwise the duplicate delete produces a server-side 404 for the
+      // connector that's already gone.
+      const cascadedConnIdSet = new Set(cascadedConnectors.map((c) => c.id));
+      const explicitConnSnapshots = connectorIds
+        .map((id) => demoConnectors?.find((c) => c.id === id))
+        .filter((c): c is Connector => !!c)
+        .filter((c) => !cascadedConnIdSet.has(c.id));
+      if (
+        nodeSnapshots.length === 0 &&
+        cascadedConnectors.length === 0 &&
+        explicitConnSnapshots.length === 0
+      ) {
+        return;
+      }
+      setEditError(null);
+      // Trim selection so the inspector closes / multi-selection shrinks
+      // immediately. We don't optimistically remove from the canvas — the
+      // SSE echo of the file rewrite drops them naturally, and the server
+      // replays cascades.
+      setSelectedIds((prev) => prev.filter((id) => !cascadingNodeIdSet.has(id)));
+      const explicitConnIdSet = new Set(explicitConnSnapshots.map((c) => c.id));
+      setSelectedConnectorIds((prev) =>
+        prev.filter((id) => !explicitConnIdSet.has(id) && !cascadedConnIdSet.has(id)),
+      );
+      markMutation();
+      // ONE undo entry. `do` re-runs the batch deletes; `undo` re-creates
+      // every node first (so connector endpoints exist on disk) and then
+      // every connector (cascaded + explicit). We re-issue cascaded
+      // connectors on undo, NOT during the do leg — the server cascades
+      // those automatically when the node is deleted.
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled(nodeSnapshots.map((n) => deleteNode(demoId, n.id)));
+          await Promise.allSettled(explicitConnSnapshots.map((c) => deleteConnector(demoId, c.id)));
+        },
+        undo: async () => {
+          for (const n of nodeSnapshots) {
+            await createNode(demoId, {
+              id: n.id,
+              type: n.type,
+              position: n.position,
+              data: n.data as unknown as Record<string, unknown>,
+            });
+          }
+          for (const c of [...cascadedConnectors, ...explicitConnSnapshots]) {
+            await createConnector(demoId, { ...c, id: c.id });
+          }
+        },
+      });
+      // Fire the deletes in parallel. Partial failure surfaces a banner; the
+      // user can Cmd+Z the whole batch.
+      Promise.all([
+        ...nodeSnapshots.map(async (n) => {
+          try {
+            await deleteNode(demoId, n.id);
+            return null;
+          } catch (err) {
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+        ...explicitConnSnapshots.map(async (c) => {
+          try {
+            await deleteConnector(demoId, c.id);
+            return null;
+          } catch (err) {
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ]).then((failures) => {
+        const firstErr = failures.find((f): f is string => f !== null);
+        if (firstErr) setEditError(firstErr);
+      });
+    },
+    [demoId, demoNodes, demoConnectors, pushUndo, markMutation],
+  );
+
   // Delete/Backspace shortcut: removes EVERY selected node and connector
   // (US-019). Skipped while focus is in any text-editing element so
   // InlineEdit / form controls keep their normal Backspace behavior. The
   // InlineEdit also calls e.stopPropagation(), but the activeElement guard is
   // the durable line of defense — it covers any future input that forgets to
-  // stop the bubble. Removing a node also cascades any connectors attached to
-  // it (the server's deleteNode handler does this, mirrored optimistically by
-  // the SSE echo); we skip dispatching deletes for connectors that are
-  // already going away via cascade.
+  // stop the bubble. US-013: routes through `onDeleteSelection` so a
+  // multi-target delete is a single undo entry.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -652,21 +809,11 @@ export function DemoView({
       const connIds = selectedConnectorIdsRef.current;
       if (nodeIds.length === 0 && connIds.length === 0) return;
       e.preventDefault();
-      const cascadingNodeIdSet = new Set(nodeIds);
-      // For connector deletes, skip any whose source/target is in the doomed
-      // node set — the cascade handles them and a duplicate delete would
-      // produce a server-side 404 for the connector that's already gone.
-      const explicitConnIds = connIds.filter((id) => {
-        const c = demoConnectors?.find((cc) => cc.id === id);
-        if (!c) return false;
-        return !cascadingNodeIdSet.has(c.source) && !cascadingNodeIdSet.has(c.target);
-      });
-      for (const id of nodeIds) onDeleteNode(id);
-      for (const id of explicitConnIds) onDeleteConnector(id);
+      onDeleteSelection(nodeIds, connIds);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [demoConnectors, onDeleteNode, onDeleteConnector]);
+  }, [onDeleteSelection]);
 
   // Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z (redo). Skipped while focus is in
   // any editable element so native browser undo handles input/textarea/
@@ -999,6 +1146,9 @@ export function DemoView({
       // then connectors. On any failure, drop overrides and surface the
       // error banner; partial state on disk is fine since each POST is
       // schema-validated independently.
+      // US-013: push ONE undo entry for the whole paste so a single Cmd+Z
+      // removes every pasted node + connector together. Pushed only after
+      // the create-leg succeeds so undo's do-leg has stable ids to delete.
       (async () => {
         try {
           for (const n of newNodes) {
@@ -1012,6 +1162,27 @@ export function DemoView({
           for (const c of newConnectors) {
             await createConnector(demoId, c);
           }
+          pushUndo({
+            do: async () => {
+              for (const n of newNodes) {
+                await createNode(demoId, {
+                  id: n.id,
+                  type: n.type,
+                  position: n.position,
+                  data: n.data as unknown as Record<string, unknown>,
+                });
+              }
+              for (const c of newConnectors) {
+                await createConnector(demoId, c);
+              }
+            },
+            undo: async () => {
+              // Delete connectors first (avoid the "deleted node still has
+              // edges" cascade chatter on the server), then nodes.
+              await Promise.allSettled(newConnectors.map((c) => deleteConnector(demoId, c.id)));
+              await Promise.allSettled(newNodes.map((n) => deleteNode(demoId, n.id)));
+            },
+          });
         } catch (err) {
           for (const n of newNodes) dropNodeOverride(n.id);
           for (const c of newConnectors) dropConnectorOverride(c.id);
@@ -1027,6 +1198,7 @@ export function DemoView({
       setConnectorOverride,
       dropConnectorOverride,
       markMutation,
+      pushUndo,
     ],
   );
 
@@ -1085,13 +1257,14 @@ export function DemoView({
   }, [demoNodes, demoConnectors, onCopyNodes, onPasteNodes]);
 
   // US-024: arrow-key nudge. Bare arrows shift every selected node by 1px on
-  // the matched axis; Shift+arrow uses 10px. Each axis-step routes through the
-  // existing onNodePositionChange path so the optimistic override + undo
-  // coalescing (coalesceKey `node:${id}:position`) collapses a burst of taps
-  // into one undo entry — same shape as a drag. Pure-connector selections
-  // resolve to no updates (no node ids match) and the chord becomes a no-op.
-  // Editable focus suppresses so InlineEdit / inputs keep the caret-move
-  // native behavior.
+  // the matched axis; Shift+arrow uses 10px. Single-node nudge routes through
+  // `onNodePositionChange` so the per-id coalesce key collapses a burst of
+  // taps into one undo entry. US-013: multi-node nudge routes through the
+  // batch `onNodePositionsChange` so the whole group is one undo entry per
+  // keypress (no per-id coalescing — a burst of taps lands as N batch entries
+  // back-to-back, same as N batch drags). Pure-connector selections resolve
+  // to no updates and the chord becomes a no-op. Editable focus suppresses
+  // so InlineEdit / inputs keep the caret-move native behavior.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const delta = getNudgeDelta(e);
@@ -1101,8 +1274,7 @@ export function DemoView({
       if (ids.length === 0) return;
       // Read the LIVE displayed position (override merged) so a tap-tap-tap
       // burst keeps stacking on the in-flight position rather than the stale
-      // server snapshot. Coalescing on the undo entry preserves the original
-      // pre-burst position so a single Cmd+Z reverts the whole sequence.
+      // server snapshot.
       const overrides = nodePending.overrides;
       const liveNodes = (demoNodes ?? []).map((n) => {
         const pos = overrides[n.id]?.position ?? n.position;
@@ -1111,11 +1283,16 @@ export function DemoView({
       const updates = applyNudge(delta, ids, liveNodes);
       if (updates.length === 0) return;
       e.preventDefault();
-      for (const u of updates) onNodePositionChange(u.id, u.position);
+      if (updates.length === 1) {
+        const u = updates[0];
+        if (u) onNodePositionChange(u.id, u.position);
+      } else {
+        onNodePositionsChange(updates);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [demoNodes, nodePending.overrides, onNodePositionChange]);
+  }, [demoNodes, nodePending.overrides, onNodePositionChange, onNodePositionsChange]);
 
   // US-024: zoom chords. Cmd+0 → fitView, Cmd+= (and Cmd+Shift+=) → zoomIn,
   // Cmd+- → zoomOut. preventDefault fires even when the rfInstance isn't
@@ -1505,6 +1682,7 @@ export function DemoView({
           nodeOverrides={nodeOverrides}
           connectorOverrides={connectorOverrides}
           onNodePositionChange={onNodePositionChange}
+          onNodePositionsChange={onNodePositionsChange}
           onNodeResize={onNodeResize}
           onNodeLabelChange={onNodeLabelChange}
           onNodeDescriptionChange={onNodeDescriptionChange}

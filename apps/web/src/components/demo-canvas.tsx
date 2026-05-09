@@ -87,6 +87,16 @@ export interface DemoCanvasProps {
   /** Fired once per drag-stop with the node's final position. */
   onNodePositionChange?: (nodeId: string, position: { x: number; y: number }) => void;
   /**
+   * US-013: atomic multi-node drag-stop. Fired once per drag-stop with EVERY
+   * moved node's final position when the gesture moves more than one node.
+   * The parent commits the whole batch as a single undo entry so one Cmd+Z
+   * reverts the entire group move. Wiring this is what enables the canvas to
+   * route multi-node drags through the batch path; absent → the canvas falls
+   * back to per-node `onNodePositionChange` calls (legacy single-undo-per-id
+   * behavior).
+   */
+  onNodePositionsChange?: (updates: { id: string; position: { x: number; y: number } }[]) => void;
+  /**
    * Fired once per resize-stop with the node's final dimensions AND position.
    * Wiring this enables NodeResizer's resize handles inside each custom node.
    * US-012: top/left handle drags shift x/y so the opposite corner stays
@@ -442,6 +452,7 @@ export function DemoCanvas({
   nodeOverrides,
   connectorOverrides,
   onNodePositionChange,
+  onNodePositionsChange,
   onNodeResize,
   onNodeLabelChange,
   onNodeDescriptionChange,
@@ -1466,17 +1477,43 @@ export function DemoCanvas({
 
   // Multi-node drag-stop: React Flow passes the full set of nodes that moved
   // (the active drag plus every other selected node, since selected items
-  // drag together). Persist each moved node's final position individually —
-  // the parent's onNodePositionChange already coalesces undo entries per id.
-  const onNodeDragStopCb = useCallback(
-    (_e: unknown, _node: Node, draggedNodes: Node[]) => {
-      draggingRef.current = false;
+  // drag together). US-013: when more than one node moved, route the whole
+  // batch through `onNodePositionsChange` so the parent commits a single
+  // undo entry; one Cmd+Z reverts every node back to its pre-drag position.
+  // Single-node drags still flow through `onNodePositionChange` to preserve
+  // the per-id coalesce key (collapses repeated drags of the same node).
+  const commitDraggedNodes = useCallback(
+    (draggedNodes: Node[]) => {
+      if (draggedNodes.length === 0) return;
+      if (draggedNodes.length === 1) {
+        const moved = draggedNodes[0];
+        if (moved && onNodePositionChange) {
+          onNodePositionChange(moved.id, { x: moved.position.x, y: moved.position.y });
+        }
+        return;
+      }
+      if (onNodePositionsChange) {
+        onNodePositionsChange(
+          draggedNodes.map((n) => ({ id: n.id, position: { x: n.position.x, y: n.position.y } })),
+        );
+        return;
+      }
+      // Fallback: parent didn't wire the batch path → emit per-node calls so
+      // the legacy behavior (N undo entries) still works.
       if (!onNodePositionChange) return;
       for (const moved of draggedNodes) {
         onNodePositionChange(moved.id, { x: moved.position.x, y: moved.position.y });
       }
     },
-    [onNodePositionChange],
+    [onNodePositionChange, onNodePositionsChange],
+  );
+
+  const onNodeDragStopCb = useCallback(
+    (_e: unknown, _node: Node, draggedNodes: Node[]) => {
+      draggingRef.current = false;
+      commitDraggedNodes(draggedNodes);
+    },
+    [commitDraggedNodes],
   );
 
   const onSelectionDragStartCb = useCallback(() => {
@@ -1485,12 +1522,9 @@ export function DemoCanvas({
   const onSelectionDragStopCb = useCallback(
     (_e: unknown, draggedNodes: Node[]) => {
       draggingRef.current = false;
-      if (!onNodePositionChange) return;
-      for (const moved of draggedNodes) {
-        onNodePositionChange(moved.id, { x: moved.position.x, y: moved.position.y });
-      }
+      commitDraggedNodes(draggedNodes);
     },
-    [onNodePositionChange],
+    [commitDraggedNodes],
   );
 
   // Cursor for the wrapper. Draw mode → crosshair (own gesture). Space-held →

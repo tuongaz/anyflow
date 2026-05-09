@@ -200,6 +200,103 @@ describe('applyDropTop', () => {
   });
 });
 
+// US-013: a "group action" (multi-node move, multi-node style, multi-node
+// delete, multi-node paste) must produce EXACTLY ONE entry on the undo stack.
+// The batch shape is a single `pushUndo` call whose `do`/`undo` fan out across
+// every target — so the contract reduces to "one applyPush call, one stack
+// entry", regardless of how many targets the entry touches at run time.
+describe('group action — single undo entry contract (US-013)', () => {
+  it('one batched push for N targets produces stack.length === 1, cursor === 1', () => {
+    const targets = [
+      { id: 'n-a', prev: { x: 0, y: 0 }, next: { x: 100, y: 100 } },
+      { id: 'n-b', prev: { x: 50, y: 50 }, next: { x: 150, y: 150 } },
+      { id: 'n-c', prev: { x: 200, y: 0 }, next: { x: 300, y: 100 } },
+    ];
+    const doCallsRef: { count: number } = { count: 0 };
+    const undoCallsRef: { count: number } = { count: 0 };
+    const batchEntry: UndoEntry = {
+      do: async () => {
+        // Real consumer fan-outs N PATCHes; the test counts the calls so the
+        // batch's undo does N reverts — not 1.
+        await Promise.allSettled(targets.map(async () => doCallsRef.count++));
+      },
+      undo: async () => {
+        await Promise.allSettled(targets.map(async () => undoCallsRef.count++));
+      },
+      capturedAt: 0,
+    };
+
+    const s1 = applyPush(initial, batchEntry, { now: 1 });
+    expect(s1.stack.length).toBe(1);
+    expect(s1.cursor).toBe(1);
+
+    // Compare against the legacy per-target behavior: N pushes → N entries.
+    let legacy = initial;
+    for (const t of targets) {
+      legacy = applyPush(legacy, entry({ capturedAt: t.prev.x }), { now: t.prev.x + 1 });
+    }
+    expect(legacy.stack.length).toBe(targets.length);
+    expect(legacy.cursor).toBe(targets.length);
+  });
+
+  it('a single undo of a batch entry is enough to revert every target (one-step revert)', async () => {
+    const reverts: string[] = [];
+    const targets = ['n-a', 'n-b', 'n-c'];
+    const batchEntry: UndoEntry = {
+      do: async () => {},
+      undo: async () => {
+        await Promise.allSettled(
+          targets.map(async (id) => {
+            reverts.push(id);
+          }),
+        );
+      },
+      capturedAt: 0,
+    };
+
+    const pushed = applyPush(initial, batchEntry, { now: 1 });
+    const popped = applyUndo(pushed);
+    expect(popped.entry).toBeDefined();
+    // The caller runs the popped entry's undo() — that's where the fan-out
+    // happens. After ONE undo call, every target is reverted.
+    if (popped.entry) await popped.entry.undo();
+    expect(reverts.sort()).toEqual([...targets].sort());
+    // Cursor moved by exactly one step.
+    expect(popped.state.cursor).toBe(0);
+    expect(popped.state.stack.length).toBe(1);
+  });
+
+  it('redo of a batch entry replays every target (one-step replay)', async () => {
+    const replays: string[] = [];
+    const targets = ['n-a', 'n-b'];
+    const batchEntry: UndoEntry = {
+      do: async () => {
+        await Promise.allSettled(
+          targets.map(async (id) => {
+            replays.push(id);
+          }),
+        );
+      },
+      undo: async () => {},
+      capturedAt: 0,
+    };
+
+    const pushed = applyPush(initial, batchEntry, { now: 1 });
+    const undone = applyUndo(pushed).state;
+    const r = applyRedo(undone);
+    expect(r.entry).toBeDefined();
+    if (r.entry) await r.entry.do();
+    expect(replays.sort()).toEqual([...targets].sort());
+    expect(r.state.cursor).toBe(1);
+  });
+
+  it('single-target operations remain a single entry (no regression)', () => {
+    const single = applyPush(initial, entry({ capturedAt: 1 }), { now: 1 });
+    expect(single.stack.length).toBe(1);
+    expect(single.cursor).toBe(1);
+  });
+});
+
 describe('applyStaleClear', () => {
   it('STALE_MUTATION_WINDOW_MS = 2000', () => {
     expect(STALE_MUTATION_WINDOW_MS).toBe(2000);
