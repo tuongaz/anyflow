@@ -12,11 +12,35 @@ import {
   getSmoothStepPath,
   useInternalNode,
 } from '@xyflow/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // Smoothstep corner rounding — matches typical "zigzag" diagrams without
 // looking jagged. (US-017)
 const SMOOTHSTEP_BORDER_RADIUS = 8;
+
+// US-011: shift in flow units applied to the EdgeAnchor circle's cx/cy
+// (mirrors xyflow's `shiftX/shiftY(centerX, radius, position)` with radius =
+// the `reconnectRadius` prop on <ReactFlow>, which we set to 6 in
+// demo-canvas.tsx). Keep these in lock-step with that prop so the visible
+// reconnect dot's center sits half a diameter outside the floating endpoint
+// — same offset xyflow uses for its (default) anchor placement.
+const RECONNECT_ANCHOR_SHIFT = 6;
+const shiftAnchorForSide = (
+  baseX: number,
+  baseY: number,
+  side: Side,
+): { cx: number; cy: number } => {
+  switch (side) {
+    case 'top':
+      return { cx: baseX, cy: baseY - RECONNECT_ANCHOR_SHIFT };
+    case 'bottom':
+      return { cx: baseX, cy: baseY + RECONNECT_ANCHOR_SHIFT };
+    case 'left':
+      return { cx: baseX - RECONNECT_ANCHOR_SHIFT, cy: baseY };
+    case 'right':
+      return { cx: baseX + RECONNECT_ANCHOR_SHIFT, cy: baseY };
+  }
+};
 
 // Map our floating-edge-geometry side strings (matching React Flow's
 // Position enum values) to the actual Position enum members so the path
@@ -145,6 +169,38 @@ export function EditableEdge({
   const tX = endpoints.target.x;
   const tY = endpoints.target.y;
   const tPos = POSITION_BY_SIDE[endpoints.target.side];
+
+  // US-011: xyflow's EdgeAnchor circles (rendered as siblings to BaseEdge
+  // when `reconnectable: true`) use xyflow's own sourceX/sourceY/sourcePosition
+  // — which point at xyflow's first-handle for floating edges, NOT at the
+  // body-perimeter intersection we render the path through. To keep the
+  // visible reconnect dots glued to the actual edge endpoints, override
+  // `cx`/`cy` on the EdgeAnchor circles after each render so they sit at
+  // (endpoints.source ± shift). For pinned edges the floating-endpoint
+  // equals xyflow's handle position so this is a no-op; for floating edges
+  // it's the difference between "dot at body midpoint" and "dot where the
+  // edge actually visually ends". Imperative because xyflow renders the
+  // EdgeAnchor in a sibling render path we can't intercept declaratively.
+  const sourceSide = endpoints.source.side;
+  const targetSide = endpoints.target.side;
+  useEffect(() => {
+    const wrapper = document.querySelector(
+      `.react-flow__edge[data-id="${CSS.escape(id)}"]`,
+    ) as SVGGElement | null;
+    if (!wrapper) return;
+    const sourceAnchor = wrapper.querySelector<SVGCircleElement>('.react-flow__edgeupdater-source');
+    const targetAnchor = wrapper.querySelector<SVGCircleElement>('.react-flow__edgeupdater-target');
+    if (sourceAnchor) {
+      const { cx, cy } = shiftAnchorForSide(sX, sY, sourceSide);
+      sourceAnchor.setAttribute('cx', String(cx));
+      sourceAnchor.setAttribute('cy', String(cy));
+    }
+    if (targetAnchor) {
+      const { cx, cy } = shiftAnchorForSide(tX, tY, targetSide);
+      targetAnchor.setAttribute('cx', String(cx));
+      targetAnchor.setAttribute('cy', String(cy));
+    }
+  }, [id, sX, sY, tX, tY, sourceSide, targetSide]);
 
   // 'step' renders as a smoothstep (right-angle / zigzag); anything else falls
   // back to today's smooth bezier. Both branches return the same tuple shape so

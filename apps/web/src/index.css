@@ -205,12 +205,23 @@
   cursor: default;
 }
 
-/* Reconnect endpoints — hide the visual circles at edge endpoints while
- * keeping them draggable, so the canvas stays uncluttered but the
- * reconnect gesture still works. The widened per-edge `interactionWidth`
- * (24 px) gives users a comfortable buffer near the endpoint. */
+/* US-011: visible reconnect endpoint dots when an edge is selected. xyflow's
+ * EdgeAnchor renders only when `edge.reconnectable === true` — we set that
+ * flag in demo-canvas.tsx ONLY on the single-selected connector, so these
+ * dots appear exclusively for the active edge and disappear on deselect.
+ *
+ * Paired with `reconnectRadius={6}` so the SVG `r=6` (12px diameter) matches
+ * the visual weight of node-outlet handles from US-007 (`!h-3 !w-3`, also
+ * 12px). The 12px-wide transparent stroke extends the pointer-events hit
+ * area to ~24px diameter, mirroring the `::after { inset: -6px }` extension
+ * on node handles — so users get the same forgiving target both for starting
+ * a connection from a node outlet and for grabbing an edge endpoint to
+ * reconnect it. */
 .react-flow__edgeupdater {
-  opacity: 0 !important;
+  fill: hsl(var(--muted-foreground));
+  stroke: transparent;
+  stroke-width: 12px;
+  opacity: 1;
   pointer-events: all;
 }
 

@@ -1187,6 +1187,17 @@ export function DemoCanvas({
       const succeeded = connectSucceededRef.current;
       connectSucceededRef.current = false;
       if (succeeded) return;
+      // US-011: xyflow calls BOTH onConnectEnd AND onReconnectEnd at the end of
+      // a reconnect drag (see @xyflow/system index.js: lines 2522-2525). For
+      // empty-pane drops both fallbacks no-op (no node under cursor). But for
+      // body-drops, this onConnectEndCb's hit-test would create a NEW connector
+      // alongside the reconnect — producing a duplicate edge. Bail here so the
+      // dedicated onReconnectEndCb handles the gesture exclusively.
+      // `isReconnectingRef.current` is set in onReconnectStart and only cleared
+      // at the top of onReconnectEndCb, which fires AFTER this callback per
+      // xyflow's order — so reading it here reliably identifies reconnect
+      // drags.
+      if (isReconnectingRef.current) return;
       // US-006: ESC mid-drag cancels the connect — skip the body-drop fallback
       // entirely so the synthesized mouseup that ended the gesture doesn't
       // fall through and hit-test a stray edge into existence.
@@ -1586,6 +1597,19 @@ export function DemoCanvas({
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
         connectionRadius={32}
+        // US-011: shrink the EdgeAnchor SVG circle so the visible reconnect
+        // dot (rendered via `.react-flow__edgeupdater` CSS) is 12px diameter,
+        // matching node-outlet handles from US-007. The hit area is widened
+        // separately via the CSS rule's transparent 12px stroke.
+        reconnectRadius={6}
+        // US-011: by default xyflow's `edgesReconnectable` is true, which makes
+        // EVERY edge render EdgeAnchor circles regardless of selection.
+        // Previously this was masked by `.react-flow__edgeupdater { opacity: 0 }`,
+        // but now that we paint EdgeAnchor visibly, we need to restrict it to
+        // the single-selected edge — disable the global default and let the
+        // explicit `reconnectable: true` on the selected edge (set in `rfEdges`)
+        // be the only switch that turns EdgeAnchor on.
+        edgesReconnectable={false}
         // Don't elevate selected nodes above edges (US-007). React Flow's
         // default bumps a selected node to z-index 1000+, which would push it
         // above any connector that crosses it; selection is already conveyed
