@@ -737,6 +737,51 @@ describe('DemoSchema', () => {
     expect(result.data.connectors).toHaveLength(1);
   });
 
+  it('parses a demo with a top-level resetAction (US-003)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'reset-demo',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+      resetAction: { kind: 'http' as const, method: 'POST' as const, url: '/reset' },
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.resetAction?.kind).toBe('http');
+    expect(result.data.resetAction?.method).toBe('POST');
+    expect(result.data.resetAction?.url).toBe('/reset');
+  });
+
+  it('parses a demo without resetAction (back-compat for US-003)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'no-reset',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.resetAction).toBeUndefined();
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

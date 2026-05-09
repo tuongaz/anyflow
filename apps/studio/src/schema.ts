@@ -232,6 +232,10 @@ export const DemoSchema = z
     name: z.string().min(1),
     nodes: z.array(NodeSchema),
     connectors: z.array(ConnectorSchema),
+    // Optional declarative endpoint the studio POSTs to when the user resets
+    // the demo. Lets the running app reset its own in-memory state alongside
+    // the canvas reload broadcast (US-003 / US-008).
+    resetAction: HttpActionSchema.optional(),
   })
   .superRefine((demo, ctx) => {
     const nodeIds = new Set(demo.nodes.map((n) => n.id));
@@ -269,4 +273,5 @@ export type ConnectorDirection = z.infer<typeof ConnectorDirectionSchema>;
 export type ConnectorPath = z.infer<typeof ConnectorPathSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
+export type ResetAction = z.infer<typeof HttpActionSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;
