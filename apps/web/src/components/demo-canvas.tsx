@@ -1093,6 +1093,15 @@ export function DemoCanvas({
     const sameLen = prev.size === sel.length;
     const sameAll = sameLen && sel.every((id) => prev.has(id));
     if (sameAll) return;
+    // US-025: sync the ref alongside the parent setState. xyflow's
+    // `addSelectedEdges` / `addSelectedNodes` fire BOTH onEdgesChange and
+    // onNodesChange synchronously when a click swaps selection across types
+    // (e.g. node selected → click edge → edge selection + node deselection
+    // dispatched in one task). The ref-syncing useEffect runs on commit, so
+    // the second handler in the same task would otherwise read a stale set
+    // and overwrite the first handler's cb result with empty data — a single
+    // click would effectively clear both selections.
+    selectedIdSetRef.current = new Set(sel);
     cb(sel, [...selectedConnIdSetRef.current]);
   }, []);
 
@@ -1117,6 +1126,9 @@ export function DemoCanvas({
     const sameLen = prev.size === sel.length;
     const sameAll = sameLen && sel.every((id) => prev.has(id));
     if (sameAll) return;
+    // US-025: see onNodesChange — sync the ref so the paired onNodesChange
+    // call later in the same task reads up-to-date connector selection.
+    selectedConnIdSetRef.current = new Set(sel);
     cb([...selectedIdSetRef.current], sel);
   }, []);
 
