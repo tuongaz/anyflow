@@ -30,18 +30,24 @@ export function DetailPanel({
   recentEvents,
   onClose,
 }: DetailPanelProps) {
-  const open = node !== null || connector !== null;
+  // Image nodes are decorative — clicking them must NOT open the detail
+  // panel (US-007). Treat the imageNode as if no node were selected for
+  // panel-opening purposes; selection / style-strip / resize handles still
+  // work because they live on the React Flow node, not the panel.
+  const inspectableNode = node && node.type !== 'imageNode' ? node : null;
+  const open = inspectableNode !== null || connector !== null;
   // Shape and image nodes are decorative — no detail/dynamicSource/run surface.
   const functionalNode =
-    node && node.type !== 'shapeNode' && node.type !== 'imageNode' ? node : null;
+    inspectableNode && inspectableNode.type !== 'shapeNode' ? inspectableNode : null;
   const detail = functionalNode?.data.detail;
   // ImageNodeData has no `label`; shape/play/state nodes do (optional or required).
-  const nodeLabel = node && 'label' in node.data ? node.data.label : undefined;
+  const nodeLabel =
+    inspectableNode && 'label' in inspectableNode.data ? inspectableNode.data.label : undefined;
   const hasDynamicSource = !!detail?.dynamicSource;
 
   const { state: dynamicState, refresh: refreshDynamic } = useNodeDetail(
     demoId,
-    node?.id ?? null,
+    inspectableNode?.id ?? null,
     hasDynamicSource,
   );
 
@@ -88,12 +94,12 @@ export function DetailPanel({
           if (target?.closest('.react-flow__edge')) e.preventDefault();
         }}
       >
-        {node ? (
+        {inspectableNode ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <SheetTitle data-testid="detail-panel-title">{nodeLabel ?? ''}</SheetTitle>
               <SheetDescription className="font-mono text-[11px]">
-                {node.id} · {node.type}
+                {inspectableNode.id} · {inspectableNode.type}
               </SheetDescription>
             </div>
 
