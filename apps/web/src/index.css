@@ -34,13 +34,13 @@
 
     --radius: 0.5rem;
 
-    /* US-024: shared visual tokens for the white-fill / grey-border dot
-     * affordance used by BOTH node outlet handles AND connector endpoint
+    /* US-024 / US-028: shared visual tokens for the white-fill / black-border
+     * dot affordance used by BOTH node outlet handles AND connector endpoint
      * dots. Single source of truth — change here and both places follow.
-     * Theme-aware via `hsl(var(--border))`, which already branches per
-     * light/dark mode through the existing `--border` token. */
+     * Border is a fixed black (not theme-tinted) so the dot stands out clearly
+     * against any node background in any state (idle, hover, drag/reconnect). */
     --anydemo-handle-fill: #ffffff;
-    --anydemo-handle-border-color: hsl(var(--border));
+    --anydemo-handle-border-color: #000;
     --anydemo-handle-border-width: 1.5px;
     --anydemo-handle-size: 20px;
   }
@@ -233,10 +233,10 @@ button:disabled {
   opacity: 0.85;
 }
 
-/* US-023 / US-024: outlet handles use the shared --anydemo-handle-* tokens
- * defined in :root so both they AND the connector endpoint dots read as the
- * same affordance. Same diameter (20px), same white fill, same grey 1.5px
- * border. Change the tokens once and both call-sites follow. The transform
+/* US-023 / US-024 / US-028: outlet handles use the shared --anydemo-handle-*
+ * tokens defined in :root so both they AND the connector endpoint dots read
+ * as the same affordance. Same diameter (20px), same white fill, same black
+ * 1.5px border. Change the tokens once and both call-sites follow. The transform
  * offsets below stack the dots `~outlineOffset` outward from the node body
  * so their CENTER continues to sit on the outer selection-rect edge
  * midpoint (consistent with US-007). */
