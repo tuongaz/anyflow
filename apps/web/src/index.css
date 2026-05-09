@@ -141,19 +141,20 @@
   cursor: text;
 }
 
-/* US-002: canvas pane cursor.
+/* US-002 / US-022: canvas pane cursor.
  *
  * React Flow applies these classes to `.react-flow__pane` based on mode:
- *   - `.selection` whenever `selectionOnDrag={true}` (default cursor: pointer)
  *   - `.draggable` while `panActivationKeyCode='Space'` is held (cursor: grab)
  *   - `.dragging` while a pan is in flight (cursor: grabbing)
  *
- * The library rules all share the same specificity, and `.selection` is
- * defined LAST in source order — so when Space is held alongside
- * selectionOnDrag, the pointer-hand cursor wins instead of grab. We override
- * with higher-specificity selectors (`.react-flow .react-flow__pane.X`,
- * specificity 0,0,3,0 vs library's 0,0,2,0) so the behavior matches:
- *   - idle pane (selectionOnDrag, no Space)  → default arrow
+ * (US-022 removed the marquee gesture, so the `.selection` class is no longer
+ * applied — but we keep its override here as a safety net in case xyflow ever
+ * surfaces it through another code path; it forces the default arrow regardless.)
+ *
+ * The library rules share the same specificity. We override with higher-specificity
+ * selectors (`.react-flow .react-flow__pane.X`, specificity 0,0,3,0 vs library's
+ * 0,0,2,0) so the behavior matches:
+ *   - idle pane                               → default arrow
  *   - Space held                              → grab
  *   - Space + dragging                        → grabbing
  *

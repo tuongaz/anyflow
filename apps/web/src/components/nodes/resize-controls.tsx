@@ -76,18 +76,15 @@ export interface ResizeControlsProps {
 }
 
 // US-005: when `visible` is false, the controls stay MOUNTED (cheap) and just
-// switch to non-interactive styles. The previous implementation `return null`d
-// when not visible — which made React unmount + remount all 8
-// NodeResizeControl elements (24 DOM mutations per cycle) every time `selected`
-// flipped during a marquee. xyflow's marquee start emits `select: false`
-// (resetSelectedElements) immediately followed by `select: true`
-// (getSelectionChanges) for nodes already in the rect; even though our
-// onNodesChange filter (US-005) keeps the FINAL committed state at
-// `selected: true`, React still commits the transient `selected: false` render
-// in between — and that intermediate commit is what unmounts the children.
-// Always rendering avoids the unmount entirely. The visual + functional gating
-// happens via inline style: pointer-events: none disables the resize cursor
-// and drag-start; opacity: 0 on the visible-variant corners hides the squares.
+// switch to non-interactive styles. Always-render avoids any unmount/remount
+// thrash on `selected` flips and is the canonical pattern for any conditional
+// chrome layered over a node. Visual + functional gating happens via inline
+// style: pointer-events: none disables the resize cursor and drag-start;
+// opacity: 0 on the visible-variant corners hides the squares.
+// (The original motivation was xyflow's marquee start emitting select:false →
+//  select:true synchronously, which unmounted/remounted the 8 controls each
+//  cycle. US-022 removed the marquee gesture, but the always-render pattern is
+//  free and still applies anywhere `selected` could transiently flip.)
 const HIDDEN_OVERRIDE: CSSProperties = {
   pointerEvents: 'none',
   cursor: 'default',

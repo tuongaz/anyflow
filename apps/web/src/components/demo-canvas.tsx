@@ -37,7 +37,6 @@ import {
   Panel,
   ReactFlow,
   type ReactFlowInstance,
-  SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
   getBezierPath,
@@ -418,12 +417,12 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
 };
 
 /**
- * US-006: bridge for ESC cancellation of in-flight connection / marquee
- * gestures. xyflow exposes `cancelConnection` and the user-selection store
- * fields only via the internal store, which is reachable through `useStoreApi`
- * — and that hook only resolves inside `<ReactFlowProvider>`. Rendering this
- * tiny child as a `<ReactFlow>` descendant lets the outer component grab the
- * store handle through a ref without restructuring the wrapper.
+ * US-006: bridge for ESC cancellation of in-flight connection drags. xyflow
+ * exposes `cancelConnection` only via the internal store, which is reachable
+ * through `useStoreApi` — and that hook only resolves inside
+ * `<ReactFlowProvider>`. Rendering this tiny child as a `<ReactFlow>`
+ * descendant lets the outer component grab the store handle through a ref
+ * without restructuring the wrapper.
  */
 type StoreApi = ReturnType<typeof useStoreApi>;
 function StoreApiBridge({ storeApiRef }: { storeApiRef: { current: StoreApi | null } }) {
@@ -442,7 +441,7 @@ function StoreApiBridge({ storeApiRef }: { storeApiRef: { current: StoreApi | nu
  * skip canvas-level keyboard handlers while focus is in an editor (InlineEdit,
  * detail-panel inputs, etc.). Lives here so the canvas's ESC priority chain
  * can defer to InlineEdit's own ESC handler (priority 1: inline edit cancels
- * before drag-create / connection / marquee / selection).
+ * before drag-create / connection / selection).
  */
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 const isEditableTarget = (el: Element | null): boolean => {
@@ -523,8 +522,7 @@ export function DemoCanvas({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
   // US-006: handle to the React Flow store (registered by <StoreApiBridge>).
-  // Used to call `cancelConnection` and clear the user-selection rect when
-  // ESC cancels an in-flight connection or marquee.
+  // Used to call `cancelConnection` when ESC cancels an in-flight connection.
   const storeApiRef = useRef<StoreApi | null>(null);
   const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
@@ -702,9 +700,10 @@ export function DemoCanvas({
   //      the body-drop fallback in onConnectEndCb is skipped, then dispatch a
   //      synthetic mouseup so xyflow's document-level pointer listeners stop
   //      tracking the gesture.
-  //   4. Marquee drag — restore the pre-marquee selection snapshot, clear
-  //      xyflow's userSelection state, drop our pointer-tracking refs.
-  //   5. Selection — clear node + connector selections.
+  //   4. Selection — clear node + connector selections.
+  //
+  // (Marquee cancellation was removed in US-022 — the marquee gesture is no
+  //  longer wired; primary-mouse drag on empty canvas is a no-op.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -748,38 +747,7 @@ export function DemoCanvas({
         setDropPopover(null);
         return;
       }
-      // 4. Marquee drag. We treat marquee as in-progress whenever our
-      //    pointerdown-on-pane ref is set — even if xyflow hasn't moved past
-      //    paneClickDistance yet. Either way, cancellation restores the
-      //    pre-pointerdown selection snapshot so AC #4 ("selection is left
-      //    unchanged") holds in both regimes.
-      if (marqueeStartRef.current) {
-        const snapshot = marqueeSelectionSnapshotRef.current;
-        if (snapshot) {
-          e.preventDefault();
-          // Clear xyflow's user-selection state synchronously. The pointer is
-          // still down; subsequent pointermoves return early because
-          // userSelectionRect is null.
-          try {
-            storeApiRef.current?.setState({
-              userSelectionActive: false,
-              userSelectionRect: null,
-            });
-          } catch {
-            // store unavailable — selection restore below still wins on the
-            // next render via the controlled selectedNodeIds prop.
-          }
-          // Restore selection. Parent's setSelectedIds → sourceNodes recompute
-          // → setRfNodes via the `[sourceNodes]` effect → fresh node refs
-          // override xyflow's internalNode.selected mutation (US-005 pattern).
-          onSelectionChangeRef.current?.(snapshot.nodes, snapshot.connectors);
-          marqueeStartRef.current = null;
-          marqueeCurrentRef.current = null;
-          marqueeSelectionSnapshotRef.current = null;
-          return;
-        }
-      }
-      // 5. Selection clear.
+      // 4. Selection clear.
       const hadNodeSel = selectedIdSetRef.current.size > 0;
       const hadConnSel = selectedConnIdSetRef.current.size > 0;
       if (hadNodeSel || hadConnSel) {
@@ -1091,109 +1059,27 @@ export function DemoCanvas({
   const rfNodesRef = useRef<Node[]>([]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    // Marquee-aware filter. Computes the live marquee rect from our own
-    // pointer-tracking refs (set in the wrapper's pointerdown/move handlers);
-    // xyflow's `.react-flow__selection` DOM isn't yet in the tree when this
-    // first fires from the marquee start, so DOM-based detection would miss
-    // the critical resetSelectedElements + initial getSelectionChanges calls.
-    //
-    // - US-004: drop xyflow's `forceInitialRender` false-positives — a node
-    //   whose handleBounds haven't settled yet gets swept into a partial-mode
-    //   marquee even when it doesn't overlap; hit-test rules those out.
-    //   Shift-marquee additionally drops ALL `select: false` changes so the
-    //   prior selection survives xyflow's resetSelectedElements (xyflow's
-    //   marquee always replaces, regardless of multi-selection key).
-    // - US-005: in a normal (non-Shift) marquee, drop `select: false` for
-    //   nodes still inside the rect. xyflow's marquee start emits select:false
-    //   (resetSelectedElements) immediately followed by select:true
-    //   (getSelectionChanges) for the same nodes — without dropping the
-    //   deselect, the .selected class flickers off→on between renders, which
-    //   makes <ResizeControls visible={selected}> unmount + remount its 8
-    //   NodeResizeControl elements (4 line + 4 corner) on every cycle. That
-    //   mount/unmount thrash is the visible flash.
-    const marqueeStart = marqueeStartRef.current;
-    const marqueeCurrent = marqueeCurrentRef.current;
-    const marqueeRect =
-      marqueeStart && marqueeCurrent
-        ? {
-            left: Math.min(marqueeStart.x, marqueeCurrent.x),
-            top: Math.min(marqueeStart.y, marqueeCurrent.y),
-            right: Math.max(marqueeStart.x, marqueeCurrent.x),
-            bottom: Math.max(marqueeStart.y, marqueeCurrent.y),
-          }
-        : null;
-    const shiftMarquee = !!marqueeRect && shiftHeldRef.current;
-    // US-005: ids whose `select: false` we dropped in the filter below. xyflow's
-    // `getSelectionChanges` mutates `internalNode.selected = false` directly on
-    // the lookup BEFORE invoking onNodesChange, so dropping the change in our
-    // filter alone isn't enough — when our setRfNodes prop comes back, xyflow's
-    // `adoptUserNodes(checkEquality: true)` reuses the same internalNode (because
-    // the userNode reference is unchanged) and the `selected: false` mutation
-    // sticks until the next render. The fix: stamp these ids with a fresh
-    // userNode reference + `selected: true` so adoptUserNodes detects a ref
-    // change, rebuilds the internalNode from our prop, and restores selected.
-    const droppedDeselectIds = new Set<string>();
-    const filteredChanges = !marqueeRect
-      ? changes
-      : changes.filter((c) => {
-          if (c.type !== 'select') return true;
-          const nodeEl = wrapperRef.current?.querySelector(
-            `.react-flow__node[data-id="${CSS.escape(c.id)}"]`,
-          );
-          // Can't measure: for select:true keep (xyflow's call); for
-          // select:false fall back to existing behaviour (drop iff Shift).
-          if (!nodeEl) {
-            if (c.selected) return true;
-            if (shiftMarquee) {
-              droppedDeselectIds.add(c.id);
-              return false;
-            }
-            return true;
-          }
-          const nodeRect = nodeEl.getBoundingClientRect();
-          const ox =
-            Math.min(marqueeRect.right, nodeRect.right) - Math.max(marqueeRect.left, nodeRect.left);
-          const oy =
-            Math.min(marqueeRect.bottom, nodeRect.bottom) - Math.max(marqueeRect.top, nodeRect.top);
-          const inRect = ox > 0 && oy > 0;
-          if (c.selected) return inRect;
-          // c.selected === false. Shift-marquee preserves the prior selection
-          // entirely. Plain marquee preserves only nodes still in the rect —
-          // those will get a select:true emitted in the same tick anyway.
-          const drop = shiftMarquee || inRect;
-          if (drop) droppedDeselectIds.add(c.id);
-          return !drop;
-        });
     const explicitlyToggled = new Set<string>();
-    for (const c of filteredChanges) {
+    for (const c of changes) {
       if (c.type === 'select') explicitlyToggled.add(c.id);
     }
     // applyNodeChanges on the current snapshot. We feed the same result to
     // setRfNodes below so the rendered nodes match what we're propagating.
-    const next = applyNodeChanges(filteredChanges, rfNodesRef.current);
+    const next = applyNodeChanges(changes, rfNodesRef.current);
     const pinned = selectedIdSetRef.current;
-    // Re-pin selection. Two cases:
-    //  - resize/dimension changes can transiently drop the `selected` flag —
-    //    restore it for nodes in `pinned` that the user didn't explicitly
-    //    toggle (US-019).
-    //  - dropped-deselects (US-005): xyflow already mutated the lookup's
-    //    `selected: false`; force a fresh userNode ref with `selected: true`
-    //    so adoptUserNodes rebuilds the internalNode on the next render.
+    // Resize/dimension changes can transiently drop the `selected` flag —
+    // restore it for nodes in `pinned` that the user didn't explicitly toggle
+    // (US-019). With marquee gone (US-022), there is no
+    // resetSelectedElements + getSelectionChanges flicker to compensate for.
     const repinned =
-      pinned.size === 0 && droppedDeselectIds.size === 0
+      pinned.size === 0
         ? next
         : next.map((n) => {
-            if (droppedDeselectIds.has(n.id)) return { ...n, selected: true };
             if (pinned.has(n.id) && !explicitlyToggled.has(n.id) && !n.selected) {
               return { ...n, selected: true };
             }
             return n;
           });
-    // Keep the ref in sync synchronously so a second onNodesChange in the
-    // same task (xyflow does this at marquee start: resetSelectedElements
-    // immediately followed by getSelectionChanges) composes against the
-    // freshest result — otherwise applyNodeChanges would re-apply against
-    // the stale pre-commit value and overwrite this call's fresh refs.
     rfNodesRef.current = repinned;
     setRfNodes(repinned);
     // Propagate user-driven selection changes up to the parent. Programmatic
@@ -1587,36 +1473,6 @@ export function DemoCanvas({
         ? 'rounded-md border border-amber-500/60 bg-amber-200/40'
         : 'rounded-lg border-2 border-primary/60 bg-primary/10';
 
-  // US-004: Shift-marquee adds to the existing selection, and we filter
-  // xyflow's `forceInitialRender` over-selection. Tracked via refs because
-  // both checks need to fire INSIDE `onNodesChange`, which runs synchronously
-  // from xyflow's first pointermove — before React has committed the
-  // pointerdown render that would put `.react-flow__selection` in the DOM.
-  const shiftHeldRef = useRef(false);
-  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const marqueeCurrentRef = useRef<{ x: number; y: number } | null>(null);
-  // US-006: snapshot of selection state at marquee start so ESC mid-drag can
-  // restore it. Set on pointerdown (when target is the React Flow pane and
-  // not in pan/draw mode); cleared on pointerup or after ESC restoration.
-  const marqueeSelectionSnapshotRef = useRef<{
-    nodes: string[];
-    connectors: string[];
-  } | null>(null);
-  useEffect(() => {
-    const onDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') shiftHeldRef.current = true;
-    };
-    const onUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') shiftHeldRef.current = false;
-    };
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    return () => {
-      window.removeEventListener('keydown', onDown);
-      window.removeEventListener('keyup', onUp);
-    };
-  }, []);
-
   // Space-held pan mode (US-019). React Flow's panActivationKeyCode='Space'
   // toggles the pane into pan-on-drag mode for the duration of the keypress;
   // we mirror that into local state purely so the wrapper can show a
@@ -1707,8 +1563,8 @@ export function DemoCanvas({
 
   // Cursor for the wrapper. Draw mode → crosshair (own gesture). Space-held →
   // grab while idle, grabbing while a Space-pan drag is in flight. Else
-  // default — selectionOnDrag means the pane shows a normal cursor and the
-  // marquee paints itself.
+  // default — primary-mouse drag on the pane is a no-op (US-022 removed the
+  // marquee gesture; selectionOnDrag is off).
   const wrapperCursor = drawShape
     ? 'crosshair'
     : spaceHeld
@@ -1725,48 +1581,14 @@ export function DemoCanvas({
       style={wrapperCursor ? { cursor: wrapperCursor } : undefined}
       onPointerDown={(e) => {
         if (spaceHeld) setSpaceDragging(true);
-        // US-004: track marquee gesture in client-space refs so onNodesChange
-        // can compute intersections / detect Shift-marquee BEFORE xyflow's
-        // `.react-flow__selection` element exists in the DOM.
-        if (!drawShape && !spaceHeld) {
-          const target = e.target as HTMLElement | null;
-          if (target?.classList.contains('react-flow__pane')) {
-            const start = { x: e.clientX, y: e.clientY };
-            marqueeStartRef.current = start;
-            marqueeCurrentRef.current = start;
-            // US-006: capture pre-marquee selection so ESC can restore it.
-            // Read from refs (kept in sync with the controlled props) — props
-            // are stale across re-renders but the refs always reflect the
-            // latest committed selection.
-            marqueeSelectionSnapshotRef.current = {
-              nodes: [...selectedIdSetRef.current],
-              connectors: [...selectedConnIdSetRef.current],
-            };
-          }
-        }
         onPointerDown(e);
-      }}
-      onPointerMoveCapture={(e) => {
-        // Capture phase so the ref is fresh BEFORE xyflow's pane onPointerMove
-        // (bubble) runs resetSelectedElements / getSelectionChanges. Without
-        // this, the first marquee step would still see start==current and
-        // drop every valid pickup as a 0×0 rect.
-        if (marqueeStartRef.current) {
-          marqueeCurrentRef.current = { x: e.clientX, y: e.clientY };
-        }
       }}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => {
-        marqueeStartRef.current = null;
-        marqueeCurrentRef.current = null;
-        marqueeSelectionSnapshotRef.current = null;
         setSpaceDragging(false);
         onPointerUp(e);
       }}
       onPointerCancel={() => {
-        marqueeStartRef.current = null;
-        marqueeCurrentRef.current = null;
-        marqueeSelectionSnapshotRef.current = null;
         drawingRef.current = false;
         drawStartRef.current = null;
         drawCurrentRef.current = null;
@@ -1843,17 +1665,12 @@ export function DemoCanvas({
         // of selection — no extra node-vs-node elevation needed.
         elevateNodesOnSelect={false}
         elementsSelectable={!drawShape}
-        // US-019 selection model: marquee on drag, Space to pan. With
-        // panOnDrag=false, plain pane drags create a selection rectangle;
-        // panActivationKeyCode='Space' temporarily enables pan-on-drag while
-        // Space is held. Multi-key (Meta/Shift) toggles individual items in
-        // the selection. selectionKeyCode=null avoids overloading another
-        // modifier (the marquee is already the default drag gesture).
-        // US-004: partial-intersection mode — a node is picked up by the
-        // marquee as soon as the rectangle overlaps it, instead of having
-        // to fully contain it (xyflow's `Full` default).
-        selectionOnDrag={!drawShape}
-        selectionMode={SelectionMode.Partial}
+        // US-022 selection model: no marquee gesture. With selectionOnDrag and
+        // panOnDrag both false, primary-mouse drag on the pane is a no-op —
+        // selection only changes via click, Shift/Meta-click toggle, Cmd/Ctrl+A,
+        // or pane-click clear. panActivationKeyCode='Space' temporarily enables
+        // pan-on-drag while Space is held. selectionKeyCode=null suppresses
+        // xyflow's modifier-marquee fallback (default would be 'Shift').
         panOnDrag={false}
         selectionKeyCode={null}
         multiSelectionKeyCode={drawShape ? null : ['Meta', 'Shift']}
