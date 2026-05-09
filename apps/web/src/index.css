@@ -142,13 +142,49 @@
 /* Force the default arrow cursor across nodes — the canvas should never
  * surface a text I-beam (over labels) or a pointer (over interactive
  * children) just from hovering. The contenteditable inline editor opts
- * back into a text cursor once focused so the active edit feels right. */
+ * back into a text cursor once focused so the active edit feels right.
+ * The label/description buttons inside nodes (state-node, play-node,
+ * shape-node) only respond to dblclick, so they stay on the default arrow
+ * via this rule — the global `button:not(:disabled)` rule (US-026, below)
+ * has higher specificity (0,1,1) than `.react-flow__node *` (0,1,0), but
+ * the `.react-flow__node button` carve-out (0,1,1, equal) is declared
+ * AFTER the global rule and wins by source order. The Play button is
+ * exempted from the carve-out so it picks up `pointer` per US-026 AC #1. */
 .react-flow__node,
 .react-flow__node * {
   cursor: default;
 }
 .react-flow__node [contenteditable="true"] {
   cursor: text;
+}
+
+/* US-026: clickable buttons across the app surface the pointer cursor on
+ * hover; disabled buttons fall back to `not-allowed` so the affordance stays
+ * clear. Targets every native <button> element (Button component, raw
+ * <button>s in canvas-toolbar / header / style-strip / project-switcher /
+ * resize-controls) so we don't sprinkle cursor classes across the codebase
+ * — single shared selector per AC #5.
+ *
+ * Specificity (0,1,1) beats `.react-flow__node *` (0,1,0), so the Play
+ * button INSIDE a node also picks up `pointer` without a per-node override.
+ * The label/description buttons inside nodes (which only respond to
+ * dblclick) are kept on the default arrow via the carve-out below — those
+ * `<button>`s are present for semantics but a single click does nothing,
+ * so a pointer cursor would mis-promise the interaction.
+ *
+ * Skipping `[role="button"]` on purpose — Radix CommandItem renders with
+ * that role but the items inside the project-switcher popover already
+ * receive the pointer cursor from their own component CSS. Adding a
+ * blanket `[role="button"]` rule would collide with `cursor: text` for
+ * focused inline editors that briefly carry button semantics. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+.react-flow__node button:not([data-testid="play-button"]) {
+  cursor: default;
 }
 
 /* US-002 / US-022: canvas pane cursor.
