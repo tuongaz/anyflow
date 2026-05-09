@@ -1,3 +1,4 @@
+import { createDebouncer } from '@/lib/debounce';
 import { cn } from '@/lib/utils';
 import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 
@@ -63,7 +64,7 @@ export function InlineEdit({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [shake, setShake] = useState(false);
   const [empty, setEmpty] = useState(initialValue.length === 0);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncerRef = useRef(createDebouncer(400));
   const lastCommittedRef = useRef(initialValue);
   const skipBlurRef = useRef(false);
 
@@ -85,8 +86,9 @@ export function InlineEdit({
       selection.removeAllRanges();
       selection.addRange(range);
     }
+    const debouncer = debouncerRef.current;
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debouncer.cancel();
     };
     // initialValue is captured at mount on purpose — see component docstring.
   }, []);
@@ -100,32 +102,27 @@ export function InlineEdit({
     return isMultiline ? el.innerText : (el.textContent ?? '');
   };
 
-  const clearDebounce = () => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
-  };
-
   const commitNow = (next: string) => {
-    clearDebounce();
+    debouncerRef.current.cancel();
     if (next === lastCommittedRef.current) return;
     lastCommittedRef.current = next;
     onCommit(next);
   };
 
   const handleInput = () => {
-    clearDebounce();
     const next = readValue();
     setEmpty(next.length === 0);
     // Skip the debounced commit when the value would be rejected — let the
     // user keep typing without round-tripping a 400-error to the server.
-    if (required && next.trim().length === 0) return;
-    debounceRef.current = setTimeout(() => commitNow(next), 400);
+    if (required && next.trim().length === 0) {
+      debouncerRef.current.cancel();
+      return;
+    }
+    debouncerRef.current.schedule(() => commitNow(next));
   };
 
   const finalize = () => {
-    clearDebounce();
+    debouncerRef.current.cancel();
     const next = readValue();
     if (required && next.trim().length === 0) {
       // Reject empty for required fields: revert local state, shake to signal,
@@ -144,7 +141,7 @@ export function InlineEdit({
   };
 
   const cancel = () => {
-    clearDebounce();
+    debouncerRef.current.cancel();
     const el = editorRef.current;
     if (el) el.textContent = initialValue;
     onExit();

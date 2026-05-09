@@ -1010,13 +1010,17 @@ export function DemoView({
         });
       }
       updateNode(demoId, nodeId, { label }).catch((err) => {
-        dropNodeOverride(nodeId);
+        // US-021: text edits keep the optimistic visible on failure (the user
+        // shouldn't see their typed text snap back when the server hiccups).
+        // The undo entry is dropped so a stray Cmd+Z doesn't replay a never-
+        // persisted change; the error surfaces via the non-blocking banner so
+        // the user can retry by editing again.
         if (node) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode label failed', err);
       });
     },
-    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
+    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   // Inline description edit reuses detail.summary; we splice the new summary
@@ -1042,13 +1046,14 @@ export function DemoView({
         coalesceKey: `node:${nodeId}:description`,
       });
       updateNode(demoId, nodeId, { detail: nextDetail }).catch((err) => {
-        dropNodeOverride(nodeId);
+        // US-021: keep optimistic visible — see `onNodeLabelChange` for the
+        // failure-mode rationale.
         dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode description failed', err);
       });
     },
-    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
+    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   const onCreateShapeNode = useCallback(
@@ -1120,21 +1125,14 @@ export function DemoView({
         });
       }
       updateConnector(demoId, connId, { label }).catch((err) => {
-        dropConnectorOverride(connId);
+        // US-021: keep optimistic visible — see `onNodeLabelChange` for the
+        // failure-mode rationale.
         if (conn) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateConnector label failed', err);
       });
     },
-    [
-      demoId,
-      demoConnectors,
-      setConnectorOverride,
-      dropConnectorOverride,
-      pushUndo,
-      dropUndoTop,
-      markMutation,
-    ],
+    [demoId, demoConnectors, setConnectorOverride, pushUndo, dropUndoTop, markMutation],
   );
 
   // Create a default connector from a handle-drag gesture (US-029). We
