@@ -594,11 +594,28 @@ recommendation }`.
 
 ### CHECKPOINT 2
 
-Use `AskUserQuestion` to present the three tiers with evidence. The user picks
-one. The recommendation is a *hint*, not a default.
+Use `AskUserQuestion` to present the three tiers with evidence. The user
+picks one.
 
-If `--tier=` was passed, skip the checkpoint and stamp `chosenTier` directly
-into `tier-evidence.json`.
+**Always order the options playable-first, static-last** so the user's
+eye lands on the runnable choice before the static fallback:
+
+1. **Tier 1 (real)** if `tier1RealEvidence.feasible === true` AND the
+   confidence is `medium` or `high`. Otherwise skip Tier 1 entirely.
+2. **Tier 2 (mock harness)** — always present unless `triggerSurface`
+   is `none`. This is the universal-fallback playable tier (see
+   "Prefer Playable tiers" above).
+3. **Tier 3 (static)** — present last. Frame it as "no live behavior,
+   just a labeled diagram" so the trade-off is explicit.
+
+The first option in the AskUserQuestion list is whichever playable
+tier (Tier 1 or Tier 2) the `tier-detector` named in `recommendation`.
+Static appears at the bottom of the list, never at the top, **even
+when Tier 1 isn't feasible** — Tier 2 still beats Tier 3 in the
+ordering. Do NOT let static be the user's path of least resistance.
+
+If `--tier=` was passed, skip the checkpoint and stamp `chosenTier`
+directly into `tier-evidence.json`.
 
 ## Phase 4 — NODE SELECTION
 
