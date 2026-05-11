@@ -1974,6 +1974,29 @@ export function DemoCanvas({
     [onCreateConnector],
   );
 
+  // US-004: text-shape nodes (data.shape === 'text') are pure annotations and
+  // must never be a connection endpoint. xyflow already prevents drag-start
+  // from a text node — US-003 removed every <Handle> on the text variant —
+  // but `isValidConnection` is the defensive net for any path that bypasses
+  // the no-handles invariant: a malformed demo.json that seeded an edge into
+  // a text node, or a future feature exposing a text-type source. Returning
+  // false here also makes xyflow flash the candidate handle red during a
+  // drag (the `connectionState.isValid === false` branch in onConnectEnd)
+  // for visible user feedback. NOT a per-handle count gate — that would
+  // defeat US-015; see connection-limit.test.ts for the static-text fence.
+  const isValidConnection = useCallback(
+    (conn: Connection | Edge) => {
+      const isTextShape = (id: string | null | undefined): boolean => {
+        if (!id) return false;
+        const node = nodes.find((n) => n.id === id);
+        if (!node) return false;
+        return node.type === 'shapeNode' && (node.data as { shape?: ShapeKind }).shape === 'text';
+      };
+      return !isTextShape(conn.source) && !isTextShape(conn.target);
+    },
+    [nodes],
+  );
+
   // Body-drop fallback for NEW connections (US-014). When the user drags from
   // a source handle and releases over a node's BODY (not precisely on one of
   // its four handles), React Flow's connectionRadius isn't enough to snap and
@@ -2454,6 +2477,10 @@ export function DemoCanvas({
         nodesConnectable={!!onCreateConnector && !drawShape}
         className={connecting ? 'anydemo-connecting' : undefined}
         onConnect={onConnect}
+        // US-004: reject any connection where either endpoint is a text-shape
+        // node — pure annotations are never connectable. See the
+        // `isValidConnection` definition above for the full rationale.
+        isValidConnection={isValidConnection}
         onConnectStart={(_e, params) => {
           setConnecting(true);
           connectSucceededRef.current = false;

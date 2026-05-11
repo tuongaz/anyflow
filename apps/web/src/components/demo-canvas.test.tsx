@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { DemoCanvas, type DemoCanvasProps } from '@/components/demo-canvas';
 import type { DemoNode } from '@/lib/api';
-import { type Node, ReactFlow } from '@xyflow/react';
+import { type Connection, type Node, ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 
 // Bun runs apps/web tests without a DOM. The hook-shim pattern (also used by
@@ -125,6 +125,19 @@ function makeShapeNode(id: string): DemoNode {
   };
 }
 
+function makeTextNode(id: string): DemoNode {
+  return {
+    id,
+    type: 'shapeNode',
+    position: { x: 0, y: 0 },
+    data: { label: id, shape: 'text' },
+  };
+}
+
+function makeConnection(source: string, target: string): Connection {
+  return { source, target, sourceHandle: null, targetHandle: null };
+}
+
 function makeGroupNode(id: string): DemoNode {
   return {
     id,
@@ -212,6 +225,72 @@ describe('DemoCanvas', () => {
       expect(rfNodes.find((n) => n.id === 'a')?.connectable).toBe(false);
       expect(rfNodes.find((n) => n.id === 'b')?.connectable).toBe(false);
       expect(rfNodes.find((n) => n.id === 'c')?.connectable).toBeUndefined();
+    });
+  });
+
+  describe('US-004: isValidConnection rejects text-shape endpoints', () => {
+    // The callback is wired on the ReactFlow root; xyflow calls it during
+    // a connection-drag gesture (and again when validating an edge into the
+    // store). Returning false makes xyflow paint the candidate handle red
+    // and skip onConnect. We assert the prop is wired and exercise the
+    // callback directly with synthetic Connections.
+    function getValidator(nodes: DemoNode[]): (c: Connection) => boolean {
+      const tree = callDemoCanvas({ nodes, selectedNodeIds: [], onCreateConnector: () => {} });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const validator = rf.props.isValidConnection as ((c: Connection) => boolean) | undefined;
+      if (typeof validator !== 'function') {
+        throw new Error('isValidConnection not wired on ReactFlow root');
+      }
+      return validator;
+    }
+
+    it('wires isValidConnection on the ReactFlow root', () => {
+      const tree = callDemoCanvas();
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      expect(typeof rf.props.isValidConnection).toBe('function');
+    });
+
+    it('rejects a connection whose source is a text-shape node', () => {
+      const validator = getValidator([makeTextNode('t1'), makeShapeNode('s1')]);
+      expect(validator(makeConnection('t1', 's1'))).toBe(false);
+    });
+
+    it('rejects a connection whose target is a text-shape node', () => {
+      const validator = getValidator([makeShapeNode('s1'), makeTextNode('t1')]);
+      expect(validator(makeConnection('s1', 't1'))).toBe(false);
+    });
+
+    it('rejects a connection where both endpoints are text-shape nodes', () => {
+      const validator = getValidator([makeTextNode('t1'), makeTextNode('t2')]);
+      expect(validator(makeConnection('t1', 't2'))).toBe(false);
+    });
+
+    it('accepts a connection between two non-text shape nodes', () => {
+      // Regression net for the existing valid-connection scenario: two
+      // rectangles must remain wirable. Without this, the broader
+      // "no false-negatives" promise of US-004 isn't pinned.
+      const validator = getValidator([makeShapeNode('a'), makeShapeNode('b')]);
+      expect(validator(makeConnection('a', 'b'))).toBe(true);
+    });
+
+    it('accepts a connection between two non-shape nodes (e.g. group)', () => {
+      // The validator's text-shape predicate gates on `type === 'shapeNode'
+      // && data.shape === 'text'` — any other node type (group, play, state,
+      // image, icon) must pass through. We use group as a representative
+      // non-shape node here since makeGroupNode is already in scope.
+      const validator = getValidator([makeGroupNode('g1'), makeGroupNode('g2')]);
+      expect(validator(makeConnection('g1', 'g2'))).toBe(true);
+    });
+
+    it('accepts a connection when an endpoint id is missing from the nodes prop', () => {
+      // Defensive: if the connection refers to an unknown node id, the
+      // validator must not throw and must default to "valid" (xyflow's
+      // existing pipeline will reject the connection elsewhere if needed).
+      const validator = getValidator([makeShapeNode('a')]);
+      expect(validator(makeConnection('a', 'missing'))).toBe(true);
+      expect(validator(makeConnection('missing', 'a'))).toBe(true);
     });
   });
 

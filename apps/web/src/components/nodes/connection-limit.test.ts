@@ -2,19 +2,21 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// US-015 regression fence: a single handle (any of 't' / 'l' / 'r' / 'b' on
-// any node type) must accept unlimited inbound AND outbound connections, and
-// onConnect must NOT reject a new connection because a handle is already used.
-// React Flow exposes two opt-in mechanisms that would silently break this:
+// US-015 regression fence (refined by US-004): a single handle (any of
+// 't' / 'l' / 'r' / 'b' on any node type) must accept unlimited inbound AND
+// outbound connections, and onConnect must NOT reject a new connection
+// because a handle is already used. React Flow exposes two opt-in mechanisms
+// that would silently re-introduce a per-handle limit:
 //   • <Handle connectionLimit={N}> — caps connections per handle
 //   • <ReactFlow isValidConnection={fn}> — vetoes connections at gesture time
-// Either appearing in the node renderers OR demo-canvas would re-introduce the
-// limit. Static-text fence is enough — these props don't have synonymous APIs.
-// US-023 extends the watch list to icon-node + image-node so a future change
-// that adds a per-type connectionLimit (e.g. "icons shouldn't be sources") is
-// caught at test time, not by a user.
+// `connectionLimit` is forbidden everywhere. `isValidConnection` is forbidden
+// in the per-node renderers (where adding it would re-introduce per-node
+// count gating); demo-canvas.tsx is allowed to use it ONLY for node-type-
+// level rejection — US-004 wires it to reject text-shape endpoints (pure
+// annotations are never connectable). The text-only invariant is verified
+// positively by the US-004 runtime tests in demo-canvas.test.tsx.
 const repoRoot = join(import.meta.dir, '..', '..', '..', '..', '..');
-const watched = [
+const noConnectionLimit = [
   'apps/web/src/components/nodes/shape-node.tsx',
   'apps/web/src/components/nodes/play-node.tsx',
   'apps/web/src/components/nodes/state-node.tsx',
@@ -22,12 +24,24 @@ const watched = [
   'apps/web/src/components/nodes/image-node.tsx',
   'apps/web/src/components/demo-canvas.tsx',
 ];
+const noIsValidConnection = [
+  'apps/web/src/components/nodes/shape-node.tsx',
+  'apps/web/src/components/nodes/play-node.tsx',
+  'apps/web/src/components/nodes/state-node.tsx',
+  'apps/web/src/components/nodes/icon-node.tsx',
+  'apps/web/src/components/nodes/image-node.tsx',
+];
 
 describe('US-015: no per-handle connection limit', () => {
-  for (const rel of watched) {
-    it(`${rel} does not set connectionLimit or isValidConnection`, () => {
+  for (const rel of noConnectionLimit) {
+    it(`${rel} does not set connectionLimit`, () => {
       const src = readFileSync(join(repoRoot, rel), 'utf-8');
       expect(src).not.toMatch(/\bconnectionLimit\b/);
+    });
+  }
+  for (const rel of noIsValidConnection) {
+    it(`${rel} does not set isValidConnection`, () => {
+      const src = readFileSync(join(repoRoot, rel), 'utf-8');
       expect(src).not.toMatch(/\bisValidConnection\b/);
     });
   }
