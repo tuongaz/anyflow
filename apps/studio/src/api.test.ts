@@ -2026,6 +2026,19 @@ describe('DELETE /api/demos/:id', () => {
     expect(registry.list()).toHaveLength(0);
   });
 
+  it('removes the entry when requested by slug', async () => {
+    const { app, registry } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string; slug: string };
+
+    const res = await app.request(`/api/demos/${reg.slug}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(registry.list()).toHaveLength(0);
+  });
+
   it('returns 404 for unknown ids', async () => {
     const { app } = buildApp();
     const res = await app.request('/api/demos/does-not-exist', { method: 'DELETE' });

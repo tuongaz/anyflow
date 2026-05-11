@@ -604,10 +604,11 @@ export function createApi(options: ApiOptions): Hono {
   });
 
   api.delete('/demos/:id', (c) => {
-    const id = c.req.param('id');
-    watcher?.unwatch(id);
-    const removed = registry.remove(id);
-    if (!removed) return c.json({ ok: false, error: 'not found' }, 404);
+    const idOrSlug = c.req.param('id');
+    const entry = registry.getById(idOrSlug) ?? registry.getBySlug(idOrSlug);
+    if (!entry) return c.json({ ok: false, error: 'not found' }, 404);
+    watcher?.unwatch(entry.id);
+    registry.remove(entry.id);
     return c.json({ ok: true });
   });
 
