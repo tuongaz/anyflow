@@ -1,6 +1,6 @@
-import { Canvas } from '@/components/canvas';
 import { EmptyState } from '@/components/empty-state';
 import type { DemoSummary } from '@/lib/api';
+import { navigate } from '@/lib/router';
 
 export interface StudioHomeProps {
   demos: DemoSummary[];
@@ -9,13 +9,29 @@ export interface StudioHomeProps {
 export function StudioHome({ demos }: StudioHomeProps) {
   if (demos.length === 0) return <EmptyState />;
   return (
-    <div className="relative h-full w-full">
-      <Canvas />
-      <div className="pointer-events-none absolute inset-x-0 top-6 flex justify-center">
-        <div className="rounded-md border bg-card/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-          Press <kbd className="rounded border bg-muted px-1 font-mono text-[10px]">⌘K</kbd> to open
-          a demo
+    <div className="flex h-full w-full items-start justify-center overflow-y-auto bg-background p-8">
+      <div data-testid="studio-home-picker" className="flex w-full max-w-2xl flex-col gap-6 pt-8">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Open a demo</h1>
+          <p className="text-sm text-muted-foreground">
+            {demos.length} demos registered — pick one to load its canvas.
+          </p>
         </div>
+        <ul className="flex flex-col gap-2">
+          {demos.map((demo) => (
+            <li key={demo.id}>
+              <button
+                type="button"
+                onClick={() => navigate(`/d/${demo.slug}`)}
+                data-testid={`studio-home-demo-${demo.slug}`}
+                className="flex w-full flex-col items-start gap-0.5 rounded-md border bg-card px-4 py-3 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <span className="text-sm font-medium">{demo.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{demo.repoPath}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

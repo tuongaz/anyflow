@@ -21,21 +21,23 @@ export const writeLastProjectId = (id: string): void => {
 };
 
 /**
- * Pick which demo to show when the user lands on `/`.
+ * Pick which demo to auto-open when the user lands on `/`. Returns `null` when
+ * we should show the picker instead of jumping into a project.
  *
- * Priority:
- *   1. The demo whose id matches the stored last-used id (if it's still in the registry).
- *   2. The first demo in the registry.
- *   3. `null` — caller falls back to empty state.
+ *   - 0 demos → null (empty state).
+ *   - 1 demo → that demo (skip the picker — there's nothing to choose).
+ *   - 2+ demos and the stored last-used id still resolves → that demo.
+ *   - 2+ demos with no valid stored id → null (show the picker).
  */
 export const pickInitialDemo = (
   demos: DemoSummary[],
   lastId: string | null,
 ): DemoSummary | null => {
   if (demos.length === 0) return null;
+  if (demos.length === 1) return demos[0] ?? null;
   if (lastId) {
     const match = demos.find((d) => d.id === lastId);
     if (match) return match;
   }
-  return demos[0] ?? null;
+  return null;
 };

@@ -54,8 +54,9 @@ export function App() {
     [refreshDemos],
   );
 
-  // US-001: when landing on '/', auto-redirect to the last-used project (or
-  // the first available one). Runs once demos resolve to an array.
+  // On '/', skip the picker when there's nothing to pick: jump straight in if
+  // only one demo is registered, or if the stored last-used demo still
+  // resolves. Otherwise (2+ demos, no recall) StudioHome renders the picker.
   useEffect(() => {
     if (pathname !== '/') return;
     if (demos === null) return;
