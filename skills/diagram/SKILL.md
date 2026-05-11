@@ -26,6 +26,15 @@ All schema validation, scope scoring, demo assembly, and registration happen
 **via the studio's HTTP API**. The skill ships two small Node scripts that
 walk the user's `$TARGET` filesystem; everything else is a `curl` call.
 
+## Path convention in this document
+
+Bare relative paths in prose (`references/demo-schema.md`,
+`agents/wiring-builder.md`, `scripts/scan-target.mjs`) are relative to
+`$SKILL_DIR`, the skill's content root. `$SKILL_DIR` is resolved in
+Phase 0 and points at either `$PLUGIN_ROOT/skills/diagram/` (plugin
+install) or `$PLUGIN_ROOT/` (flat-skill install). Code blocks that need
+to resolve a path on disk use the explicit `$SKILL_DIR/...` form.
+
 ## Announcement
 
 Announce: "Using anydemo-diagram skill to generate a playable diagram for: <request>"
@@ -121,7 +130,7 @@ on, `summary` was too long or too vague.
 
 A playable diagram (Tier 1 real, Tier 2 mock) is dramatically more useful
 than a static one — the reader can click a node and watch live state
-appear. When you have a viable choice, **prefer Playable over Static**:
+appear. When a viable choice exists, **prefer Playable over Static**:
 
 - **Tier 1 (real)** is the gold standard. Pick it whenever
   `tier-evidence.json` shows a reachable dev server on a known port.
@@ -139,49 +148,26 @@ sleepwalk into Tier 3 just because static is "simpler".
 
 ## Visual clarity for humans — duplicate to declutter
 
-This skill produces diagrams **for humans to read**, not data graphs for
-machines. A wiring with 30 nodes and 80 connectors that all converge on one
-`db` box is correct but unreadable; the same diagram with the `db` *drawn
-three times* near its three consumers is the goal.
+Diagrams are read by a human at a glance, not a machine. **Prefer
+duplicating a cross-cutting node over piling connectors into it** — a `db`
+drawn three times next to its consumers reads instantly; a single `db`
+with eight arrows fanning in does not.
 
-The studio's schema allows — and the pipeline *encourages* — duplicating a
-single logical resource into multiple node instances with distinct ids:
+Headline rules (Phases 4, 5, 6 each enforce a slice):
 
-- Every node has a unique `id`, but `label`, `kind`, `playAction`, and
-  `data.detail` can be repeated across duplicates. Two `stateNode`s both
-  labeled "Orders DB" are valid; the studio's `/api/diagram/assemble` keeps
-  them separate, and React Flow renders them as two boxes.
-- Duplicates exist to **shorten arrows and keep lanes clean**. They are not
-  for representing different state.
+- **Fan-in ≥ 3** → duplicate the target, one instance per cluster of
+  callers.
+- **Cross-cutting infra** (`database`, `cache`, `auth`, `logging`,
+  `metrics`, `queue`) → always duplicate, even at 2 callers.
+- **What stays single** → user-facing entry points, domain-owning
+  services, anything that genuinely is one box per logical thing.
+- **Id convention** → suffix with the consumer (`db-orders`,
+  `cache-checkout`). Keep `label` identical so the duplicates read as the
+  same logical thing.
 
-**When to duplicate (apply in Phases 4, 5, 6):**
-
-1. **Fan-in ≥ 3.** Any node that would receive ≥3 incoming connectors must be
-   split into one instance per cluster of callers.
-2. **Cross-cutting infra.** Always duplicate `database`, `cache`, `auth`,
-   `logging`, `metrics`, `error reporter`, and any primary queue per consumer
-   group — even at 2 callers.
-3. **Long-distance edges.** If a connector would cross more than one other
-   connector to reach its target, duplicate the target instead of routing
-   around the crossing.
-
-**Id conventions for duplicates:** suffix with the consumer name —
-`db-orders`, `db-payments`, `cache-checkout`, `auth-public`,
-`auth-admin`. Keep `label` identical across the set so a reader recognizes
-them as the same logical thing.
-
-**What stays single:**
-
-- The user-facing entry points (one `POST /orders`, not three).
-- Domain-owning services (one `orders-service`, not three).
-- Anything that genuinely is one box per logical thing.
-
-Phases 4, 5, and 6 each enforce a slice of this:
-
-- **Phase 4 (node-selector)** counts incoming fan-in and proposes duplicates.
-- **Phase 5 (wiring-builder)** rejects any node with fan-in ≥3 in self-check.
-- **Phase 6 (layout-arranger)** places duplicates next to their consumer, not
-  in the original lane.
+**Read `references/visual-clarity.md` for the full rule set, worked
+examples, and per-phase enforcement notes** before producing a wiring
+plan or a layout.
 
 ## Phase 0 — Pre-flight
 
@@ -535,34 +521,38 @@ schema rejection, missing harness, …) to a one-line fix.
 
 ## Additional Resources
 
-All paths below are relative to `$SKILL_DIR` (resolved in Phase 0).
+Paths below are relative to `$SKILL_DIR` (see the "Path convention" note
+near the top of this file).
 
 ### Reference Files
 
 For detailed information loaded only when needed:
 
-- **`$SKILL_DIR/references/demo-schema.md`** — Authoritative demo schema:
-  every node/connector variant, the canonical example, common rejection
-  causes. Read before any Phase 5/6/7 emission.
-- **`$SKILL_DIR/references/troubleshooting.md`** — Lookup table mapping
-  every common failure to its one-line fix. Surface lines from this when an
-  HTTP call returns non-2xx or the canvas appears blank.
+- **`references/demo-schema.md`** — Authoritative demo schema: every
+  node/connector variant, the canonical example, common rejection causes.
+  Read before any Phase 5/6/7 emission.
+- **`references/visual-clarity.md`** — Full rule set for duplicating
+  cross-cutting nodes, with worked examples and per-phase enforcement
+  notes. Read before producing wiring or layout.
+- **`references/troubleshooting.md`** — Lookup table mapping every common
+  failure to its one-line fix. Surface lines from this when an HTTP call
+  returns non-2xx or the canvas appears blank.
 
 ### Bundled Assets
 
-- **`$SKILL_DIR/scripts/`** — `scan-target.mjs`, `extract-routes.mjs`.
-  Run via `node` (see Phase 1).
-- **`$SKILL_DIR/templates/`** — Tier-2 harness templates:
+- **`scripts/`** — `scan-target.mjs`, `extract-routes.mjs`. Run via
+  `node` (see Phase 1).
+- **`templates/`** — Tier-2 harness templates:
   `harness-server.ts.tmpl`, `harness-package.json.tmpl`,
   `harness-readme.md.tmpl`. Consumed by `harness-author`.
-- **`$SKILL_DIR/frameworks/`** — Per-framework hints (`express.md`,
-  `hono.md`, `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`). Read the
-  matching hint when the scan reports that framework.
+- **`frameworks/`** — Per-framework hints (`express.md`, `hono.md`,
+  `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`). Read the matching
+  hint when the scan reports that framework.
 
 ### Subagents
 
-Phase orchestration uses these subagent definitions under
-`$SKILL_DIR/agents/`: `target-scanner.md` (Phase 1), `scope-proposer.md`
+Phase orchestration uses these subagent definitions under `agents/`:
+`target-scanner.md` (Phase 1), `scope-proposer.md`
 (Phase 2), `tier-detector.md` (Phase 3), `node-selector.md` (Phase 4),
 `wiring-builder.md` (Phase 5), `harness-author.md` (Phase 5b, Tier 2 only),
 `layout-arranger.md` (Phase 6).
