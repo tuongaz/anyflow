@@ -30,11 +30,12 @@ export function DetailPanel({
   recentEvents,
   onClose,
 }: DetailPanelProps) {
-  // Image nodes are decorative — clicking them must NOT open the detail
-  // panel (US-007). Treat the imageNode as if no node were selected for
+  // Image and icon nodes are decorative — clicking them must NOT open the
+  // detail panel (US-007). Treat them as if no node were selected for
   // panel-opening purposes; selection / style-strip / resize handles still
   // work because they live on the React Flow node, not the panel.
-  const inspectableNode = node && node.type !== 'imageNode' ? node : null;
+  const inspectableNode =
+    node && node.type !== 'imageNode' && node.type !== 'iconNode' ? node : null;
   const open = inspectableNode !== null || connector !== null;
   // Shape and image nodes are decorative — no detail/dynamicSource/run surface.
   const functionalNode =

@@ -139,11 +139,31 @@ const ImageNodeSchema = z.object({
   data: ImageNodeDataSchema,
 });
 
+// Decorative icon node — renders a Lucide glyph on the canvas. Unboxed
+// (no border/cornerRadius/backgroundColor) so it does NOT spread
+// NodeVisualBaseShape; only `width` / `height` are reused for resizing.
+const IconNodeDataSchema = z.object({
+  icon: z.string().min(1),
+  color: ColorTokenSchema.optional(),
+  strokeWidth: z.number().min(0.5).max(4).optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  alt: z.string().optional(),
+});
+
+const IconNodeSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('iconNode'),
+  position: PositionSchema,
+  data: IconNodeDataSchema,
+});
+
 const NodeSchema = z.discriminatedUnion('type', [
   PlayNodeSchema,
   StateNodeSchema,
   ShapeNodeSchema,
   ImageNodeSchema,
+  IconNodeSchema,
 ]);
 
 // Connector is the semantic edge between two nodes — describes HOW they are
@@ -267,6 +287,7 @@ export type Demo = z.infer<typeof DemoSchema>;
 export type DemoNode = z.infer<typeof NodeSchema>;
 export type ShapeNode = z.infer<typeof ShapeNodeSchema>;
 export type ImageNode = z.infer<typeof ImageNodeSchema>;
+export type IconNode = z.infer<typeof IconNodeSchema>;
 export type ShapeKind = z.infer<typeof ShapeKindSchema>;
 export type ColorToken = z.infer<typeof ColorTokenSchema>;
 export type Connector = z.infer<typeof ConnectorSchema>;

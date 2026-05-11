@@ -782,6 +782,123 @@ describe('DemoSchema', () => {
     expect(result.data.resetAction).toBeUndefined();
   });
 
+  it('parses an iconNode with only the required icon field (US-008)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'icon-demo',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 10, y: 20 },
+          data: { icon: 'shopping-cart' },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'iconNode') throw new Error('expected iconNode');
+    expect(node.data.icon).toBe('shopping-cart');
+    expect(node.data.color).toBeUndefined();
+    expect(node.data.strokeWidth).toBeUndefined();
+  });
+
+  it('parses an iconNode with every optional field set (US-008)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'icon-full',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            icon: 'help-circle',
+            color: 'blue' as const,
+            strokeWidth: 1.5,
+            width: 64,
+            height: 64,
+            alt: 'help indicator',
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'iconNode') throw new Error('expected iconNode');
+    expect(node.data.icon).toBe('help-circle');
+    expect(node.data.color).toBe('blue');
+    expect(node.data.strokeWidth).toBe(1.5);
+    expect(node.data.width).toBe(64);
+    expect(node.data.height).toBe(64);
+    expect(node.data.alt).toBe('help indicator');
+  });
+
+  it('rejects an iconNode with an empty icon string (US-008)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-icon',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 0 },
+          data: { icon: '' },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('rejects an iconNode strokeWidth outside [0.5, 4] (US-008)', () => {
+    const make = (strokeWidth: number) => ({
+      version: 1 as const,
+      name: 'bad-stroke',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 0 },
+          data: { icon: 'shopping-cart', strokeWidth },
+        },
+      ],
+      connectors: [],
+    });
+    expect(DemoSchema.safeParse(make(0.25)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(4.5)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(0.5)).success).toBe(true);
+    expect(DemoSchema.safeParse(make(4)).success).toBe(true);
+  });
+
+  it('rejects an iconNode with non-positive width or height (US-008)', () => {
+    const make = (width: number, height: number) => ({
+      version: 1 as const,
+      name: 'bad-icon-size',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 0 },
+          data: { icon: 'shopping-cart', width, height },
+        },
+      ],
+      connectors: [],
+    });
+    expect(DemoSchema.safeParse(make(0, 48)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(-10, 48)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(48, 0)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(48, -10)).success).toBe(false);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

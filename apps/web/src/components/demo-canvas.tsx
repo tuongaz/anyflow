@@ -1183,7 +1183,7 @@ export function DemoCanvas({
           setResizing,
           onLabelChange: onNodeLabelChange,
           onDescriptionChange:
-            merged.type === 'shapeNode' || merged.type === 'imageNode'
+            merged.type === 'shapeNode' || merged.type === 'imageNode' || merged.type === 'iconNode'
               ? undefined
               : onNodeDescriptionChange,
           // US-015: inject autoEditOnMount on the freshly drop-popover-created

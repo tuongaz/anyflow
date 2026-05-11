@@ -1047,7 +1047,13 @@ export function DemoView({
     (nodeId: string, summary: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      if (!node || node.type === 'shapeNode' || node.type === 'imageNode') return;
+      if (
+        !node ||
+        node.type === 'shapeNode' ||
+        node.type === 'imageNode' ||
+        node.type === 'iconNode'
+      )
+        return;
       const prevDetail = node.data.detail;
       const nextDetail = { ...(prevDetail ?? {}), summary };
       setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);

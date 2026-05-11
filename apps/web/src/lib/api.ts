@@ -78,6 +78,18 @@ export interface ImageNodeData extends NodeVisual {
   alt?: string;
 }
 
+// Decorative icon node — renders a Lucide glyph. Mirrors IconNodeDataSchema
+// in apps/studio/src/schema.ts; unboxed (no border/cornerRadius/background)
+// so it does NOT extend NodeVisual — only width/height are reused.
+export interface IconNodeData {
+  icon: string;
+  color?: ColorToken;
+  strokeWidth?: number;
+  width?: number;
+  height?: number;
+  alt?: string;
+}
+
 interface NodeBase {
   id: string;
   position: { x: number; y: number };
@@ -87,7 +99,8 @@ export type DemoNode =
   | (NodeBase & { type: 'playNode'; data: NodeData })
   | (NodeBase & { type: 'stateNode'; data: NodeData })
   | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData })
-  | (NodeBase & { type: 'imageNode'; data: ImageNodeData });
+  | (NodeBase & { type: 'imageNode'; data: ImageNodeData })
+  | (NodeBase & { type: 'iconNode'; data: IconNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
 export type ConnectorDirection = 'forward' | 'backward' | 'both';
@@ -335,7 +348,7 @@ export const updateConnector = async (
 
 export interface CreateNodeBody {
   id?: string;
-  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode';
+  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode';
   position: { x: number; y: number };
   data: Record<string, unknown>;
 }

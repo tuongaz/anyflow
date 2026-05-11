@@ -143,6 +143,13 @@ export function StyleStrip({
   // value; the value is purely cosmetic for the trigger swatch/icon.
   const firstNode = nodes[0];
   const firstConnector = connectors[0];
+  // iconNode is unboxed (no border/background/cornerRadius/fontSize). Filter
+  // it out for the shared border/font/corner controls — US-014 wires the
+  // iconNode-only color picker through this strip separately.
+  const visualNodes = nodes.filter(
+    (n): n is Exclude<DemoNode, { type: 'iconNode' }> => n.type !== 'iconNode',
+  );
+  const firstVisualNode = visualNodes[0];
   // Text-shape simplification only applies to pure-node selections of a single
   // text shape. Mixed selections (text-shape node + connector) still need the
   // shared border controls visible, so the guard is gated on `pureNode`.
@@ -153,9 +160,9 @@ export function StyleStrip({
   // border-color trigger reflects the connector's color; for pure-node
   // selections, the node's borderColor.
   const borderColorActive: ColorToken =
-    (pureConnector ? firstConnector?.color : firstNode?.data.borderColor) ?? 'default';
-  const backgroundActive: ColorToken = firstNode?.data.backgroundColor ?? 'default';
-  const borderStyleActiveNode = (firstNode?.data.borderStyle ?? 'solid') as
+    (pureConnector ? firstConnector?.color : firstVisualNode?.data.borderColor) ?? 'default';
+  const backgroundActive: ColorToken = firstVisualNode?.data.backgroundColor ?? 'default';
+  const borderStyleActiveNode = (firstVisualNode?.data.borderStyle ?? 'solid') as
     | 'solid'
     | 'dashed'
     | 'dotted';
@@ -214,8 +221,8 @@ export function StyleStrip({
   // unset (undefined) as the default so a node with explicit 22 and one
   // without are considered equal.
   const fontSizeIndeterminate =
-    nodes.length > 1 &&
-    new Set(nodes.map((n) => n.data.fontSize ?? NODE_FONT_SIZE_DEFAULT)).size > 1;
+    visualNodes.length > 1 &&
+    new Set(visualNodes.map((n) => n.data.fontSize ?? NODE_FONT_SIZE_DEFAULT)).size > 1;
   // US-005: corner-radius apply/preview. Mirrors the borderSize fan-out
   // (per-node loop) so multi-select drags update every selected node and
   // the live preview surfaces optimistic overrides during the drag.
@@ -226,8 +233,8 @@ export function StyleStrip({
     for (const node of nodes) onStyleNodePreview?.(node.id, { cornerRadius: n });
   };
   const cornerRadiusIndeterminate =
-    nodes.length > 1 &&
-    new Set(nodes.map((n) => n.data.cornerRadius ?? DEFAULT_CORNER_RADIUS)).size > 1;
+    visualNodes.length > 1 &&
+    new Set(visualNodes.map((n) => n.data.cornerRadius ?? DEFAULT_CORNER_RADIUS)).size > 1;
   const applyConnectorPath = (path: ConnectorPath) => {
     for (const c of connectors) onStyleConnector(c.id, { path });
   };
@@ -240,7 +247,7 @@ export function StyleStrip({
   // value since "border width" applies to both).
   const widthCurrent = pureConnector
     ? (firstConnector?.borderSize ?? DEFAULT_STROKE_WIDTH)
-    : (firstNode?.data.borderSize ?? DEFAULT_BORDER_SIZE);
+    : (firstVisualNode?.data.borderSize ?? DEFAULT_BORDER_SIZE);
   const widthDefault = pureConnector ? DEFAULT_STROKE_WIDTH : DEFAULT_BORDER_SIZE;
 
   const colorTriggerKind: SwatchPreviewKind = pureConnector ? 'edge' : 'border';
@@ -348,7 +355,7 @@ export function StyleStrip({
             renderIcon={() => <Type className="h-4 w-4" />}
           >
             <SliderControl
-              value={firstNode?.data.fontSize}
+              value={firstVisualNode?.data.fontSize}
               defaultValue={NODE_FONT_SIZE_DEFAULT}
               min={10}
               max={32}
@@ -369,7 +376,7 @@ export function StyleStrip({
             renderIcon={() => <Squircle className="h-4 w-4" />}
           >
             <SliderControl
-              value={firstNode?.data.cornerRadius}
+              value={firstVisualNode?.data.cornerRadius}
               defaultValue={DEFAULT_CORNER_RADIUS}
               min={0}
               max={32}
