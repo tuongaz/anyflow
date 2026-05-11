@@ -126,6 +126,44 @@ export function selectUngroupableSet(
 }
 
 /**
+ * US-014: expand a list of to-delete node ids so that every group id in the
+ * input pulls in the ids of every node whose `parentId` matches it. Returns
+ * a deduplicated array preserving the input's relative order; non-group ids
+ * are kept as-is. Flat groups only — one level of `parentId` expansion is
+ * enough because the schema's `superRefine` already rejects nested groups.
+ *
+ * The expansion is the contract that lets `onDeleteSelection` / `onDeleteNode`
+ * delete a group AND its children in a single batch (one undo entry covers
+ * the whole cascade, and the schema invariant "child.parentId references a
+ * resolvable parent" stays satisfied — the children leave with their parent).
+ */
+export function expandGroupNodeIds(
+  nodeIds: readonly string[],
+  nodes: readonly GroupableNode[],
+): string[] {
+  if (nodeIds.length === 0) return [];
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const groupIdSet = new Set<string>();
+  for (const id of nodeIds) {
+    const node = byId.get(id);
+    if (node && node.type === 'group') groupIdSet.add(id);
+  }
+  if (groupIdSet.size === 0) return [...nodeIds];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (id: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  for (const id of nodeIds) push(id);
+  for (const node of nodes) {
+    if (node.parentId !== undefined && groupIdSet.has(node.parentId)) push(node.id);
+  }
+  return out;
+}
+
+/**
  * React Flow invariant: a parent node must appear BEFORE all of its children
  * in the `nodes` array, otherwise the child renders without a parent context
  * for one frame and its position is mis-anchored. Use this to insert a freshly

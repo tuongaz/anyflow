@@ -1,9 +1,15 @@
+import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { GroupNodeData } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { Node, NodeProps } from '@xyflow/react';
-import { memo } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  memo,
+  useState,
+} from 'react';
 
 export type GroupNodeRuntimeData = GroupNodeData & {
   onResize?: (
@@ -11,6 +17,11 @@ export type GroupNodeRuntimeData = GroupNodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
+  // US-014: persist the inline-edited label via the shared PATCH path. Reuses
+  // demo-view.tsx's `onNodeLabelChange`, which coalesces under
+  // `node:<id>:label` so a typing session produces a single undo entry.
+  // Absent → clicks on the slot are a no-op (read-only contexts).
+  onLabelChange?: (nodeId: string, label: string) => void;
 } & Record<string, unknown>;
 export type GroupNodeType = Node<GroupNodeRuntimeData, 'group'>;
 
@@ -34,6 +45,29 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   // owns dimensions and the inner fills via h-full w-full. Before any resize,
   // we pin a default size so the wrapper auto-sizes to it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
+  const labelEditable = !!data.onLabelChange;
+  const [isEditing, setIsEditing] = useState(false);
+
+  // US-014: clicking the label slot enters inline-edit mode (mirrors US-004's
+  // iconNode dblclick → label-edit binding, but `click` is the gesture here
+  // because the slot is a dedicated affordance — the group body is otherwise
+  // empty so click-to-edit doesn't collide with any other action). No-op when
+  // label edits aren't wired (e.g. readonly demos).
+  const handleLabelClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!labelEditable || isEditing) return;
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+  // Keyboard parity: Enter/Space on the focused slot triggers the same edit
+  // entry as a click. React Flow keeps the node container itself focusable;
+  // the slot inherits focus through the wrapper's tabIndex.
+  const handleLabelKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!labelEditable || isEditing) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsEditing(true);
+  };
 
   // Chrome (dashed border, transparent fill, selected outline) lives in CSS
   // (.react-flow__node-group rules in apps/web/src/index.css) so this
@@ -48,7 +82,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
       }
     >
       <ResizeControls
-        visible={!!selected && !!data.onResize}
+        visible={!!selected && !!data.onResize && !isEditing}
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
@@ -56,11 +90,29 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
         onResizeEnd={onResizeEnd}
       />
       <div
-        className="react-flow__node-group-label"
+        className={cn(
+          'react-flow__node-group-label',
+          labelEditable && !isEditing ? 'cursor-text' : '',
+        )}
         data-testid="group-node-label"
+        data-editing={isEditing ? 'true' : undefined}
         style={{ height: LABEL_SLOT_HEIGHT }}
+        onClick={handleLabelClick}
+        onKeyDown={handleLabelKeyDown}
+        role={labelEditable && !isEditing ? 'button' : undefined}
+        tabIndex={labelEditable && !isEditing ? 0 : undefined}
       >
-        {data.label && data.label.length > 0 ? data.label : null}
+        {isEditing && labelEditable ? (
+          <InlineEdit
+            initialValue={data.label ?? ''}
+            field="group-node-label"
+            onCommit={(v) => data.onLabelChange?.(id, v)}
+            onExit={() => setIsEditing(false)}
+            placeholder="Group label"
+          />
+        ) : data.label && data.label.length > 0 ? (
+          data.label
+        ) : null}
       </div>
     </div>
   );

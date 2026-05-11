@@ -31,6 +31,7 @@ import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import {
   type GroupableNode,
   computeGroupBbox,
+  expandGroupNodeIds,
   selectGroupableSet,
   selectUngroupableSet,
   toAbsolutePosition,
@@ -180,6 +181,14 @@ export function DemoView({
   useEffect(() => {
     selectedConnectorIdsRef.current = selectedConnectorIds;
   }, [selectedConnectorIds]);
+  // US-014: `onDeleteNode` (defined first) needs to route group deletes to
+  // the batch delete path `onDeleteSelection` (defined later) so the cascade
+  // is one undo entry. A ref bridges the forward reference — the effect below
+  // keeps it pointed at the latest closure as `onDeleteSelection`'s deps
+  // change.
+  const onDeleteSelectionRef = useRef<((nodeIds: string[], connIds: string[]) => void) | null>(
+    null,
+  );
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -665,12 +674,27 @@ export function DemoView({
   const onDeleteNode = useCallback(
     (nodeId: string) => {
       if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      if (!node) return;
+      // US-014: when the to-delete node is a group, the operation must expand
+      // to include every node whose `parentId` references it so the group +
+      // its children leave together. The schema's `superRefine` rejects
+      // orphaned children (parentId references a missing parent), so deleting
+      // the group alone would 400 unless its children are also gone. We route
+      // group deletes through `onDeleteSelectionRef.current` (the batch path)
+      // so the cascade collapses into ONE undo entry covering the group + its
+      // children + every cascaded connector — see `onDeleteSelection` below
+      // for the implementation. The ref indirection avoids a forward-reference
+      // TDZ issue (onDeleteSelection is defined after onDeleteNode).
+      if (node.type === 'group') {
+        const expanded = expandGroupNodeIds([nodeId], (demoNodes ?? []) as GroupableNode[]);
+        onDeleteSelectionRef.current?.(expanded, []);
+        return;
+      }
       // Snapshot the node + every cascaded connector BEFORE the delete API
       // call, so undo can recreate them all (preserving original ids and
       // adjacency order). The server cascades via the same source/target
       // filter; mirroring it here keeps the undo round-trip faithful.
-      const node = demoNodes?.find((n) => n.id === nodeId);
-      if (!node) return;
       const cascaded = (demoConnectors ?? []).filter(
         (c) => c.source === nodeId || c.target === nodeId,
       );
@@ -820,12 +844,20 @@ export function DemoView({
   // in parallel, and pushes ONE undo entry that re-creates the whole batch on
   // Cmd+Z (single keystroke restores N nodes + their connectors). Mirrors the
   // onTidy / onStyleNodes batch shape.
+  // US-014: when a group node is among the to-delete ids, expand to include
+  // every node whose `parentId` matches one of those group ids (flat groups
+  // only — schema rejects nested groups). The expansion happens once, before
+  // the existing delete path runs, and children are ordered BEFORE their
+  // parent in the server-call sequence so the schema's `superRefine`
+  // ("parentId references known node") never sees a moment where a child's
+  // parent has already left disk.
   const onDeleteSelection = useCallback(
     (nodeIds: string[], connectorIds: string[]) => {
       if (!demoId) return;
       if (nodeIds.length === 0 && connectorIds.length === 0) return;
-      const cascadingNodeIdSet = new Set(nodeIds);
-      const nodeSnapshots = nodeIds
+      const expandedNodeIds = expandGroupNodeIds(nodeIds, (demoNodes ?? []) as GroupableNode[]);
+      const cascadingNodeIdSet = new Set(expandedNodeIds);
+      const nodeSnapshots = expandedNodeIds
         .map((id) => demoNodes?.find((n) => n.id === id))
         .filter((n): n is DemoNode => !!n);
       // Cascaded connectors: any connector whose source/target is in the
@@ -861,6 +893,21 @@ export function DemoView({
       ];
       if (allDoomedNodeIds.length > 0) markNodesDeleted(allDoomedNodeIds);
       if (allDoomedConnIds.length > 0) markConnectorsDeleted(allDoomedConnIds);
+      // US-014: ORDER the per-server delete sequence so children (whose
+      // parentId references another doomed node) go BEFORE the parent. The
+      // schema's `superRefine` rejects any state where a node's `parentId`
+      // references a missing parent; if the parent left disk first, the
+      // intermediate state has an orphaned child and the parent's delete
+      // would 400 mid-batch. Children-first keeps every intermediate state
+      // schema-valid. Stable order otherwise (the order from `expandedNodeIds`).
+      const childFirstNodeSnapshots = [
+        ...nodeSnapshots.filter(
+          (n) => n.parentId !== undefined && cascadingNodeIdSet.has(n.parentId),
+        ),
+        ...nodeSnapshots.filter(
+          (n) => !(n.parentId !== undefined && cascadingNodeIdSet.has(n.parentId)),
+        ),
+      ];
       // Trim selection so the inspector closes / multi-selection shrinks
       // immediately.
       setSelectedIds((prev) => prev.filter((id) => !cascadingNodeIdSet.has(id)));
@@ -886,18 +933,30 @@ export function DemoView({
         do: async () => {
           if (allDoomedNodeIds.length > 0) markNodesDeleted(allDoomedNodeIds);
           if (allDoomedConnIds.length > 0) markConnectorsDeleted(allDoomedConnIds);
-          await Promise.allSettled(nodeSnapshots.map((n) => deleteNode(demoId, n.id)));
+          // US-014: serialize the per-node deletes in children-first order so
+          // the schema invariant (parentId references resolvable node) stays
+          // satisfied at every intermediate state. The studio's per-demo write
+          // lock would serialize parallel calls anyway, but explicit ordering
+          // is what guarantees children go first.
+          for (const n of childFirstNodeSnapshots) {
+            await deleteNode(demoId, n.id).catch(() => {});
+          }
           await Promise.allSettled(explicitConnSnapshots.map((c) => deleteConnector(demoId, c.id)));
         },
         undo: async () => {
           if (allDoomedNodeIds.length > 0) unmarkNodesDeleted(allDoomedNodeIds);
           if (allDoomedConnIds.length > 0) unmarkConnectorsDeleted(allDoomedConnIds);
-          for (const n of nodeSnapshots) {
+          // US-014 mirror: re-create parents BEFORE children so the child's
+          // parentId resolves on creation. Reverse of the do-leg order.
+          for (let i = childFirstNodeSnapshots.length - 1; i >= 0; i--) {
+            const n = childFirstNodeSnapshots[i];
+            if (!n) continue;
             await createNode(demoId, {
               id: n.id,
               type: n.type,
               position: n.position,
               data: n.data as unknown as Record<string, unknown>,
+              ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
             });
           }
           for (const c of [...cascadedConnectors, ...explicitConnSnapshots]) {
@@ -905,12 +964,14 @@ export function DemoView({
           }
         },
       });
-      // Fire the deletes in parallel. Partial failure surfaces a banner; the
-      // user can Cmd+Z the whole batch.
       // US-016: per-target rollback. When a delete fails, restore that
       // entity's visibility (and its cascaded connectors, for nodes) by
       // dropping it from the optimistic-delete set. Other successful
       // entities stay hidden until SSE prunes them.
+      // US-014: serialize node deletes in children-first order so the
+      // schema invariant holds at every intermediate state (see do-leg
+      // comment above). Connector deletes can still fire in parallel — they
+      // have no inter-dependencies on each other.
       const cascadedByNodeId = new Map<string, string[]>();
       for (const n of nodeSnapshots) {
         cascadedByNodeId.set(
@@ -918,31 +979,34 @@ export function DemoView({
           cascadedConnectors.filter((c) => c.source === n.id || c.target === n.id).map((c) => c.id),
         );
       }
-      Promise.all([
-        ...nodeSnapshots.map(async (n) => {
+      (async () => {
+        const failures: string[] = [];
+        for (const n of childFirstNodeSnapshots) {
           try {
             await deleteNode(demoId, n.id);
-            return null;
           } catch (err) {
             unmarkNodeDeleted(n.id);
             const cascadedForN = cascadedByNodeId.get(n.id) ?? [];
             if (cascadedForN.length > 0) unmarkConnectorsDeleted(cascadedForN);
-            return err instanceof Error ? err.message : String(err);
+            failures.push(err instanceof Error ? err.message : String(err));
           }
-        }),
-        ...explicitConnSnapshots.map(async (c) => {
-          try {
-            await deleteConnector(demoId, c.id);
-            return null;
-          } catch (err) {
-            unmarkConnectorDeleted(c.id);
-            return err instanceof Error ? err.message : String(err);
-          }
-        }),
-      ]).then((failures) => {
-        const firstErr = failures.find((f): f is string => f !== null);
-        if (firstErr) setEditError(firstErr);
-      });
+        }
+        const connResults = await Promise.all(
+          explicitConnSnapshots.map(async (c) => {
+            try {
+              await deleteConnector(demoId, c.id);
+              return null;
+            } catch (err) {
+              unmarkConnectorDeleted(c.id);
+              return err instanceof Error ? err.message : String(err);
+            }
+          }),
+        );
+        for (const f of connResults) {
+          if (f !== null) failures.push(f);
+        }
+        if (failures.length > 0 && failures[0] !== undefined) setEditError(failures[0]);
+      })();
     },
     [
       demoId,
@@ -960,6 +1024,13 @@ export function DemoView({
       markMutation,
     ],
   );
+
+  // US-014: keep `onDeleteSelectionRef` pointed at the latest closure so
+  // `onDeleteNode` (defined above) can delegate group deletes to the batch
+  // path without a forward-reference TDZ.
+  useEffect(() => {
+    onDeleteSelectionRef.current = onDeleteSelection;
+  }, [onDeleteSelection]);
 
   // Delete/Backspace shortcut: removes EVERY selected node and connector
   // (US-019). Skipped while focus is in any text-editing element so
@@ -1035,6 +1106,14 @@ export function DemoView({
       // ImageNodeData has no `label`; the union narrowing here keeps prevLabel
       // typed as `string | undefined` so the undo entry can restore it.
       const prevLabel = node && 'label' in node.data ? node.data.label : undefined;
+      // US-014: undo must restore the previous label including the "no label"
+      // case. Sending `label: undefined` would be JSON-stripped to an empty
+      // PATCH body and have no effect on disk; substitute the empty-string
+      // sentinel which optional-label nodes (iconNode / shapeNode / group)
+      // treat as "clear". Required-label nodes (playNode/stateNode) never
+      // reach this branch because their `label` is `.min(1)` so prevLabel is
+      // always a non-empty string.
+      const undoLabel = prevLabel ?? '';
       setNodeOverride(nodeId, { data: { label } } as Partial<DemoNode>);
       setEditError(null);
       markMutation();
@@ -1044,7 +1123,7 @@ export function DemoView({
             await updateNode(demoId, nodeId, { label });
           },
           undo: async () => {
-            await updateNode(demoId, nodeId, { label: prevLabel });
+            await updateNode(demoId, nodeId, { label: undoLabel });
           },
           coalesceKey: `node:${nodeId}:label`,
         });

@@ -21,6 +21,10 @@ import { useCallback, useReducer, useRef } from 'react';
 //   • reorder z-index — onReorderNode (no key)
 //   • tidy layout — onTidy (no key, batched)
 //   • paste — onPasteNodes (no key, batched)
+//   • group create (US-012) — groupNodes (no key, batched: group POST + N parentId PATCHes)
+//   • group ungroup (US-013) — ungroupSelectedGroups / ungroupNode (no key, batched: N parentId clears + 1 group DELETE)
+//   • group rename (US-014) — onNodeLabelChange on a group node (key: node:<id>:label — same coalescing as other label edits)
+//   • group delete-cascade (US-014) — onDeleteSelection / onDeleteNode expand group ids to include every child (key-less, batched: child deletes first, then the group)
 
 export interface UndoEntry {
   do: () => Promise<void>;

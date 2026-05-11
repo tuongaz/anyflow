@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   type GroupableNode,
   computeGroupBbox,
+  expandGroupNodeIds,
   insertGroupBeforeChildren,
   selectGroupableSet,
   selectUngroupableSet,
@@ -180,5 +181,78 @@ describe('insertGroupBeforeChildren', () => {
       'a',
       'b',
     ]);
+  });
+});
+
+describe('expandGroupNodeIds (US-014)', () => {
+  it('returns an empty array for an empty input', () => {
+    expect(expandGroupNodeIds([], [])).toEqual([]);
+  });
+
+  it('returns input unchanged when no group ids are in it', () => {
+    const nodes = [
+      makeNode({ id: 'a' }),
+      makeNode({ id: 'b' }),
+      makeNode({ id: 'g', type: 'group' }),
+    ];
+    expect(expandGroupNodeIds(['a', 'b'], nodes)).toEqual(['a', 'b']);
+  });
+
+  it('expands a group id to include every child node by parentId', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', parentId: 'g' }),
+      makeNode({ id: 'b', parentId: 'g' }),
+      makeNode({ id: 'c' }),
+    ];
+    expect(expandGroupNodeIds(['g'], nodes)).toEqual(['g', 'a', 'b']);
+  });
+
+  it('mixed selection: free nodes stay, group children get pulled in', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', parentId: 'g' }),
+      makeNode({ id: 'b', parentId: 'g' }),
+      makeNode({ id: 'c' }),
+    ];
+    expect(expandGroupNodeIds(['c', 'g'], nodes)).toEqual(['c', 'g', 'a', 'b']);
+  });
+
+  it('dedups when a child is already explicitly in the input', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', parentId: 'g' }),
+      makeNode({ id: 'b', parentId: 'g' }),
+    ];
+    // 'a' appears in the input AND would be pulled in by expansion — expect one copy.
+    expect(expandGroupNodeIds(['a', 'g'], nodes)).toEqual(['a', 'g', 'b']);
+  });
+
+  it('handles multiple groups in the same selection', () => {
+    const nodes = [
+      makeNode({ id: 'g1', type: 'group' }),
+      makeNode({ id: 'g2', type: 'group' }),
+      makeNode({ id: 'a', parentId: 'g1' }),
+      makeNode({ id: 'b', parentId: 'g2' }),
+      makeNode({ id: 'c' }),
+    ];
+    expect(expandGroupNodeIds(['g1', 'g2'], nodes)).toEqual(['g1', 'g2', 'a', 'b']);
+  });
+
+  it('skips ids that do not exist in nodes (defensive)', () => {
+    const nodes = [makeNode({ id: 'a' })];
+    expect(expandGroupNodeIds(['ghost', 'a'], nodes)).toEqual(['ghost', 'a']);
+  });
+
+  it('does not expand a non-group id even if some node has it as parentId (shouldn’t happen, but defensive)', () => {
+    const nodes = [makeNode({ id: 'a' }), makeNode({ id: 'b', parentId: 'a' })];
+    expect(expandGroupNodeIds(['a'], nodes)).toEqual(['a']);
+  });
+
+  it('does not mutate the input array', () => {
+    const nodes = [makeNode({ id: 'g', type: 'group' }), makeNode({ id: 'a', parentId: 'g' })];
+    const input = ['g'];
+    expandGroupNodeIds(input, nodes);
+    expect(input).toEqual(['g']);
   });
 });

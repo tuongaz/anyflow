@@ -471,9 +471,17 @@ button:disabled {
   font-weight: 500;
   color: hsl(var(--muted-foreground));
   background: transparent;
-  pointer-events: none;
+  /* US-014: pointer-events:auto so the slot can receive the click that enters
+     label-edit mode. Drag-from-label still works because React Flow's node
+     drag is initialized at pointerdown on the wrapper which bubbles up before
+     our local click handler runs (click only fires on pointerup without
+     drag). */
+  pointer-events: auto;
   z-index: 2;
   user-select: none;
+}
+.react-flow__node-group .react-flow__node-group-label[data-editing="true"] {
+  user-select: text;
 }
 
 /* US-007: when a node is selected, its 4 connection handles relocate from
