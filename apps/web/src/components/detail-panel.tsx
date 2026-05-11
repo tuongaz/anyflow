@@ -12,8 +12,15 @@ import {
   startResizeGesture,
 } from '@/lib/detail-panel-width';
 import { cn } from '@/lib/utils';
-import { RefreshCw } from 'lucide-react';
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, useState } from 'react';
+import { Check, Pencil, RefreshCw } from 'lucide-react';
+import {
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -26,6 +33,12 @@ export interface DetailPanelProps {
   run?: NodeRunState;
   /** Last N node:* events for the selected node (newest first). */
   recentEvents?: NodeEventLogEntry[];
+  /**
+   * US-005: commit a new long-form description (`detail.description`) for the
+   * given node. When omitted, the Description block is read-only — no pencil
+   * affordance appears. Saving an empty string clears the description.
+   */
+  onDescriptionChange?: (nodeId: string, description: string) => void;
   onClose: () => void;
 }
 
@@ -35,6 +48,7 @@ export function DetailPanel({
   connector,
   run,
   recentEvents,
+  onDescriptionChange,
   onClose,
 }: DetailPanelProps) {
   // Decorative nodes (imageNode, iconNode) never open the detail panel —
@@ -87,6 +101,18 @@ export function DetailPanel({
         className="overflow-y-auto sm:!w-[var(--detail-panel-w)] sm:!max-w-[var(--detail-panel-w)]"
         style={widthStyle}
         data-testid="detail-panel"
+        onEscapeKeyDown={(e) => {
+          // US-005: when the description textarea is in edit mode, Escape is
+          // the cancel-edit shortcut — preventDefault stops Radix from also
+          // closing the entire Sheet. The EditableDescription's own
+          // onKeyDown handles the cancel side. Without this, Escape would
+          // discard the edit AND close the panel, dropping the user out of
+          // the inspector entirely.
+          const active = document.activeElement as HTMLElement | null;
+          if (active?.getAttribute('data-testid') === 'detail-panel-description-textarea') {
+            e.preventDefault();
+          }
+        }}
         onInteractOutside={(e) => {
           // Resize gestures (US-031) start with a pointerdown on a
           // .react-flow__resize-control outside the Sheet. Radix's default
@@ -135,7 +161,11 @@ export function DetailPanel({
 
             <div className="mt-0 flex flex-col gap-3">
               {detail?.description || detail?.summary ? (
-                <DescriptionMarkdown source={detail.description ?? detail.summary ?? ''} />
+                <EditableDescription
+                  nodeId={inspectableNode.id}
+                  source={detail.description ?? detail.summary ?? ''}
+                  onSave={onDescriptionChange}
+                />
               ) : null}
 
               {detail?.fields && detail.fields.length > 0 ? (
@@ -222,6 +252,139 @@ export function DescriptionMarkdown({ source }: { source: string }) {
       >
         {source}
       </ReactMarkdown>
+    </div>
+  );
+}
+
+// US-005: editable wrapper around the rendered Description markdown. The
+// pencil/save icons live in the top-right of the block; the pencil is the
+// only affordance — no always-visible Edit button. Default is rendered
+// markdown; clicking the pencil swaps to a textarea prefilled with the
+// current source; the save (check) icon commits; Escape or blurring to a
+// non-save target discards. Save and discard each route through
+// `onSave(nodeId, value)` which the parent translates into a single undo
+// entry (see demo-view.tsx::onDetailDescriptionChange).
+export function EditableDescription({
+  nodeId,
+  source,
+  onSave,
+}: {
+  nodeId: string;
+  source: string;
+  onSave?: (nodeId: string, description: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(source);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Prevent textarea onBlur from discarding when focus is moving to the save
+  // button (which fires its onClick AFTER blur). The save button's
+  // onMouseDown sets this flag; we re-enable blur-discard after onClick.
+  const suppressBlurRef = useRef(false);
+
+  // External `source` updates (e.g. SSE echo) shouldn't clobber an in-progress
+  // edit, but when not editing we want the draft to track the latest source.
+  useEffect(() => {
+    if (!isEditing) setDraft(source);
+  }, [source, isEditing]);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      const el = textareaRef.current;
+      el.focus();
+      el.select();
+    }
+  }, [isEditing]);
+
+  // When `onSave` isn't wired (read-only mode), render the plain markdown
+  // with no chrome — same DOM as the prior implementation so callers that
+  // depend on the bare DescriptionMarkdown layout aren't affected.
+  if (!onSave) return <DescriptionMarkdown source={source} />;
+
+  const enterEdit = () => {
+    setDraft(source);
+    setIsEditing(true);
+  };
+
+  const commit = () => {
+    onSave(nodeId, draft);
+    setIsEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(source);
+    setIsEditing(false);
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    // Stop the keystroke from bubbling to the canvas — Backspace/Delete on
+    // the canvas would otherwise trigger node deletion (US-027).
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancel();
+      // Sheet's Escape-to-close suppression is handled at the SheetContent
+      // level via onEscapeKeyDown (see DetailPanel below).
+    }
+  };
+
+  const onBlur = () => {
+    if (suppressBlurRef.current) {
+      suppressBlurRef.current = false;
+      return;
+    }
+    cancel();
+  };
+
+  return (
+    <div
+      className="group relative"
+      data-testid="detail-panel-description-block"
+      data-editing={isEditing ? 'true' : 'false'}
+    >
+      {isEditing ? (
+        <>
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={onBlur}
+            data-testid="detail-panel-description-textarea"
+            className="block w-full resize-y rounded-md border bg-background px-2 py-1.5 pr-8 font-mono text-xs leading-relaxed"
+            rows={Math.min(12, Math.max(3, draft.split('\n').length + 1))}
+            aria-label="Edit description"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="absolute right-0.5 top-0.5 h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+            onMouseDown={() => {
+              suppressBlurRef.current = true;
+            }}
+            onClick={commit}
+            data-testid="detail-panel-description-save"
+            aria-label="Save description"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      ) : (
+        <>
+          <DescriptionMarkdown source={source} />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="absolute right-0.5 top-0.5 h-6 w-6 p-0 text-muted-foreground opacity-30 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+            onClick={enterEdit}
+            data-testid="detail-panel-description-edit"
+            aria-label="Edit description"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
     </div>
   );
 }

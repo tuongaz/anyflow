@@ -1081,6 +1081,47 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
+  // US-005: detail-panel inline edit of the long-form `detail.description`
+  // field (distinct from `detail.summary` which is the on-node short text).
+  // Same optimistic + undo + error pattern as onNodeDescriptionChange above.
+  const onDetailDescriptionChange = useCallback(
+    (nodeId: string, description: string) => {
+      if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      if (
+        !node ||
+        node.type === 'shapeNode' ||
+        node.type === 'imageNode' ||
+        node.type === 'iconNode'
+      )
+        return;
+      const prevDetail = node.data.detail;
+      // Empty string clears the field so the description block stops rendering
+      // (parity with the existing `detail?.description || detail?.summary`
+      // gate in detail-panel.tsx).
+      const nextDescription = description === '' ? undefined : description;
+      const nextDetail = { ...(prevDetail ?? {}), description: nextDescription };
+      setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await updateNode(demoId, nodeId, { detail: nextDetail });
+        },
+        undo: async () => {
+          await updateNode(demoId, nodeId, { detail: prevDetail });
+        },
+        coalesceKey: `node:${nodeId}:detail-description`,
+      });
+      updateNode(demoId, nodeId, { detail: nextDetail }).catch((err) => {
+        dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode detail description failed', err);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
+  );
+
   const onCreateShapeNode = useCallback(
     (shape: ShapeKind, position: Position, dims: { width: number; height: number }) => {
       if (!demoId) return;
@@ -2352,6 +2393,7 @@ export function DemoView({
         connector={inspectedConnector}
         run={inspectedRun}
         recentEvents={inspectedEvents}
+        onDescriptionChange={onDetailDescriptionChange}
         onClose={() => {
           // US-003: panel state is decoupled from selection — closing the
           // panel only clears the open-target. The user's selection ring

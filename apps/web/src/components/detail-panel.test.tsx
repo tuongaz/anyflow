@@ -37,7 +37,9 @@ const mockWindow = {
 };
 (globalThis as { window?: typeof mockWindow }).window = mockWindow;
 
-const { DescriptionMarkdown, DetailPanel } = await import('@/components/detail-panel');
+const { DescriptionMarkdown, DetailPanel, EditableDescription } = await import(
+  '@/components/detail-panel'
+);
 const { DETAIL_PANEL_WIDTH_KEY } = await import('@/lib/detail-panel-width');
 
 // Same dispatcher-shim trick used by icon-node.test.tsx and
@@ -53,7 +55,13 @@ type Hooks = {
   useEffect: () => void;
 };
 
-function renderWithHooks<T>(fn: () => T): T {
+/**
+ * `useStateOverrides`, when provided, replaces the Nth useState call's initial
+ * value with the corresponding entry from the array (undefined = passthrough).
+ * Setter is a no-op — tests observe a post-setter render by calling the
+ * renderer again with the desired override.
+ */
+function renderWithHooks<T>(fn: () => T, useStateOverrides?: ReadonlyArray<unknown>): T {
   const internals = (
     React as unknown as {
       __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED: {
@@ -62,8 +70,12 @@ function renderWithHooks<T>(fn: () => T): T {
     }
   ).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
   const prev = internals.ReactCurrentDispatcher.current;
+  let useStateIndex = 0;
   internals.ReactCurrentDispatcher.current = {
     useState: <S,>(initial: S | (() => S)) => {
+      const idx = useStateIndex++;
+      const override = useStateOverrides?.[idx];
+      if (override !== undefined) return [override as S, () => {}];
       const value = typeof initial === 'function' ? (initial as () => S)() : initial;
       return [value, () => {}];
     },
@@ -77,6 +89,20 @@ function renderWithHooks<T>(fn: () => T): T {
   } finally {
     internals.ReactCurrentDispatcher.current = prev;
   }
+}
+
+function findAll(tree: unknown, predicate: (el: ReactElementLike) => boolean): ReactElementLike[] {
+  const out: ReactElementLike[] = [];
+  const visit = (n: unknown) => {
+    if (!isElement(n)) return;
+    if (predicate(n)) out.push(n);
+    const children = n.props.children;
+    if (children === undefined || children === null) return;
+    const arr = Array.isArray(children) ? children : [children];
+    for (const c of arr) visit(c);
+  };
+  visit(tree);
+  return out;
 }
 
 type ReactElementLike = {
@@ -289,5 +315,168 @@ describe('DetailPanel resize', () => {
     // Listeners cleaned up.
     expect(windowListeners.get('pointermove') ?? []).toHaveLength(0);
     expect(windowListeners.get('pointerup') ?? []).toHaveLength(0);
+  });
+});
+
+// US-005: EditableDescription — pencil affordance, edit mode, save, cancel.
+describe('EditableDescription (US-005)', () => {
+  type Props = Parameters<typeof EditableDescription>[0];
+
+  it('renders the rendered markdown with no chrome when onSave is omitted', () => {
+    const tree = renderWithHooks(() =>
+      (EditableDescription as unknown as (p: Props) => unknown)({
+        nodeId: 'n1',
+        source: 'hello **world**',
+      } as Props),
+    );
+    // Read-only mode: the top-level node IS the DescriptionMarkdown component
+    // (no group/relative wrapper) — assert by component identity, since the
+    // hook-shim captures sub-components as placeholders and the inner
+    // data-testid lives inside DescriptionMarkdown's body, which doesn't run.
+    expect(isElement(tree) && tree.type === DescriptionMarkdown).toBe(true);
+    expect(findElement(tree, testIdEquals('detail-panel-description-edit'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-description-save'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-description-block'))).toBeNull();
+  });
+
+  it('renders the rendered markdown plus a hover-revealed pencil when onSave is wired', () => {
+    const tree = renderWithHooks(() =>
+      (EditableDescription as unknown as (p: Props) => unknown)({
+        nodeId: 'n1',
+        source: 'hello',
+        onSave: () => {},
+      } as Props),
+    );
+    const block = findElement(tree, testIdEquals('detail-panel-description-block'));
+    if (!block) throw new Error('description block wrapper not found');
+    expect(block.props['data-editing']).toBe('false');
+    // The block's class enables CSS group-hover so the descendant pencil
+    // reveals on hover without an extra JS listener.
+    expect((block.props.className as string).includes('group')).toBe(true);
+
+    const edit = findElement(tree, testIdEquals('detail-panel-description-edit'));
+    if (!edit) throw new Error('edit (pencil) button not found');
+    // Pencil is low-opacity by default and lifts to 100% on hover/focus of
+    // the wrapping block — fulfills the "low opacity by default, full
+    // opacity on hover/focus" acceptance criterion.
+    const editClass = edit.props.className as string;
+    expect(editClass).toContain('opacity-30');
+    expect(editClass).toContain('group-hover:opacity-100');
+    expect(editClass).toContain('group-focus-within:opacity-100');
+    expect(edit.props['aria-label']).toBe('Edit description');
+    expect(typeof edit.props.onClick).toBe('function');
+
+    // No save button until edit mode.
+    expect(findElement(tree, testIdEquals('detail-panel-description-save'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-description-textarea'))).toBeNull();
+  });
+
+  it('renders the textarea + save button in edit mode', () => {
+    // The component's first two useState calls are `isEditing` and `draft`.
+    // Force isEditing=true, draft='draft body' to render edit mode.
+    const tree = renderWithHooks(
+      () =>
+        (EditableDescription as unknown as (p: Props) => unknown)({
+          nodeId: 'n1',
+          source: 'original',
+          onSave: () => {},
+        } as Props),
+      [true, 'draft body'],
+    );
+    const block = findElement(tree, testIdEquals('detail-panel-description-block'));
+    if (!block) throw new Error('description block wrapper not found');
+    expect(block.props['data-editing']).toBe('true');
+
+    const textarea = findElement(tree, testIdEquals('detail-panel-description-textarea'));
+    if (!textarea) throw new Error('textarea not found');
+    expect(textarea.props.value).toBe('draft body');
+    expect(typeof textarea.props.onChange).toBe('function');
+    expect(typeof textarea.props.onKeyDown).toBe('function');
+    expect(typeof textarea.props.onBlur).toBe('function');
+
+    const save = findElement(tree, testIdEquals('detail-panel-description-save'));
+    if (!save) throw new Error('save (check) button not found');
+    expect(save.props['aria-label']).toBe('Save description');
+    expect(typeof save.props.onClick).toBe('function');
+    expect(typeof save.props.onMouseDown).toBe('function');
+
+    // Pencil and the read-mode markdown component are gone while editing.
+    expect(findElement(tree, testIdEquals('detail-panel-description-edit'))).toBeNull();
+    expect(findAll(tree, (el) => el.type === DescriptionMarkdown).length).toBe(0);
+  });
+
+  it('save button onClick commits the current draft via onSave(nodeId, value)', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = renderWithHooks(
+      () =>
+        (EditableDescription as unknown as (p: Props) => unknown)({
+          nodeId: 'node-42',
+          source: 'old',
+          onSave,
+        } as Props),
+      [true, 'new body'],
+    );
+    const save = findElement(tree, testIdEquals('detail-panel-description-save'));
+    if (!save) throw new Error('save button not found');
+    (save.props.onClick as () => void)();
+    expect(calls).toEqual([{ nodeId: 'node-42', value: 'new body' }]);
+  });
+
+  it('Escape in the textarea cancels via onKeyDown (no commit, stops propagation)', () => {
+    // The component's React onKeyDown handles Escape locally — preventDefault
+    // (so the browser's native Escape doesn't reset the textarea), stop
+    // propagation (so canvas-level Backspace/Delete handling doesn't react),
+    // and roll back to read mode without firing onSave. Sheet-level
+    // Escape-to-close suppression is layered separately via SheetContent's
+    // onEscapeKeyDown (see DetailPanel) — exercised via the US-005 browser
+    // verification.
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = renderWithHooks(
+      () =>
+        (EditableDescription as unknown as (p: Props) => unknown)({
+          nodeId: 'n1',
+          source: 'kept',
+          onSave,
+        } as Props),
+      [true, 'discarded'],
+    );
+    const textarea = findElement(tree, testIdEquals('detail-panel-description-textarea'));
+    if (!textarea) throw new Error('textarea not found');
+    let preventedDefault = false;
+    let stoppedPropagation = false;
+    const fakeEvent = {
+      key: 'Escape',
+      preventDefault: () => {
+        preventedDefault = true;
+      },
+      stopPropagation: () => {
+        stoppedPropagation = true;
+      },
+    };
+    (textarea.props.onKeyDown as (e: unknown) => void)(fakeEvent);
+    expect(preventedDefault).toBe(true);
+    expect(stoppedPropagation).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
+  it('blur cancels (does not commit) when the suppress flag is not armed', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = renderWithHooks(
+      () =>
+        (EditableDescription as unknown as (p: Props) => unknown)({
+          nodeId: 'n1',
+          source: 'kept',
+          onSave,
+        } as Props),
+      [true, 'discarded'],
+    );
+    const textarea = findElement(tree, testIdEquals('detail-panel-description-textarea'));
+    if (!textarea) throw new Error('textarea not found');
+    (textarea.props.onBlur as () => void)();
+    // Blur path on its own discards — no onSave invocation.
+    expect(calls).toEqual([]);
   });
 });
