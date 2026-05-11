@@ -1105,6 +1105,10 @@ export function DemoCanvas({
   // when contextMenuPos changes, so this stays in sync via the same setState
   // pair below.
   const [contextOnNode, setContextOnNode] = useState(false);
+  // US-003: track the right-clicked node's type so icon-node-specific items
+  // (currently just 'Change icon') render only when the cursor landed on an
+  // iconNode. Cleared whenever the menu closes or the right-click hit the pane.
+  const [contextNodeType, setContextNodeType] = useState<string | null>(null);
   const contextNodeIdRef = useRef<string | null>(null);
   const contextTriggerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1145,6 +1149,15 @@ export function DemoCanvas({
     if (!id || !onCopyNode) return;
     onCopyNode(id);
   }, [onCopyNode]);
+
+  // US-003: dispatch the icon-replace flow (same path as US-016 dblclick and
+  // US-022 StyleStrip button) so the picker opens for the right-clicked node
+  // and a single undo entry is pushed when an icon is selected.
+  const handleChangeIconPick = useCallback(() => {
+    const id = contextNodeIdRef.current;
+    if (!id || !onRequestIconReplace) return;
+    onRequestIconReplace(id);
+  }, [onRequestIconReplace]);
 
   const handlePastePick = useCallback(() => {
     if (!onPasteAt) return;
@@ -1996,6 +2009,7 @@ export function DemoCanvas({
                 e.preventDefault();
                 contextNodeIdRef.current = node.id;
                 setContextOnNode(true);
+                setContextNodeType(node.type ?? null);
                 setContextMenuPos({ x: e.clientX, y: e.clientY });
               }
             : undefined
@@ -2011,6 +2025,7 @@ export function DemoCanvas({
                 e.preventDefault();
                 contextNodeIdRef.current = null;
                 setContextOnNode(false);
+                setContextNodeType(null);
                 setContextMenuPos({ x: e.clientX, y: e.clientY });
               }
             : undefined
@@ -2071,6 +2086,7 @@ export function DemoCanvas({
             if (!open) {
               setContextMenuPos(null);
               contextNodeIdRef.current = null;
+              setContextNodeType(null);
             }
           }}
         >
@@ -2105,7 +2121,27 @@ export function DemoCanvas({
                 <ContextMenuShortcut>{pasteShortcut}</ContextMenuShortcut>
               </ContextMenuItem>
             ) : null}
-            {contextOnNode && (onCopyNode || onPasteAt) && (onReorderNode || onDeleteNode) ? (
+            {contextOnNode &&
+            (onCopyNode || onPasteAt) &&
+            // US-003: include 'Change icon' in the "has-following-section"
+            // check so the Copy/Paste → icon-node section separator renders.
+            ((contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
+              onReorderNode ||
+              onDeleteNode) ? (
+              <ContextMenuSeparator />
+            ) : null}
+            {contextOnNode && contextNodeType === 'iconNode' && onRequestIconReplace ? (
+              <ContextMenuItem
+                data-testid="node-context-menu-change-icon"
+                onSelect={handleChangeIconPick}
+              >
+                Change icon
+              </ContextMenuItem>
+            ) : null}
+            {contextOnNode &&
+            contextNodeType === 'iconNode' &&
+            onRequestIconReplace &&
+            (onReorderNode || onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
             {contextOnNode && onReorderNode ? (
