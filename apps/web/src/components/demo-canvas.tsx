@@ -2347,6 +2347,14 @@ export function DemoCanvas({
         // this to true; an explicit click (mousedown + mouseup without
         // movement) still selects via onNodeClick.
         selectNodesOnDrag={false}
+        // xyflow defaults `nodeClickDistance` to 0, which combined with
+        // `selectNodesOnDrag={false}` means ANY sub-pixel pointer jitter
+        // between mousedown and mouseup makes xyflow treat the gesture as a
+        // drag (no selection) instead of a click — the user perceives this as
+        // "clicking a node sometimes doesn't select it, takes a few tries".
+        // 5px matches the marquee/drag threshold most design tools use and
+        // gives mouse/trackpad input enough tolerance to land a click cleanly.
+        nodeClickDistance={5}
         // US-010 selection model: primary-mouse drag on empty pane draws a
         // marquee (rubber-band) that multi-selects nodes + edges. Middle and
         // right-mouse drags pan. Space-held primary drag also pans (via

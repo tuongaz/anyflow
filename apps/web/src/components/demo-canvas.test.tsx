@@ -145,6 +145,18 @@ describe('DemoCanvas', () => {
     expect(rf.props.selectNodesOnDrag).toBe(false);
   });
 
+  it('wires nodeClickDistance > 0 so jitter during click still selects', () => {
+    // Regression: xyflow defaults nodeClickDistance to 0, which combined with
+    // selectNodesOnDrag={false} makes ANY sub-pixel pointer jitter between
+    // mousedown and mouseup register as a drag (no selection) instead of a
+    // click. Symptom: clicking a node often does nothing on the first try.
+    // The explicit positive value gives the user click-tolerance.
+    const tree = callDemoCanvas();
+    const rf = findElement(tree, (el) => el.type === ReactFlow);
+    if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+    expect(rf.props.nodeClickDistance).toBeGreaterThan(0);
+  });
+
   describe('US-025: only the selected node may originate a new connection', () => {
     it('unselected nodes receive connectable: false on the rfNode payload', () => {
       // Per xyflow's NodeWrapper:
