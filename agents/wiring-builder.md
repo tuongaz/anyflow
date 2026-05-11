@@ -1,6 +1,6 @@
 ---
 name: wiring-builder
-description: Phase 5 of the anydemo-diagram pipeline. Use after the user approves the node list; emits a full nodes[] and connectors[] array conforming to the studio Zod DemoSchema. No positions yet (Phase 6 handles layout).
+description: Phase 5 of the anydemo-diagram pipeline. Use after the user approves the node list; emits a full nodes[] and connectors[] array conforming to the studio's demo schema (see Demo Schema Reference in skills/diagram/SKILL.md). No positions yet (Phase 6 handles layout).
 tools: [Read, Grep, Write]
 color: purple
 ---
@@ -8,8 +8,28 @@ color: purple
 # wiring-builder — anydemo-diagram Phase 5
 
 Convert the approved candidate node list into a full `nodes[]` + `connectors[]`
-JSON object that conforms to the studio's Zod `DemoSchema` (see
-`apps/studio/src/schema.ts` in the AnyDemo monorepo).
+JSON object that conforms to the studio's demo schema.
+
+## SCHEMA — READ FIRST
+
+**Before writing anything, Read
+`${CLAUDE_PLUGIN_ROOT}/skills/diagram/SKILL.md` and study the "Demo Schema
+Reference" section.** That section is the authoritative contract. The studio's
+`/api/demos/validate` endpoint rejects anything that doesn't match it. Pay
+particular attention to:
+
+- Required vs. optional fields per node type (`playNode` REQUIRES `playAction`,
+  `stateNode` does not; `shapeNode`/`imageNode` have a totally different `data`
+  shape).
+- The connector discriminator: `eventName` is REQUIRED for `kind: 'event'`,
+  `queueName` is REQUIRED for `kind: 'queue'`.
+- Handle role: `sourceHandle` must be `'r'` or `'b'`; `targetHandle` must be
+  `'t'` or `'l'`. Cross-role values are rejected.
+- Every `connector.source` and `connector.target` must match an existing
+  `node.id`.
+
+This phase emits `position: { x: 0, y: 0 }` placeholders. Phase 6 sets real
+positions.
 
 ## INPUT
 
@@ -18,35 +38,6 @@ JSON object that conforms to the studio's Zod `DemoSchema` (see
 - `<target>/.anydemo/intermediate/scope-proposal.json` — scope context
 - `<target>/.anydemo/intermediate/boundary-surfaces.json` — routes/events/queues
 - `<target>/.anydemo/intermediate/scan-result.json` — file list
-
-## SCHEMA REMINDER
-
-Each node has shape:
-
-```ts
-{ id, type: 'playNode' | 'stateNode' | 'shapeNode', position: {x,y}, data: {...} }
-```
-
-This phase emits `position: { x: 0, y: 0 }` placeholders. Phase 6 sets real
-positions.
-
-For `playNode` and `stateNode`, `data` requires:
-- `label: string` (visible text)
-- `kind: string` (free-form: 'service', 'worker', 'queue', 'database', 'actor', etc.)
-- `stateSource: { kind: 'request' } | { kind: 'event' }`
-- `detail: { summary?, fields?, filePath? }`
-
-For `playNode`, also: `data.playAction: { kind: 'http', method, url, body? }`.
-
-For `shapeNode`, `data` is just:
-- `shape: 'rectangle' | 'ellipse' | 'sticky' | 'text'`
-- `label?: string`
-
-Connectors are discriminated on `kind`:
-- `http`   — service-to-service HTTP call (`method`, `url` optional but match the playAction)
-- `event`  — pub/sub event (`eventName` required)
-- `queue`  — message-queue handoff (`queueName` required)
-- `default` — annotation / decorative
 
 ## TIER-SPECIFIC RULES
 
