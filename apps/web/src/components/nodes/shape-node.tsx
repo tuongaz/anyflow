@@ -5,7 +5,7 @@ import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useState } from 'react';
 
 export type ShapeNodeRuntimeData = ShapeNodeData & {
   onResize?: (
@@ -96,7 +96,7 @@ export function shapeChromeStyle(
 // up across all nodes during the drag, preserving the US-014 auto-snap UX.
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
-export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<ShapeNodeType>) {
+function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = SHAPE_DEFAULT_SIZE[shape];
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
@@ -124,27 +124,18 @@ export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<Shape
   // schema field). `colorTokenStyle(_, 'text')` returns {} for the default
   // token so unset values fall through to the theme foreground.
   const textColorStyle = isText ? colorTokenStyle(data.borderColor, 'text') : {};
-  // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
-  // outside the node — the standard design-tool selection box. Outline is
-  // used (not a wider border or absolute overlay) so layout never shifts and
-  // every shape (chromed + chromeless text) gets the same affordance. The
-  // four corner resize handles below render at the node's own corners; with
-  // an 8x10px visible square + 4px outline-offset, the handles visually sit
-  // at the rect's corners.
+  // US-010: selection outline moved to CSS (`.react-flow__node.selected > div`
+  // in index.css) so the inline style is stable across renders — necessary
+  // for `React.memo`'s prop-equality on this renderer. Text shapes (no
+  // border or background of their own) still get the outline via the same
+  // CSS rule, matching the pre-US-010 behaviour where the selection box was
+  // the only affordance on text.
   // US-004: cornerRadius only applies to shapes that have a square-ish border
   // we can round — rectangle and sticky. Ellipse keeps its rounded-full (50%)
   // and text has no border to round, so we leave them alone.
   const colorStyle: CSSProperties = {
     ...shapeChromeStyle(shape, data),
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
-    ...(selected
-      ? {
-          outlineWidth: '1px',
-          outlineStyle: 'solid',
-          outlineColor: 'hsl(var(--primary) / 0.4)',
-          outlineOffset: '4px',
-        }
-      : {}),
   };
   const labelFontStyle: CSSProperties = {
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
@@ -243,3 +234,15 @@ export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<Shape
     </div>
   );
 }
+
+// US-010: see play-node.tsx — skip re-renders on xyflow's internal prop ticks.
+function arePropsEqual(prev: NodeProps<ShapeNodeType>, next: NodeProps<ShapeNodeType>): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+}
+
+export const ShapeNode = memo(ShapeNodeImpl, arePropsEqual);

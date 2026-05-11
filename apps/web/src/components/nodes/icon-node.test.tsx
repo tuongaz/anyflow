@@ -123,10 +123,12 @@ function callIconNode(
     selectable: true,
     ...overrides,
   } as unknown as NodeProps;
-  return renderWithHooks(
-    () => (IconNode as unknown as (p: NodeProps) => unknown)(props),
-    useStateOverrides,
-  );
+  // US-010: IconNode is now `memo(IconNodeImpl, …)`, which produces a memo
+  // descriptor object rather than a callable function. The inner impl is at
+  // `.type` per React's memo internal shape — call it directly so the hook
+  // shim still drives the rendered tree.
+  const impl = (IconNode as unknown as { type: (p: NodeProps) => unknown }).type;
+  return renderWithHooks(() => impl(props), useStateOverrides);
 }
 
 describe('IconNode', () => {

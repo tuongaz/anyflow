@@ -187,20 +187,19 @@ button:disabled {
   cursor: default;
 }
 
-/* US-002 / US-022: canvas pane cursor.
+/* US-002 / US-010: canvas pane cursor.
  *
  * React Flow applies these classes to `.react-flow__pane` based on mode:
+ *   - `.selection` while a marquee drag is in flight (US-010: cursor stays
+ *     default — design-tool norm for rubber-band selection)
  *   - `.draggable` while `panActivationKeyCode='Space'` is held (cursor: grab)
  *   - `.dragging` while a pan is in flight (cursor: grabbing)
- *
- * (US-022 removed the marquee gesture, so the `.selection` class is no longer
- * applied — but we keep its override here as a safety net in case xyflow ever
- * surfaces it through another code path; it forces the default arrow regardless.)
  *
  * The library rules share the same specificity. We override with higher-specificity
  * selectors (`.react-flow .react-flow__pane.X`, specificity 0,0,3,0 vs library's
  * 0,0,2,0) so the behavior matches:
  *   - idle pane                               → default arrow
+ *   - marquee in flight                       → default arrow (no flip)
  *   - Space held                              → grab
  *   - Space + dragging                        → grabbing
  *
@@ -406,6 +405,29 @@ button:disabled {
   background-color: hsl(var(--destructive)) !important;
   box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.35);
   opacity: 1 !important;
+}
+
+/* US-010: selection outline lives in CSS (not inline style on each node body)
+ * so per-frame React renders during a marquee gesture don't churn style-object
+ * identity on every renderer. The five node renderers (play / state / shape /
+ * image / icon) used to spread an inline `outline*` style block when `selected`
+ * — that breaks `React.memo`'s prop-equality even when nothing visible changed
+ * because the spread builds a fresh CSSProperties object every render.
+ *
+ * Targeting the inner node div under `.react-flow__node.selected` (xyflow adds
+ * the `.selected` class on its node wrapper; the renderer's root div is the
+ * single child) gives all node types the same 1px low-contrast outer rectangle
+ * 4px outside the node body. The outline follows the inner div's
+ * border-radius (so ellipses get an elliptical ring, sticky gets a rounded
+ * rectangle, etc.) — matches the pre-US-010 inline-style behaviour exactly.
+ *
+ * Text shapes (US-016) lean on this rule for their only selection affordance
+ * — they have no border or background of their own. */
+.react-flow__node.selected > div {
+  outline-width: 1px;
+  outline-style: solid;
+  outline-color: hsl(var(--primary) / 0.4);
+  outline-offset: 4px;
 }
 
 /* US-007: when a node is selected, its 4 connection handles relocate from

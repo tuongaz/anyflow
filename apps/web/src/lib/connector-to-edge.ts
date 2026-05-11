@@ -85,11 +85,29 @@ export const styleForKind = (kind: Connector['kind']): { strokeDasharray?: strin
 // selected edge.
 const SELECTED_STROKE_WIDTH = 3;
 
+// US-010: memoization cache keyed by the connector object. The marquee gesture
+// re-derives edges per frame; without this, every frame produced a fresh edge
+// object and React Flow saw new identities → every edge re-rendered. With the
+// cache, identical (connector ref, isAdjacentToRunning, selected) inputs return
+// the same DerivedEdge ref, so downstream useMemo / React.memo see stable
+// identity and skip work. WeakMap auto-evicts when the Connector goes out of
+// scope (parent rebuilds the connectors array on an actual mutation).
+type CacheEntry = { isAdjacentToRunning: boolean; selected: boolean; edge: DerivedEdge };
+const edgeCache = new WeakMap<Connector, CacheEntry>();
+
 export const connectorToEdge = (
   connector: Connector,
   isAdjacentToRunning: boolean,
   selected = false,
 ): DerivedEdge => {
+  const cached = edgeCache.get(connector);
+  if (
+    cached &&
+    cached.isAdjacentToRunning === isAdjacentToRunning &&
+    cached.selected === selected
+  ) {
+    return cached.edge;
+  }
   // Per-connector `style` overrides the kind-derived default. This lets a
   // user-drawn 'default' connector pick up any visual style without changing
   // its (semantically empty) kind.
@@ -120,7 +138,7 @@ export const connectorToEdge = (
   const arrow = arrowMarker(markerColor);
   const markerStart = direction === 'backward' || direction === 'both' ? arrow : undefined;
   const markerEnd = direction === 'forward' || direction === 'both' ? arrow : undefined;
-  return {
+  const edge: DerivedEdge = {
     id: connector.id,
     source: connector.source,
     target: connector.target,
@@ -142,4 +160,6 @@ export const connectorToEdge = (
     markerEnd,
     interactionWidth: EDGE_INTERACTION_WIDTH,
   };
+  edgeCache.set(connector, { isAdjacentToRunning, selected, edge });
+  return edge;
 };

@@ -318,4 +318,40 @@ describe('connectorToEdge', () => {
     expect(e.data.sourcePin).toBeUndefined();
     expect(e.data.targetPin).toBeUndefined();
   });
+
+  // US-010: identical inputs (same connector ref + same isAdjacentToRunning +
+  // same selected) return the SAME edge reference, so React Flow's marquee
+  // gesture (which re-derives edges per frame) doesn't churn edge identities
+  // and trigger needless edge re-renders.
+  it('returns the same DerivedEdge reference for identical inputs (memoized)', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const first = connectorToEdge(c, false, false);
+    const second = connectorToEdge(c, false, false);
+    expect(second).toBe(first);
+  });
+
+  it('returns a fresh edge when isAdjacentToRunning changes for the same connector', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const idle = connectorToEdge(c, false, false);
+    const running = connectorToEdge(c, true, false);
+    expect(running).not.toBe(idle);
+    expect(running.animated).toBe(true);
+  });
+
+  it('returns a fresh edge when selected flips for the same connector', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const unselected = connectorToEdge(c, false, false);
+    const selected = connectorToEdge(c, false, true);
+    expect(selected).not.toBe(unselected);
+    expect(selected.style.strokeWidth).toBe(3);
+  });
+
+  it('keys the cache on the connector ref so a mutated copy yields a fresh edge', () => {
+    const c1: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const c2: Connector = { ...c1, kind: 'event', eventName: 'x.y' };
+    const e1 = connectorToEdge(c1, false, false);
+    const e2 = connectorToEdge(c2, false, false);
+    expect(e2).not.toBe(e1);
+    expect(e2.data.kind).toBe('event');
+  });
 });

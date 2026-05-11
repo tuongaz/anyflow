@@ -6,7 +6,7 @@ import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useState } from 'react';
 
 export type StateNodeData = NodeData & {
   /**
@@ -33,7 +33,7 @@ const MIN_W = 100;
 const MIN_H = 44;
 const DEFAULT_W = 200;
 
-export function StateNode({ id, data, selected, isConnectable }: NodeProps<StateNodeType>) {
+function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNodeType>) {
   const status = data.status ?? 'idle';
   const description = data.detail?.summary ?? data.kind;
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
@@ -57,12 +57,8 @@ export function StateNode({ id, data, selected, isConnectable }: NodeProps<State
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
   // the theme defaults baked into the 'default' token (--border / --card).
-  // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
-  // outside the node — the standard design-tool selection box. The outline
-  // is solid (not mirroring the dashed border) so the selection box reads
-  // as a separate affordance, not an extension of the node's chrome. The
-  // four corner resize handles render at the node's own corners and the
-  // 4px outline offset lines up the visible squares with the rect corners.
+  // US-010: selection outline moved to CSS (see play-node.tsx note) so the
+  // inline style is stable across renders when only `selected` flips.
   const containerStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
@@ -70,14 +66,6 @@ export function StateNode({ id, data, selected, isConnectable }: NodeProps<State
     borderStyle: data.borderStyle,
     borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,
     ...(sized ? {} : { width: DEFAULT_W }),
-    ...(selected
-      ? {
-          outlineWidth: '1px',
-          outlineStyle: 'solid',
-          outlineColor: 'hsl(var(--primary) / 0.4)',
-          outlineOffset: '4px',
-        }
-      : {}),
   };
 
   // US-020: region-aware double-click routing. Header → label edit; content
@@ -227,3 +215,17 @@ export function StateNode({ id, data, selected, isConnectable }: NodeProps<State
     </div>
   );
 }
+
+// US-010: see play-node.tsx — only data / selected / dimensions are
+// render-triggering. xyflow's per-frame `dragging` / `isConnectable` ticks
+// don't churn the renderer.
+function arePropsEqual(prev: NodeProps<StateNodeType>, next: NodeProps<StateNodeType>): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+}
+
+export const StateNode = memo(StateNodeImpl, arePropsEqual);

@@ -44,6 +44,7 @@ import {
   Panel,
   ReactFlow,
   type ReactFlowInstance,
+  SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
   getBezierPath,
@@ -54,6 +55,7 @@ import {
 import {
   type ComponentType,
   type PointerEvent,
+  type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -439,6 +441,13 @@ const nodeTypes = {
   iconNode: IconNode,
 };
 const edgeTypes = { editableEdge: EditableEdge };
+
+// US-010: edges render at zIndex 1 so they paint above sibling nodes but
+// below the group-label slot (zIndex 2 in CSS, see US-011+). Defined as a
+// module-level constant — passing an inline object literal to ReactFlow's
+// defaultEdgeOptions would change identity every render and force xyflow's
+// edge merging to recompute.
+const DEFAULT_EDGE_OPTIONS = { zIndex: 1 };
 
 // US-009: smoothstep corner radius — kept in sync with EditableEdge so the
 // reconnect-time connection line traces the same zigzag profile as the
@@ -1389,21 +1398,76 @@ export function DemoCanvas({
   // function runs later and can't drive a side effect).
   const rfNodesRef = useRef<Node[]>([]);
 
+  // US-010: marquee gesture state. While a marquee drag is in flight,
+  // `marqueeActiveRef` flips true and the per-frame select changes accumulate
+  // into the two id sets below. `onSelectionChange` is NOT called up to the
+  // parent during the drag — only once at `onSelectionEnd`. The rfNodes
+  // local state keeps applying the changes so the canvas still visually
+  // reflects the live marquee (selection rings track the rubber-band) — but
+  // the parent's controlled props (`selectedNodeIds` / `selectedConnectorIds`)
+  // stay frozen, which is what eliminates the per-frame sourceNodes recompute
+  // + buildNode churn that caused the flashing in earlier attempts.
+  //
+  // additiveBase{Node,Edge}IdsRef holds the pre-marquee selection when the
+  // user holds Shift/Meta at marquee start. xyflow always dispatches
+  // `resetSelectedElements` at the first pointermove past the click threshold,
+  // so the additive base would normally get deselected mid-drag. We filter
+  // those deselects for ids in the additive base so the existing selection is
+  // preserved through the gesture (visible + final).
+  const marqueeActiveRef = useRef(false);
+  const marqueeSelectedNodeIdsRef = useRef<Set<string>>(new Set());
+  const marqueeSelectedEdgeIdsRef = useRef<Set<string>>(new Set());
+  const additiveBaseNodeIdsRef = useRef<Set<string>>(new Set());
+  const additiveBaseEdgeIdsRef = useRef<Set<string>>(new Set());
+  // US-010: tentative additive snapshot captured at pane pointer-down BEFORE
+  // xyflow's resetSelectedElements runs (which lands in onPointerMove right
+  // before onSelectionStart). Without this snapshot the prior selection is
+  // already gone by the time onSelectionStart can read it. When the user holds
+  // Shift/Meta/Ctrl at pointer-down on the pane, the snapshot becomes the
+  // additive base; otherwise it's `{ shift: false }` and the marquee replaces.
+  const tentativeAdditiveBaseRef = useRef<{
+    shift: boolean;
+    nodeIds: Set<string>;
+    edgeIds: Set<string>;
+  } | null>(null);
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
+    // US-010: during an additive (Shift/Meta) marquee, skip xyflow's reset-
+    // deselect for ids in the additive base — they should stay selected
+    // through the gesture so the user sees the existing selection preserved.
+    // xyflow's `resetSelectedElements` runs in onPointerMove BEFORE
+    // onSelectionStart, so the additive base lives in tentativeAdditiveBaseRef
+    // until onSelectionStart copies it into additiveBaseNodeIdsRef.
+    const activeAdditiveBase = marqueeActiveRef.current
+      ? additiveBaseNodeIdsRef.current
+      : tentativeAdditiveBaseRef.current?.shift
+        ? tentativeAdditiveBaseRef.current.nodeIds
+        : null;
+    const filteredChanges =
+      activeAdditiveBase && activeAdditiveBase.size > 0
+        ? changes.filter((c) => {
+            if (c.type !== 'select') return true;
+            if (c.selected === false && activeAdditiveBase.has(c.id)) return false;
+            return true;
+          })
+        : changes;
     const explicitlyToggled = new Set<string>();
-    for (const c of changes) {
+    for (const c of filteredChanges) {
       if (c.type === 'select') explicitlyToggled.add(c.id);
     }
     // applyNodeChanges on the current snapshot. We feed the same result to
     // setRfNodes below so the rendered nodes match what we're propagating.
-    const next = applyNodeChanges(changes, rfNodesRef.current);
+    const next = applyNodeChanges(filteredChanges, rfNodesRef.current);
     const pinned = selectedIdSetRef.current;
     // Resize/dimension changes can transiently drop the `selected` flag —
     // restore it for nodes in `pinned` that the user didn't explicitly toggle
-    // (US-019). With marquee gone (US-022), there is no
-    // resetSelectedElements + getSelectionChanges flicker to compensate for.
-    const repinned =
-      pinned.size === 0
+    // (US-019). US-010: skip the repin logic during a marquee gesture —
+    // `pinned` reflects the parent's (stale) controlled selection prop, but
+    // the marquee is actively changing selection; re-pinning previously-
+    // selected nodes would fight the user's new marquee selection.
+    const repinned = marqueeActiveRef.current
+      ? next
+      : pinned.size === 0
         ? next
         : next.map((n) => {
             if (pinned.has(n.id) && !explicitlyToggled.has(n.id) && !n.selected) {
@@ -1417,6 +1481,17 @@ export function DemoCanvas({
     // prop updates bypass this — ReactFlow's StoreUpdater applies them
     // directly to the store without dispatching changes.
     if (explicitlyToggled.size === 0) return;
+    // US-010: during marquee, accumulate into the local ref and SKIP the
+    // parent callback so `selectedNodeIds` doesn't churn on every frame.
+    // `onSelectionEnd` fires the cb once with the final set.
+    if (marqueeActiveRef.current) {
+      for (const c of filteredChanges) {
+        if (c.type !== 'select') continue;
+        if (c.selected) marqueeSelectedNodeIdsRef.current.add(c.id);
+        else marqueeSelectedNodeIdsRef.current.delete(c.id);
+      }
+      return;
+    }
     const cb = onSelectionChangeRef.current;
     if (!cb) return;
     const sel = repinned.filter((n) => n.selected).map((n) => n.id);
@@ -1444,14 +1519,40 @@ export function DemoCanvas({
   // this callback doesn't have to wait on the declaration order.
   const rfEdgesRef = useRef<Edge[]>([]);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    // US-010: filter reset-deselects on the additive base — same reasoning as
+    // onNodesChange above.
+    const activeAdditiveBase = marqueeActiveRef.current
+      ? additiveBaseEdgeIdsRef.current
+      : tentativeAdditiveBaseRef.current?.shift
+        ? tentativeAdditiveBaseRef.current.edgeIds
+        : null;
+    const filteredChanges =
+      activeAdditiveBase && activeAdditiveBase.size > 0
+        ? changes.filter((c) => {
+            if (c.type !== 'select') return true;
+            if (c.selected === false && activeAdditiveBase.has(c.id)) return false;
+            return true;
+          })
+        : changes;
     const explicitlyToggled = new Set<string>();
-    for (const c of changes) {
+    for (const c of filteredChanges) {
       if (c.type === 'select') explicitlyToggled.add(c.id);
     }
     if (explicitlyToggled.size === 0) return;
+    // US-010: same accumulator pattern as onNodesChange — during marquee,
+    // collect the explicit toggles into the local ref and bail before firing
+    // the parent callback.
+    if (marqueeActiveRef.current) {
+      for (const c of filteredChanges) {
+        if (c.type !== 'select') continue;
+        if (c.selected) marqueeSelectedEdgeIdsRef.current.add(c.id);
+        else marqueeSelectedEdgeIdsRef.current.delete(c.id);
+      }
+      return;
+    }
     const cb = onSelectionChangeRef.current;
     if (!cb) return;
-    const next = applyEdgeChanges(changes, rfEdgesRef.current);
+    const next = applyEdgeChanges(filteredChanges, rfEdgesRef.current);
     const sel = next.filter((e) => e.selected).map((e) => e.id);
     const prev = selectedConnIdSetRef.current;
     const sameLen = prev.size === sel.length;
@@ -1461,6 +1562,117 @@ export function DemoCanvas({
     // call later in the same task reads up-to-date connector selection.
     selectedConnIdSetRef.current = new Set(sel);
     cb([...selectedIdSetRef.current], sel);
+  }, []);
+
+  // US-010: marquee gesture lifecycle. xyflow fires onSelectionStart when a
+  // primary-button drag begins on the empty pane (or when modifier-marquee is
+  // dispatched). onSelectionEnd fires on pointer-up. We snapshot the current
+  // controlled selection into the marquee accumulator at start, then layer in
+  // each per-frame select-change while the drag runs (see onNodesChange /
+  // onEdgesChange above). At end we apply the xyflow #5451 workaround and
+  // call the parent's onSelectionChange exactly once with the final set.
+  //
+  // Shift/Meta held at start → additive marquee: the pre-existing selection is
+  // captured into additiveBase{Node,Edge}IdsRef and the change filters above
+  // shield those ids from xyflow's `resetSelectedElements()`.
+  const onSelectionStartCb = useCallback((event: ReactMouseEvent) => {
+    marqueeActiveRef.current = true;
+    const tentative = tentativeAdditiveBaseRef.current;
+    // Prefer the tentative (captured at pointer-down before xyflow's reset);
+    // fall back to event modifiers in case the pointer-down handler missed.
+    const additive = tentative?.shift ?? (event.shiftKey || event.metaKey || event.ctrlKey);
+    additiveBaseNodeIdsRef.current = additive
+      ? new Set(tentative?.nodeIds ?? selectedIdSetRef.current)
+      : new Set();
+    additiveBaseEdgeIdsRef.current = additive
+      ? new Set(tentative?.edgeIds ?? selectedConnIdSetRef.current)
+      : new Set();
+    marqueeSelectedNodeIdsRef.current = new Set(additiveBaseNodeIdsRef.current);
+    marqueeSelectedEdgeIdsRef.current = new Set(additiveBaseEdgeIdsRef.current);
+  }, []);
+  const onSelectionEndCb = useCallback(() => {
+    marqueeActiveRef.current = false;
+    tentativeAdditiveBaseRef.current = null;
+    const cb = onSelectionChangeRef.current;
+    if (!cb) return;
+    const finalNodeIds = [...marqueeSelectedNodeIdsRef.current];
+    const finalNodeIdSet = new Set(finalNodeIds);
+    const finalEdgeIds = new Set(marqueeSelectedEdgeIdsRef.current);
+    // xyflow #5451 workaround: when the marquee covers both endpoints of an
+    // edge, xyflow only marks a single edge between any node pair — parallel
+    // edges (same source/target) get dropped from the selection. Sweep the
+    // edge list and force-add any whose endpoints are both in the final
+    // node-id set.
+    for (const edge of rfEdgesRef.current) {
+      if (finalNodeIdSet.has(edge.source) && finalNodeIdSet.has(edge.target)) {
+        finalEdgeIds.add(edge.id);
+      }
+    }
+    const prevNodeIds = selectedIdSetRef.current;
+    const prevEdgeIds = selectedConnIdSetRef.current;
+    const sameNodeSet =
+      prevNodeIds.size === finalNodeIdSet.size && finalNodeIds.every((id) => prevNodeIds.has(id));
+    const sameEdgeSet =
+      prevEdgeIds.size === finalEdgeIds.size &&
+      [...finalEdgeIds].every((id) => prevEdgeIds.has(id));
+    if (sameNodeSet && sameEdgeSet) return;
+    selectedIdSetRef.current = new Set(finalNodeIds);
+    selectedConnIdSetRef.current = new Set(finalEdgeIds);
+    cb(finalNodeIds, [...finalEdgeIds]);
+  }, []);
+
+  // US-010: capture-phase pointer-down on the wrapper fires BEFORE xyflow's
+  // own onPointerDownCapture on `.react-flow__pane`. We use this to stash a
+  // tentative additive-base snapshot (the pre-marquee selection) and the
+  // shift/meta key state. xyflow's `resetSelectedElements()` then fires
+  // synchronously inside onPointerMove past the click threshold — by then our
+  // change-filter (see onNodesChange / onEdgesChange) can shield the additive
+  // base from being deselected. Without this, the additive base is gone by
+  // the time onSelectionStart runs.
+  const onWrapperPointerDownCapture = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    tentativeAdditiveBaseRef.current = null;
+    if (drawShapeRef.current) return;
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement | null;
+    // Only the pane itself is a marquee starting surface — handles, nodes,
+    // edges, and the toolbar each have their own gestures.
+    if (!target?.classList.contains('react-flow__pane')) return;
+    tentativeAdditiveBaseRef.current = {
+      shift: e.shiftKey || e.metaKey || e.ctrlKey,
+      nodeIds: new Set(selectedIdSetRef.current),
+      edgeIds: new Set(selectedConnIdSetRef.current),
+    };
+  }, []);
+
+  // US-010: xyflow #2733 workaround. When ≥ 2 nodes are selected (or any
+  // group node — placeholder for US-011+), a right-click on any of them
+  // ought to open OUR Radix context menu so the user can act on the whole
+  // selection. xyflow's onNodeContextMenu only fires for the single node
+  // under the cursor (and clears multi-selection in the process). Wiring a
+  // capture-phase listener on the wrapper lets us pre-empt the native menu
+  // and open Radix BEFORE xyflow gets the event.
+  const onWrapperContextMenuCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    // Only intervene when there's a multi-selection. Single-node and pane
+    // right-clicks still flow through xyflow's onNodeContextMenu /
+    // onPaneContextMenu paths (which handle their own preventDefault).
+    const sel = selectedIdSetRef.current;
+    if (sel.size < 2) return;
+    const target = e.target as HTMLElement | null;
+    // The synthetic contextmenu event we dispatch into the Radix trigger (via
+    // the contextMenuPos useEffect below) bubbles back through this listener
+    // — bail on the trigger element so we don't re-enter and loop.
+    if (target === contextTriggerRef.current) return;
+    // Verify the right-click landed inside the canvas (not on a popover,
+    // menu, etc. that escaped through a Radix portal). Endpoint dots have
+    // their own right-click handler (US-007) — let those through too.
+    if (target?.closest('.anydemo-connector-endpoint-dot')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    contextNodeIdRef.current = null;
+    setContextOnNode(true);
+    setContextNodeType(null);
+    setContextEndpoint(null);
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
   }, []);
 
   const reconnectableEdges = !!onReconnectConnector;
@@ -1926,8 +2138,9 @@ export function DemoCanvas({
 
   // Cursor for the wrapper. Draw mode → crosshair (own gesture). Space-held →
   // grab while idle, grabbing while a Space-pan drag is in flight. Else
-  // default — primary-mouse drag on the pane is a no-op (US-022 removed the
-  // marquee gesture; selectionOnDrag is off).
+  // default arrow — US-010 made primary-mouse drag a marquee gesture, but the
+  // default cursor is the design-tool norm for the rubber-band so we don't
+  // override it.
   const wrapperCursor = drawShape
     ? 'crosshair'
     : spaceHeld
@@ -1942,6 +2155,11 @@ export function DemoCanvas({
       ref={wrapperRef}
       className="relative h-full w-full"
       style={wrapperCursor ? { cursor: wrapperCursor } : undefined}
+      // US-010: capture-phase listener fires before xyflow's pane handlers.
+      // Snapshots the additive base + shift state for a pending marquee so
+      // the existing selection survives xyflow's reset (see the change-filter
+      // in onNodesChange / onEdgesChange above).
+      onPointerDownCapture={onWrapperPointerDownCapture}
       onPointerDown={(e) => {
         if (spaceHeld) setSpaceDragging(true);
         onPointerDown(e);
@@ -1959,6 +2177,10 @@ export function DemoCanvas({
         setDrawCurrent(null);
         setSpaceDragging(false);
       }}
+      // US-010: capture-phase right-click handler so a multi-selection
+      // right-click opens OUR Radix menu instead of xyflow's single-node
+      // menu (which would also clear the multi-selection en route).
+      onContextMenuCapture={onWrapperContextMenuCapture}
     >
       <ReactFlow
         nodes={rfNodes}
@@ -2036,16 +2258,38 @@ export function DemoCanvas({
         // this to true; an explicit click (mousedown + mouseup without
         // movement) still selects via onNodeClick.
         selectNodesOnDrag={false}
-        // US-022 selection model: no marquee gesture. With selectionOnDrag and
-        // panOnDrag both false, primary-mouse drag on the pane is a no-op —
-        // selection only changes via click, Shift/Meta-click toggle, Cmd/Ctrl+A,
-        // or pane-click clear. panActivationKeyCode='Space' temporarily enables
-        // pan-on-drag while Space is held. selectionKeyCode=null suppresses
-        // xyflow's modifier-marquee fallback (default would be 'Shift').
-        panOnDrag={false}
+        // US-010 selection model: primary-mouse drag on empty pane draws a
+        // marquee (rubber-band) that multi-selects nodes + edges. Middle and
+        // right-mouse drags pan. Space-held primary drag also pans (via
+        // panActivationKeyCode below). Draw mode disables marquee + pan so the
+        // toolbar's shape gesture owns primary-drag.
+        //
+        // SelectionMode.Partial: an edge / node selects if ANY part is inside
+        // the marquee (matches the design-tool norm — strict-Full would only
+        // select fully-contained shapes, which feels finicky).
+        //
+        // selectionKeyCode=null suppresses xyflow's modifier-marquee fallback
+        // (default would be 'Shift') since selectionOnDrag already covers
+        // marquee — keeping shift free for additive multi-select via click.
+        selectionOnDrag={!drawShape}
+        panOnDrag={drawShape ? false : [1, 2]}
+        selectionMode={SelectionMode.Partial}
         selectionKeyCode={null}
         multiSelectionKeyCode={drawShape ? null : ['Meta', 'Shift']}
         panActivationKeyCode={drawShape ? null : 'Space'}
+        // US-010: lift the marquee end to a single onSelectionChange call so
+        // the parent's `selectedNodeIds` / `selectedConnectorIds` props don't
+        // churn per frame. The onNodesChange / onEdgesChange handlers above
+        // accumulate the live changes into local refs; this fires once on
+        // pointer-up.
+        onSelectionStart={onSelectionStartCb}
+        onSelectionEnd={onSelectionEndCb}
+        // US-010: keep edges above sibling nodes but below the future group
+        // label slot (US-014). Setting via defaultEdgeOptions is preferred to
+        // a per-edge zIndex because it doesn't churn edge identity through
+        // connectorToEdge — the option propagates through xyflow's default
+        // edge merging.
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         zoomOnDoubleClick={false}
         onInit={(instance) => {
           rfInstanceRef.current = instance;

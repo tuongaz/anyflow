@@ -4,7 +4,7 @@ import type { ImageNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import type { CSSProperties } from 'react';
+import { type CSSProperties, memo } from 'react';
 
 export type ImageNodeRuntimeData = ImageNodeData & {
   onResize?: (
@@ -22,7 +22,7 @@ const MIN_H = 40;
 
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
-export function ImageNode({ id, data, selected, isConnectable }: NodeProps<ImageNodeType>) {
+function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNodeType>) {
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
@@ -32,20 +32,13 @@ export function ImageNode({ id, data, selected, isConnectable }: NodeProps<Image
   // we pin a default 200x150 so the wrapper auto-sizes to it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
 
+  // US-010: selection outline moved to CSS (see play-node.tsx note).
   const containerStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,
     ...(sized ? {} : { width: IMAGE_DEFAULT_SIZE.width, height: IMAGE_DEFAULT_SIZE.height }),
-    ...(selected
-      ? {
-          outlineWidth: '1px',
-          outlineStyle: 'solid',
-          outlineColor: 'hsl(var(--primary) / 0.4)',
-          outlineOffset: '4px',
-        }
-      : {}),
   };
 
   return (
@@ -103,3 +96,15 @@ export function ImageNode({ id, data, selected, isConnectable }: NodeProps<Image
     </div>
   );
 }
+
+// US-010: see play-node.tsx — skip re-renders on xyflow's internal prop ticks.
+function arePropsEqual(prev: NodeProps<ImageNodeType>, next: NodeProps<ImageNodeType>): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+}
+
+export const ImageNode = memo(ImageNodeImpl, arePropsEqual);

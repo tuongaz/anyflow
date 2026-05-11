@@ -8,7 +8,7 @@ import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { Loader2, Play } from 'lucide-react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useState } from 'react';
 
 export type PlayNodeData = NodeData & {
   /**
@@ -37,7 +37,7 @@ const MIN_W = 100;
 const MIN_H = 44;
 const DEFAULT_W = 200;
 
-export function PlayNode({ id, data, selected, isConnectable }: NodeProps<PlayNodeType>) {
+function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeType>) {
   const status = data.status;
   const action = data.playAction;
   const description = data.detail?.summary ?? data.kind;
@@ -75,13 +75,10 @@ export function PlayNode({ id, data, selected, isConnectable }: NodeProps<PlayNo
   // Border + background tokens are independent — picking a border color
   // shouldn't tint the background and vice versa. Unset → fall through to
   // the theme defaults baked into the 'default' token (--border / --card).
-  // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
-  // outside the node — the standard design-tool selection box. Outline is
-  // used (not a wider border or absolute overlay) so layout never shifts —
-  // play-nodes have content-driven height when not yet user-resized, so
-  // growing border-width would push the outer height. The four corner
-  // resize handles render at the node's own corners; with the 4px outline
-  // offset, the visible 10px white squares sit at the rect's corners.
+  // US-010: selection outline moved to CSS (`.react-flow__node.selected > div`
+  // in index.css) so per-render style-object identity is stable for
+  // `React.memo`'s prop-equality check below — no inline `outline*` keys
+  // whose identity churns when `selected` flips.
   const containerStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
@@ -89,14 +86,6 @@ export function PlayNode({ id, data, selected, isConnectable }: NodeProps<PlayNo
     borderStyle: data.borderStyle,
     borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,
     ...(sized ? {} : { width: DEFAULT_W }),
-    ...(selected
-      ? {
-          outlineWidth: '1px',
-          outlineStyle: 'solid',
-          outlineColor: 'hsl(var(--primary) / 0.4)',
-          outlineOffset: '4px',
-        }
-      : {}),
   };
 
   // US-020: region-aware double-click routing. Header → label edit; content
@@ -270,3 +259,19 @@ export function PlayNode({ id, data, selected, isConnectable }: NodeProps<PlayNo
     </div>
   );
 }
+
+// US-010: skip re-renders when only React Flow's internal props (`dragging`,
+// `isConnectable`, `xPos`, `yPos`, …) tick — only `data`, `selected`, and the
+// wrapper dimensions are visually load-bearing for this renderer. The big win
+// is during the marquee gesture: hundreds of mid-drag selection updates land,
+// but only the nodes whose `selected` flag flipped re-render.
+function arePropsEqual(prev: NodeProps<PlayNodeType>, next: NodeProps<PlayNodeType>): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+}
+
+export const PlayNode = memo(PlayNodeImpl, arePropsEqual);

@@ -6,7 +6,7 @@ import { colorTokenStyle } from '@/lib/color-tokens';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useState } from 'react';
 
 export type IconNodeRuntimeData = IconNodeData & {
   onResize?: (
@@ -45,7 +45,7 @@ function resolveIconColor(token: IconNodeData['color']): string {
 // Console-warn once per unknown icon name so a broken demo doesn't spam logs.
 const WARNED_NAMES = new Set<string>();
 
-export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNodeType>) {
+function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeType>) {
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
@@ -66,16 +66,9 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
   const iconColor = resolveIconColor(data.color);
   const strokeWidth = data.strokeWidth ?? 2;
 
+  // US-010: selection outline moved to CSS (see play-node.tsx note).
   const containerStyle: CSSProperties = {
     ...(sized ? {} : { width: ICON_DEFAULT_SIZE.width, height: ICON_DEFAULT_SIZE.height }),
-    ...(selected
-      ? {
-          outlineWidth: '1px',
-          outlineStyle: 'solid',
-          outlineColor: 'hsl(var(--primary) / 0.4)',
-          outlineOffset: '4px',
-        }
-      : {}),
   };
 
   // US-004: dblclick enters inline label-edit mode (replaces the US-016
@@ -169,3 +162,15 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
     </div>
   );
 }
+
+// US-010: see play-node.tsx — skip re-renders on xyflow's internal prop ticks.
+function arePropsEqual(prev: NodeProps<IconNodeType>, next: NodeProps<IconNodeType>): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+}
+
+export const IconNode = memo(IconNodeImpl, arePropsEqual);
