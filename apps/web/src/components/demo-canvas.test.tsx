@@ -843,4 +843,232 @@ describe('DemoCanvas', () => {
       expect(clicks).toEqual(['node:g']);
     });
   });
+
+  describe('US-006: group onResize branches on data.isActive', () => {
+    // The wrapper sits in `buildNode` (demo-canvas.tsx) and replaces the
+    // group's `data.onResize` with a callback that picks between the
+    // single-node `onNodeResize` path (active group / fallback) and the
+    // batched `onGroupResizeWithChildren` path (inactive group with the
+    // batch prop wired). We exercise the wrapper directly via the rfNode's
+    // data.onResize so the assertion exactly matches what `useResizeGesture`
+    // calls at resize-stop. activeGroupId is the SECOND useState in
+    // demo-canvas.tsx (slot 1, after drawShape) — useStateOverrides drive it.
+    const ACTIVE_GROUP_STATE_SLOT = 1;
+
+    function makeSizedGroup(
+      id: string,
+      pos: { x: number; y: number },
+      dims: { width: number; height: number },
+    ): DemoNode {
+      return {
+        id,
+        type: 'group',
+        position: pos,
+        data: { width: dims.width, height: dims.height },
+      };
+    }
+
+    function makeSizedChild(
+      id: string,
+      parentId: string,
+      pos: { x: number; y: number },
+      dims: { width: number; height: number },
+      extra: { locked?: boolean } = {},
+    ): DemoNode {
+      return {
+        id,
+        type: 'shapeNode',
+        parentId,
+        position: pos,
+        data: { label: id, shape: 'rectangle', ...dims, ...extra },
+      };
+    }
+
+    type OnGroupBatch = NonNullable<DemoCanvasProps['onGroupResizeWithChildren']>;
+
+    function getGroupOnResize(
+      props: Partial<DemoCanvasProps>,
+      opts: { active?: boolean } = {},
+    ): (id: string, dims: { width: number; height: number; x: number; y: number }) => void {
+      // Inject `activeGroupId` into the state slot when the test wants an
+      // active group; otherwise leave the slot default (null).
+      const useStateOverrides: ReadonlyArray<unknown> = opts.active
+        ? Array.from({ length: ACTIVE_GROUP_STATE_SLOT + 1 }, (_v, i) =>
+            i === ACTIVE_GROUP_STATE_SLOT ? 'g' : undefined,
+          )
+        : [];
+      const tree = callDemoCanvas(props, { useStateOverrides });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const group = rfNodes.find((n) => n.id === 'g');
+      if (!group) throw new Error('group rfNode not found');
+      const cb = (group.data as { onResize?: unknown }).onResize as
+        | ((id: string, dims: { width: number; height: number; x: number; y: number }) => void)
+        | undefined;
+      if (typeof cb !== 'function') throw new Error('group onResize callback not wired');
+      return cb;
+    }
+
+    it('inactive-group resize calls onGroupResizeWithChildren with scaled children', () => {
+      // Group at (10, 20) 100×80; child at parent-relative (10, 10), 20×20.
+      // Doubling the group to 200×160 should scale the child to parent-rel
+      // (20, 20), 40×40. Group position move is captured in groupDims —
+      // the parent forwards it to the new x/y so xyflow keeps the children
+      // anchored via parentId.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
+      const cb = getGroupOnResize({
+        nodes: [
+          makeSizedGroup('g', { x: 10, y: 20 }, { width: 100, height: 80 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onNodeResize: (id, dims) => single.push([id, dims]),
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 10, y: 20, width: 200, height: 160 });
+      expect(single.length).toBe(0);
+      expect(captured.length).toBe(1);
+      const u = captured[0];
+      if (!u) throw new Error('expected one captured update');
+      expect(u.groupId).toBe('g');
+      expect(u.groupDims).toEqual({ x: 10, y: 20, width: 200, height: 160 });
+      expect(u.childUpdates).toEqual([
+        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
+      ]);
+    });
+
+    it('inactive-group resize scales multiple children + skips locked children', () => {
+      // Two children: c1 unlocked (scales) and c2 locked (passes through
+      // unchanged via scale-nodes' locked-skip path).
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResize({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+          makeSizedChild('c2', 'g', { x: 50, y: 50 }, { width: 30, height: 30 }, { locked: true }),
+        ],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      const u = captured[0];
+      if (!u) throw new Error('expected one captured update');
+      // c1 scales 2x: (20, 20) at 40×40.
+      expect(u.childUpdates.find((c) => c.id === 'c1')).toEqual({
+        id: 'c1',
+        position: { x: 20, y: 20 },
+        width: 40,
+        height: 40,
+      });
+      // c2 is locked → unchanged.
+      expect(u.childUpdates.find((c) => c.id === 'c2')).toEqual({
+        id: 'c2',
+        position: { x: 50, y: 50 },
+        width: 30,
+        height: 30,
+      });
+    });
+
+    it('active-group resize calls onNodeResize only — children untouched', () => {
+      // activeGroupId === 'g' via the state slot override. The wrapper
+      // forwards the resize to `onNodeResize` (single-node path); the
+      // batched callback must NOT fire.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
+      const cb = getGroupOnResize(
+        {
+          nodes: [
+            makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+            makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+          ],
+          onNodeResize: (id, dims) => single.push([id, dims]),
+          onGroupResizeWithChildren: (u) => captured.push(u),
+        },
+        { active: true },
+      );
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      expect(captured.length).toBe(0);
+      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
+    });
+
+    it('falls back to onNodeResize when onGroupResizeWithChildren is not wired', () => {
+      // Legacy callers without the batch prop still see the group resize
+      // — children just stay put (pre-US-006 behavior).
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
+      const cb = getGroupOnResize({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onNodeResize: (id, dims) => single.push([id, dims]),
+        // onGroupResizeWithChildren intentionally absent
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
+    });
+
+    it('non-group nodes still route directly through onNodeResize', () => {
+      // Sanity that the buildNode wrapper only swaps for group nodes — a
+      // shape node's data.onResize must be the raw onNodeResize prop. If
+      // this regresses, every non-group node would resize as if it were a
+      // group (no-op since no children) and the batched path would silently
+      // misfire on plain shapes.
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('s1')],
+        onNodeResize: (id, dims) => single.push([id, dims]),
+        onGroupResizeWithChildren: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const s1 = (rf.props.nodes as Node[]).find((n) => n.id === 's1');
+      if (!s1) throw new Error('shape rfNode not found');
+      const onResize = (s1.data as { onResize?: unknown }).onResize as (
+        id: string,
+        d: { width: number; height: number; x: number; y: number },
+      ) => void;
+      onResize('s1', { x: 0, y: 0, width: 40, height: 30 });
+      expect(single).toEqual([['s1', { x: 0, y: 0, width: 40, height: 30 }]]);
+    });
+
+    it('inactive-group resize with no children dispatches an empty childUpdates batch', () => {
+      // Edge case: childless group still flows through the batched callback
+      // (consistent shape for the parent's commit path). Group dims update;
+      // childUpdates is just an empty array.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResize({
+        nodes: [makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 })],
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      const u = captured[0];
+      if (!u) throw new Error('expected one captured update');
+      expect(u.groupId).toBe('g');
+      expect(u.groupDims).toEqual({ x: 0, y: 0, width: 200, height: 200 });
+      expect(u.childUpdates).toEqual([]);
+    });
+
+    it('group with unknown old dims falls back to onNodeResize (defensive)', () => {
+      // makeGroupNode in this test file gives width=200/height=200 by
+      // default, but a freshly-created group's data may not yet have dims.
+      // Construct one without width/height to verify the defensive path.
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const noDimsGroup: DemoNode = {
+        id: 'g',
+        type: 'group',
+        position: { x: 0, y: 0 },
+        data: {},
+      };
+      const cb = getGroupOnResize({
+        nodes: [noDimsGroup, makeSizedChild('c1', 'g', { x: 0, y: 0 }, { width: 10, height: 10 })],
+        onNodeResize: (id, dims) => single.push([id, dims]),
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      expect(captured.length).toBe(0);
+      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
+    });
+  });
 });

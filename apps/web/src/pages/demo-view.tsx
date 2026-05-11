@@ -487,6 +487,113 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
+  // US-006: atomic inactive-group resize. The canvas pre-computes the group's
+  // new dims AND every direct child's scaled position/size; this callback
+  // commits the whole batch as a SINGLE undo entry. Mirrors the onStyleNodes
+  // batch pattern — Cmd+Z reverts every child mutation AND the group's dims
+  // together. Active groups still flow through `onNodeResize` (single-node
+  // behavior). Optimistic overrides are fanned out before the PATCHes so the
+  // canvas stays pinned through the SSE round-trip.
+  const onGroupResizeWithChildren = useCallback(
+    (update: {
+      groupId: string;
+      groupDims: { width: number; height: number; x: number; y: number };
+      childUpdates: {
+        id: string;
+        position: { x: number; y: number };
+        width?: number;
+        height?: number;
+      }[];
+    }) => {
+      if (!demoId) return;
+      const group = demoNodes?.find((n) => n.id === update.groupId);
+      if (!group) return;
+      const groupPrev = {
+        width: group.data.width,
+        height: group.data.height,
+        position: { x: group.position.x, y: group.position.y },
+      };
+      const groupNext = {
+        width: update.groupDims.width,
+        height: update.groupDims.height,
+        position: { x: update.groupDims.x, y: update.groupDims.y },
+      };
+      type DimsPatch = {
+        width?: number;
+        height?: number;
+        position: { x: number; y: number };
+      };
+      type ChildTarget = { id: string; prev: DimsPatch; next: DimsPatch };
+      const childTargets: ChildTarget[] = [];
+      for (const cu of update.childUpdates) {
+        const child = demoNodes?.find((n) => n.id === cu.id);
+        if (!child) continue;
+        const cData = child.data as { width?: number; height?: number };
+        const prev: DimsPatch = {
+          position: { x: child.position.x, y: child.position.y },
+        };
+        if (cData.width !== undefined) prev.width = cData.width;
+        if (cData.height !== undefined) prev.height = cData.height;
+        const next: DimsPatch = { position: cu.position };
+        if (cu.width !== undefined) next.width = cu.width;
+        if (cu.height !== undefined) next.height = cu.height;
+        childTargets.push({ id: cu.id, prev, next });
+      }
+      // Optimistic overrides: pin the group's new dims + each child's scaled
+      // position/size through the PATCH round-trip + SSE echo so the canvas
+      // doesn't snap back to the pre-resize rect mid-flight.
+      setNodeOverride(update.groupId, {
+        position: groupNext.position,
+        data: { width: groupNext.width, height: groupNext.height },
+      } as Partial<DemoNode>);
+      for (const t of childTargets) {
+        const dataPatch: { width?: number; height?: number } = {};
+        if (t.next.width !== undefined) dataPatch.width = t.next.width;
+        if (t.next.height !== undefined) dataPatch.height = t.next.height;
+        setNodeOverride(t.id, {
+          position: t.next.position,
+          ...(Object.keys(dataPatch).length > 0 ? { data: dataPatch } : {}),
+        } as Partial<DemoNode>);
+      }
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled([
+            updateNode(demoId, update.groupId, groupNext),
+            ...childTargets.map((t) => updateNode(demoId, t.id, t.next)),
+          ]);
+        },
+        undo: async () => {
+          await Promise.allSettled([
+            updateNode(demoId, update.groupId, groupPrev),
+            ...childTargets.map((t) => updateNode(demoId, t.id, t.prev)),
+          ]);
+        },
+      });
+      // Fire-and-forget fan-out. Per-node failure drops that node's override
+      // so the canvas falls back to server state; we surface a single banner.
+      Promise.all(
+        [
+          { id: update.groupId, patch: groupNext },
+          ...childTargets.map((t) => ({ id: t.id, patch: t.next })),
+        ].map(async (op) => {
+          try {
+            await updateNode(demoId, op.id, op.patch);
+            return null;
+          } catch (err) {
+            dropNodeOverride(op.id);
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ).then((errs) => {
+        const first = errs.find((e): e is string => e !== null);
+        if (first) setEditError(first);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   const { setOverride: setConnectorOverride, dropOverride: dropConnectorOverride } =
     connectorPending;
 
@@ -2921,6 +3028,7 @@ export function DemoView({
           onNodePositionChange={onNodePositionChange}
           onNodePositionsChange={onNodePositionsChange}
           onNodeResize={onNodeResize}
+          onGroupResizeWithChildren={onGroupResizeWithChildren}
           onNodeLabelChange={onNodeLabelChange}
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}

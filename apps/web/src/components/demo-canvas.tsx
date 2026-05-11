@@ -32,6 +32,7 @@ import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
 import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { type GroupableNode, selectGroupableSet, selectUngroupableSet } from '@/lib/group-ops';
+import { scaleNodesWithinRect } from '@/lib/scale-nodes';
 import { cn } from '@/lib/utils';
 import {
   Background,
@@ -118,6 +119,27 @@ export interface DemoCanvasProps {
     nodeId: string,
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
+  /**
+   * US-006: atomic inactive-group resize. Fired in place of `onNodeResize`
+   * when a NON-active group is resized: the canvas pre-computes the group's
+   * new dims AND the scaled positions/sizes of every direct child (via the
+   * shared `scaleNodesWithinRect` helper). The parent commits the whole batch
+   * as ONE undo entry so a single Cmd+Z reverts every child mutation along
+   * with the group's own dims. Active groups (data.isActive === true) still
+   * route through `onNodeResize` so resizing an entered group leaves the
+   * children untouched. Absent → the canvas falls back to `onNodeResize` for
+   * the group only (legacy single-node-resize behavior; children stay put).
+   */
+  onGroupResizeWithChildren?: (update: {
+    groupId: string;
+    groupDims: { width: number; height: number; x: number; y: number };
+    childUpdates: {
+      id: string;
+      position: { x: number; y: number };
+      width?: number;
+      height?: number;
+    }[];
+  }) => void;
   /** Persist a new node label (PATCH /nodes/:id { label }). */
   onNodeLabelChange?: (nodeId: string, label: string) => void;
   /** Persist a new node description on detail.summary. */
@@ -620,6 +642,7 @@ export function DemoCanvas({
   onNodePositionChange,
   onNodePositionsChange,
   onNodeResize,
+  onGroupResizeWithChildren,
   onNodeLabelChange,
   onNodeDescriptionChange,
   onConnectorLabelChange,
@@ -1365,6 +1388,84 @@ export function DemoCanvas({
     parentIdByIdRef.current = parentIdById;
   }, [parentIdById]);
 
+  // US-006: a resize-stop on a group branches on whether the group is the
+  // active (entered) one. An ACTIVE group resizes like any other node — only
+  // its own dims change, children stay put — so we forward to `onNodeResize`.
+  // An INACTIVE group resize scales every direct child relative to the
+  // old → new rect transformation (via the shared `scaleNodesWithinRect`
+  // helper from US-002) and dispatches the group dims + child updates as a
+  // single batched callback so the parent commits ONE undo entry covering
+  // both. Locked children pass through unchanged (handled inside the helper).
+  // Callers that haven't wired the batch prop fall through to the legacy
+  // single-node resize on the group only — children stay put in that path.
+  const onGroupNodeResize = useCallback(
+    (groupId: string, dims: { width: number; height: number; x: number; y: number }) => {
+      // Active groups: identical to a normal node resize (only this group's
+      // dims change; children are intentionally not scaled). We read the
+      // state directly (rather than via the ref) so the callback closes over
+      // the current value at render time — the ref mirror lags by one effect
+      // tick, which is fine for click/dblclick handlers but not for the
+      // resize-stop dispatcher that depends on this branch being correct
+      // at the moment the user releases the gesture.
+      if (activeGroupId === groupId) {
+        onNodeResize?.(groupId, dims);
+        return;
+      }
+      const group = nodes.find((n) => n.id === groupId);
+      const groupData = group?.data as { width?: number; height?: number } | undefined;
+      const oldW = groupData?.width;
+      const oldH = groupData?.height;
+      // Without a known old rect we can't compute a scale factor — fall
+      // through to single-node resize so the group still grows/shrinks.
+      // (Also covers the optimistic "override-only" group that's not yet in
+      // the `nodes` prop — extremely rare, but defensive.)
+      if (!group || oldW === undefined || oldH === undefined) {
+        onNodeResize?.(groupId, dims);
+        return;
+      }
+      // Children live in PARENT-RELATIVE coordinates (xyflow's parentId
+      // wiring keeps them anchored to the group's top-left), so the scale
+      // is computed in parent space too: oldRect/newRect both start at
+      // {x:0, y:0}. The parent's own position move (dims.x/y vs old x/y) is
+      // absorbed by the parent → children automatically come along.
+      const children = nodes.filter((n) => n.parentId === groupId);
+      const scalable = children.map((c) => {
+        const cData = c.data as { width?: number; height?: number; locked?: boolean };
+        return {
+          id: c.id,
+          position: { x: c.position.x, y: c.position.y },
+          width: cData.width,
+          height: cData.height,
+          data: { locked: cData.locked },
+        };
+      });
+      const scaled = scaleNodesWithinRect(
+        scalable,
+        { x: 0, y: 0, width: oldW, height: oldH },
+        { x: 0, y: 0, width: dims.width, height: dims.height },
+      );
+      const childUpdates = scaled.map((s) => {
+        const u: {
+          id: string;
+          position: { x: number; y: number };
+          width?: number;
+          height?: number;
+        } = { id: s.id, position: s.position };
+        if (s.width !== undefined) u.width = s.width;
+        if (s.height !== undefined) u.height = s.height;
+        return u;
+      });
+      if (onGroupResizeWithChildren) {
+        onGroupResizeWithChildren({ groupId, groupDims: dims, childUpdates });
+        return;
+      }
+      // Fallback: legacy callers without the batch prop. Resize the group
+      // only; children won't scale (matches pre-US-006 behavior).
+      onNodeResize?.(groupId, dims);
+    },
+    [nodes, onNodeResize, onGroupResizeWithChildren, activeGroupId],
+  );
+
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
       // Group enter/exit gate: true when this node lives inside a group the
@@ -1384,7 +1485,11 @@ export function DemoCanvas({
           status: dataStatusFor(runs, merged.id),
           errorMessage: dataErrorMessageFor(runs, merged.id),
           onPlay: onPlayNode,
-          onResize: onNodeResize,
+          // US-006: group nodes route resize through the wrapper that branches
+          // on activeGroupId — inactive groups scale children, active groups
+          // resize like any other node. Non-group nodes use `onNodeResize`
+          // directly.
+          onResize: merged.type === 'group' ? onGroupNodeResize : onNodeResize,
           setResizing,
           onLabelChange: gatedByGroup ? undefined : onNodeLabelChange,
           onDescriptionChange:
@@ -1498,6 +1603,7 @@ export function DemoCanvas({
     runs,
     onPlayNode,
     onNodeResize,
+    onGroupNodeResize,
     setResizing,
     nodeOverrides,
     onNodeLabelChange,
