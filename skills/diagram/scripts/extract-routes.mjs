@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Extract HTTP routes, queue names, and event names from a target codebase
 // using regex patterns per framework. Deterministic — no LLM.
 //

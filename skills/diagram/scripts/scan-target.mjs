@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Phase 1 — SCAN (deterministic).
 //
 // Walks the target repo, classifies files, detects manifests and frameworks,

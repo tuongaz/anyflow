@@ -3,6 +3,14 @@ import { isAbsolute, join } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import {
+  AssembleRequestSchema,
+  ProposeScopeRequestSchema,
+  ValidateRequestSchema,
+  assembleDemo,
+  proposeScope,
+  validateDemo,
+} from './diagram.ts';
 import type { EventBus } from './events.ts';
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
@@ -359,6 +367,61 @@ export function createApi(options: ApiOptions): Hono {
       slug: entry.slug,
       sdk: { outcome: sdkResult.outcome, filePath: sdkResult.filePath },
     });
+  });
+
+  // POST /api/demos/validate — dry-run validation. The skill's diagram
+  // pipeline calls this between assemble and register to decide whether to
+  // rewire. Runs the Zod schema, the soft node cap, and the tier playability
+  // check. Filesystem-bound checks (harness coverage, event emitter index)
+  // stay in the skill since the studio doesn't see the user's $TARGET.
+  api.post('/demos/validate', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = ValidateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid validate body', issues: parsed.error.issues }, 400);
+    }
+    return c.json(validateDemo(parsed.data));
+  });
+
+  // POST /api/diagram/propose-scope — Phase 2 helper. The skill POSTs the
+  // scan-result.json shape and gets back ranked entry-point candidates.
+  // Pure compute; skill writes the response to intermediate/entry-candidates.json.
+  api.post('/diagram/propose-scope', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = ProposeScopeRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid propose-scope body', issues: parsed.error.issues }, 400);
+    }
+    return c.json(proposeScope(parsed.data));
+  });
+
+  // POST /api/diagram/assemble — Phase 7a. The skill POSTs wiring + layout
+  // and gets back the assembled demo (IDs normalized, dupes dropped, dangling
+  // connectors removed, positions snapped to a 24px grid). Pure compute; the
+  // skill writes the response to $TARGET/.anydemo/demo.json. No schema
+  // validation here — call /demos/validate for that.
+  api.post('/diagram/assemble', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = AssembleRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid assemble body', issues: parsed.error.issues }, 400);
+    }
+    return c.json(assembleDemo(parsed.data));
   });
 
   // POST /api/projects — UI-driven "Create new project" flow (US-020). Two

@@ -164,6 +164,199 @@ describe('POST /api/demos/register', () => {
   });
 });
 
+describe('POST /api/demos/validate', () => {
+  it('returns ok:true with zero issues for a valid static demo', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/demos/validate', { demo: VALID_DEMO, tier: 'static' });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      ok: boolean;
+      issues: unknown[];
+      warnings: unknown[];
+      stats: { tier: string; nodeCount: number };
+    };
+    expect(json.ok).toBe(true);
+    expect(json.issues).toHaveLength(0);
+    expect(json.stats.tier).toBe('static');
+    expect(json.stats.nodeCount).toBe(1);
+  });
+
+  it('returns Zod issues for a malformed demo', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/demos/validate', { demo: { version: 1 } });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { ok: boolean; issues: Array<{ kind: string }> };
+    expect(json.ok).toBe(false);
+    expect(json.issues.some((i) => i.kind === 'zod')).toBe(true);
+  });
+
+  it('flags tier-mismatch when tier=real but no playable nodes exist', async () => {
+    const { app } = buildApp();
+    const staticOnly = {
+      version: 1,
+      name: 'Static only',
+      nodes: [
+        {
+          id: 'box',
+          type: 'shapeNode',
+          position: { x: 0, y: 0 },
+          data: { shape: 'rectangle' },
+        },
+      ],
+      connectors: [],
+    };
+    const res = await post(app, '/api/demos/validate', { demo: staticOnly, tier: 'real' });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { ok: boolean; issues: Array<{ kind: string }> };
+    expect(json.ok).toBe(false);
+    expect(json.issues.some((i) => i.kind === 'tier-mismatch')).toBe(true);
+  });
+
+  it('flags cap issue when node count exceeds 30', async () => {
+    const { app } = buildApp();
+    const bigDemo = {
+      version: 1,
+      name: 'Too big',
+      nodes: Array.from({ length: 31 }, (_, i) => ({
+        id: `n${i}`,
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle' as const },
+      })),
+      connectors: [],
+    };
+    const res = await post(app, '/api/demos/validate', { demo: bigDemo, tier: 'static' });
+    const json = (await res.json()) as { issues: Array<{ kind: string }> };
+    expect(json.issues.some((i) => i.kind === 'cap')).toBe(true);
+  });
+
+  it('warns about reachability for tier=real with http playActions', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/demos/validate', { demo: VALID_DEMO, tier: 'real' });
+    const json = (await res.json()) as { warnings: Array<{ kind: string }> };
+    expect(json.warnings.some((w) => w.kind === 'real-tier-reachability')).toBe(true);
+  });
+
+  it('returns 400 for malformed JSON body', async () => {
+    const { app } = buildApp();
+    const res = await app.request('/api/demos/validate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ not json',
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/diagram/propose-scope', () => {
+  it('returns ranked entry-point candidates from a scan-result-shaped body', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/diagram/propose-scope', {
+      files: [
+        { path: 'src/server.ts', category: 'code' },
+        { path: 'src/lib/helper.ts', category: 'code' },
+        { path: 'README.md', category: 'docs' },
+        { path: 'node_modules/foo/index.js', category: 'code' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      candidates: Array<{ path: string; score: number; reasons: string[] }>;
+    };
+    expect(json.candidates.length).toBeGreaterThan(0);
+    expect(json.candidates[0]?.path).toBe('src/server.ts');
+    expect(json.candidates.some((c) => c.path.includes('node_modules'))).toBe(false);
+  });
+
+  it('returns empty candidates when there are no code files', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/diagram/propose-scope', {
+      files: [{ path: 'README.md', category: 'docs' }],
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { candidates: unknown[] };
+    expect(json.candidates).toHaveLength(0);
+  });
+
+  it('returns 400 when files is missing', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/diagram/propose-scope', {});
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/diagram/assemble', () => {
+  it('assembles wiring + layout into a demo with snapped positions and stats', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/diagram/assemble', {
+      wiring: {
+        name: 'Test Demo',
+        nodes: [
+          {
+            id: 'API',
+            type: 'playNode',
+            position: { x: 11, y: 23 },
+            data: {
+              label: 'API',
+              kind: 'service',
+              stateSource: { kind: 'request' },
+              playAction: { kind: 'http', method: 'GET', url: 'http://x/y' },
+            },
+          },
+          {
+            id: 'db',
+            type: 'stateNode',
+            position: { x: 100, y: 100 },
+            data: { label: 'DB', kind: 'store', stateSource: { kind: 'request' } },
+          },
+        ],
+        connectors: [
+          { id: 'a-b', source: 'API', target: 'db', kind: 'http' },
+          { source: 'ghost', target: 'db', kind: 'http' },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      demo: {
+        name: string;
+        nodes: Array<{ id: string; position: { x: number; y: number } }>;
+        connectors: unknown[];
+      };
+      stats: { danglingConnectorsDropped: number; positionsSnapped: number };
+    };
+    expect(json.demo.name).toBe('Test Demo');
+    expect(json.demo.nodes.map((n) => n.id)).toEqual(['api', 'db']);
+    const firstPos = json.demo.nodes[0]?.position;
+    expect(firstPos).toBeDefined();
+    expect((firstPos?.x ?? -1) % 24).toBe(0);
+    expect((firstPos?.y ?? -1) % 24).toBe(0);
+    expect(json.stats.danglingConnectorsDropped).toBe(1);
+    expect(json.stats.positionsSnapped).toBeGreaterThan(0);
+  });
+
+  it('applies layout positions to override wiring positions', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/diagram/assemble', {
+      wiring: {
+        nodes: [{ id: 'n1', position: { x: 0, y: 0 } }],
+        connectors: [],
+      },
+      layout: { positions: { n1: { x: 240, y: 480 } } },
+    });
+    const json = (await res.json()) as {
+      demo: { nodes: Array<{ id: string; position: { x: number; y: number } }> };
+    };
+    expect(json.demo.nodes[0]?.position).toEqual({ x: 240, y: 480 });
+  });
+
+  it('returns 400 for missing wiring', async () => {
+    const { app } = buildApp();
+    const res = await post(app, '/api/diagram/assemble', { layout: { positions: {} } });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('GET /api/demos', () => {
   it('returns the registry list as summaries', async () => {
     const { app } = buildApp();

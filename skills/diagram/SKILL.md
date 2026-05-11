@@ -8,9 +8,20 @@ argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
 # AnyDemo Diagram Generator
 
 Generate a single flat playable AnyDemo diagram (`<target>/.anydemo/demo.json`)
-from any codebase. The output is schema-valid against the studio's Zod
-`DemoSchema`, has ≤30 nodes, and registers with the running studio so the
-user can click the result.
+from any codebase. The output is schema-valid, has ≤30 nodes, and registers
+with the running studio so the user can click the result.
+
+## Requirements
+
+- A running AnyDemo studio reachable at `$ANYDEMO_STUDIO_URL` (default
+  `http://localhost:4321`). Probe `GET /health` if you need to confirm.
+- **Node.js** (any LTS) on `PATH` — the two filesystem scripts in
+  `${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/` run under Node.
+- `curl` and `jq` for the HTTP calls below.
+
+All schema validation, scope scoring, demo assembly, and registration happen
+**via the studio's HTTP API**. The skill ships two small Node scripts that
+walk the user's `$TARGET` filesystem; everything else is a `curl` call.
 
 ## Announcement
 
@@ -27,7 +38,8 @@ Announce: "Using anydemo-diagram skill to generate a playable diagram for: <requ
 
 ```
 Phase 0  Pre-flight     (deterministic; no LLM)
-Phase 1  SCAN           scan-target.mjs + extract-routes.mjs + propose-scope.mjs
+Phase 1  SCAN           node scan-target.mjs + node extract-routes.mjs
+                        + POST /api/diagram/propose-scope
                         → target-scanner agent for semantic summary
 Phase 2  SCOPE          scope-proposer agent
                         ── CHECKPOINT 1 (AskUserQuestion: approve/refine scope)
@@ -37,8 +49,9 @@ Phase 4  NODE SELECTION node-selector agent (≤30 nodes; folds long tail)
                         ── CHECKPOINT 3 (AskUserQuestion: confirm node list)
 Phase 5  WIRING         wiring-builder agent (+ harness-author if Tier 2)
 Phase 6  LAYOUT         layout-arranger agent
-Phase 7  ASSEMBLE       assemble-demo.mjs + validate-demo.mjs
-Phase 8  REGISTER       anydemo register --path <target>
+Phase 7  ASSEMBLE       POST /api/diagram/assemble
+                        + POST /api/demos/validate
+Phase 8  REGISTER       POST /api/demos/register
 ```
 
 Each agent reads a small set of intermediate JSON files and writes one back.
@@ -46,33 +59,44 @@ The orchestrator (this file) coordinates the phases and surfaces checkpoints.
 
 ## Phase 0 — Pre-flight
 
-Resolve the target root and prepare directories:
+Resolve the target root and the studio URL, then prepare directories:
 
 ```bash
 TARGET="${TARGET:-$(pwd)}"
+STUDIO_URL="${ANYDEMO_STUDIO_URL:-http://localhost:4321}"
 mkdir -p "$TARGET/.anydemo/intermediate"
-```
 
-Verify the AnyDemo monorepo has a built SDK if registering will write
-`emit.ts`. The `anydemo register` CLI handles this; no action needed here.
+# Studio must be reachable — every non-filesystem step is an HTTP call.
+curl -fsS --max-time 1 "$STUDIO_URL/health" >/dev/null \
+  || { echo "AnyDemo studio not reachable at $STUDIO_URL. Start it and re-run." >&2; exit 1; }
+```
 
 ## Phase 1 — SCAN
 
-Run the deterministic scripts in order:
+Two filesystem-walking scripts (`node`, no `bun` needed) write deterministic
+JSON for the rest of the pipeline:
 
 ```bash
-bun ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/scan-target.mjs --root "$TARGET"
-bun ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/extract-routes.mjs --root "$TARGET"
-bun ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/propose-scope.mjs --root "$TARGET"
+node ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/scan-target.mjs --root "$TARGET"
+node ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/extract-routes.mjs --root "$TARGET"
 ```
 
-These write `scan-result.json`, `boundary-surfaces.json`, and
-`entry-candidates.json` under `$TARGET/.anydemo/intermediate/`.
+These write `scan-result.json` and `boundary-surfaces.json` under
+`$TARGET/.anydemo/intermediate/`.
 
-Then dispatch the **target-scanner** subagent (see `agents/target-scanner.md`).
-It reads the JSON outputs, produces a one-paragraph project summary, and
-lists detected diagrammable subsystems. Output:
-`intermediate/project-summary.json`.
+Then POST the scan result to the studio to get ranked entry-point candidates:
+
+```bash
+curl -fsS -X POST "$STUDIO_URL/api/diagram/propose-scope" \
+  -H 'content-type: application/json' \
+  -d "$(jq '{files}' "$TARGET/.anydemo/intermediate/scan-result.json")" \
+  > "$TARGET/.anydemo/intermediate/entry-candidates.json"
+```
+
+Then dispatch the **target-scanner** subagent (see
+`${CLAUDE_PLUGIN_ROOT}/agents/target-scanner.md`). It reads the JSON outputs,
+produces a one-paragraph project summary, and lists detected diagrammable
+subsystems. Output: `intermediate/project-summary.json`.
 
 The agent is FORBIDDEN from re-reading source files; it summarizes the
 deterministic output only.
@@ -140,8 +164,9 @@ Use `AskUserQuestion` to show the proposed node list. Options:
 ## Phase 5 — WIRING
 
 Dispatch the **wiring-builder** subagent. It produces a full `nodes[]` and
-`connectors[]` array conforming to the studio Zod schema (see
-`apps/studio/src/schema.ts` for the source of truth).
+`connectors[]` array conforming to the studio's demo schema. The schema is
+authoritative inside the studio — the `/api/demos/validate` endpoint will
+reject anything that doesn't conform.
 
 Constraints baked into the prompt:
 
@@ -192,55 +217,73 @@ The agent emits `intermediate/layout.json`.
 
 ## Phase 7 — ASSEMBLE & VALIDATE
 
-Run the deterministic pipeline:
+Assemble the wiring + layout into a final demo via the studio. The endpoint
+returns the assembled demo (IDs normalized, dupes dropped, dangling
+connectors removed, positions snapped to a 24px grid). The skill writes the
+result to disk:
 
 ```bash
-bun ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/assemble-demo.mjs --root "$TARGET"
-bun ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/validate-demo.mjs --root "$TARGET"
+ASSEMBLE_BODY="$(jq -nc \
+  --slurpfile w "$TARGET/.anydemo/intermediate/wiring-plan.json" \
+  --slurpfile l "$TARGET/.anydemo/intermediate/layout.json" \
+  '{wiring: $w[0], layout: $l[0]}')"
+curl -fsS -X POST "$STUDIO_URL/api/diagram/assemble" \
+  -H 'content-type: application/json' \
+  -d "$ASSEMBLE_BODY" \
+  | jq '.demo' > "$TARGET/.anydemo/demo.json"
 ```
 
-`assemble-demo.mjs` concatenates wiring + layout, normalizes IDs, dedupes,
-drops dangling connectors, snaps to a 24px grid. Writes `$TARGET/.anydemo/demo.json`.
+Then validate via the studio. The endpoint runs schema, the ≤30-node cap,
+and tier playability. `ok: false` means there are blocking issues; `ok: true`
+with non-empty `warnings` is still a pass.
 
-`validate-demo.mjs` runs the demo through the studio's Zod `DemoSchema`
-plus skill-specific checks (≤30 nodes, tier consistency, harness coverage,
-event emitter presence). Exits non-zero on issues.
+```bash
+TIER="$(jq -r '.chosenTier // .recommendation // "static"' \
+  "$TARGET/.anydemo/intermediate/tier-evidence.json")"
+VALIDATE_BODY="$(jq -nc \
+  --slurpfile d "$TARGET/.anydemo/demo.json" \
+  --arg tier "$TIER" \
+  '{demo: $d[0], tier: $tier}')"
+VALIDATE_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/validate" \
+  -H 'content-type: application/json' \
+  -d "$VALIDATE_BODY")"
+echo "$VALIDATE_RESPONSE" > "$TARGET/.anydemo/intermediate/validation-report.json"
+test "$(printf '%s' "$VALIDATE_RESPONSE" | jq -r .ok)" = "true"
+```
+
+**Tier 2 additional check (filesystem-local — studio can't see it):** when
+tier=mock, confirm every `playAction.url` in the demo is handled by the
+generated harness:
+
+```bash
+if [ "$TIER" = "mock" ] && [ ! -f "$TARGET/.anydemo/harness/server.ts" ]; then
+  echo "Tier=mock but harness server.ts missing." >&2; exit 1
+fi
+```
 
 If validation fails, return to Phase 5 with the validation report in context.
 **Maximum 2 retries** — if still failing, surface the issues to the user.
 
 ## Phase 8 — REGISTER
 
-Probe the studio's `/health`. If it is up, register via the HTTP API
-directly. If it is down, fall back to the CLI (which auto-starts the
-studio in the background and registers in one shot).
+Register the demo with the running studio:
 
 ```bash
-STUDIO_URL="${ANYDEMO_STUDIO_URL:-http://localhost:4321}"
-
-if curl -fsS --max-time 1 "$STUDIO_URL/health" >/dev/null 2>&1; then
-  # Studio is up — register via the API directly.
-  DEMO_NAME="$(jq -r .name "$TARGET/.anydemo/demo.json")"
-  REGISTER_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/register" \
-    -H 'content-type: application/json' \
-    -d "$(jq -nc \
-      --arg name "$DEMO_NAME" \
-      --arg repoPath "$TARGET" \
-      --arg demoPath ".anydemo/demo.json" \
-      '{name: $name, repoPath: $repoPath, demoPath: $demoPath}')")"
-  SLUG="$(printf '%s' "$REGISTER_RESPONSE" | jq -r .slug)"
-  echo "Registered \"$DEMO_NAME\" → $STUDIO_URL/d/$SLUG"
-else
-  # Studio is down — let the CLI start it and register in one shot.
-  anydemo register --path "$TARGET"
-fi
+DEMO_NAME="$(jq -r .name "$TARGET/.anydemo/demo.json")"
+REGISTER_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/register" \
+  -H 'content-type: application/json' \
+  -d "$(jq -nc \
+    --arg name "$DEMO_NAME" \
+    --arg repoPath "$TARGET" \
+    --arg demoPath ".anydemo/demo.json" \
+    '{name: $name, repoPath: $repoPath, demoPath: $demoPath}')")"
+SLUG="$(printf '%s' "$REGISTER_RESPONSE" | jq -r .slug)"
+echo "Registered \"$DEMO_NAME\" → $STUDIO_URL/d/$SLUG"
 ```
 
-The studio re-validates the demo and upserts the registry entry either
-way. The user lands on the canvas at `<STUDIO_URL>/d/<slug>` (slug is in
-the API response or printed by the CLI). The API also writes the
-`.anydemo/sdk/emit.ts` helper if the demo declares any event-bound state
-node — same behavior as the CLI.
+The studio re-validates the demo, upserts the registry entry, and writes
+`.anydemo/sdk/emit.ts` if the demo declares any event-bound state node.
+The user lands on the canvas at `<STUDIO_URL>/d/<slug>`.
 
 If the chosen tier is `mock`, also print the harness run command:
 
@@ -251,11 +294,12 @@ If the chosen tier is `mock`, also print the harness run command:
 
 | Concern | Where | Why |
 |---|---|---|
-| File discovery, framework detection | `scripts/scan-target.mjs` | LLM hallucinates paths |
-| Route extraction | `scripts/extract-routes.mjs` | regex is reliable per framework |
-| Schema validation | `scripts/validate-demo.mjs` (Zod re-import) | one source of truth |
-| ID normalization, dedup, dangling cleanup | `scripts/assemble-demo.mjs` | LLM not trustworthy at scale |
-| Position snapping & overlap | `scripts/assemble-demo.mjs` | LLM gives plausible-but-overlapping positions |
+| File discovery, framework detection | `scripts/scan-target.mjs` (local Node) | LLM hallucinates paths |
+| Route extraction | `scripts/extract-routes.mjs` (local Node) | regex is reliable per framework |
+| Entry-point scoring | `POST /api/diagram/propose-scope` | deterministic heuristic |
+| ID normalization, dedup, dangling cleanup | `POST /api/diagram/assemble` | LLM not trustworthy at scale |
+| Position snapping & overlap | `POST /api/diagram/assemble` | LLM gives plausible-but-overlapping positions |
+| Schema validation, cap, tier playability | `POST /api/demos/validate` | studio owns the schema |
 | Subsystem summary, scope framing | `target-scanner` / `scope-proposer` | semantic |
 | Tier feasibility | `tier-detector` | grading evidence |
 | Connector `kind` inference | `wiring-builder` | semantic mapping |
@@ -264,48 +308,32 @@ If the chosen tier is `mock`, also print the harness run command:
 
 - `.anydemo/intermediate/` is **preserved on failure** so the next run can
   resume. Cleaned only on successful completion.
-- Validation failure → return to Phase 5 (re-wire) with the report.
-- Schema drift is impossible: the validator imports the studio schema directly.
+- Validation failure (`/api/demos/validate` returns `ok: false`) → return to
+  Phase 5 (re-wire) with the report.
+- Schema drift is impossible: the validator runs inside the studio, so it
+  always uses the schema the studio enforces.
 
-## Additional resources
+## Plugin-bundled resources
 
-### Subagent files
+All paths below are relative to `${CLAUDE_PLUGIN_ROOT}`:
 
-All in `agents/` at the plugin root:
-- `target-scanner.md` — Phase 1 LLM
-- `scope-proposer.md` — Phase 2 LLM
-- `tier-detector.md` — Phase 3 LLM
-- `node-selector.md` — Phase 4 LLM
-- `wiring-builder.md` — Phase 5 LLM
-- `harness-author.md` — Phase 5b LLM (Tier 2 only)
-- `layout-arranger.md` — Phase 6 LLM
-
-### Per-framework hints
-
-In `frameworks/`:
-- `express.md`, `hono.md`, `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`
-
-Read the matching framework hint when the scan reports that framework. Each
-hint covers route shape, port detection, event/queue idioms, and tier notes.
-
-### Scripts
-
-In `scripts/`:
-- `scan-target.mjs`, `extract-routes.mjs`, `propose-scope.mjs`,
-  `assemble-demo.mjs`, `validate-demo.mjs`
-
-### Templates
-
-In `templates/` (Tier 2 only):
-- `harness-server.ts.tmpl`, `harness-package.json.tmpl`, `harness-readme.md.tmpl`
+- **`agents/`** — subagent definitions referenced by phase: `target-scanner.md`,
+  `scope-proposer.md`, `tier-detector.md`, `node-selector.md`,
+  `wiring-builder.md`, `harness-author.md` (Tier 2 only), `layout-arranger.md`.
+- **`frameworks/`** — per-framework hints (`express.md`, `hono.md`,
+  `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`). Read the matching hint
+  when the scan reports that framework.
+- **`skills/diagram/scripts/`** — `scan-target.mjs`, `extract-routes.mjs`.
+- **`skills/diagram/templates/`** — Tier 2 harness templates:
+  `harness-server.ts.tmpl`, `harness-package.json.tmpl`, `harness-readme.md.tmpl`.
 
 ## Self-check before exit
 
 Before reporting success, verify:
 
 - [ ] `$TARGET/.anydemo/demo.json` exists
-- [ ] `validate-demo.mjs` exited 0
-- [ ] `anydemo register` returned a slug
+- [ ] `/api/demos/validate` returned `ok: true`
+- [ ] `/api/demos/register` returned a slug
 - [ ] On Tier 2: `$TARGET/.anydemo/harness/server.ts` exists with handlers
       for every URL referenced in the diagram
 - [ ] On Tier 1: warned the user about any `playAction.url` that may be
