@@ -6,8 +6,8 @@
       "id": "api-create-todo",
       "type": "playNode",
       "position": {
-        "x": 13.180631473597458,
-        "y": 36.238209282685474
+        "x": 24,
+        "y": 443.6659146635077
       },
       "data": {
         "label": "POST /todos",
@@ -40,15 +40,18 @@
             "method": "GET",
             "url": "http://localhost:3030/admin/stats"
           }
-        }
-      }
+        },
+        "width": 202,
+        "height": 166
+      },
+      "parentId": "node-f3dad83f-b910-4bb6-897b-e3e5ae05df07"
     },
     {
       "id": "api-complete-todo",
       "type": "playNode",
       "position": {
-        "x": -420.8273898368459,
-        "y": -131.91898970649137
+        "x": -437.0577772104354,
+        "y": -189.11178330866397
       },
       "data": {
         "label": "POST /todos/:id/complete",
@@ -81,8 +84,8 @@
       "id": "todo-worker",
       "type": "stateNode",
       "position": {
-        "x": 157.6167035385478,
-        "y": -237.95061581960275
+        "x": 102.74164698137366,
+        "y": 52
       },
       "data": {
         "label": "todo-worker",
@@ -104,9 +107,22 @@
           ]
         },
         "borderColor": "green",
-        "width": 249,
-        "height": 117,
+        "width": 300,
+        "height": 194,
         "backgroundColor": "red"
+      },
+      "parentId": "node-f3dad83f-b910-4bb6-897b-e3e5ae05df07"
+    },
+    {
+      "id": "node-f3dad83f-b910-4bb6-897b-e3e5ae05df07",
+      "type": "group",
+      "position": {
+        "x": 263.953507062816,
+        "y": -696.6074471317625
+      },
+      "data": {
+        "width": 426.7416469813736,
+        "height": 633.6659146635077
       }
     }
   ],
@@ -119,7 +135,15 @@
       "eventName": "todo.completed",
       "label": "publishes todo.completed",
       "color": "red",
-      "direction": "backward"
+      "direction": "backward",
+      "targetPin": {
+        "side": "left",
+        "t": 0.36903980043240203
+      },
+      "sourcePin": {
+        "side": "bottom",
+        "t": 0.5148996065692003
+      }
     }
   ]
 }

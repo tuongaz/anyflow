@@ -245,12 +245,14 @@ describe('DemoCanvas', () => {
       wrapper: 0,
       rfInstance: 1,
       // US-018 added editHandlesRef (slot 3, after storeApiRef) so every
-      // draw-* ref shifted down by one. Update this map alongside any future
-      // useRef addition above drawShape.
-      drawShape: 11,
-      drawStart: 12,
-      drawCurrent: 13,
-      drawing: 14,
+      // draw-* ref shifted down by one. The group enter/exit feature added
+      // `activeGroupIdRef` (slot 3, after storeApiRef) too, shifting all
+      // later refs down by another slot. Update this map alongside any
+      // future useRef addition above drawShape.
+      drawShape: 12,
+      drawStart: 13,
+      drawCurrent: 14,
+      drawing: 15,
     } as const;
 
     // Bracket access on a sparse array returns `T | undefined`; this asserts
@@ -558,6 +560,208 @@ describe('DemoCanvas', () => {
       if (!onSelect) throw new Error('Group item has no onSelect');
       onSelect();
       expect(captured).toEqual([['a', 'b', 'c']]);
+    });
+  });
+
+  describe('group enter/exit: double-click required to control children', () => {
+    // The group-enter feature: children of a group are gated until the user
+    // double-clicks the group to "enter" it. Each rule below corresponds to
+    // one bullet in the PRD:
+    //   • child of an inactive group → selectable: false, draggable: false
+    //   • child of the ACTIVE group → no extra gating
+    //   • dbl-click on a group → activeGroupId state updated → children unlock
+    //   • single-click on a gated child → click is redirected to the parent
+    //     group's id (onSelectionChange + onNodeClick both fire with parent)
+    //   • pane click → activeGroupId cleared
+    //   • edge between two children of an inactive group → selectable: false
+    function childOf(id: string, parentId: string): DemoNode {
+      const base = makeShapeNode(id);
+      return { ...base, parentId };
+    }
+
+    it('children of an inactive group are non-selectable and non-draggable', () => {
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
+        selectedNodeIds: [],
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const a = rfNodes.find((n) => n.id === 'a');
+      const b = rfNodes.find((n) => n.id === 'b');
+      const g = rfNodes.find((n) => n.id === 'g');
+      expect(a?.selectable).toBe(false);
+      expect(a?.draggable).toBe(false);
+      expect(b?.selectable).toBe(false);
+      expect(b?.draggable).toBe(false);
+      // The group itself is not gated — it's the entry point.
+      expect(g?.selectable).toBeUndefined();
+      expect(g?.draggable).toBeUndefined();
+    });
+
+    it('child has its label/description edit callbacks stripped while gated', () => {
+      // Without this strip, a user could bypass the "double-click first"
+      // requirement by double-clicking a child's body to enter inline label
+      // edit — the child renderers wire onDoubleClick to setIsEditing(true)
+      // when data.onLabelChange is present.
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        selectedNodeIds: [],
+        onNodeLabelChange: () => {},
+        onNodeDescriptionChange: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const a = rfNodes.find((n) => n.id === 'a');
+      const data = a?.data as Record<string, unknown> | undefined;
+      expect(data?.onLabelChange).toBeUndefined();
+      expect(data?.onDescriptionChange).toBeUndefined();
+    });
+
+    it('marks the active group with data.isActive so the chrome can re-style', () => {
+      // activeGroupId is the FIRST `useState<string | null>` in DemoCanvas
+      // (declared right after `drawShape`). Force-set it to the group id so
+      // the buildNode path treats this group as entered.
+      const tree = callDemoCanvas(
+        {
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+          selectedNodeIds: [],
+          onNodeLabelChange: () => {},
+        },
+        { useStateOverrides: [/* drawShape */ undefined, /* activeGroupId */ 'g'] },
+      );
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const g = rfNodes.find((n) => n.id === 'g');
+      const a = rfNodes.find((n) => n.id === 'a');
+      expect((g?.data as { isActive?: boolean }).isActive).toBe(true);
+      // And the gating is lifted on the active group's children: they now
+      // get back the label-edit callback and are selectable + draggable.
+      expect(a?.selectable).toBeUndefined();
+      expect(a?.draggable).toBeUndefined();
+      expect((a?.data as { onLabelChange?: unknown }).onLabelChange).toBeDefined();
+    });
+
+    it('onNodeDoubleClick on a group is wired (enters the group)', () => {
+      // We can't observe the state update through the hook shim, but we can
+      // verify that the wired handler delegates to the group case: calling
+      // it with a non-group node should NOT throw, and the wiring exists.
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g')],
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const onNodeDoubleClick = rf.props.onNodeDoubleClick as
+        | ((e: unknown, node: { id: string; type?: string }) => void)
+        | undefined;
+      expect(onNodeDoubleClick).toBeDefined();
+      // Should accept group and non-group nodes without throwing.
+      onNodeDoubleClick?.({}, { id: 'g', type: 'group' });
+      onNodeDoubleClick?.({}, { id: 'a', type: 'shapeNode' });
+    });
+
+    it('clicking a gated child redirects the click to the parent group', () => {
+      // The redirect feeds both onSelectionChange and onNodeClick with the
+      // parent group's id, so the detail panel + selection ring both land on
+      // the group (matching the outcome of clicking the group's border).
+      const selChanges: Array<[string[], string[]]> = [];
+      const clicks: string[] = [];
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        selectedNodeIds: [],
+        onSelectionChange: (ns, cs) => selChanges.push([[...ns], [...cs]]),
+        onNodeClick: (id) => clicks.push(id),
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const onNodeClick = rf.props.onNodeClick as (e: unknown, node: Node) => void;
+      onNodeClick({}, { id: 'a', type: 'shapeNode', position: { x: 0, y: 0 }, data: {} } as Node);
+      expect(selChanges).toEqual([[['g'], []]]);
+      expect(clicks).toEqual(['g']);
+    });
+
+    it('clicking a non-descendant node while a group is active exits the group', () => {
+      // When activeGroupId is 'g' and the user clicks a node OUTSIDE the
+      // group (no parentId or a different parent), the click should still
+      // forward to onNodeClick — and the activeGroupId state should be
+      // cleared (we can't observe state, but the click MUST forward to the
+      // user's callback so the detail panel opens for the clicked node).
+      const clicks: string[] = [];
+      const tree = callDemoCanvas(
+        {
+          nodes: [makeGroupNode('g'), childOf('a', 'g'), makeShapeNode('outside')],
+          onNodeClick: (id) => clicks.push(id),
+        },
+        { useStateOverrides: [/* drawShape */ undefined, /* activeGroupId */ 'g'] },
+      );
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const onNodeClick = rf.props.onNodeClick as (e: unknown, node: Node) => void;
+      onNodeClick({}, {
+        id: 'outside',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: {},
+      } as Node);
+      expect(clicks).toEqual(['outside']);
+    });
+
+    it('pane click forwards onPaneClick (and clears the active group)', () => {
+      // The state clear isn't observable through the hook shim, but the
+      // wrapped handler MUST forward to the parent's onPaneClick so the
+      // detail panel closes — that's the contract callers rely on.
+      const paneClicks: number[] = [];
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        onPaneClick: () => paneClicks.push(1),
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const onPaneClick = rf.props.onPaneClick as (e: unknown) => void;
+      onPaneClick({});
+      expect(paneClicks).toEqual([1]);
+    });
+
+    it('edge between two children of an inactive group is non-selectable', () => {
+      // Both endpoints inside the same gated group → the edge is dropped
+      // from the selectable set. handleEdgeClickWithGroupGate (below) routes
+      // a click on that edge to the parent group instead.
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
+        connectors: [{ id: 'e1', source: 'a', target: 'b', kind: 'default' }],
+        selectedNodeIds: [],
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfEdges = rf.props.edges as Array<{ id: string; selectable?: boolean }>;
+      const e1 = rfEdges.find((e) => e.id === 'e1');
+      expect(e1?.selectable).toBe(false);
+    });
+
+    it('clicking a gated edge redirects to selecting the parent group', () => {
+      const selChanges: Array<[string[], string[]]> = [];
+      const clicks: string[] = [];
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
+        connectors: [{ id: 'e1', source: 'a', target: 'b', kind: 'default' }],
+        selectedNodeIds: [],
+        onSelectionChange: (ns, cs) => selChanges.push([[...ns], [...cs]]),
+        onConnectorClick: (id) => clicks.push(`conn:${id}`),
+        onNodeClick: (id) => clicks.push(`node:${id}`),
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const onEdgeClick = rf.props.onEdgeClick as (
+        e: unknown,
+        edge: { id: string; source: string; target: string },
+      ) => void;
+      onEdgeClick({}, { id: 'e1', source: 'a', target: 'b' });
+      expect(selChanges).toEqual([[['g'], []]]);
+      // The redirect surfaces the click on the parent group (a node), not
+      // on the connector — onConnectorClick should NOT fire for a gated edge.
+      expect(clicks).toEqual(['node:g']);
     });
   });
 });

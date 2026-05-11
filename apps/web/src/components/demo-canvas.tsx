@@ -672,6 +672,19 @@ export function DemoCanvas({
   // Used to call `cancelConnection` when ESC cancels an in-flight connection.
   const storeApiRef = useRef<StoreApi | null>(null);
   const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
+  // Group enter/exit state: the id of the group the user has entered via
+  // double-click. While set, the group's children become individually
+  // selectable / draggable / connectable; while null, every child is gated so
+  // a click on a child surfaces as a click on the containing group (the
+  // child has selectable+draggable false and the click is redirected to the
+  // parent's id). The state is UI-only — it does not persist.
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  // Mirror into a ref so the ESC handler and node-click redirect read the
+  // live value without re-binding.
+  const activeGroupIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeGroupIdRef.current = activeGroupId;
+  }, [activeGroupId]);
   // US-010: paste an image from the clipboard onto the canvas. Listens at the
   // document level (paste events bubble there regardless of focus) and skips
   // pastes that originate inside an editable target — InlineEdit / form inputs
@@ -1002,7 +1015,15 @@ export function DemoCanvas({
         setDropPopover(null);
         return;
       }
-      // 4. Selection clear.
+      // 4. Exit the active group (set by double-click on a group). Ranked
+      //    ahead of selection clear so an ESC while inside a group exits the
+      //    group first; a second ESC then clears the selection.
+      if (activeGroupIdRef.current !== null) {
+        e.preventDefault();
+        setActiveGroupId(null);
+        return;
+      }
+      // 5. Selection clear.
       const hadNodeSel = selectedIdSetRef.current.size > 0;
       const hadConnSel = selectedConnIdSetRef.current.size > 0;
       if (hadNodeSel || hadConnSel) {
@@ -1316,8 +1337,44 @@ export function DemoCanvas({
     [selectedConnectorIds],
   );
 
+  // When the active group disappears from `nodes` (ungrouped, deleted, or the
+  // demo loaded a different file), drop the activeGroupId so the gating
+  // doesn't leak across an unrelated set of nodes. The lookup is cheap (O(N))
+  // and only fires when the underlying `nodes` array changes.
+  useEffect(() => {
+    if (activeGroupId === null) return;
+    const stillExists = nodes.some((n) => n.id === activeGroupId && n.type === 'group');
+    if (!stillExists) setActiveGroupId(null);
+  }, [nodes, activeGroupId]);
+
+  // Map child node id → parent group id, computed once per `nodes` change.
+  // Drives the group-enter gating in `buildNode` (child whose parent is not
+  // active becomes non-selectable / non-draggable) and the redirect inside
+  // `handleNodeClick` (a click on a gated child surfaces as a click on its
+  // parent group). Children without a parent are simply absent from the map.
+  const parentIdById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of nodes) {
+      if (n.parentId !== undefined) m.set(n.id, n.parentId);
+    }
+    return m;
+  }, [nodes]);
+  // Ref mirror for use inside event handlers without re-binding.
+  const parentIdByIdRef = useRef(parentIdById);
+  useEffect(() => {
+    parentIdByIdRef.current = parentIdById;
+  }, [parentIdById]);
+
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
+      // Group enter/exit gate: true when this node lives inside a group the
+      // user has NOT entered. Below, we use it to drop the label/description
+      // edit callbacks (so a double-click on a gated child can't bypass the
+      // "double-click the group first" requirement) and to mark the rfNode
+      // as `selectable: false` / `draggable: false`. The clicks the gated
+      // child does dispatch get redirected to the parent group by
+      // `handleNodeClickWithGroupGate`.
+      const gatedByGroup = merged.parentId !== undefined && merged.parentId !== activeGroupId;
       const node: Node = {
         id: merged.id,
         type: merged.type,
@@ -1329,16 +1386,22 @@ export function DemoCanvas({
           onPlay: onPlayNode,
           onResize: onNodeResize,
           setResizing,
-          onLabelChange: onNodeLabelChange,
+          onLabelChange: gatedByGroup ? undefined : onNodeLabelChange,
           onDescriptionChange:
             merged.type === 'shapeNode' || merged.type === 'imageNode' || merged.type === 'iconNode'
               ? undefined
-              : onNodeDescriptionChange,
+              : gatedByGroup
+                ? undefined
+                : onNodeDescriptionChange,
           // US-015: inject autoEditOnMount on the freshly drop-popover-created
           // node so it opens in label-edit mode. The flag is consumed once at
           // mount by the node component (lazy useState initializer); leaving
           // it set on later renders is harmless.
           autoEditOnMount: pendingEditNodeId === merged.id ? true : undefined,
+          // True for the group the user has entered via double-click. The
+          // GroupNode component (via CSS / data-active) renders a stronger
+          // chrome so the user can see which group is currently editable.
+          isActive: merged.type === 'group' && merged.id === activeGroupId ? true : undefined,
         },
         selected: selectedNodeIdSet.has(merged.id),
       };
@@ -1366,6 +1429,21 @@ export function DemoCanvas({
       // gestures. Selection, right-click, and hover affordances keep
       // working — only the drag is gated.
       if ((merged.data as { locked?: boolean }).locked === true) node.draggable = false;
+      // Group enter/exit gate: children whose parent group is NOT the
+      // currently-active group are not directly addressable. xyflow's
+      // `selectable: false` blocks click + marquee selection on the child;
+      // `draggable: false` blocks the drag gesture; `connectable: false`
+      // (already set above for unselected nodes) keeps handles inert. A
+      // click on the child still surfaces through React Flow's
+      // `onNodeClick` — `handleNodeClickWithGroupGate` below redirects it
+      // to the parent group so the user gets the same outcome as clicking
+      // the group's border. The user enters the group via double-click
+      // (see `handleNodeDoubleClick`), which sets `activeGroupId` and
+      // unlocks the children for direct interaction.
+      if (gatedByGroup) {
+        node.selectable = false;
+        node.draggable = false;
+      }
       return node;
     };
     const fromServer = nodes.map((n) => buildNode(mergeNodeOverride(n, nodeOverrides?.[n.id])));
@@ -1425,6 +1503,7 @@ export function DemoCanvas({
     onNodeLabelChange,
     onNodeDescriptionChange,
     pendingEditNodeId,
+    activeGroupId,
   ]);
 
   // React Flow needs internal node state + onNodesChange to render drag
@@ -1780,6 +1859,16 @@ export function DemoCanvas({
       // ambiguous gestures.
       const enableReconnect = reconnectableEdges && c.id === onlySelectedConnectorId;
       const next: Edge = enableReconnect ? { ...edge, reconnectable: true } : edge;
+      // Group enter/exit gate for edges: when both endpoints live inside the
+      // same group AND that group is not active, the edge is not directly
+      // selectable. `handleEdgeClickWithGroupGate` (the wrapped onEdgeClick)
+      // surfaces a click on the parent group instead — matching the node
+      // gate above.
+      const srcParent = parentIdById.get(c.source);
+      const tgtParent = parentIdById.get(c.target);
+      const gatedByGroup =
+        srcParent !== undefined && srcParent === tgtParent && srcParent !== activeGroupId;
+      const gated: Edge = gatedByGroup ? { ...next, selectable: false } : next;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
       // US-024: also pass `reconnectable` so the edge component knows when
@@ -1787,9 +1876,9 @@ export function DemoCanvas({
       // pin-drag persistence callback and the endpoint-right-click handler
       // so editable-edge can stay free of canvas state.
       return {
-        ...next,
+        ...gated,
         data: {
-          ...next.data,
+          ...gated.data,
           onLabelChange: onConnectorLabelChange,
           reconnectable: enableReconnect,
           onPinEndpoint,
@@ -1835,6 +1924,8 @@ export function DemoCanvas({
     onPinEndpoint,
     handleEndpointContextMenu,
     registerEditHandle,
+    parentIdById,
+    activeGroupId,
   ]);
 
   // Mirror rfEdges into a ref so onEdgesChange (declared earlier) reads the
@@ -2225,6 +2316,86 @@ export function DemoCanvas({
     [commitDraggedNodes],
   );
 
+  // Group enter/exit handlers (the "double-click to enter, click outside to
+  // exit" gesture). Children of an inactive group are gated as
+  // `selectable: false` / `draggable: false` in `buildNode`; React Flow still
+  // dispatches `onNodeClick` for them, so we redirect those clicks to the
+  // parent group's id here. A double-click on a group enters it; a click on
+  // the empty pane or on a non-descendant node exits it.
+  const handleNodeClickWithGroupGate = useCallback(
+    (_e: ReactMouseEvent, node: Node) => {
+      const activeId = activeGroupIdRef.current;
+      const parentId = parentIdByIdRef.current.get(node.id);
+      // Inactive-group child → surface the click on the parent group instead.
+      // Without this redirect a gated child's `onNodeClick` would leave both
+      // the detail panel and selection untouched.
+      if (parentId !== undefined && parentId !== activeId) {
+        if (onSelectionChangeRef.current) {
+          const prev = selectedIdSetRef.current;
+          const same = prev.size === 1 && prev.has(parentId);
+          if (!same) {
+            selectedIdSetRef.current = new Set([parentId]);
+            onSelectionChangeRef.current([parentId], []);
+          }
+        }
+        onNodeClick?.(parentId);
+        return;
+      }
+      // Click landed on a node OUTSIDE the active group (and not the group
+      // itself) → leave the active group before forwarding the click.
+      if (activeId && node.id !== activeId && parentId !== activeId) {
+        setActiveGroupId(null);
+      }
+      onNodeClick?.(node.id);
+    },
+    [onNodeClick],
+  );
+  const handleNodeDoubleClick = useCallback((_e: ReactMouseEvent, node: Node) => {
+    // Double-click on a group enters it (children become directly addressable).
+    // No-op on other node types; React Flow's `zoomOnDoubleClick` is already
+    // false so we don't have to preventDefault to suppress zoom.
+    if (node.type === 'group') {
+      setActiveGroupId(node.id);
+    }
+  }, []);
+  const handlePaneClickWithGroupExit = useCallback(
+    (e: ReactMouseEvent) => {
+      // Empty-canvas click exits the active group. The user's onPaneClick (if
+      // any) still fires so the detail panel close path is preserved.
+      if (activeGroupIdRef.current !== null) setActiveGroupId(null);
+      onPaneClick?.();
+      // Discard the event arg — onPaneClick has a no-arg signature.
+      void e;
+    },
+    [onPaneClick],
+  );
+  // Edge click redirect: when both endpoints are children of the same
+  // inactive group, surface the click as a click on the containing group
+  // (parallels the node redirect above). For edges with one endpoint inside
+  // and one outside (cross-boundary), the click is forwarded as-is.
+  const handleEdgeClickWithGroupGate = useCallback(
+    (_e: ReactMouseEvent, edge: Edge) => {
+      const parentIds = parentIdByIdRef.current;
+      const activeId = activeGroupIdRef.current;
+      const srcParent = parentIds.get(edge.source);
+      const tgtParent = parentIds.get(edge.target);
+      if (srcParent !== undefined && srcParent === tgtParent && srcParent !== activeId) {
+        if (onSelectionChangeRef.current) {
+          const prev = selectedIdSetRef.current;
+          const same = prev.size === 1 && prev.has(srcParent);
+          if (!same) {
+            selectedIdSetRef.current = new Set([srcParent]);
+            onSelectionChangeRef.current([srcParent], []);
+          }
+        }
+        onNodeClick?.(srcParent);
+        return;
+      }
+      onConnectorClick?.(edge.id);
+    },
+    [onConnectorClick, onNodeClick],
+  );
+
   // Cursor for the wrapper. Draw mode → crosshair (own gesture). Space-held →
   // grab while idle, grabbing while a Space-pan drag is in flight. Else
   // default arrow — US-010 made primary-mouse drag a marquee gesture, but the
@@ -2413,8 +2584,9 @@ export function DemoCanvas({
         // clicks (mousedown + mouseup without crossing the drag threshold);
         // node-drag gestures don't trigger them, so a drag no longer opens
         // the panel as a side effect.
-        onNodeClick={onNodeClick ? (_e, node) => onNodeClick(node.id) : undefined}
-        onEdgeClick={onConnectorClick ? (_e, edge) => onConnectorClick(edge.id) : undefined}
+        onNodeClick={handleNodeClickWithGroupGate}
+        onNodeDoubleClick={handleNodeDoubleClick}
+        onEdgeClick={handleEdgeClickWithGroupGate}
         // US-018: double-click anywhere on the edge body opens the inline
         // label editor (not just the existing label-button onDoubleClick). The
         // per-edge `registerEditHandle` map gives us O(1) dispatch without
@@ -2422,7 +2594,7 @@ export function DemoCanvas({
         onEdgeDoubleClick={(_e, edge) => {
           editHandlesRef.current.get(edge.id)?.();
         }}
-        onPaneClick={onPaneClick}
+        onPaneClick={handlePaneClickWithGroupExit}
         onNodeContextMenu={
           contextEnabled
             ? (e, node) => {

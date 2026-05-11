@@ -269,9 +269,17 @@ button:disabled {
  * visible to anchor the user's gesture). `elevateNodesOnSelect={false}` on
  * <ReactFlow> keeps the inline z-index at 0 by default, so this rule has a
  * clean baseline to override. The `!important` beats xyflow's inline style
- * (inline without !important loses to !important in a stylesheet). */
-.react-flow__node.selected,
-.react-flow__node[data-connect-source="true"] {
+ * (inline without !important loses to !important in a stylesheet).
+ *
+ * Groups are EXCLUDED: a group is a container around its children, and xyflow
+ * paints children at z-index 1 (parent-relative). Elevating a selected group
+ * to 1000 would put the group's body ABOVE its children, swallowing every
+ * click that should land on a child — breaking the "double-click to enter,
+ * then interact with children" gesture (children stay at z-index 1 and so
+ * become unreachable). Groups have no outlet handles to keep visible, so the
+ * elevation rule has nothing to do for them anyway. */
+.react-flow__node.selected:not(.react-flow__node-group),
+.react-flow__node[data-connect-source="true"]:not(.react-flow__node-group) {
   z-index: 1000 !important;
 }
 
@@ -458,6 +466,16 @@ button:disabled {
 }
 .react-flow__node-group.selected {
   border: 2px solid hsl(var(--primary));
+}
+/* Active (entered) group — set on the inner [data-testid="group-node"] div by
+   GroupNode when data.isActive is true. Distinguish "entered" from "selected"
+   so the user can tell at a glance which group is currently editable; the
+   group can be entered while a child inside it is the selected node, in
+   which case `.selected` doesn't help. Solid accent border + soft inner
+   tint so the boundary reads as an active editing surface. */
+.react-flow__node-group:has(> [data-testid="group-node"][data-active="true"]) {
+  border: 2px solid hsl(var(--primary));
+  background: hsl(var(--primary) / 0.04);
 }
 .react-flow__node-group .react-flow__node-group-label {
   position: absolute;

@@ -151,6 +151,23 @@ describe('GroupNode (US-011)', () => {
     expect(labels[0]?.props.children).toBeNull();
   });
 
+  it('renders data-active="true" on the root when data.isActive is set', () => {
+    // The CSS rule
+    // `.react-flow__node-group:has(> [data-testid='group-node'][data-active='true'])`
+    // styles the entered group with a solid accent border + soft tint. The
+    // GroupNode emits the data-active attribute only when isActive is true so
+    // the selector doesn't fire for idle groups.
+    const tree = callGroupNode({ isActive: true });
+    if (!isElement(tree)) throw new Error('expected element');
+    expect((tree.props as { 'data-active'?: string })['data-active']).toBe('true');
+  });
+
+  it('omits data-active on the root when data.isActive is falsy', () => {
+    const tree = callGroupNode({});
+    if (!isElement(tree)) throw new Error('expected element');
+    expect((tree.props as { 'data-active'?: string })['data-active']).toBeUndefined();
+  });
+
   it('pins the default GROUP_DEFAULT_SIZE when no width/height is set', () => {
     const tree = callGroupNode({});
     if (!isElement(tree)) throw new Error('expected element');

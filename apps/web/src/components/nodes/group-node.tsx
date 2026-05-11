@@ -23,6 +23,11 @@ export type GroupNodeRuntimeData = GroupNodeData & {
   // `node:<id>:label` so a typing session produces a single undo entry.
   // Absent → clicks on the slot are a no-op (read-only contexts).
   onLabelChange?: (nodeId: string, label: string) => void;
+  // True when the user has entered this group via double-click. CSS styles
+  // `[data-active="true"]` to give the group a stronger chrome so the user
+  // can tell which group is currently editable. Undefined / false → idle
+  // (normal dashed border).
+  isActive?: boolean;
 } & Record<string, unknown>;
 export type GroupNodeType = Node<GroupNodeRuntimeData, 'group'>;
 
@@ -78,6 +83,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
       className={cn('relative', sized ? 'h-full w-full' : '')}
       data-testid="group-node"
       data-label={data.label && data.label.length > 0 ? data.label : undefined}
+      data-active={data.isActive ? 'true' : undefined}
       style={
         sized ? undefined : { width: GROUP_DEFAULT_SIZE.width, height: GROUP_DEFAULT_SIZE.height }
       }
