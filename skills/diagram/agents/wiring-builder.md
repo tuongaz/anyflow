@@ -59,7 +59,7 @@ Apply these rules every time:
 3. **Keep `label` and `data.detail.summary` identical across duplicates** so a
    reader sees they're the same logical thing. Only the `id` and `position`
    differ.
-4. **Never cross more than one other connector with a single edge.** If your
+4. **Never cross more than one other connector with a single edge.** If the
    wiring requires that, the answer is a duplicate, not a routed edge.
 5. **Reuse the same id ONLY when the same upstream node truly emits to that
    exact downstream once.** Duplicates serve readability — not for
@@ -90,8 +90,8 @@ collapsing them.
   from `tier-evidence.json` `tier1RealEvidence.expectedPort`, default
   `http://localhost:<port>`).
 - **Tier 2**: `playAction.url` points at the harness port (default 3041 if
-  not specified). Update `tier-evidence.json.harnessPort` if you choose
-  one. Confirm every URL matches a route the harness will stub.
+  not specified). Update `tier-evidence.json.harnessPort` when picking a
+  different port. Confirm every URL matches a route the harness will stub.
 - **Tier 3**: NO `playAction`s. Every `dynamic-play` candidate is demoted to
   `stateNode` (no playAction, `stateSource: { kind: 'request' }`). Every
   `dynamic-event` keeps `stateSource: { kind: 'event' }` but obviously

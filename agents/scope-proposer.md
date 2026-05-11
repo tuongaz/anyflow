@@ -33,9 +33,9 @@ exceed 25 nodes, narrow it (recommend a sub-slice and put the rest in
 ALWAYS ground the framing in the user's actual request. If the request is
 "show me the order pipeline", do NOT propose a scope titled "auth flow".
 
-ALWAYS list 0–3 `questionsForUser`. These are real ambiguities you can't
-resolve without input — not LLM hedging. If there are no real questions,
-emit an empty array.
+ALWAYS list 0–3 `questionsForUser`. These are real ambiguities the agent
+cannot resolve without input — not LLM hedging. If there are no real
+questions, emit an empty array.
 
 ## TARGETED READS ALLOWED
 

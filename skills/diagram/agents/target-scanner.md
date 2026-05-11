@@ -22,7 +22,7 @@ in Phase 2.
 
 ## RULES
 
-NEVER invent file paths. Every path mentioned in your output MUST appear in
+NEVER invent file paths. Every path mentioned in the output MUST appear in
 `scan-result.json` `files[].path`.
 
 NEVER invent frameworks. The framework list must be a subset of

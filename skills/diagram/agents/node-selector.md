@@ -53,8 +53,9 @@ the ≤30 cap. Give each duplicate a distinct `candidateId` (`db-orders`,
 recognize them as the same logical thing. The rationale should say
 "duplicate of <logical-name> for visual clarity, used by <consumer>".
 
-This is the "Visual clarity for humans" rule from `SKILL.md` — read it if
-this is the first time you've encountered it.
+This is the "Visual clarity for humans" rule from `SKILL.md` — read
+`references/visual-clarity.md` for the full rule set before proposing
+nodes.
 
 ## TARGETED READS ALLOWED
 
