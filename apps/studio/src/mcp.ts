@@ -8,6 +8,7 @@ import { type ZodTypeAny, z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   CreateProjectBodySchema,
+  NodePatchBodySchema,
   type OperationsDeps,
   PositionBodySchema,
   RegisterBodySchema,
@@ -19,6 +20,7 @@ import {
   getDemoImpl,
   listDemosImpl,
   moveNodeImpl,
+  patchNodeImpl,
   registerDemoImpl,
   reorderNodeImpl,
 } from './operations.ts';
@@ -118,6 +120,15 @@ const ReorderNodeInputSchema = z.discriminatedUnion('op', [
     index: z.number().int().nonnegative(),
   }),
 ]);
+
+// patch_node input: { demoId, nodeId } merged with NodePatchBodySchema's
+// optional fields. .extend() on the strict body schema preserves strict
+// mode, so unknown top-level keys still trip the Zod parse before any disk
+// IO — matching the REST handler's "Invalid node patch body" 400 path.
+const PatchNodeInputSchema = NodePatchBodySchema.extend({
+  demoId: z.string().min(1),
+  nodeId: z.string().min(1),
+});
 
 const buildTools = (deps: OperationsDeps): McpTool[] => [
   {
@@ -289,6 +300,36 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
       switch (result.kind) {
         case 'ok':
           return okResult({ ok: true, position: result.data.position });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'unknownNode':
+          return errorResult(`Unknown nodeId: ${nodeId}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_patch_node',
+    description:
+      'Update fields on an existing node (position, label, detail, colors, border, font, shape, dimensions).',
+    inputSchema: inputSchemaFromZod(PatchNodeInputSchema),
+    handler: async (args) => {
+      const parsed = PatchNodeInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(`Invalid patch_node arguments: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      const { demoId, nodeId, ...updates } = parsed.data;
+      const result = await patchNodeImpl(deps, demoId, nodeId, updates);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true });
         case 'demoNotFound':
           return errorResult('unknown demo');
         case 'fileNotFound':

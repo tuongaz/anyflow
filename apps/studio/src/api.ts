@@ -13,6 +13,7 @@ import {
 import type { EventBus } from './events.ts';
 import {
   CreateProjectBodySchema,
+  NodePatchBodySchema,
   PositionBodySchema,
   RegisterBodySchema,
   ReorderBodySchema,
@@ -23,6 +24,7 @@ import {
   getDemoImpl,
   listDemosImpl,
   moveNodeImpl,
+  patchNodeImpl,
   registerDemoImpl,
   reorderNodeImpl,
   resolveDemoPath,
@@ -46,30 +48,6 @@ const EmitBodySchema = z.object({
   runId: z.string().optional(),
   payload: z.unknown().optional(),
 });
-
-// Partial node update body. Top-level `position` lands on node.position; every
-// other key lands inside node.data. Final validity is enforced by re-parsing
-// the whole demo through DemoSchema after the merge — this body schema just
-// rejects unknown top-level keys to catch typos. `detail` is loose here so
-// senders can swap the entire detail object; DemoSchema validates the shape
-// before we write.
-const NodePatchBodySchema = z
-  .object({
-    position: PositionBodySchema.optional(),
-    label: z.string().optional(),
-    detail: z.unknown().optional(),
-    borderColor: ColorTokenSchema.optional(),
-    backgroundColor: ColorTokenSchema.optional(),
-    borderSize: z.number().positive().optional(),
-    borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
-    fontSize: z.number().positive().optional(),
-    cornerRadius: z.number().min(0).optional(),
-    width: z.number().positive().optional(),
-    height: z.number().positive().optional(),
-    shape: z.enum(['rectangle', 'ellipse', 'sticky', 'text']).optional(),
-  })
-  .strict();
-type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
 
 // Partial connector update body. Strict at the top level so client typos
 // surface as 400. Per-kind invariants (e.g. kind='event' requires eventName)
@@ -118,45 +96,6 @@ const EMIT_STATUS_TO_EVENT = {
   done: 'node:done',
   error: 'node:error',
 } as const;
-
-// Apply a partial PATCH body to a raw on-disk node. `position` lives at the
-// node root; every other key lives inside `data`. We mutate the raw parsed
-// JSON directly so unknown forward-compat fields the schema doesn't yet
-// recognize survive the round-trip untouched.
-const NODE_DATA_PATCH_KEYS = [
-  'label',
-  'detail',
-  'borderColor',
-  'backgroundColor',
-  'borderSize',
-  'borderStyle',
-  'fontSize',
-  'cornerRadius',
-  'width',
-  'height',
-  'shape',
-] as const satisfies ReadonlyArray<keyof NodePatchBody>;
-
-const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {
-  if (updates.position !== undefined) {
-    node.position = updates.position;
-  }
-  const dataAny = node.data;
-  const data: Record<string, unknown> =
-    dataAny && typeof dataAny === 'object' && !Array.isArray(dataAny)
-      ? (dataAny as Record<string, unknown>)
-      : {};
-  let touchedData = false;
-  for (const key of NODE_DATA_PATCH_KEYS) {
-    if (updates[key] !== undefined) {
-      data[key] = updates[key];
-      touchedData = true;
-    }
-  }
-  if (touchedData) {
-    node.data = data;
-  }
-};
 
 // Kind-specific connector fields. When `kind` changes via PATCH, these are
 // dropped first so the resulting connector doesn't carry phantom payloads
@@ -615,8 +554,6 @@ export function createApi(options: ApiOptions): Hono {
   api.patch('/demos/:id/nodes/:nodeId', async (c) => {
     const id = c.req.param('id');
     const nodeId = c.req.param('nodeId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
     let body: unknown;
     try {
@@ -628,56 +565,15 @@ export function createApi(options: ApiOptions): Hono {
     if (!parsed.success) {
       return c.json({ error: 'Invalid node patch body', issues: parsed.error.issues }, 400);
     }
-    const updates = parsed.data;
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'unknownNode' }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as { nodes: Array<Record<string, unknown>> };
-      const onDiskNode = obj.nodes.find((n) => n.id === nodeId);
-      if (!onDiskNode) return { kind: 'unknownNode' };
-
-      mergeNodeUpdates(onDiskNode, updates);
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await patchNodeImpl({ registry, watcher }, id, nodeId, parsed.data);
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':

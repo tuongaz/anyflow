@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync 
 import { isAbsolute, join } from 'node:path';
 import { type ZodIssue, z } from 'zod';
 import type { Registry } from './registry.ts';
-import { type Demo, DemoSchema } from './schema.ts';
+import { ColorTokenSchema, type Demo, DemoSchema } from './schema.ts';
 import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
 
@@ -48,6 +48,69 @@ export const ReorderBodySchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('toIndex'), index: z.number().int().nonnegative() }),
 ]);
 export type ReorderBody = z.infer<typeof ReorderBodySchema>;
+
+// Partial node update body. Top-level `position` lands on node.position; every
+// other key lands inside node.data. Final validity is enforced by re-parsing
+// the whole demo through DemoSchema after the merge — this body schema just
+// rejects unknown top-level keys to catch typos. `detail` is loose here so
+// senders can swap the entire detail object; DemoSchema validates the shape
+// before we write.
+export const NodePatchBodySchema = z
+  .object({
+    position: PositionBodySchema.optional(),
+    label: z.string().optional(),
+    detail: z.unknown().optional(),
+    borderColor: ColorTokenSchema.optional(),
+    backgroundColor: ColorTokenSchema.optional(),
+    borderSize: z.number().positive().optional(),
+    borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
+    fontSize: z.number().positive().optional(),
+    cornerRadius: z.number().min(0).optional(),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
+    shape: z.enum(['rectangle', 'ellipse', 'sticky', 'text']).optional(),
+  })
+  .strict();
+export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
+
+// Apply a partial PATCH body to a raw on-disk node. `position` lives at the
+// node root; every other key lives inside `data`. We mutate the raw parsed
+// JSON directly so unknown forward-compat fields the schema doesn't yet
+// recognize survive the round-trip untouched.
+const NODE_DATA_PATCH_KEYS = [
+  'label',
+  'detail',
+  'borderColor',
+  'backgroundColor',
+  'borderSize',
+  'borderStyle',
+  'fontSize',
+  'cornerRadius',
+  'width',
+  'height',
+  'shape',
+] as const satisfies ReadonlyArray<keyof NodePatchBody>;
+
+export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {
+  if (updates.position !== undefined) {
+    node.position = updates.position;
+  }
+  const dataAny = node.data;
+  const data: Record<string, unknown> =
+    dataAny && typeof dataAny === 'object' && !Array.isArray(dataAny)
+      ? (dataAny as Record<string, unknown>)
+      : {};
+  let touchedData = false;
+  for (const key of NODE_DATA_PATCH_KEYS) {
+    if (updates[key] !== undefined) {
+      data[key] = updates[key];
+      touchedData = true;
+    }
+  }
+  if (touchedData) {
+    node.data = data;
+  }
+};
 
 export interface OperationsDeps {
   registry: Registry;
@@ -139,6 +202,15 @@ export type MoveNodeOutcome =
   | { kind: 'writeFailed'; message: string };
 
 export type ReorderNodeOutcome =
+  | { kind: 'ok' }
+  | { kind: 'demoNotFound' }
+  | { kind: 'fileNotFound'; path: string }
+  | { kind: 'badJson'; message: string }
+  | { kind: 'badSchema'; issues: ZodIssue[] }
+  | { kind: 'unknownNode' }
+  | { kind: 'writeFailed'; message: string };
+
+export type PatchNodeOutcome =
   | { kind: 'ok' }
   | { kind: 'demoNotFound' }
   | { kind: 'fileNotFound'; path: string }
@@ -601,6 +673,59 @@ export async function moveNodeImpl(
   if (result.kind === 'ok') {
     return { kind: 'ok', data: { position: { x: position.x, y: position.y } } };
   }
+  return result;
+}
+
+// Apply a partial PATCH body to a single node. Mutation runs against the
+// raw parsed JSON (so unknown forward-compat fields survive a round-trip),
+// and the whole demo is re-validated through DemoSchema before commit so
+// partial writes can't break invariants like the connector→node superRefine.
+export async function patchNodeImpl(
+  deps: OperationsDeps,
+  demoId: string,
+  nodeId: string,
+  updates: NodePatchBody,
+): Promise<PatchNodeOutcome> {
+  const entry = deps.registry.getById(demoId);
+  if (!entry) return { kind: 'demoNotFound' };
+
+  const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+  if (!existsSync(fullPath)) return { kind: 'fileNotFound', path: fullPath };
+
+  type Inner =
+    | { kind: 'ok' }
+    | { kind: 'badJson'; message: string }
+    | { kind: 'badSchema'; issues: ZodIssue[] }
+    | { kind: 'unknownNode' }
+    | { kind: 'writeFailed'; message: string };
+
+  const result = await withDemoWriteLock<Inner>(demoId, async () => {
+    let raw: unknown;
+    try {
+      raw = await Bun.file(fullPath).json();
+    } catch (err) {
+      return { kind: 'badJson', message: err instanceof Error ? err.message : String(err) };
+    }
+    const demoParsed = DemoSchema.safeParse(raw);
+    if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+    const obj = raw as { nodes: Array<Record<string, unknown>> };
+    const onDiskNode = obj.nodes.find((n) => n.id === nodeId);
+    if (!onDiskNode) return { kind: 'unknownNode' };
+
+    mergeNodeUpdates(onDiskNode, updates);
+
+    const finalParse = DemoSchema.safeParse(raw);
+    if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+    try {
+      writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+    } catch (err) {
+      return { kind: 'writeFailed', message: err instanceof Error ? err.message : String(err) };
+    }
+    return { kind: 'ok' };
+  });
+
   return result;
 }
 

@@ -98,7 +98,7 @@ const expectError = (envelope: JsonRpcEnvelope): string => {
 };
 
 describe('POST /mcp tools/list', () => {
-  it('returns the discovery + node-lifecycle tools (5 + 4)', async () => {
+  it('returns the discovery + node-lifecycle + patch tools (5 + 4 + 1)', async () => {
     const { app } = buildApp();
     const envelope = await mcpRequest(app, 'tools/list', {});
     const names = (envelope.result?.tools ?? []).map((t) => t.name).sort();
@@ -110,6 +110,7 @@ describe('POST /mcp tools/list', () => {
       'anydemo_get_demo',
       'anydemo_list_demos',
       'anydemo_move_node',
+      'anydemo_patch_node',
       'anydemo_register_demo',
       'anydemo_reorder_node',
     ]);
@@ -503,5 +504,224 @@ describe('anydemo_reorder_node', () => {
       op: 'noSuchOp',
     });
     expect(expectError(envelope)).toContain('Invalid reorder_node arguments');
+  });
+});
+
+// ---------- Node patch tool (US-004) ----------
+
+describe('anydemo_patch_node', () => {
+  it('exposes NodePatchBodySchema fields plus demoId/nodeId in inputSchema', async () => {
+    const { app } = buildApp();
+    const envelope = await mcpRequest(app, 'tools/list', {});
+    const tool = (envelope.result?.tools ?? []).find((t) => t.name === 'anydemo_patch_node');
+    expect(tool).toBeDefined();
+    const props = tool?.inputSchema?.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(
+      expect.arrayContaining([
+        'demoId',
+        'nodeId',
+        'position',
+        'label',
+        'detail',
+        'borderColor',
+        'backgroundColor',
+        'borderSize',
+        'borderStyle',
+        'fontSize',
+        'cornerRadius',
+        'width',
+        'height',
+        'shape',
+      ]),
+    );
+    const required = tool?.inputSchema?.required as string[];
+    expect(required).toEqual(expect.arrayContaining(['demoId', 'nodeId']));
+  });
+
+  it('merges a partial label update into node.data and rewrites the file', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      label: 'POST /checkout (renamed)',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{
+        id: string;
+        position: { x: number; y: number };
+        data: { label: string; playAction: { kind: string } };
+      }>;
+    };
+    const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
+    expect(node?.data.label).toBe('POST /checkout (renamed)');
+    // Untouched fields preserved.
+    expect(node?.data.playAction.kind).toBe('http');
+    expect(node?.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('merges multiple fields at once (label + borderColor + width + height)', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      label: 'Multi-Edit',
+      borderColor: 'blue',
+      backgroundColor: 'amber',
+      width: 240,
+      height: 120,
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{
+        id: string;
+        data: {
+          label: string;
+          borderColor?: string;
+          backgroundColor?: string;
+          width?: number;
+          height?: number;
+        };
+      }>;
+    };
+    const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
+    expect(node?.data.label).toBe('Multi-Edit');
+    expect(node?.data.borderColor).toBe('blue');
+    expect(node?.data.backgroundColor).toBe('amber');
+    expect(node?.data.width).toBe(240);
+    expect(node?.data.height).toBe(120);
+  });
+
+  it('updates node.position when included in the patch body', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      position: { x: 42, y: 84 },
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; position: { x: number; y: number } }>;
+    };
+    expect(onDisk.nodes[0]?.position).toEqual({ x: 42, y: 84 });
+  });
+
+  it('rejects schema-violating input before the handler runs (borderColor outside enum)', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+    const before = readFileSync(demoFile, 'utf8');
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      borderColor: 'neon-pink',
+    });
+    expect(expectError(envelope)).toContain('Invalid patch_node arguments');
+    // File untouched — Zod rejected before any IO.
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('rejects unknown top-level keys via .strict()', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      somethingMadeUp: true,
+    });
+    expect(expectError(envelope)).toContain('Invalid patch_node arguments');
+  });
+
+  it('returns isError for an unknown demoId', async () => {
+    const { app } = buildApp();
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: 'does-not-exist',
+      nodeId: 'api-checkout',
+      label: 'x',
+    });
+    expect(expectError(envelope)).toBe('unknown demo');
+  });
+
+  it('returns isError with the node id in the message for an unknown nodeId', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'missing',
+      label: 'x',
+    });
+    expect(expectError(envelope)).toBe('Unknown nodeId: missing');
+  });
+
+  it('returns Demo failed schema validation when the post-merge demo violates DemoSchema', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+    const before = readFileSync(demoFile, 'utf8');
+
+    // Empty label on a functional playNode trips DemoSchema after merge.
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      label: '',
+    });
+    expect(expectError(envelope)).toContain('Demo failed schema validation');
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('preserves unknown forward-compat fields on the on-disk node across the round-trip', async () => {
+    const { app } = buildApp();
+    // Hand-craft the demo with a node carrying an unknown field DemoSchema
+    // doesn't recognize. DemoSchema strips it on parse but the patch handler
+    // mutates the raw parsed JSON so the on-disk file retains the field.
+    const repoPath = tmpRepoWithDemo({
+      version: 1,
+      name: 'Forward Compat',
+      nodes: [
+        {
+          id: 'fc',
+          type: 'playNode',
+          position: { x: 0, y: 0 },
+          futureField: 'survives',
+          data: {
+            label: 'Future',
+            kind: 'service',
+            stateSource: { kind: 'request' },
+            playAction: { kind: 'http', method: 'POST', url: 'http://example.test/fc' },
+          },
+        },
+      ],
+      connectors: [],
+    });
+    const reg = expectOk(
+      await callTool(app, 'anydemo_register_demo', {
+        repoPath,
+        demoPath: '.anydemo/demo.json',
+      }),
+    ) as RegisterResult;
+
+    const envelope = await callTool(app, 'anydemo_patch_node', {
+      demoId: reg.id,
+      nodeId: 'fc',
+      label: 'After Patch',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; futureField?: string; data: { label: string } }>;
+    };
+    expect(onDisk.nodes[0]?.futureField).toBe('survives');
+    expect(onDisk.nodes[0]?.data.label).toBe('After Patch');
   });
 });
