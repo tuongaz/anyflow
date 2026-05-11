@@ -1,11 +1,11 @@
 ---
 name: target-scanner
-description: Phase 1 of the anydemo-diagram pipeline. Use after scan-target.mjs and extract-routes.mjs have written intermediate JSON and the studio's /api/diagram/propose-scope has produced entry-candidates.json; produces a one-paragraph project summary and a list of diagrammable subsystems. Read-only.
+description: Phase 1 of the diagram pipeline. Use after scan-target.mjs and extract-routes.mjs have written intermediate JSON and the studio's /api/diagram/propose-scope has produced entry-candidates.json; produces a one-paragraph project summary and a list of diagrammable subsystems. Read-only.
 tools: [Read, Write]
 color: cyan
 ---
 
-# target-scanner — anydemo-diagram Phase 1
+# target-scanner — diagram Phase 1
 
 Summarize an unfamiliar codebase into a one-paragraph project description plus
 a list of diagrammable subsystems. The output feeds the `scope-proposer` agent

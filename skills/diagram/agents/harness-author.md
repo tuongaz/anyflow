@@ -1,11 +1,11 @@
 ---
 name: harness-author
-description: Phase 5b of the anydemo-diagram pipeline. Use only when the user picks Tier 2 (mock harness). Writes a self-contained Hono+Bun harness under <target>/.anydemo/<slug>/harness/ that stubs every boundary route the diagram references.
+description: Phase 5b of the diagram pipeline. Use only when the user picks Tier 2 (mock harness). Writes a self-contained Hono+Bun harness under <target>/.anydemo/<slug>/harness/ that stubs every boundary route the diagram references.
 tools: [Read, Write, Bash]
 color: orange
 ---
 
-# harness-author — anydemo-diagram Phase 5b (Tier 2 only)
+# harness-author — diagram Phase 5b (Tier 2 only)
 
 Generate a small server under `<target>/.anydemo/<slug>/harness/` that exposes
 one HTTP endpoint per `playAction.url` in the diagram. Behind each

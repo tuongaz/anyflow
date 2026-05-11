@@ -3,7 +3,7 @@ description: Generate a playable AnyDemo architecture diagram from the current c
 argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
 ---
 
-Use the `anydemo-diagram` skill (full instructions in `SKILL.md` — found
+Use the `diagram` skill (full instructions in `SKILL.md` — found
 at either `$PLUGIN_ROOT/skills/diagram/SKILL.md` for a plugin install, or
 `$PLUGIN_ROOT/SKILL.md` for a flat-skill install; the skill's Phase 0
 resolves both layouts into `$SKILL_DIR`) to generate a playable
@@ -15,8 +15,8 @@ Run the full pipeline:
 
 1. **Phase 0** — Pre-flight: resolve `$TARGET` (cwd unless overridden),
    `$STUDIO_URL` (default `http://localhost:4321`), `$PLUGIN_ROOT`, and
-   `$SKILL_DIR` (env `CLAUDE_PLUGIN_ROOT` → `~/.claude/plugins/anydemo-diagram`
-   → `~/.claude/skills/anydemo-diagram` → cwd; first hit wins, and the
+   `$SKILL_DIR` (env `CLAUDE_PLUGIN_ROOT` → `~/.claude/plugins/diagram`
+   → `~/.claude/skills/diagram` → cwd; first hit wins, and the
    resolver auto-detects plugin vs flat-skill layout). Probe
    `GET $STUDIO_URL/health`. Create `.anydemo/intermediate/`.
 2. **Phase 1** — Run the two filesystem scripts under

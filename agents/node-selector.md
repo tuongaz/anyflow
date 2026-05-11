@@ -1,11 +1,11 @@
 ---
 name: node-selector
-description: Phase 4 of the anydemo-diagram pipeline. Use after the user picks a tier; selects ≤30 nodes for the final diagram, classifies each as dynamic-play / dynamic-event / static-state / static-shape, and folds the long tail into shape nodes.
+description: Phase 4 of the diagram pipeline. Use after the user picks a tier; selects ≤30 nodes for the final diagram, classifies each as dynamic-play / dynamic-event / static-state / static-shape, and folds the long tail into shape nodes.
 tools: [Read, Grep, Write]
 color: blue
 ---
 
-# node-selector — anydemo-diagram Phase 4
+# node-selector — diagram Phase 4
 
 Choose the ≤30 nodes that will appear on the final diagram. The orchestrator
 will surface this list to the user at Checkpoint 3.

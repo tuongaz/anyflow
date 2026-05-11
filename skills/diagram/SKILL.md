@@ -1,5 +1,5 @@
 ---
-name: anydemo-diagram
+name: diagram
 description: This skill should be used when the user asks to "show me the architecture", "diagram this codebase", "explain how X works", "make a playable diagram", "generate an anydemo", "show me the order pipeline", "diagram the auth flow", or any request to produce a single flat playable architecture diagram for the AnyDemo studio. Drives a pre-flight + 8-phase pipeline (scan → scope → tier → nodes → wiring → layout → assemble → register) with three user checkpoints.
 version: 0.1.0
 argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
@@ -48,8 +48,8 @@ once for the whole repo. Phase 0 computes `$DEMO_DIR` as
 - **Node.js** (any LTS) on `PATH` — the two filesystem scripts under
   `$SKILL_DIR/scripts/` run on Node. `$PLUGIN_ROOT` and `$SKILL_DIR` are
   resolved in Phase 0; they handle both the plugin install at
-  `~/.claude/plugins/anydemo-diagram/` and the flat-skill install at
-  `~/.claude/skills/anydemo-diagram/`.
+  `~/.claude/plugins/diagram/` and the flat-skill install at
+  `~/.claude/skills/diagram/`.
 - `curl` and `jq` for the HTTP calls below.
 
 All schema validation, scope scoring, demo assembly, and registration happen
@@ -67,7 +67,7 @@ to resolve a path on disk use the explicit `$SKILL_DIR/...` form.
 
 ## Announcement
 
-Announce: "Using anydemo-diagram skill to generate a playable diagram for: <request>"
+Announce: "Using diagram skill to generate a playable diagram for: <request>"
 
 ## Studio precheck — before any phase
 
@@ -432,7 +432,7 @@ which is why this step has a fallback chain that covers both install layouts:
 
 - **Plugin install** — SKILL.md lives at `$PLUGIN_ROOT/skills/diagram/SKILL.md`.
 - **Flat-skill install** — SKILL.md lives at `$PLUGIN_ROOT/SKILL.md` (i.e.
-  `~/.claude/skills/anydemo-diagram/SKILL.md`); skill assets are at the root.
+  `~/.claude/skills/diagram/SKILL.md`); skill assets are at the root.
 
 `$SKILL_DIR` always points at the skill's bundled assets (`scripts/`,
 `references/`, `templates/`, `frameworks/`, `agents/`) regardless of install
@@ -451,7 +451,7 @@ SKILL_DIR=""
 # Pass 1 — plugin/vendored layout: $candidate/skills/diagram/SKILL.md.
 for candidate in \
   "${PLUGIN_ROOT}" \
-  "$HOME/.claude/plugins/anydemo-diagram" \
+  "$HOME/.claude/plugins/diagram" \
   "$(pwd)"; do
   [ -n "$candidate" ] || continue
   if [ -f "$candidate/skills/diagram/SKILL.md" ]; then
@@ -465,7 +465,7 @@ done
 if [ -z "$SKILL_DIR" ]; then
   for candidate in \
     "${CLAUDE_PLUGIN_ROOT:-}" \
-    "$HOME/.claude/skills/anydemo-diagram" \
+    "$HOME/.claude/skills/diagram" \
     "$(pwd)"; do
     [ -n "$candidate" ] || continue
     if [ -f "$candidate/SKILL.md" ]; then
@@ -476,7 +476,7 @@ if [ -z "$SKILL_DIR" ]; then
   done
 fi
 
-[ -n "$SKILL_DIR" ] || { echo "Cannot locate anydemo-diagram skill — looked under \$CLAUDE_PLUGIN_ROOT, ~/.claude/plugins/anydemo-diagram, ~/.claude/skills/anydemo-diagram, and cwd." >&2; exit 1; }
+[ -n "$SKILL_DIR" ] || { echo "Cannot locate diagram skill — looked under \$CLAUDE_PLUGIN_ROOT, ~/.claude/plugins/diagram, ~/.claude/skills/diagram, and cwd." >&2; exit 1; }
 
 # Pick a working slug for the per-demo folder. Refined after CHECKPOINT 1
 # (Phase 2) once the user approves a title, and one more time at Phase 8

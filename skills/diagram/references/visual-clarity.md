@@ -1,6 +1,6 @@
 # Visual clarity for humans — duplicate to declutter
 
-The anydemo-diagram pipeline produces diagrams **for humans to read**, not
+The diagram pipeline produces diagrams **for humans to read**, not
 data graphs for machines. A wiring with 30 nodes and 80 connectors that all
 converge on one `db` box is correct but unreadable; the same diagram with
 the `db` *drawn three times* near its three consumers is the goal.

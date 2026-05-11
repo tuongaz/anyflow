@@ -1,5 +1,5 @@
 {
-  "name": "anydemo-diagram",
+  "name": "diagram",
   "description": "Generate playable, single-flat architecture diagrams for AnyDemo from any codebase",
   "version": "0.1.0",
   "keywords": ["anydemo", "diagram", "architecture", "react-flow", "playable"]

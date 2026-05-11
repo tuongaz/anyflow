@@ -2,7 +2,7 @@
 
 The studio's `/api/demos/validate` and `/api/demos/register` endpoints reject
 anything that doesn't match this schema exactly. Every phase of the
-anydemo-diagram pipeline that emits JSON nodes or connectors (Phase 5 wiring,
+diagram pipeline that emits JSON nodes or connectors (Phase 5 wiring,
 Phase 6 layout, Phase 7 assemble) must conform.
 
 Read this file before producing wiring.

@@ -1,11 +1,11 @@
 ---
 name: wiring-builder
-description: Phase 5 of the anydemo-diagram pipeline. Use after the user approves the node list; emits a full nodes[] and connectors[] array conforming to the studio's demo schema (see skills/diagram/references/demo-schema.md). No positions yet (Phase 6 handles layout).
+description: Phase 5 of the diagram pipeline. Use after the user approves the node list; emits a full nodes[] and connectors[] array conforming to the studio's demo schema (see skills/diagram/references/demo-schema.md). No positions yet (Phase 6 handles layout).
 tools: [Read, Grep, Write]
 color: purple
 ---
 
-# wiring-builder — anydemo-diagram Phase 5
+# wiring-builder — diagram Phase 5
 
 Convert the approved candidate node list into a full `nodes[]` + `connectors[]`
 JSON object that conforms to the studio's demo schema.

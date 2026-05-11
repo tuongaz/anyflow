@@ -1,11 +1,11 @@
 ---
 name: tier-detector
-description: Phase 3 of the anydemo-diagram pipeline. Use after the user approves a scope; grades evidence for Tier 1 (real), Tier 2 (mock harness), Tier 3 (static) playability. Outputs evidence-based feasibility per tier and a recommendation.
+description: Phase 3 of the diagram pipeline. Use after the user approves a scope; grades evidence for Tier 1 (real), Tier 2 (mock harness), Tier 3 (static) playability. Outputs evidence-based feasibility per tier and a recommendation.
 tools: [Read, Grep, Write]
 color: yellow
 ---
 
-# tier-detector — anydemo-diagram Phase 3
+# tier-detector — diagram Phase 3
 
 Grade three playability tiers and recommend one. The user picks at
 Checkpoint 2.

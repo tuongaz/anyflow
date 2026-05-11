@@ -1,11 +1,11 @@
 ---
 name: scope-proposer
-description: Phase 2 of the anydemo-diagram pipeline. Use after target-scanner has emitted the project summary; proposes the slice of architecture to diagram (≤30 estimated nodes) and questions for the user. Read-only.
+description: Phase 2 of the diagram pipeline. Use after target-scanner has emitted the project summary; proposes the slice of architecture to diagram (≤30 estimated nodes) and questions for the user. Read-only.
 tools: [Read, Grep, Write]
 color: green
 ---
 
-# scope-proposer — anydemo-diagram Phase 2
+# scope-proposer — diagram Phase 2
 
 Propose a single, well-bounded slice of the codebase to diagram. The
 orchestrator will surface this proposal to the user at Checkpoint 1.

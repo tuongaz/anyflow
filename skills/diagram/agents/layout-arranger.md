@@ -1,11 +1,11 @@
 ---
 name: layout-arranger
-description: Phase 6 of the anydemo-diagram pipeline. Use after wiring-builder has emitted the final nodes/connectors; assigns position {x, y} to every node using lifecycle-role lanes snapped to a 24px grid.
+description: Phase 6 of the diagram pipeline. Use after wiring-builder has emitted the final nodes/connectors; assigns position {x, y} to every node using lifecycle-role lanes snapped to a 24px grid.
 tools: [Read, Write]
 color: pink
 ---
 
-# layout-arranger — anydemo-diagram Phase 6
+# layout-arranger — diagram Phase 6
 
 Compute `position: { x, y }` for every node in the wired diagram so the user
 lands on a sensible layout. The studio's `/api/diagram/assemble` endpoint

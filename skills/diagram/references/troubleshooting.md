@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Quick lookup for the most common failure modes of the anydemo-diagram
+Quick lookup for the most common failure modes of the diagram
 pipeline. Each row maps a symptom to a one-line fix.
 
 ## Common pitfalls
@@ -8,7 +8,7 @@ pipeline. Each row maps a symptom to a one-line fix.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `curl: (7) Failed to connect ... 4321` in Phase 0 | Studio not running | `cd $PLUGIN_ROOT && bun run dev`, or set `ANYDEMO_STUDIO_URL` |
-| Phase 1 fails with `node: cannot find scan-target.mjs` | `CLAUDE_PLUGIN_ROOT` unset and skill not in default locations | Re-run Phase 0 — the fallback chain expects the plugin install at `~/.claude/plugins/anydemo-diagram/` or the flat-skill install at `~/.claude/skills/anydemo-diagram/`. Symlink there if vendored elsewhere. |
+| Phase 1 fails with `node: cannot find scan-target.mjs` | `CLAUDE_PLUGIN_ROOT` unset and skill not in default locations | Re-run Phase 0 — the fallback chain expects the plugin install at `~/.claude/plugins/diagram/` or the flat-skill install at `~/.claude/skills/diagram/`. Symlink there if vendored elsewhere. |
 | `scan-result.json` shows zero files | Target has no recognized framework | Add a framework hint file (`apps/<name>/package.json`, `pyproject.toml`, `Gemfile`) or check `$SKILL_DIR/frameworks/` for support |
 | Demo registers as "Untitled diagram" | Phase 5 wiring plan missing top-level `name` | Phase 5 must emit `{"name": "<title>", ...}`. Use the title from `scope-proposal.json`. |
 | `/api/demos/validate` rejects with "connector references unknown node" | Wiring used `from`/`to` instead of `source`/`target`, or a typo'd id | Re-run Phase 5 — the studio uses `source`/`target` only |
