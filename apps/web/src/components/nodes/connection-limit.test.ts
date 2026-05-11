@@ -10,11 +10,16 @@ import { join } from 'node:path';
 //   • <ReactFlow isValidConnection={fn}> — vetoes connections at gesture time
 // Either appearing in the node renderers OR demo-canvas would re-introduce the
 // limit. Static-text fence is enough — these props don't have synonymous APIs.
+// US-023 extends the watch list to icon-node + image-node so a future change
+// that adds a per-type connectionLimit (e.g. "icons shouldn't be sources") is
+// caught at test time, not by a user.
 const repoRoot = join(import.meta.dir, '..', '..', '..', '..', '..');
 const watched = [
   'apps/web/src/components/nodes/shape-node.tsx',
   'apps/web/src/components/nodes/play-node.tsx',
   'apps/web/src/components/nodes/state-node.tsx',
+  'apps/web/src/components/nodes/icon-node.tsx',
+  'apps/web/src/components/nodes/image-node.tsx',
   'apps/web/src/components/demo-canvas.tsx',
 ];
 

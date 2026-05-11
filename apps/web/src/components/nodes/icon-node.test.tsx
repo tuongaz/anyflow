@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { ICON_FALLBACK_NAME, IconNode } from '@/components/nodes/icon-node';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
-import type { NodeProps } from '@xyflow/react';
+import { Handle, type NodeProps, Position } from '@xyflow/react';
 import * as React from 'react';
 
 // Bun runs apps/web tests without a DOM, and React Flow's `<Handle>` reads
@@ -76,6 +76,20 @@ function findElement(
     if (found) return found;
   }
   return null;
+}
+
+function findAll(tree: unknown, predicate: (el: ReactElementLike) => boolean): ReactElementLike[] {
+  const out: ReactElementLike[] = [];
+  const visit = (node: unknown) => {
+    if (!isElement(node)) return;
+    if (predicate(node)) out.push(node);
+    const children = node.props.children;
+    if (children === undefined || children === null) return;
+    const arr = Array.isArray(children) ? children : [children];
+    for (const c of arr) visit(c);
+  };
+  visit(tree);
+  return out;
 }
 
 function callIconNode(data: Record<string, unknown>, overrides: Partial<NodeProps> = {}): unknown {
@@ -252,6 +266,34 @@ describe('IconNode', () => {
     expect(stopPropagation).toHaveBeenCalledTimes(1);
     expect(onRequestIconReplace).toHaveBeenCalledTimes(1);
     expect(onRequestIconReplace).toHaveBeenCalledWith('icon-42');
+  });
+
+  it('renders 4 connection handles wired for source/target hit-testing (US-023)', () => {
+    // US-023 regression fence: xyflow's `getHandleBounds(type, ...)` queries
+    // `nodeElement.querySelectorAll('.source')` and `'.target'` to compute the
+    // bounds it later uses for `getClosestHandle` snap. The Handle component
+    // adds those classes based on `type='source'|'target'`. If a refactor
+    // accidentally swaps the roles (e.g. all 4 to target) OR drops a handle,
+    // xyflow can no longer find an iconNode endpoint within connectionRadius
+    // and the connection silently fails to land — exactly the user-reported
+    // bug. This test pins the 4-handle layout at the iconNode level so the
+    // connection path stays exercisable from xyflow's side.
+    const tree = callIconNode({ icon: 'shopping-cart' });
+    const handles = findAll(tree, (el) => el.type === Handle);
+    expect(handles).toHaveLength(4);
+    const byId = new Map<string, ReactElementLike>();
+    for (const h of handles) {
+      byId.set(String((h.props as { id?: string }).id), h);
+    }
+    // top + left = target (incoming); right + bottom = source (outgoing).
+    expect(byId.get('t')?.props.type).toBe('target');
+    expect(byId.get('t')?.props.position).toBe(Position.Top);
+    expect(byId.get('l')?.props.type).toBe('target');
+    expect(byId.get('l')?.props.position).toBe(Position.Left);
+    expect(byId.get('r')?.props.type).toBe('source');
+    expect(byId.get('r')?.props.position).toBe(Position.Right);
+    expect(byId.get('b')?.props.type).toBe('source');
+    expect(byId.get('b')?.props.position).toBe(Position.Bottom);
   });
 
   it('dblclick is a no-op (and does NOT stop propagation) when onRequestIconReplace is absent', () => {

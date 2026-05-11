@@ -1941,6 +1941,127 @@ describe('POST /api/demos/:id/connectors', () => {
     const res = await post(app, '/api/demos/nope/connectors', { source: 'a', target: 'b' });
     expect(res.status).toBe(404);
   });
+
+  // US-023: an iconNode is a valid connector endpoint in either role. The
+  // schema's discriminated NodeSchema doesn't constrain who can be a source or
+  // target — only that the referenced id exists in nodes[]. These two cases
+  // fence that against a future change to operations.ts / schema.ts that might
+  // add a node-type whitelist (the bug the user reports is UX-shaped, not
+  // server-shaped, but a REST round-trip is the cheapest regression fence).
+  it('accepts a connector pointing AT an iconNode (US-023)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo({
+      version: 1,
+      name: 'Icon target',
+      nodes: [
+        {
+          id: 'svc',
+          type: 'stateNode',
+          position: { x: 0, y: 0 },
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' } },
+        },
+        {
+          id: 'icon-1',
+          type: 'iconNode',
+          position: { x: 200, y: 0 },
+          data: { icon: 'shopping-cart' },
+        },
+      ],
+      connectors: [],
+    });
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/connectors`, {
+      source: 'svc',
+      target: 'icon-1',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string };
+    const onDisk = JSON.parse(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf8')) as {
+      connectors: Array<{ id: string; source: string; target: string; kind: string }>;
+    };
+    expect(onDisk.connectors).toHaveLength(1);
+    expect(onDisk.connectors[0]?.id).toBe(body.id);
+    expect(onDisk.connectors[0]?.source).toBe('svc');
+    expect(onDisk.connectors[0]?.target).toBe('icon-1');
+  });
+
+  it('accepts a connector pointing FROM an iconNode (US-023)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo({
+      version: 1,
+      name: 'Icon source',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode',
+          position: { x: 0, y: 0 },
+          data: { icon: 'shopping-cart' },
+        },
+        {
+          id: 'svc',
+          type: 'stateNode',
+          position: { x: 200, y: 0 },
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' } },
+        },
+      ],
+      connectors: [],
+    });
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/connectors`, {
+      source: 'icon-1',
+      target: 'svc',
+    });
+    expect(res.status).toBe(200);
+    const onDisk = JSON.parse(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf8')) as {
+      connectors: Array<{ source: string; target: string }>;
+    };
+    expect(onDisk.connectors).toHaveLength(1);
+    expect(onDisk.connectors[0]?.source).toBe('icon-1');
+    expect(onDisk.connectors[0]?.target).toBe('svc');
+  });
+
+  it('accepts a connector between two iconNodes (US-023)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo({
+      version: 1,
+      name: 'Icon-to-icon',
+      nodes: [
+        {
+          id: 'icon-a',
+          type: 'iconNode',
+          position: { x: 0, y: 0 },
+          data: { icon: 'circle' },
+        },
+        {
+          id: 'icon-b',
+          type: 'iconNode',
+          position: { x: 200, y: 0 },
+          data: { icon: 'square' },
+        },
+      ],
+      connectors: [],
+    });
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/connectors`, {
+      source: 'icon-a',
+      target: 'icon-b',
+    });
+    expect(res.status).toBe(200);
+    const onDisk = JSON.parse(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf8')) as {
+      connectors: Array<{ source: string; target: string }>;
+    };
+    expect(onDisk.connectors[0]?.source).toBe('icon-a');
+    expect(onDisk.connectors[0]?.target).toBe('icon-b');
+  });
 });
 
 describe('DELETE /api/demos/:id/connectors/:connId', () => {

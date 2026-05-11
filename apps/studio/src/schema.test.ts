@@ -737,6 +737,50 @@ describe('DemoSchema', () => {
     expect(result.data.connectors).toHaveLength(1);
   });
 
+  // US-023: an iconNode is a valid connector endpoint in either role — the
+  // connector→node superRefine cares only that the referenced id exists in
+  // nodes[], not about the node's discriminator. Schema-level fence so a future
+  // change can't add a hidden node-type whitelist.
+  it('accepts a connector pointing at an iconNode id as source AND target (US-023)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'icon-conn',
+      nodes: [
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 100, y: 0 },
+          data: { icon: 'shopping-cart' },
+        },
+        {
+          id: 'icon-2',
+          type: 'iconNode' as const,
+          position: { x: 200, y: 0 },
+          data: { icon: 'circle' },
+        },
+      ],
+      connectors: [
+        // stateNode → iconNode
+        { id: 'c1', source: 's', target: 'icon-1', kind: 'default' as const },
+        // iconNode → stateNode
+        { id: 'c2', source: 'icon-1', target: 's', kind: 'default' as const },
+        // iconNode → iconNode
+        { id: 'c3', source: 'icon-1', target: 'icon-2', kind: 'default' as const },
+      ],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.connectors).toHaveLength(3);
+  });
+
   it('parses a demo with a top-level resetAction (US-003)', () => {
     const demo = {
       version: 1 as const,
