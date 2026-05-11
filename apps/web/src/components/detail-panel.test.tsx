@@ -1,8 +1,9 @@
 import { describe, expect, it, mock } from 'bun:test';
-import { IconNodeSection } from '@/components/detail-panel';
+import { DescriptionMarkdown, IconNodeSection } from '@/components/detail-panel';
 import type { ColorToken, DemoNode } from '@/lib/api';
 import type { ChangeEvent, KeyboardEvent } from 'react';
 import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 // Same dispatcher-shim trick used by icon-node.test.tsx and
 // icon-picker-popover.test.tsx — apps/web tests run without a DOM, so we shim
@@ -257,5 +258,59 @@ describe('IconNodeSection', () => {
     // identity is verified indirectly by the icon-registry tests.
     const children = preview.props.children;
     expect(children).toBeDefined();
+  });
+});
+
+// US-017: DescriptionMarkdown is rendered via react-dom/server because the
+// hook-shim renderer treats ReactMarkdown as a placeholder and never executes
+// the GFM transform. renderToStaticMarkup is DOM-free string rendering, and
+// react-markdown has no zustand/React-Flow ancestor requirement — so it works
+// in Bun's no-DOM test environment.
+describe('DescriptionMarkdown', () => {
+  it('renders bold markdown as a <strong> element', () => {
+    const html = renderToStaticMarkup(<DescriptionMarkdown source="hello **world**" />);
+    expect(html).toContain('<strong>world</strong>');
+  });
+
+  it('renders an inline link with target=_blank rel=noopener noreferrer', () => {
+    const html = renderToStaticMarkup(
+      <DescriptionMarkdown source="see [the docs](https://example.com)" />,
+    );
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  it('renders a fenced code block as <pre><code>', () => {
+    const html = renderToStaticMarkup(<DescriptionMarkdown source={'```\nconst x = 1;\n```'} />);
+    expect(html).toMatch(/<pre[^>]*><code[^>]*>const x = 1;\n<\/code><\/pre>/);
+  });
+
+  it('renders GFM strikethrough as <del>', () => {
+    const html = renderToStaticMarkup(<DescriptionMarkdown source="this is ~~gone~~" />);
+    expect(html).toContain('<del>gone</del>');
+  });
+
+  it('does not render raw HTML (rehype-raw is disabled)', () => {
+    const html = renderToStaticMarkup(
+      <DescriptionMarkdown source="hi <script>alert(1)</script>" />,
+    );
+    // The <script> tag must be HTML-escaped to inert text, not passed through
+    // as an executable element. Escaped form (&lt;script&gt;) is the safe
+    // rendering; an unescaped <script> would be an XSS risk.
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('renders inline code as <code> without wrapping <pre>', () => {
+    const html = renderToStaticMarkup(<DescriptionMarkdown source="run `npm install`" />);
+    expect(html).toMatch(/<code[^>]*>npm install<\/code>/);
+    expect(html).not.toMatch(/<pre[^>]*><code[^>]*>npm install/);
+  });
+
+  it('wraps output in the description container with the test id', () => {
+    const html = renderToStaticMarkup(<DescriptionMarkdown source="hello" />);
+    expect(html).toContain('data-testid="detail-panel-description"');
   });
 });
