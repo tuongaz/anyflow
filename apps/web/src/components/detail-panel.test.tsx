@@ -1,9 +1,46 @@
-import { describe, expect, it, mock } from 'bun:test';
-import { DescriptionMarkdown, IconNodeSection } from '@/components/detail-panel';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import type { ColorToken, DemoNode } from '@/lib/api';
-import type { ChangeEvent, KeyboardEvent } from 'react';
+import type { ChangeEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+// US-019: the DetailPanel root reads localStorage on first render
+// (getStoredDetailPanelWidth) and writes back on resize. Provide a Map-backed
+// localStorage so the imports below see a `window` global.
+const memStore = new Map<string, string>();
+const mockLocalStorage = {
+  getItem: (k: string): string | null => memStore.get(k) ?? null,
+  setItem: (k: string, v: string): void => {
+    memStore.set(k, v);
+  },
+  removeItem: (k: string): void => {
+    memStore.delete(k);
+  },
+};
+
+type WindowListener = (e: { clientX: number }) => void;
+const windowListeners = new Map<string, WindowListener[]>();
+const mockWindow = {
+  localStorage: mockLocalStorage,
+  addEventListener: (event: string, cb: WindowListener) => {
+    const arr = windowListeners.get(event) ?? [];
+    arr.push(cb);
+    windowListeners.set(event, arr);
+  },
+  removeEventListener: (event: string, cb: WindowListener) => {
+    const arr = windowListeners.get(event) ?? [];
+    windowListeners.set(
+      event,
+      arr.filter((c) => c !== cb),
+    );
+  },
+};
+(globalThis as { window?: typeof mockWindow }).window = mockWindow;
+
+const { DescriptionMarkdown, DetailPanel, IconNodeSection } = await import(
+  '@/components/detail-panel'
+);
+const { DETAIL_PANEL_WIDTH_KEY } = await import('@/lib/detail-panel-width');
 
 // Same dispatcher-shim trick used by icon-node.test.tsx and
 // icon-picker-popover.test.tsx — apps/web tests run without a DOM, so we shim
@@ -312,5 +349,85 @@ describe('DescriptionMarkdown', () => {
   it('wraps output in the description container with the test id', () => {
     const html = renderToStaticMarkup(<DescriptionMarkdown source="hello" />);
     expect(html).toContain('data-testid="detail-panel-description"');
+  });
+});
+
+// US-019: DetailPanel root is rendered via the hook-shim — Sheet/SheetContent
+// are captured as placeholders, so we can find the SheetContent by testId and
+// inspect its `style` (the --detail-panel-w variable) and its first child
+// (the resize handle).
+describe('DetailPanel resize', () => {
+  type PanelProps = Parameters<typeof DetailPanel>[0];
+  function callPanel(overrides: Partial<PanelProps> = {}) {
+    const node = makeIconNode();
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onClose: () => {},
+      ...overrides,
+    } as PanelProps;
+    return renderWithHooks(() => (DetailPanel as unknown as (p: PanelProps) => unknown)(props));
+  }
+
+  beforeEach(() => {
+    memStore.clear();
+    windowListeners.clear();
+  });
+
+  it('renders SheetContent with the default 380px width CSS variable', () => {
+    const tree = callPanel();
+    const content = findElement(tree, testIdEquals('detail-panel'));
+    if (!content) throw new Error('detail-panel SheetContent not found');
+    const style = content.props.style as Record<string, string>;
+    expect(style['--detail-panel-w']).toBe('380px');
+  });
+
+  it('hydrates initial width from localStorage when within [MIN, MAX]', () => {
+    memStore.set(DETAIL_PANEL_WIDTH_KEY, '560');
+    const tree = callPanel();
+    const content = findElement(tree, testIdEquals('detail-panel'));
+    if (!content) throw new Error('detail-panel SheetContent not found');
+    const style = content.props.style as Record<string, string>;
+    expect(style['--detail-panel-w']).toBe('560px');
+  });
+
+  it('renders a resize handle on the left edge with onPointerDown wired', () => {
+    const tree = callPanel();
+    const handle = findElement(tree, testIdEquals('detail-panel-resize-handle'));
+    if (!handle) throw new Error('resize handle not found');
+    expect(typeof handle.props.onPointerDown).toBe('function');
+    // Handle is hidden below sm and discoverable on hover above sm.
+    const className = handle.props.className as string;
+    expect(className).toContain('hidden');
+    expect(className).toContain('sm:block');
+    expect(className).toContain('cursor-col-resize');
+  });
+
+  it('drag end persists the new width to localStorage', () => {
+    const tree = callPanel();
+    const handle = findElement(tree, testIdEquals('detail-panel-resize-handle'));
+    if (!handle) throw new Error('resize handle not found');
+    const onPointerDown = handle.props.onPointerDown as (
+      e: ReactPointerEvent<HTMLDivElement>,
+    ) => void;
+    // Start a drag at clientX=1000 (handle's pixel column).
+    onPointerDown({
+      preventDefault: () => {},
+      clientX: 1000,
+    } as unknown as ReactPointerEvent<HTMLDivElement>);
+    // The handler attached window listeners — fire move then up.
+    const movers = windowListeners.get('pointermove') ?? [];
+    const ups = windowListeners.get('pointerup') ?? [];
+    expect(movers).toHaveLength(1);
+    expect(ups).toHaveLength(1);
+    // Drag 100px to the LEFT — panel widens by 100 (380 → 480).
+    for (const cb of movers) cb({ clientX: 900 });
+    // Release the pointer — commit the final width.
+    for (const cb of ups) cb({ clientX: 900 });
+    expect(memStore.get(DETAIL_PANEL_WIDTH_KEY)).toBe('480');
+    // Listeners cleaned up.
+    expect(windowListeners.get('pointermove') ?? []).toHaveLength(0);
+    expect(windowListeners.get('pointerup') ?? []).toHaveLength(0);
   });
 });

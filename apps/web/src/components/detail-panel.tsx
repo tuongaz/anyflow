@@ -9,10 +9,22 @@ import type { NodeEventLogEntry } from '@/hooks/use-node-events';
 import type { NodeRunState } from '@/hooks/use-node-runs';
 import type { ColorToken, Connector, DemoNode } from '@/lib/api';
 import { COLOR_TOKENS } from '@/lib/color-tokens';
+import {
+  getStoredDetailPanelWidth,
+  setStoredDetailPanelWidth,
+  startResizeGesture,
+} from '@/lib/detail-panel-width';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
 import { cn } from '@/lib/utils';
 import { Check, RefreshCw } from 'lucide-react';
-import { type ChangeEvent, type KeyboardEvent, useEffect, useState } from 'react';
+import {
+  type CSSProperties,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useState,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -91,6 +103,21 @@ export function DetailPanel({
     hasDynamicSource,
   );
 
+  // US-019: panel width is user-resizable above the sm breakpoint via a left-
+  // edge handle; the value persists across sessions in localStorage. The CSS
+  // variable is consumed by the `sm:!w-[var(...)] sm:!max-w-[var(...)]`
+  // override below — below sm the base SheetContent's `w-3/4 sm:max-w-sm`
+  // applies untouched.
+  const [width, setWidth] = useState<number>(() => getStoredDetailPanelWidth());
+  const onResizeHandlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    startResizeGesture(width, e.clientX, {
+      onWidth: setWidth,
+      onCommit: setStoredDetailPanelWidth,
+    });
+  };
+  const widthStyle = { ['--detail-panel-w' as string]: `${width}px` } as CSSProperties;
+
   return (
     <Sheet
       open={open}
@@ -101,7 +128,8 @@ export function DetailPanel({
     >
       <SheetContent
         side="right"
-        className="!w-[380px] sm:!max-w-[380px] overflow-y-auto"
+        className="overflow-y-auto sm:!w-[var(--detail-panel-w)] sm:!max-w-[var(--detail-panel-w)]"
+        style={widthStyle}
         data-testid="detail-panel"
         onInteractOutside={(e) => {
           // Resize gestures (US-031) start with a pointerdown on a
@@ -134,6 +162,12 @@ export function DetailPanel({
           if (target?.closest('.react-flow__edge')) e.preventDefault();
         }}
       >
+        <div
+          aria-label="Resize detail panel"
+          onPointerDown={onResizeHandlePointerDown}
+          data-testid="detail-panel-resize-handle"
+          className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-border sm:block"
+        />
         {inspectableNode ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
