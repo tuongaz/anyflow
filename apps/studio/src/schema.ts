@@ -50,9 +50,15 @@ const DetailFieldSchema = z.object({
   value: z.string(),
 });
 
+// Two free-text descriptions. `summary` is the short one rendered ON the
+// node itself (kept concise so it fits the box without wrapping into a wall
+// of text); `description` is the long one rendered in the detail panel when
+// a node is selected. Both are optional, so existing demos that only set
+// `summary` keep displaying the same text in the panel via fallback.
 const DetailSchema = z.object({
   filePath: z.string().optional(),
   summary: z.string().optional(),
+  description: z.string().optional(),
   fields: z.array(DetailFieldSchema).optional(),
   dynamicSource: DynamicSourceSchema.optional(),
 });

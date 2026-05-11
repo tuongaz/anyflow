@@ -104,8 +104,10 @@ export function DetailPanel({
             </div>
 
             <div className="mt-0 flex flex-col gap-3">
-              {detail?.summary ? (
-                <p className="text-sm text-foreground/90 leading-relaxed">{detail.summary}</p>
+              {detail?.description || detail?.summary ? (
+                <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                  {detail.description ?? detail.summary}
+                </p>
               ) : null}
 
               {detail?.fields && detail.fields.length > 0 ? (

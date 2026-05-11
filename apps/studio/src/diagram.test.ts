@@ -154,7 +154,12 @@ describe('assembleDemo auto-layout', () => {
     expect(new Set([c1.position.y, c2.position.y, c3.position.y]).size).toBe(3);
   });
 
-  test('two disconnected components occupy disjoint vertical bands', () => {
+  test('two disconnected components lay out without overlap', () => {
+    // dagre lays disconnected components into a single graph, so it doesn't
+    // force them into strictly-separated vertical bands the way the previous
+    // hand-rolled layout did. The contract guaranteed by the algorithm — and
+    // matched by the canvas's Tidy button — is non-overlap, which is what we
+    // assert here. (US-026 parity.)
     const result = assembleDemo({
       wiring: {
         nodes: [
@@ -166,15 +171,15 @@ describe('assembleDemo auto-layout', () => {
         connectors: [connector('A1', 'A2'), connector('B1', 'B2')],
       },
     });
-    const byId = new Map((result.demo.nodes as unknown as OutNode[]).map((n) => [n.id, n]));
-    const a1 = byId.get('a1');
-    const a2 = byId.get('a2');
-    const b1 = byId.get('b1');
-    const b2 = byId.get('b2');
-    if (!a1 || !a2 || !b1 || !b2) throw new Error('missing component node');
-    const aBottom = Math.max(a1.position.y + dims(a1).h, a2.position.y + dims(a2).h);
-    const bTop = Math.min(b1.position.y, b2.position.y);
-    expect(bTop).toBeGreaterThanOrEqual(aBottom);
+    const out = result.demo.nodes as unknown as OutNode[];
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        const ni = out[i];
+        const nj = out[j];
+        if (!ni || !nj) continue;
+        expect(rectsOverlap(ni, nj)).toBe(false);
+      }
+    }
   });
 
   test('cycles do not crash and produce a layered layout', () => {
@@ -242,7 +247,12 @@ describe('assembleDemo auto-layout', () => {
     expect(byId.get('caption')?.position).toEqual({ x: 1440, y: 600 });
   });
 
-  test('within a layer, sibling nodes preserve the input y ordering', () => {
+  test('siblings in the same rank get distinct y values', () => {
+    // dagre's barycenter heuristic places same-rank siblings at distinct y
+    // values but does NOT preserve the input y ordering — by design, since
+    // the heuristic minimizes edge crossings instead. The Tidy button has the
+    // same characteristic, which is why this assertion only checks
+    // distinctness, not order.
     const result = assembleDemo({
       wiring: {
         nodes: [
@@ -259,8 +269,7 @@ describe('assembleDemo auto-layout', () => {
     const mid = byId.get('mid');
     const bot = byId.get('bot');
     if (!top || !mid || !bot) throw new Error('missing sibling');
-    expect(top.position.y).toBeLessThan(mid.position.y);
-    expect(mid.position.y).toBeLessThan(bot.position.y);
+    expect(new Set([top.position.y, mid.position.y, bot.position.y]).size).toBe(3);
   });
 
   test('single-node graph still honors an explicit layout position', () => {

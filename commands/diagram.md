@@ -3,24 +3,26 @@ description: Generate a playable AnyDemo architecture diagram from the current c
 argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
 ---
 
-Use the `anydemo-diagram` skill (full instructions in
-`$PLUGIN_ROOT/skills/diagram/SKILL.md`, where `$PLUGIN_ROOT` is resolved by
-the skill's Phase 0) to generate a playable single-flat AnyDemo diagram for
-the current repository.
+Use the `anydemo-diagram` skill (full instructions in `SKILL.md` — found
+at either `$PLUGIN_ROOT/skills/diagram/SKILL.md` for a plugin install, or
+`$PLUGIN_ROOT/SKILL.md` for a flat-skill install; the skill's Phase 0
+resolves both layouts into `$SKILL_DIR`) to generate a playable
+single-flat AnyDemo diagram for the current repository.
 
 User request: `$ARGUMENTS`
 
 Run the full pipeline:
 
 1. **Phase 0** — Pre-flight: resolve `$TARGET` (cwd unless overridden),
-   `$STUDIO_URL` (default `http://localhost:4321`), and `$PLUGIN_ROOT`
-   (env `CLAUDE_PLUGIN_ROOT` → `~/.claude/plugins/anydemo-diagram` →
-   `~/.claude/skills/anydemo-diagram` → cwd). Probe `GET $STUDIO_URL/health`.
-   Create `.anydemo/intermediate/`.
+   `$STUDIO_URL` (default `http://localhost:4321`), `$PLUGIN_ROOT`, and
+   `$SKILL_DIR` (env `CLAUDE_PLUGIN_ROOT` → `~/.claude/plugins/anydemo-diagram`
+   → `~/.claude/skills/anydemo-diagram` → cwd; first hit wins, and the
+   resolver auto-detects plugin vs flat-skill layout). Probe
+   `GET $STUDIO_URL/health`. Create `.anydemo/intermediate/`.
 2. **Phase 1** — Run the two filesystem scripts under
-   `$PLUGIN_ROOT/skills/diagram/scripts/` (`scan-target.mjs`,
-   `extract-routes.mjs`), then `POST $STUDIO_URL/api/diagram/propose-scope`,
-   then dispatch the `target-scanner` subagent.
+   `$SKILL_DIR/scripts/` (`scan-target.mjs`, `extract-routes.mjs`), then
+   `POST $STUDIO_URL/api/diagram/propose-scope`, then dispatch the
+   `target-scanner` subagent.
 3. **Phase 2** — Dispatch `scope-proposer`. CHECKPOINT 1 unless `--scope=` was passed.
 4. **Phase 3** — Dispatch `tier-detector`. CHECKPOINT 2 unless `--tier=` was passed.
 5. **Phase 4** — Dispatch `node-selector`. CHECKPOINT 3 (always).

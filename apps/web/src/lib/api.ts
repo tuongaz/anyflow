@@ -20,9 +20,13 @@ export interface DetailField {
   value: string;
 }
 
+// Mirrors DetailSchema in apps/studio/src/schema.ts — `summary` is the short
+// description rendered ON the node, `description` is the long one rendered
+// in the detail panel (falls back to `summary` when absent).
 export interface NodeDetail {
   filePath?: string;
   summary?: string;
+  description?: string;
   fields?: DetailField[];
   dynamicSource?: HttpAction;
 }

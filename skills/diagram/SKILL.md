@@ -16,9 +16,10 @@ with the running studio so the user can click the result.
 - A running AnyDemo studio reachable at `$ANYDEMO_STUDIO_URL` (default
   `http://localhost:4321`). Probe `GET /health` to confirm.
 - **Node.js** (any LTS) on `PATH` — the two filesystem scripts under
-  `$PLUGIN_ROOT/skills/diagram/scripts/` run on Node. `$PLUGIN_ROOT` is
-  resolved in Phase 0 (it falls back to `~/.claude/plugins/anydemo-diagram`
-  when Claude Code does not export `CLAUDE_PLUGIN_ROOT`).
+  `$SKILL_DIR/scripts/` run on Node. `$PLUGIN_ROOT` and `$SKILL_DIR` are
+  resolved in Phase 0; they handle both the plugin install at
+  `~/.claude/plugins/anydemo-diagram/` and the flat-skill install at
+  `~/.claude/skills/anydemo-diagram/`.
 - `curl` and `jq` for the HTTP calls below.
 
 All schema validation, scope scoring, demo assembly, and registration happen
@@ -93,6 +94,49 @@ Quick guarantees from the schema (every emitter must satisfy these):
 - Handle role: `sourceHandle` ∈ `{r, b}`, `targetHandle` ∈ `{t, l}`. Cross
   values are rejected.
 
+### Two descriptions: short on the node, long in the panel
+
+`data.detail` has **two free-text description fields** — both optional, both
+emitted by Phase 5:
+
+- **`summary`** — the SHORT description rendered ON the node itself, inside
+  the box. **MUST be concise** so it fits without wrapping into a wall of
+  text. Target ≤ 60 characters / one short sentence. Examples: `"Creates
+  an order row and emits orders.created."`, `"Reads pending shipments."`,
+  `"Stores user accounts."`. Avoid run-on prose, code spans, or
+  multi-clause sentences here — those go in `description`.
+- **`description`** — the LONG description rendered in the right-hand
+  detail panel when the user clicks the node. Use full sentences,
+  multi-paragraph context, edge cases, links to the source path, gotchas
+  worth surfacing. The panel falls back to `summary` when `description`
+  is absent, so authoring only `summary` is valid (and matches pre-v0.2
+  demos) — but a node worth selecting almost always deserves the longer
+  form too.
+
+Rule of thumb: if a reader can absorb the box's purpose without selecting
+it, `summary` is doing its job. If they have to click to know what's going
+on, `summary` was too long or too vague.
+
+### Prefer Playable tiers
+
+A playable diagram (Tier 1 real, Tier 2 mock) is dramatically more useful
+than a static one — the reader can click a node and watch live state
+appear. When you have a viable choice, **prefer Playable over Static**:
+
+- **Tier 1 (real)** is the gold standard. Pick it whenever
+  `tier-evidence.json` shows a reachable dev server on a known port.
+- **Tier 2 (mock)** is the strong fallback. Pick it whenever the diagram
+  has at least one HTTP-callable boundary and Tier 1 isn't feasible — the
+  `harness-author` agent stubs every referenced route so every play button
+  works.
+- **Tier 3 (static)** is the last resort. Pick it only when the codebase
+  has no HTTP/event/queue surface at all (pure libraries, generators) or
+  the user explicitly asks for a static rendering.
+
+When presenting Checkpoint 2 (tier selection), surface the playable option
+first and explain WHY it's the recommendation. Don't let the user
+sleepwalk into Tier 3 just because static is "simpler".
+
 ## Visual clarity for humans — duplicate to declutter
 
 This skill produces diagrams **for humans to read**, not data graphs for
@@ -141,25 +185,59 @@ Phases 4, 5, and 6 each enforce a slice of this:
 
 ## Phase 0 — Pre-flight
 
-Resolve the target root, the studio URL, **and the plugin root**, then prepare
-directories. `CLAUDE_PLUGIN_ROOT` is only exported when the skill is invoked as
-part of a Claude Code plugin — on direct `/diagram` usage or in a vendored
-checkout it is empty, which is why this step has a fallback chain.
+Resolve the target root, the studio URL, **the plugin root, and the skill
+content directory**, then prepare directories. `CLAUDE_PLUGIN_ROOT` is only
+exported when the skill is invoked as part of a Claude Code plugin — on direct
+`/diagram` usage, a flat-skill install, or a vendored checkout it is empty,
+which is why this step has a fallback chain that covers both install layouts:
+
+- **Plugin install** — SKILL.md lives at `$PLUGIN_ROOT/skills/diagram/SKILL.md`.
+- **Flat-skill install** — SKILL.md lives at `$PLUGIN_ROOT/SKILL.md` (i.e.
+  `~/.claude/skills/anydemo-diagram/SKILL.md`); skill assets are at the root.
+
+`$SKILL_DIR` always points at the skill's bundled assets (`scripts/`,
+`references/`, `templates/`, `frameworks/`, `agents/`) regardless of install
+layout. Use `$SKILL_DIR` for every skill-internal path below; reserve
+`$PLUGIN_ROOT` for messages about where the install lives.
 
 ```bash
 TARGET="${TARGET:-$(pwd)}"
 STUDIO_URL="${ANYDEMO_STUDIO_URL:-http://localhost:4321}"
 
-# Resolve plugin root — first the env var, then the standard install paths.
+# Resolve plugin/skill root — covers plugin install, flat-skill install, and
+# vendored repo. Sets PLUGIN_ROOT (install dir) and SKILL_DIR (skill assets).
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+SKILL_DIR=""
+
+# Pass 1 — plugin/vendored layout: $candidate/skills/diagram/SKILL.md.
 for candidate in \
+  "${PLUGIN_ROOT}" \
   "$HOME/.claude/plugins/anydemo-diagram" \
-  "$HOME/.claude/skills/anydemo-diagram" \
   "$(pwd)"; do
-  [ -n "$PLUGIN_ROOT" ] && break
-  [ -f "$candidate/skills/diagram/SKILL.md" ] && PLUGIN_ROOT="$candidate"
+  [ -n "$candidate" ] || continue
+  if [ -f "$candidate/skills/diagram/SKILL.md" ]; then
+    PLUGIN_ROOT="$candidate"
+    SKILL_DIR="$candidate/skills/diagram"
+    break
+  fi
 done
-[ -n "$PLUGIN_ROOT" ] || { echo "Cannot locate anydemo-diagram plugin root." >&2; exit 1; }
+
+# Pass 2 — flat-skill layout: $candidate/SKILL.md.
+if [ -z "$SKILL_DIR" ]; then
+  for candidate in \
+    "${CLAUDE_PLUGIN_ROOT:-}" \
+    "$HOME/.claude/skills/anydemo-diagram" \
+    "$(pwd)"; do
+    [ -n "$candidate" ] || continue
+    if [ -f "$candidate/SKILL.md" ]; then
+      PLUGIN_ROOT="$candidate"
+      SKILL_DIR="$candidate"
+      break
+    fi
+  done
+fi
+
+[ -n "$SKILL_DIR" ] || { echo "Cannot locate anydemo-diagram skill — looked under \$CLAUDE_PLUGIN_ROOT, ~/.claude/plugins/anydemo-diagram, ~/.claude/skills/anydemo-diagram, and cwd." >&2; exit 1; }
 
 mkdir -p "$TARGET/.anydemo/intermediate"
 
@@ -171,12 +249,12 @@ curl -fsS --max-time 1 "$STUDIO_URL/health" >/dev/null \
 ## Phase 1 — SCAN
 
 Two filesystem-walking scripts (`node`, no `bun` needed) write deterministic
-JSON for the rest of the pipeline. **Use `$PLUGIN_ROOT` from Phase 0** — never
+JSON for the rest of the pipeline. **Use `$SKILL_DIR` from Phase 0** — never
 hardcode `${CLAUDE_PLUGIN_ROOT}` here:
 
 ```bash
-node "$PLUGIN_ROOT/skills/diagram/scripts/scan-target.mjs"   --root "$TARGET"
-node "$PLUGIN_ROOT/skills/diagram/scripts/extract-routes.mjs" --root "$TARGET"
+node "$SKILL_DIR/scripts/scan-target.mjs"   --root "$TARGET"
+node "$SKILL_DIR/scripts/extract-routes.mjs" --root "$TARGET"
 ```
 
 These write `scan-result.json` and `boundary-surfaces.json` under
@@ -192,7 +270,7 @@ curl -fsS -X POST "$STUDIO_URL/api/diagram/propose-scope" \
 ```
 
 Then dispatch the **target-scanner** subagent (see
-`$PLUGIN_ROOT/agents/target-scanner.md`). It reads the JSON outputs,
+`$SKILL_DIR/agents/target-scanner.md`). It reads the JSON outputs,
 produces a one-paragraph project summary, and lists detected diagrammable
 subsystems. Output: `intermediate/project-summary.json`.
 
@@ -323,8 +401,19 @@ The agent emits `intermediate/layout.json`.
 
 Assemble the wiring + layout into a final demo via the studio. The endpoint
 returns the assembled demo (IDs normalized, dupes dropped, dangling
-connectors removed, positions snapped to a 24px grid). The skill writes the
-result to disk:
+connectors removed, positions snapped to a 24px grid).
+
+The `layout.json` from Phase 6 is consumed as a **hint, not a contract** —
+`/api/diagram/assemble` re-runs the canvas's "Tidy layout" algorithm
+(dagre, left-to-right, with `nodesep: 60` / `ranksep: 140` so connectors
+have room for labels) over the wiring graph. This guarantees the registered
+diagram never overlaps, and pressing the canvas's Tidy button on a
+freshly-registered demo is a no-op. Phase 6 still matters: the
+layout-arranger's coarse y-bands feed dagre's barycenter ordering so the
+final result still respects the lifecycle-lane intent (Actors above,
+Workers below…), but exact x/y from Phase 6 are overwritten.
+
+The skill writes the result to disk:
 
 ```bash
 ASSEMBLE_BODY="$(jq -nc \
@@ -423,7 +512,7 @@ exact four-step user instruction to relay.
 | Route extraction | `scripts/extract-routes.mjs` (local Node) | regex is reliable per framework |
 | Entry-point scoring | `POST /api/diagram/propose-scope` | deterministic heuristic |
 | ID normalization, dedup, dangling cleanup | `POST /api/diagram/assemble` | LLM not trustworthy at scale |
-| Position snapping & overlap | `POST /api/diagram/assemble` | LLM gives plausible-but-overlapping positions |
+| Final node positions (dagre Tidy layout) | `POST /api/diagram/assemble` | shares the algorithm behind the canvas's Tidy button so the registered diagram matches what the user gets if they press Tidy |
 | Schema validation, cap, tier playability | `POST /api/demos/validate` | studio owns the schema |
 | Subsystem summary, scope framing | `target-scanner` / `scope-proposer` | semantic |
 | Tier feasibility | `tier-detector` | grading evidence |
@@ -446,37 +535,41 @@ schema rejection, missing harness, …) to a one-line fix.
 
 ## Additional Resources
 
-All paths below are relative to `$PLUGIN_ROOT` (resolved in Phase 0).
+All paths below are relative to `$SKILL_DIR` (resolved in Phase 0).
 
 ### Reference Files
 
 For detailed information loaded only when needed:
 
-- **`skills/diagram/references/demo-schema.md`** — Authoritative demo schema:
+- **`$SKILL_DIR/references/demo-schema.md`** — Authoritative demo schema:
   every node/connector variant, the canonical example, common rejection
   causes. Read before any Phase 5/6/7 emission.
-- **`skills/diagram/references/troubleshooting.md`** — Lookup table mapping
+- **`$SKILL_DIR/references/troubleshooting.md`** — Lookup table mapping
   every common failure to its one-line fix. Surface lines from this when an
   HTTP call returns non-2xx or the canvas appears blank.
 
 ### Bundled Assets
 
-- **`skills/diagram/scripts/`** — `scan-target.mjs`, `extract-routes.mjs`.
-  Run via `node` under `$PLUGIN_ROOT` (see Phase 1).
-- **`skills/diagram/templates/`** — Tier-2 harness templates:
+- **`$SKILL_DIR/scripts/`** — `scan-target.mjs`, `extract-routes.mjs`.
+  Run via `node` (see Phase 1).
+- **`$SKILL_DIR/templates/`** — Tier-2 harness templates:
   `harness-server.ts.tmpl`, `harness-package.json.tmpl`,
   `harness-readme.md.tmpl`. Consumed by `harness-author`.
-- **`skills/diagram/frameworks/`** — Per-framework hints (`express.md`,
+- **`$SKILL_DIR/frameworks/`** — Per-framework hints (`express.md`,
   `hono.md`, `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`). Read the
   matching hint when the scan reports that framework.
 
 ### Subagents
 
-Phase orchestration uses these subagent definitions under `agents/`:
-`target-scanner.md` (Phase 1), `scope-proposer.md` (Phase 2),
-`tier-detector.md` (Phase 3), `node-selector.md` (Phase 4),
+Phase orchestration uses these subagent definitions under
+`$SKILL_DIR/agents/`: `target-scanner.md` (Phase 1), `scope-proposer.md`
+(Phase 2), `tier-detector.md` (Phase 3), `node-selector.md` (Phase 4),
 `wiring-builder.md` (Phase 5), `harness-author.md` (Phase 5b, Tier 2 only),
 `layout-arranger.md` (Phase 6).
+
+In a Claude Code plugin install these same files are also exposed at the
+plugin root (`$PLUGIN_ROOT/agents/`) so the harness picks them up as
+auto-dispatchable subagents.
 
 ## Self-check before exit
 

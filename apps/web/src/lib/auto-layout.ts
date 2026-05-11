@@ -20,7 +20,11 @@ export interface AutoLayoutOptions {
   ranksep?: number;
 }
 
-const DEFAULTS = { direction: 'LR' as const, nodesep: 50, ranksep: 80 };
+// Defaults give connectors a bit of extra breathing room over dagre's tight
+// out-of-the-box gaps — the studio's /api/diagram/assemble endpoint uses the
+// same algorithm with the same defaults so the canvas's Tidy button never
+// "moves" an LLM-produced layout when pressed.
+const DEFAULTS = { direction: 'LR' as const, nodesep: 60, ranksep: 140 };
 
 /**
  * Run dagre against the given nodes + edges and return a Map of new top-left

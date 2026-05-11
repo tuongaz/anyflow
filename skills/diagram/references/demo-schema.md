@@ -147,7 +147,8 @@ type HttpAction = {
 
 type Detail = {
   filePath?: string;
-  summary?: string;
+  summary?: string;              // SHORT — rendered ON the node; keep ≤ 60 chars / one sentence
+  description?: string;          // LONG  — rendered in the detail panel; full-prose context
   fields?: Array<{ label: string; value: string }>;
   dynamicSource?: HttpAction;   // same shape as playAction; fetched lazily for the side-panel
 };
@@ -188,7 +189,8 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
         },
         "detail": {
           "filePath": "src/routes/orders.ts",
-          "summary": "Creates an order row and emits orders.created.",
+          "summary": "Creates an order; emits orders.created.",
+          "description": "Persists a new order row in the orders table and publishes an `orders.created` event for the shipping + invoicing workers to pick up. Returns the new order id synchronously; the rest of the pipeline runs async via the event bus.",
           "fields": [
             { "label": "Returns", "value": "{ orderId }" }
           ]

@@ -1,3 +1,4 @@
+import dagre from 'dagre';
 import { z } from 'zod';
 import { DemoSchema } from './schema.ts';
 
@@ -234,21 +235,18 @@ const normalizeConnectors = (
   return [...seen.values()];
 };
 
-// Layered topological auto-layout. The skill's layout-arranger agent supplies
-// a starting layout, but its rough x-bands often produce overlapping nodes
-// (rectangles, not exact-position collisions) and connectors too short to fit
-// labels. We replace those positions with a Sugiyama-style layered layout:
-//   • Layers come from longest-path from sources; each connected component
-//     gets its own column-stack.
-//   • Within a layer, nodes sort by the agent's input y so the original
-//     lifecycle-role intent (Actors above, Workers below…) is preserved.
-//   • Layer gap is wide enough for a typical 200px node plus a connector
-//     label (~140px middle band); node gap leaves breathing room for handles.
-//   • Sticky / text shape nodes keep their input position — they're floating
-//     annotations meant to be pinned by the agent, not part of the flow.
-const LAYOUT_LAYER_GAP = 360;
-const LAYOUT_NODE_GAP = 80;
-const LAYOUT_COMPONENT_GAP = 240;
+// Dagre-based auto-layout — exactly the algorithm the web canvas's "Tidy
+// layout" button runs (apps/web/src/lib/auto-layout.ts), so pressing Tidy on
+// a freshly-assembled demo never reshuffles the diagram.
+//
+//   • Direction: left-to-right (LR) — Actors on the left, data stores on the
+//     right, matching the lifecycle-lane intent of the layout-arranger agent.
+//   • `nodesep` / `ranksep` defaults give connectors a bit of extra length so
+//     edge labels fit and the canvas reads at a glance.
+//   • Sticky / text shape nodes stay pinned to their input position — they
+//     are floating annotations, not part of the flow graph.
+const LAYOUT_NODESEP = 60;
+const LAYOUT_RANKSEP = 140;
 const LAYOUT_DEFAULT_W = 200;
 const LAYOUT_DEFAULT_H = 120;
 
@@ -286,124 +284,40 @@ const autoLayout = (
   // callers can pin standalone nodes via `layout.positions`.
   if (flowNodes.length <= 1) return [...nodes];
 
-  const flowIds = new Set(flowNodes.map((n) => n.id as string));
-  const successors = new Map<string, Set<string>>();
-  const predecessors = new Map<string, Set<string>>();
-  for (const id of flowIds) {
-    successors.set(id, new Set());
-    predecessors.set(id, new Set());
+  const g = new dagre.graphlib.Graph({ multigraph: true });
+  g.setGraph({ rankdir: 'LR', nodesep: LAYOUT_NODESEP, ranksep: LAYOUT_RANKSEP });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  const flowIds = new Set<string>();
+  const dims = new Map<string, { w: number; h: number }>();
+  for (const n of flowNodes) {
+    const id = n.id as string;
+    const { w, h } = nodeDimensions(n);
+    g.setNode(id, { width: w, height: h });
+    flowIds.add(id);
+    dims.set(id, { w, h });
   }
+
+  let edgeCounter = 0;
   for (const c of connectors) {
     const s = c.source as string;
     const t = c.target as string;
     if (!flowIds.has(s) || !flowIds.has(t) || s === t) continue;
-    successors.get(s)?.add(t);
-    predecessors.get(t)?.add(s);
+    // multigraph + unique edge name preserves parallel connectors.
+    g.setEdge(s, t, {}, `e${edgeCounter++}`);
   }
 
-  // Longest-path layering. A node sits at max(layer(predecessors)) + 1, so
-  // chains form clean columns. Cycles short-circuit via the in-progress set:
-  // back edges contribute 0 to a node's layer rather than recursing forever.
-  const layerOf = new Map<string, number>();
-  const visiting = new Set<string>();
-  const layerFor = (id: string): number => {
-    const cached = layerOf.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return 0;
-    visiting.add(id);
-    let max = -1;
-    for (const p of predecessors.get(id) ?? []) max = Math.max(max, layerFor(p));
-    visiting.delete(id);
-    const l = max + 1;
-    layerOf.set(id, l);
-    return l;
-  };
-  for (const n of flowNodes) layerFor(n.id as string);
-
-  // Group by weakly-connected component so disconnected sub-flows can stack
-  // vertically with their own column structure instead of stretching across
-  // shared rows.
-  const componentOf = new Map<string, number>();
-  let componentCount = 0;
-  for (const n of flowNodes) {
-    const seed = n.id as string;
-    if (componentOf.has(seed)) continue;
-    const queue: string[] = [seed];
-    while (queue.length > 0) {
-      const cur = queue.shift() as string;
-      if (componentOf.has(cur)) continue;
-      componentOf.set(cur, componentCount);
-      for (const nb of successors.get(cur) ?? []) if (!componentOf.has(nb)) queue.push(nb);
-      for (const nb of predecessors.get(cur) ?? []) if (!componentOf.has(nb)) queue.push(nb);
-    }
-    componentCount++;
-  }
-  const componentOrder = new Map<number, Array<Record<string, unknown>>>();
-  for (const n of flowNodes) {
-    const c = componentOf.get(n.id as string) ?? 0;
-    if (!componentOrder.has(c)) componentOrder.set(c, []);
-    componentOrder.get(c)?.push(n);
-  }
-
-  const newPositions = new Map<string, { x: number; y: number }>();
-  let componentYOffset = 0;
-  for (const members of componentOrder.values()) {
-    const layersInComponent = new Map<number, Array<Record<string, unknown>>>();
-    for (const m of members) {
-      const l = layerOf.get(m.id as string) ?? 0;
-      if (!layersInComponent.has(l)) layersInComponent.set(l, []);
-      layersInComponent.get(l)?.push(m);
-    }
-
-    const layerIndices = [...layersInComponent.keys()].sort((a, b) => a - b);
-    const placedLayers: Array<{
-      x: number;
-      height: number;
-      items: Array<{ id: string; y: number }>;
-    }> = [];
-
-    let cursorX = 0;
-    let componentHeight = 0;
-    for (const l of layerIndices) {
-      const layerNodes = (layersInComponent.get(l) ?? []).slice().sort((a, b) => {
-        const ay = (a.position as { y?: number } | undefined)?.y ?? 0;
-        const by = (b.position as { y?: number } | undefined)?.y ?? 0;
-        if (ay !== by) return ay - by;
-        return (a.id as string).localeCompare(b.id as string);
-      });
-
-      const items: Array<{ id: string; y: number }> = [];
-      let cursorY = 0;
-      let maxW = 0;
-      for (const n of layerNodes) {
-        const { w, h } = nodeDimensions(n);
-        items.push({ id: n.id as string, y: cursorY });
-        cursorY += h + LAYOUT_NODE_GAP;
-        if (w > maxW) maxW = w;
-      }
-      const layerHeight = Math.max(0, cursorY - LAYOUT_NODE_GAP);
-      placedLayers.push({ x: cursorX, height: layerHeight, items });
-      cursorX += maxW + LAYOUT_LAYER_GAP;
-      if (layerHeight > componentHeight) componentHeight = layerHeight;
-    }
-
-    // Vertically center each layer within the tallest layer of the component
-    // so columns line up at the middle (matches the visual feel of dagre LR).
-    for (const { x, height, items } of placedLayers) {
-      const offset = (componentHeight - height) / 2;
-      for (const { id, y } of items) {
-        newPositions.set(id, { x, y: y + offset + componentYOffset });
-      }
-    }
-    componentYOffset += componentHeight + LAYOUT_COMPONENT_GAP;
-  }
+  dagre.layout(g);
 
   const snap = (v: number) => Math.round(v / GRID) * GRID;
   return nodes.map((n) => {
     if (isFloatingAnnotation(n)) return n;
-    const next = newPositions.get(n.id as string);
-    if (!next) return n;
-    const snapped = { x: snap(next.x), y: snap(next.y) };
+    const id = n.id as string;
+    const laid = g.node(id);
+    const d = dims.get(id);
+    if (!laid || !d) return n;
+    // dagre returns center coords; convert to top-left for React Flow.
+    const snapped = { x: snap(laid.x - d.w / 2), y: snap(laid.y - d.h / 2) };
     const prev = (n.position as { x: number; y: number } | undefined) ?? { x: 0, y: 0 };
     if (snapped.x !== prev.x || snapped.y !== prev.y) stats.positionsShifted++;
     return { ...n, position: snapped };
