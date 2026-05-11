@@ -4,6 +4,7 @@ import {
   type Pin,
   endpointFromPin,
   getNodeIntersection,
+  projectCursorToPerimeter,
   resolveEdgeEndpoints,
 } from '@/lib/floating-edge-geometry';
 
@@ -339,6 +340,90 @@ describe('endpointFromPin', () => {
       x: 110,
       y: 50,
       side: 'right',
+    });
+  });
+});
+
+// US-007: project a cursor onto the nearest side of a node bbox. Drives the
+// pin-drag UI's per-frame side+t computation, so the helper covers the cases
+// the drag handler hits: cursor on each side, cursor inside the rect, cursor
+// outside the rect (clamped), corner ties, and degenerate zero-dim rects.
+describe('projectCursorToPerimeter', () => {
+  const rect = { x: 0, y: 0, w: 100, h: 60 };
+
+  it('cursor on the left edge → side="left", t parameterized top→bottom', () => {
+    expect(projectCursorToPerimeter(rect, { x: 0, y: 0 })).toEqual({ side: 'left', t: 0 });
+    expect(projectCursorToPerimeter(rect, { x: 0, y: 30 })).toEqual({ side: 'left', t: 0.5 });
+    expect(projectCursorToPerimeter(rect, { x: 0, y: 60 })).toEqual({ side: 'left', t: 1 });
+  });
+
+  it('cursor on the right edge → side="right", t parameterized top→bottom', () => {
+    expect(projectCursorToPerimeter(rect, { x: 100, y: 15 })).toEqual({ side: 'right', t: 0.25 });
+    expect(projectCursorToPerimeter(rect, { x: 100, y: 45 })).toEqual({ side: 'right', t: 0.75 });
+  });
+
+  it('cursor on the top edge → side="top", t parameterized left→right', () => {
+    expect(projectCursorToPerimeter(rect, { x: 25, y: 0 })).toEqual({ side: 'top', t: 0.25 });
+    expect(projectCursorToPerimeter(rect, { x: 75, y: 0 })).toEqual({ side: 'top', t: 0.75 });
+  });
+
+  it('cursor on the bottom edge → side="bottom", t parameterized left→right', () => {
+    expect(projectCursorToPerimeter(rect, { x: 50, y: 60 })).toEqual({ side: 'bottom', t: 0.5 });
+  });
+
+  it('cursor outside the rect clamps to the nearest perimeter point', () => {
+    // Far above-right: clamped to (100, 0); equal distance to top vs right
+    // (both 0) — top→bottom tie-break order picks top first since left/right
+    // are checked before top, but at the clamped corner relX=100 → dRight=0,
+    // dTop=0, dLeft=100, dBottom=60. Order check: left(100)→right(0)→top(0)
+    // first non-left match is right because `min === dLeft` is false (100 !== 0).
+    expect(projectCursorToPerimeter(rect, { x: 500, y: -500 })).toEqual({
+      side: 'right',
+      t: 0,
+    });
+    // Far below-left: clamped to (0, 60). dLeft=0 wins immediately.
+    expect(projectCursorToPerimeter(rect, { x: -500, y: 500 })).toEqual({
+      side: 'left',
+      t: 1,
+    });
+  });
+
+  it('cursor inside the rect snaps to the closest side', () => {
+    // Center is equidistant from top/bottom (30 each) but closer to left (50)
+    // and right (50). Tie order: dLeft=50, dRight=50, dTop=30, dBottom=30 →
+    // top wins (since dTop=30 < dLeft=50). Verifies the dominant-axis fall.
+    expect(projectCursorToPerimeter(rect, { x: 50, y: 30 })).toEqual({ side: 'top', t: 0.5 });
+    // 10 inside from the left edge: dLeft=10 wins.
+    expect(projectCursorToPerimeter(rect, { x: 10, y: 30 })).toEqual({ side: 'left', t: 0.5 });
+    // 10 inside from the bottom edge: dBottom=10 wins.
+    expect(projectCursorToPerimeter(rect, { x: 50, y: 50 })).toEqual({ side: 'bottom', t: 0.5 });
+  });
+
+  it('tracks the node when the rect is translated (same cursor relative offset → same pin)', () => {
+    // Cursor on the right edge of a translated rect should still produce
+    // (right, 0.5) — verifies the helper handles non-origin rects correctly.
+    const translated = { x: 300, y: 200, w: 100, h: 60 };
+    expect(projectCursorToPerimeter(translated, { x: 400, y: 230 })).toEqual({
+      side: 'right',
+      t: 0.5,
+    });
+  });
+
+  it('handles a zero-width rect by collapsing left/right t to 0', () => {
+    // 0×60 rect: relX is always clamped to 0 so dLeft=0 wins; t is the
+    // vertical fraction.
+    const zeroWidth = { x: 0, y: 0, w: 0, h: 60 };
+    expect(projectCursorToPerimeter(zeroWidth, { x: 5, y: 30 })).toEqual({
+      side: 'left',
+      t: 0.5,
+    });
+  });
+
+  it('handles a zero-height rect by collapsing top/bottom t to 0', () => {
+    const zeroHeight = { x: 0, y: 0, w: 100, h: 0 };
+    expect(projectCursorToPerimeter(zeroHeight, { x: 50, y: 5 })).toEqual({
+      side: 'top',
+      t: 0.5,
     });
   });
 });

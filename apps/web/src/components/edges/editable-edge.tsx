@@ -1,6 +1,12 @@
 import { InlineEdit } from '@/components/inline-edit';
-import type { ConnectorPath } from '@/lib/api';
-import { type Endpoint, type Side, resolveEdgeEndpoints } from '@/lib/floating-edge-geometry';
+import type { ConnectorPath, EdgePin } from '@/lib/api';
+import {
+  type Endpoint,
+  type Pin,
+  type Side,
+  projectCursorToPerimeter,
+  resolveEdgeEndpoints,
+} from '@/lib/floating-edge-geometry';
 import { cn } from '@/lib/utils';
 import {
   BaseEdge,
@@ -12,75 +18,13 @@ import {
   getBezierPath,
   getSmoothStepPath,
   useInternalNode,
+  useReactFlow,
 } from '@xyflow/react';
-import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useCallback, useRef, useState } from 'react';
 
 // Smoothstep corner rounding — matches typical "zigzag" diagrams without
 // looking jagged. (US-017)
 const SMOOTHSTEP_BORDER_RADIUS = 8;
-
-// US-011 / US-024: shift in flow units applied to the EdgeAnchor circle's
-// cx/cy (mirrors xyflow's `shiftX/shiftY(centerX, radius, position)` with
-// radius = the `reconnectRadius` prop on <ReactFlow>, which we set to 10 in
-// demo-canvas.tsx). The visible portal dot is sized smaller via the shared
-// --anydemo-handle-size token but stays concentric with the SVG hit circle.
-// Keep this in lock-step with `reconnectRadius` so the reconnect drag and
-// the visible dot share the same anchor position outside the node corner.
-const RECONNECT_ANCHOR_SHIFT = 10;
-
-/**
- * US-024: synthesise a `mousedown` MouseEvent on the SVG anchor circle that
- * xyflow's `EdgeUpdateAnchors` rendered for the given edge id and endpoint
- * kind. Returns true iff an anchor was found and the event was dispatched.
- *
- * Exported so unit tests can drive the forwarding logic without standing up
- * a full xyflow mount — the test stubs `document` / `MouseEvent` / `CSS` on
- * globalThis and asserts that `dispatchEvent` is invoked with the right
- * coordinates. The dispatched event bubbles to React's root listener, which
- * fires the SVG circle's React `onMouseDown` handler set up by xyflow.
- */
-export function dispatchReconnectMouseDownOnAnchor(
-  id: string,
-  kind: 'source' | 'target',
-  clientX: number,
-  clientY: number,
-): boolean {
-  const wrapper = document.querySelector(
-    `.react-flow__edge[data-id="${CSS.escape(id)}"]`,
-  ) as SVGGElement | null;
-  if (!wrapper) return false;
-  const anchor = wrapper.querySelector<SVGCircleElement>(`.react-flow__edgeupdater-${kind}`);
-  if (!anchor) return false;
-  anchor.dispatchEvent(
-    new MouseEvent('mousedown', {
-      bubbles: true,
-      cancelable: true,
-      button: 0,
-      buttons: 1,
-      clientX,
-      clientY,
-      view: typeof window !== 'undefined' ? window : undefined,
-    }),
-  );
-  return true;
-}
-
-const shiftAnchorForSide = (
-  baseX: number,
-  baseY: number,
-  side: Side,
-): { cx: number; cy: number } => {
-  switch (side) {
-    case 'top':
-      return { cx: baseX, cy: baseY - RECONNECT_ANCHOR_SHIFT };
-    case 'bottom':
-      return { cx: baseX, cy: baseY + RECONNECT_ANCHOR_SHIFT };
-    case 'left':
-      return { cx: baseX - RECONNECT_ANCHOR_SHIFT, cy: baseY };
-    case 'right':
-      return { cx: baseX + RECONNECT_ANCHOR_SHIFT, cy: baseY };
-  }
-};
 
 // Map our floating-edge-geometry side strings (matching React Flow's
 // Position enum values) to the actual Position enum members so the path
@@ -122,12 +66,37 @@ export type EditableEdgeData = {
   /** US-025: same as sourceHandleAutoPicked but for the target endpoint. */
   targetHandleAutoPicked?: boolean;
   /**
-   * US-024: when true, render visible white-fill / grey-border endpoint
-   * dots in a <ViewportPortal> above every node and edge. Mirrors the
-   * `reconnectable` flag on the edge itself (set by demo-canvas.tsx for
-   * the sole-selected connector).
+   * US-007: explicit perimeter pin for the source endpoint. When set,
+   * resolveEdgeEndpoints anchors the source endpoint at `(side, t)` on the
+   * source node's bbox and ignores both floating and auto-pick.
+   */
+  sourcePin?: EdgePin;
+  /** US-007: same as sourcePin but for the target endpoint. */
+  targetPin?: EdgePin;
+  /**
+   * US-024 / US-007: when true, render the visible endpoint dots above
+   * every node and edge in the canvas. Mirrors the `reconnectable` flag on
+   * the edge itself (set by demo-canvas.tsx for the sole-selected connector).
    */
   reconnectable?: boolean;
+  /**
+   * US-007: persist a new perimeter pin for the named endpoint. Called on
+   * pointer-up at the end of a pin-drag gesture; the parent is responsible
+   * for the optimistic override + PATCH + undo entry.
+   */
+  onPinEndpoint?: (id: string, kind: 'source' | 'target', pin: Pin) => void;
+  /**
+   * US-007: open the endpoint context menu (Unpin item) at the cursor.
+   * `pinned` lets the canvas gate the Unpin item's visibility without
+   * re-reading edge state. Right-click on the dot fires this.
+   */
+  onEndpointContextMenu?: (
+    id: string,
+    kind: 'source' | 'target',
+    pinned: boolean,
+    clientX: number,
+    clientY: number,
+  ) => void;
 } & Record<string, unknown>;
 
 export type EditableEdgeType = Edge<EditableEdgeData, 'editableEdge'>;
@@ -148,6 +117,13 @@ export type EditableEdgeType = Edge<EditableEdgeData, 'editableEdge'>;
  * the line through the two node centers, ignoring React Flow's stored
  * handle coords. When `=== false`, we use the React-Flow-supplied props
  * unchanged so a user-pinned handle stays put. Same logic for target.
+ *
+ * US-007: when `data.sourcePin` / `data.targetPin` is set, the endpoint is
+ * anchored to a specific perimeter point that follows the node through
+ * moves and resizes. Dragging the visible portal dot clamps the cursor onto
+ * the perimeter and updates the local preview every frame; pointer-up
+ * persists the new pin via `data.onPinEndpoint`. Right-clicking a pinned
+ * dot opens the canvas's Unpin context menu via `data.onEndpointContextMenu`.
  */
 export function EditableEdge({
   id,
@@ -172,6 +148,22 @@ export function EditableEdge({
   // endpoint along the perimeter in real time without any rerouter machinery.
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
+  const { screenToFlowPosition } = useReactFlow();
+
+  // US-007: local preview pins, set per-frame while the user is dragging the
+  // endpoint dot. Override `data.sourcePin` / `data.targetPin` for the
+  // duration of the gesture so the live edge slides along the perimeter
+  // without round-tripping through the parent + PATCH on every mousemove.
+  // On pointer-up we clear the local state and the parent's optimistic
+  // override takes over until the SSE echo of the PATCH arrives.
+  const [dragPin, setDragPin] = useState<{ kind: 'source' | 'target'; pin: Pin } | null>(null);
+
+  const dataSourcePin = data?.sourcePin;
+  const dataTargetPin = data?.targetPin;
+  const effectiveSourcePin =
+    dragPin?.kind === 'source' ? dragPin.pin : (dataSourcePin as Pin | undefined);
+  const effectiveTargetPin =
+    dragPin?.kind === 'target' ? dragPin.pin : (dataTargetPin as Pin | undefined);
 
   const sourceFallback: Endpoint = {
     x: sourceX,
@@ -193,6 +185,7 @@ export function EditableEdge({
             h: sourceNode.measured.height ?? sourceNode.height ?? 0,
           },
           autoPicked: data?.sourceHandleAutoPicked,
+          pin: effectiveSourcePin,
           fallback: sourceFallback,
         }
       : null,
@@ -205,6 +198,7 @@ export function EditableEdge({
             h: targetNode.measured.height ?? targetNode.height ?? 0,
           },
           autoPicked: data?.targetHandleAutoPicked,
+          pin: effectiveTargetPin,
           fallback: targetFallback,
         }
       : null,
@@ -216,38 +210,6 @@ export function EditableEdge({
   const tX = endpoints.target.x;
   const tY = endpoints.target.y;
   const tPos = POSITION_BY_SIDE[endpoints.target.side];
-
-  // US-011: xyflow's EdgeAnchor circles (rendered as siblings to BaseEdge
-  // when `reconnectable: true`) use xyflow's own sourceX/sourceY/sourcePosition
-  // — which point at xyflow's first-handle for floating edges, NOT at the
-  // body-perimeter intersection we render the path through. To keep the
-  // visible reconnect dots glued to the actual edge endpoints, override
-  // `cx`/`cy` on the EdgeAnchor circles after each render so they sit at
-  // (endpoints.source ± shift). For pinned edges the floating-endpoint
-  // equals xyflow's handle position so this is a no-op; for floating edges
-  // it's the difference between "dot at body midpoint" and "dot where the
-  // edge actually visually ends". Imperative because xyflow renders the
-  // EdgeAnchor in a sibling render path we can't intercept declaratively.
-  const sourceSide = endpoints.source.side;
-  const targetSide = endpoints.target.side;
-  useEffect(() => {
-    const wrapper = document.querySelector(
-      `.react-flow__edge[data-id="${CSS.escape(id)}"]`,
-    ) as SVGGElement | null;
-    if (!wrapper) return;
-    const sourceAnchor = wrapper.querySelector<SVGCircleElement>('.react-flow__edgeupdater-source');
-    const targetAnchor = wrapper.querySelector<SVGCircleElement>('.react-flow__edgeupdater-target');
-    if (sourceAnchor) {
-      const { cx, cy } = shiftAnchorForSide(sX, sY, sourceSide);
-      sourceAnchor.setAttribute('cx', String(cx));
-      sourceAnchor.setAttribute('cy', String(cy));
-    }
-    if (targetAnchor) {
-      const { cx, cy } = shiftAnchorForSide(tX, tY, targetSide);
-      targetAnchor.setAttribute('cx', String(cx));
-      targetAnchor.setAttribute('cy', String(cy));
-    }
-  }, [id, sX, sY, tX, tY, sourceSide, targetSide]);
 
   // 'step' renders as a smoothstep (right-angle / zigzag); anything else falls
   // back to today's smooth bezier. Both branches return the same tuple shape so
@@ -275,42 +237,79 @@ export function EditableEdge({
   const labelText = typeof label === 'string' ? label : '';
   const editable = !!onLabelChange;
 
-  // US-024: when this edge is reconnectable (sole-selected connector), render
-  // visible white-fill / grey-border endpoint dots in a <ViewportPortal> so
-  // they layer above every node and edge in the canvas — including any
-  // sibling node that overlaps the floating endpoint. The DOM-level SVG
-  // anchor circles (`.react-flow__edgeupdater`) stay in place underneath as
-  // transparent hit targets for xyflow's reconnect-drag machinery.
+  // US-024 / US-007: only render the visible endpoint dots when this edge is
+  // reconnectable (sole-selected). Outside that mode, the edge has no
+  // pin-drag affordance — the dots are how the user discovers and triggers
+  // the gesture.
   const showEndpointDots = data?.reconnectable === true;
-  const sourceDot = showEndpointDots ? shiftAnchorForSide(sX, sY, sourceSide) : null;
-  const targetDot = showEndpointDots ? shiftAnchorForSide(tX, tY, targetSide) : null;
+  const onPinEndpoint = data?.onPinEndpoint;
+  const onEndpointContextMenu = data?.onEndpointContextMenu;
 
-  // US-024: forward a mousedown on the visible portal dot to the matching SVG
-  // anchor circle so xyflow's reconnect-drag machinery picks it up. Without
-  // this, when the user reconnects to a precise handle the endpoint pins to
-  // that handle's position — and on the NEXT drag attempt either the node's
-  // own Handle div (HTML, later in DOM than the SVG anchor) or the edge's
-  // wide `.react-flow__edge-interaction` path (which sits at the same SVG g
-  // level as the anchor but draws later) wins the hit test instead of the
-  // SVG anchor. The portal dot lives in `.react-flow__viewport-portal` (last
-  // in DOM order) and always wins the hit test, so making it the
-  // authoritative click target — and forwarding mousedowns to the underlying
-  // SVG circle — restores the reconnect gesture across repeated drags. The
-  // forwarded mousedown bubbles to React's root listener, which dispatches
-  // the SVG circle's React `onMouseDown` handler set up by xyflow's
-  // `EdgeUpdateAnchors` — so we never touch xyflow internals.
-  const forwardMouseDownToAnchor = useCallback(
+  // US-007: per-endpoint pin-drag handler. Captures the source/target node's
+  // current bbox on pointer-down (re-read on every mousemove so the pin
+  // tracks a node that drags concurrently), projects the cursor onto the
+  // perimeter, and updates `dragPin` every frame. On pointer-up the final
+  // pin is persisted via `data.onPinEndpoint`; the local state is cleared
+  // so the parent's optimistic override drives the rendered position until
+  // the SSE echo arrives.
+  //
+  // The handler is bound to the visible dot's `onMouseDown`. We use document-
+  // level mousemove/mouseup so the gesture survives the cursor leaving the
+  // dot's bbox (the user is dragging an endpoint, not the dot itself).
+  // `latestPinRef` carries the per-frame pin out of the move callback into
+  // mouseup since closures over state would read the stale initial value.
+  const latestPinRef = useRef<Pin | null>(null);
+  const onPinDragStart = useCallback(
     (kind: 'source' | 'target') => (e: ReactMouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
-      // Stop propagation so the canvas / edge body doesn't also react to this
-      // mousedown (e.g. as a pane-pan start). Don't preventDefault — xyflow's
-      // own handler is what should run, and it may call preventDefault.
-      if (dispatchReconnectMouseDownOnAnchor(id, kind, e.clientX, e.clientY)) {
-        e.stopPropagation();
-      }
+      if (!onPinEndpoint) return;
+      const node = kind === 'source' ? sourceNode : targetNode;
+      if (!node) return;
+      e.preventDefault();
+      e.stopPropagation();
+      latestPinRef.current = null;
+
+      const readBox = () => ({
+        x: node.internals.positionAbsolute.x,
+        y: node.internals.positionAbsolute.y,
+        w: node.measured.width ?? node.width ?? 0,
+        h: node.measured.height ?? node.height ?? 0,
+      });
+
+      const onMove = (ev: MouseEvent) => {
+        const flow = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+        const pin = projectCursorToPerimeter(readBox(), flow);
+        latestPinRef.current = pin;
+        setDragPin({ kind, pin });
+      };
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        const finalPin = latestPinRef.current;
+        latestPinRef.current = null;
+        setDragPin(null);
+        if (finalPin) onPinEndpoint(id, kind, finalPin);
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     },
-    [id],
+    [id, onPinEndpoint, sourceNode, targetNode, screenToFlowPosition],
   );
+
+  const onDotContextMenu = useCallback(
+    (kind: 'source' | 'target', pinned: boolean) => (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (!onEndpointContextMenu) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onEndpointContextMenu(id, kind, pinned, e.clientX, e.clientY);
+    },
+    [id, onEndpointContextMenu],
+  );
+
+  const sourcePinned = effectiveSourcePin !== undefined;
+  const targetPinned = effectiveTargetPin !== undefined;
 
   return (
     <>
@@ -322,23 +321,29 @@ export function EditableEdge({
         markerStart={markerStart}
         interactionWidth={interactionWidth}
       />
-      {showEndpointDots && sourceDot && targetDot ? (
+      {showEndpointDots ? (
         <ViewportPortal>
           <div
             data-testid={`edge-endpoint-source-${id}`}
+            data-pinned={sourcePinned ? 'true' : 'false'}
+            data-dragging={dragPin?.kind === 'source' ? 'true' : 'false'}
             className="anydemo-connector-endpoint-dot"
             style={{
-              transform: `translate(-50%, -50%) translate(${sourceDot.cx}px, ${sourceDot.cy}px)`,
+              transform: `translate(-50%, -50%) translate(${sX}px, ${sY}px)`,
             }}
-            onMouseDown={forwardMouseDownToAnchor('source')}
+            onMouseDown={onPinDragStart('source')}
+            onContextMenu={onDotContextMenu('source', sourcePinned)}
           />
           <div
             data-testid={`edge-endpoint-target-${id}`}
+            data-pinned={targetPinned ? 'true' : 'false'}
+            data-dragging={dragPin?.kind === 'target' ? 'true' : 'false'}
             className="anydemo-connector-endpoint-dot"
             style={{
-              transform: `translate(-50%, -50%) translate(${targetDot.cx}px, ${targetDot.cy}px)`,
+              transform: `translate(-50%, -50%) translate(${tX}px, ${tY}px)`,
             }}
-            onMouseDown={forwardMouseDownToAnchor('target')}
+            onMouseDown={onPinDragStart('target')}
+            onContextMenu={onDotContextMenu('target', targetPinned)}
           />
         </ViewportPortal>
       ) : null}

@@ -15,6 +15,7 @@ import {
   ColorTokenSchema,
   type Demo,
   DemoSchema,
+  EdgePinSchema,
   SourceHandleIdSchema,
   TargetHandleIdSchema,
 } from './schema.ts';
@@ -279,6 +280,13 @@ export const ConnectorPatchBodySchema = z
     // stored handle id".
     sourceHandleAutoPicked: z.boolean().optional(),
     targetHandleAutoPicked: z.boolean().optional(),
+    // US-007: explicit perimeter pin for each endpoint. Sending an EdgePin
+    // pins the endpoint to `(side, t)` against the connected node's live
+    // bbox so it survives moves and resizes. Nullable so the right-click
+    // Unpin flow can clear a stored pin by sending `null`;
+    // mergeConnectorUpdates deletes the field when the value is null.
+    sourcePin: EdgePinSchema.nullable().optional(),
+    targetPin: EdgePinSchema.nullable().optional(),
   })
   .strict();
 export type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;

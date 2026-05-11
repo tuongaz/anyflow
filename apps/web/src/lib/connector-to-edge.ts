@@ -1,4 +1,4 @@
-import type { Connector, ConnectorPath, ConnectorStyle } from '@/lib/api';
+import type { Connector, ConnectorPath, ConnectorStyle, EdgePin } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { type EdgeMarker, MarkerType } from '@xyflow/react';
 
@@ -23,11 +23,17 @@ export interface DerivedEdge {
   // Flow's stored handle coords and recomputes the endpoint as the
   // perimeter intersection of the line through the two node centers. When
   // === false (user-pinned), the React-Flow-supplied coords win.
+  //
+  // `sourcePin` / `targetPin` (US-007): when set, overrides both floating and
+  // auto-pick behavior — EditableEdge anchors the endpoint to `(side, t)` on
+  // the connected node's perimeter so it survives moves and resizes.
   data: {
     kind: Connector['kind'];
     path?: ConnectorPath;
     sourceHandleAutoPicked?: boolean;
     targetHandleAutoPicked?: boolean;
+    sourcePin?: EdgePin;
+    targetPin?: EdgePin;
   };
   style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number; opacity?: number };
   markerStart?: EdgeMarker;
@@ -128,6 +134,8 @@ export const connectorToEdge = (
       path: connector.path,
       sourceHandleAutoPicked: connector.sourceHandleAutoPicked,
       targetHandleAutoPicked: connector.targetHandleAutoPicked,
+      sourcePin: connector.sourcePin,
+      targetPin: connector.targetPin,
     },
     style,
     markerStart,

@@ -1801,6 +1801,55 @@ describe('PATCH /api/demos/:id/connectors/:connId', () => {
     const res = await patch(app, `/api/demos/${reg.id}/connectors/missing`, { label: 'x' });
     expect(res.status).toBe(404);
   });
+
+  // US-007: sourcePin / targetPin round-trip through the PATCH endpoint, and
+  // explicit `null` clears the field on disk (mirrors the sourceHandle: null
+  // clearing path from US-025).
+  it('persists sourcePin / targetPin on PATCH and clears them with null (US-007)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_WITH_CONN);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+
+    const setRes = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      sourcePin: { side: 'right', t: 0.25 },
+      targetPin: { side: 'left', t: 0.75 },
+    });
+    expect(setRes.status).toBe(200);
+    let onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<Record<string, unknown>>;
+    };
+    let conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    expect(conn?.sourcePin).toEqual({ side: 'right', t: 0.25 });
+    expect(conn?.targetPin).toEqual({ side: 'left', t: 0.75 });
+
+    // Clear only the source pin; target pin must survive.
+    const clearRes = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      sourcePin: null,
+    });
+    expect(clearRes.status).toBe(200);
+    onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<Record<string, unknown>>;
+    };
+    conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    expect(conn?.sourcePin).toBeUndefined();
+    expect(conn?.targetPin).toEqual({ side: 'left', t: 0.75 });
+  });
+
+  it('rejects a sourcePin with an out-of-range t (US-007)', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo(VALID_DEMO_WITH_CONN);
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await patch(app, `/api/demos/${reg.id}/connectors/a-to-b`, {
+      sourcePin: { side: 'top', t: 1.5 },
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('POST /api/demos/:id/connectors', () => {

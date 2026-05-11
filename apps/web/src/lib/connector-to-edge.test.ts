@@ -294,4 +294,28 @@ describe('connectorToEdge', () => {
     expect(edge.markerEnd?.type).toBe(MarkerType.ArrowClosed);
     expect(edge.markerStart).toBeUndefined();
   });
+
+  // US-007: sourcePin / targetPin must be carried into edge.data so the
+  // EditableEdge consumer can pass them through to resolveEdgeEndpoints
+  // (per-frame geometry computation).
+  it('forwards sourcePin / targetPin through edge.data (US-007)', () => {
+    const pinned: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      sourcePin: { side: 'right', t: 0.25 },
+      targetPin: { side: 'left', t: 0.75 },
+    };
+    const e = connectorToEdge(pinned, false);
+    expect(e.data.sourcePin).toEqual({ side: 'right', t: 0.25 });
+    expect(e.data.targetPin).toEqual({ side: 'left', t: 0.75 });
+  });
+
+  it('leaves sourcePin / targetPin undefined when the connector has no pins', () => {
+    const c: Connector = { id: 'c1', source: 'a', target: 'b', kind: 'default' };
+    const e = connectorToEdge(c, false);
+    expect(e.data.sourcePin).toBeUndefined();
+    expect(e.data.targetPin).toBeUndefined();
+  });
 });

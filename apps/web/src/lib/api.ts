@@ -353,6 +353,15 @@ export interface UpdateConnectorBody {
   sourceHandleAutoPicked?: boolean;
   /** US-025: same as sourceHandleAutoPicked but for the target endpoint. */
   targetHandleAutoPicked?: boolean;
+  /**
+   * US-007: pin the source endpoint at `(side, t)` along the source node's
+   * perimeter. `null` (wire-format) clears any stored pin so the endpoint
+   * reverts to floating/handle-pinned behavior; `undefined` leaves the field
+   * untouched.
+   */
+  sourcePin?: EdgePin | null;
+  /** US-007: same as sourcePin but for the target endpoint. */
+  targetPin?: EdgePin | null;
 }
 
 export const updateConnector = async (

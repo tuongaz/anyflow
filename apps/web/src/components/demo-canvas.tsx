@@ -327,6 +327,25 @@ export interface DemoCanvasProps {
    * menu and the StyleStrip button.)
    */
   onRequestIconReplace?: (nodeId: string) => void;
+  /**
+   * US-007: persist a new perimeter pin for the named endpoint. Wired enables
+   * the pin-drag affordance on the visible endpoint dots: dragging clamps
+   * the cursor onto the perimeter, pointer-up calls this with the final
+   * `(side, t)`. Parent owns the optimistic override, PATCH, and undo entry.
+   * Absent → dragging the dot is inert.
+   */
+  onPinEndpoint?: (
+    connectorId: string,
+    kind: 'source' | 'target',
+    pin: { side: 'top' | 'right' | 'bottom' | 'left'; t: number },
+  ) => void;
+  /**
+   * US-007: clear an existing pin for the named endpoint. Wired enables the
+   * right-click "Unpin" context menu item on a pinned endpoint dot. Parent
+   * owns the optimistic override, PATCH (with `null` to clear on disk), and
+   * undo entry. Absent → the menu item is hidden.
+   */
+  onUnpinEndpoint?: (connectorId: string, kind: 'source' | 'target') => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -586,6 +605,8 @@ export function DemoCanvas({
   onCloseIconPicker,
   onPickIcon,
   onRequestIconReplace,
+  onPinEndpoint,
+  onUnpinEndpoint,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1100,7 +1121,8 @@ export function DemoCanvas({
   // re-positioned for every right-click; one ContextMenu instance handles
   // every node. The menu items read `contextNodeIdRef` so callbacks dispatch
   // to the right node even if state hasn't re-rendered yet.
-  const contextEnabled = !!onReorderNode || !!onDeleteNode || !!onCopyNode || !!onPasteAt;
+  const contextEnabled =
+    !!onReorderNode || !!onDeleteNode || !!onCopyNode || !!onPasteAt || !!onUnpinEndpoint;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Whether the most recent right-click landed on a node (true) vs. the empty
   // pane (false). Used to gate per-node items (Copy / reorder / Delete) which
@@ -1113,6 +1135,15 @@ export function DemoCanvas({
   // (currently just 'Change icon') render only when the cursor landed on an
   // iconNode. Cleared whenever the menu closes or the right-click hit the pane.
   const [contextNodeType, setContextNodeType] = useState<string | null>(null);
+  // US-007: track an endpoint right-click so the menu shows an "Unpin" item
+  // tied to a specific connector + endpoint. `pinned` mirrors the dot's data-
+  // attribute at the moment of right-click so the item is only visible for
+  // already-pinned endpoints (the only ones where "Unpin" is meaningful).
+  const [contextEndpoint, setContextEndpoint] = useState<{
+    connectorId: string;
+    kind: 'source' | 'target';
+    pinned: boolean;
+  } | null>(null);
   const contextNodeIdRef = useRef<string | null>(null);
   const contextTriggerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1162,6 +1193,36 @@ export function DemoCanvas({
     if (!id || !onRequestIconReplace) return;
     onRequestIconReplace(id);
   }, [onRequestIconReplace]);
+
+  // US-007: right-click on a visible endpoint dot opens the canvas's
+  // context menu in "endpoint mode". The dot calls into this from its own
+  // onContextMenu, which we route through edge.data so editable-edge can
+  // stay free of canvas state. `pinned` is captured at right-click time so
+  // the Unpin item only shows for already-pinned endpoints.
+  const handleEndpointContextMenu = useCallback(
+    (
+      connId: string,
+      kind: 'source' | 'target',
+      pinned: boolean,
+      clientX: number,
+      clientY: number,
+    ) => {
+      contextNodeIdRef.current = null;
+      setContextOnNode(false);
+      setContextNodeType(null);
+      setContextEndpoint({ connectorId: connId, kind, pinned });
+      setContextMenuPos({ x: clientX, y: clientY });
+    },
+    [],
+  );
+
+  // US-007: invoke onUnpinEndpoint with the captured endpoint. Same one-undo-
+  // entry contract as the pin path (parent owns the undo push).
+  const handleUnpinPick = useCallback(() => {
+    const ep = contextEndpoint;
+    if (!ep || !onUnpinEndpoint) return;
+    onUnpinEndpoint(ep.connectorId, ep.kind);
+  }, [contextEndpoint, onUnpinEndpoint]);
 
   const handlePastePick = useCallback(() => {
     if (!onPasteAt) return;
@@ -1420,13 +1481,17 @@ export function DemoCanvas({
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
       // US-024: also pass `reconnectable` so the edge component knows when
-      // to render the visible portal endpoint dots.
+      // to render the visible portal endpoint dots. US-007: inject the
+      // pin-drag persistence callback and the endpoint-right-click handler
+      // so editable-edge can stay free of canvas state.
       return {
         ...next,
         data: {
           ...next.data,
           onLabelChange: onConnectorLabelChange,
           reconnectable: enableReconnect,
+          onPinEndpoint,
+          onEndpointContextMenu: handleEndpointContextMenu,
         },
       };
     };
@@ -1462,6 +1527,8 @@ export function DemoCanvas({
     connectorOverrides,
     onConnectorLabelChange,
     reconnectableEdges,
+    onPinEndpoint,
+    handleEndpointContextMenu,
   ]);
 
   // Mirror rfEdges into a ref so onEdgesChange (declared earlier) reads the
@@ -2009,6 +2076,7 @@ export function DemoCanvas({
                 contextNodeIdRef.current = node.id;
                 setContextOnNode(true);
                 setContextNodeType(node.type ?? null);
+                setContextEndpoint(null);
                 setContextMenuPos({ x: e.clientX, y: e.clientY });
               }
             : undefined
@@ -2025,6 +2093,7 @@ export function DemoCanvas({
                 contextNodeIdRef.current = null;
                 setContextOnNode(false);
                 setContextNodeType(null);
+                setContextEndpoint(null);
                 setContextMenuPos({ x: e.clientX, y: e.clientY });
               }
             : undefined
@@ -2086,6 +2155,7 @@ export function DemoCanvas({
               setContextMenuPos(null);
               contextNodeIdRef.current = null;
               setContextNodeType(null);
+              setContextEndpoint(null);
             }
           }}
         >
@@ -2104,6 +2174,14 @@ export function DemoCanvas({
             />
           </ContextMenuTrigger>
           <ContextMenuContent data-testid="node-context-menu">
+            {contextEndpoint?.pinned && onUnpinEndpoint ? (
+              <ContextMenuItem
+                data-testid="connector-endpoint-context-menu-unpin"
+                onSelect={handleUnpinPick}
+              >
+                Unpin
+              </ContextMenuItem>
+            ) : null}
             {contextOnNode && onCopyNode ? (
               <ContextMenuItem data-testid="node-context-menu-copy" onSelect={handleCopyPick}>
                 Copy

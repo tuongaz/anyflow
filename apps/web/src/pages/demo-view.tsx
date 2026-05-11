@@ -15,6 +15,7 @@ import {
   type DemoDetail,
   type DemoNode,
   type DemoSummary,
+  type EdgePin,
   type ReorderOp,
   type ShapeKind,
   createConnector,
@@ -2164,6 +2165,96 @@ export function DemoView({
     ],
   );
 
+  // US-007: persist a new perimeter pin for the named endpoint of a connector.
+  // The optimistic override mirrors the existing label/reconnect paths so the
+  // edge snaps to the new pin immediately; the PATCH then echoes the same
+  // value back via SSE. Undo restores the previous pin (or clears it when
+  // the previous state was unpinned) in one entry per drag gesture.
+  const onPinEndpoint = useCallback(
+    (connId: string, kind: 'source' | 'target', pin: EdgePin) => {
+      if (!demoId) return;
+      const conn = demoConnectors?.find((c) => c.id === connId);
+      const prevPin = conn ? (kind === 'source' ? conn.sourcePin : conn.targetPin) : undefined;
+      const field = kind === 'source' ? 'sourcePin' : 'targetPin';
+      setConnectorOverride(connId, { [field]: pin } as Partial<Connector>);
+      setEditError(null);
+      markMutation();
+      if (conn) {
+        // `null` is the wire-format signal to clear the field on disk —
+        // mirrors the US-025 reconnect-to-body path.
+        const prevPatch = { [field]: prevPin ?? null } as Partial<{
+          sourcePin: EdgePin | null;
+          targetPin: EdgePin | null;
+        }>;
+        pushUndo({
+          do: async () => {
+            await updateConnector(demoId, connId, { [field]: pin });
+          },
+          undo: async () => {
+            await updateConnector(demoId, connId, prevPatch);
+          },
+          coalesceKey: `connector:${connId}:${field}`,
+        });
+      }
+      updateConnector(demoId, connId, { [field]: pin }).catch((err) => {
+        dropConnectorOverride(connId);
+        if (conn) dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateConnector pin failed', err);
+      });
+    },
+    [
+      demoId,
+      demoConnectors,
+      setConnectorOverride,
+      dropConnectorOverride,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
+  );
+
+  // US-007: clear an existing pin for the named endpoint of a connector. The
+  // optimistic override sets the field to `undefined` so the local state
+  // matches the post-PATCH disk state; the PATCH sends explicit `null` so
+  // mergeConnectorUpdates deletes the field server-side. Undo restores the
+  // previous pin in one entry.
+  const onUnpinEndpoint = useCallback(
+    (connId: string, kind: 'source' | 'target') => {
+      if (!demoId) return;
+      const conn = demoConnectors?.find((c) => c.id === connId);
+      const prevPin = conn ? (kind === 'source' ? conn.sourcePin : conn.targetPin) : undefined;
+      if (!prevPin) return; // Nothing to unpin.
+      const field = kind === 'source' ? 'sourcePin' : 'targetPin';
+      setConnectorOverride(connId, { [field]: undefined } as Partial<Connector>);
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await updateConnector(demoId, connId, { [field]: null });
+        },
+        undo: async () => {
+          await updateConnector(demoId, connId, { [field]: prevPin });
+        },
+      });
+      updateConnector(demoId, connId, { [field]: null }).catch((err) => {
+        dropConnectorOverride(connId);
+        dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateConnector unpin failed', err);
+      });
+    },
+    [
+      demoId,
+      demoConnectors,
+      setConnectorOverride,
+      dropConnectorOverride,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+    ],
+  );
+
   // Merge pending overrides onto the selected entity so Style-tab controls
   // (active swatches, selected dropdown option) reflect the in-flight edit
   // immediately rather than waiting for the SSE echo. Defined here (above the
@@ -2341,6 +2432,8 @@ export function DemoView({
           onIngestImageUrl={demoId ? onIngestImageUrl : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
+          onPinEndpoint={demoId ? onPinEndpoint : undefined}
+          onUnpinEndpoint={demoId ? onUnpinEndpoint : undefined}
           onReorderNode={onReorderNode}
           onDeleteNode={onDeleteNode}
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}

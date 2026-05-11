@@ -114,6 +114,40 @@ export interface EndpointInput {
 }
 
 /**
+ * US-007: project a cursor point onto the nearest side of a node's bbox and
+ * return the corresponding `(side, t)` pin. Used by the pin-drag UI: as the
+ * user drags an endpoint dot, the cursor is mapped to the closest perimeter
+ * point each frame so the endpoint clamps along the perimeter without
+ * detaching off-node.
+ *
+ * Algorithm: clamp the cursor into the rect to get `(relX, relY)` in
+ * `[0, w] × [0, h]`, then the four side-distances (`relX`, `w - relX`,
+ * `relY`, `h - relY`) tell us which side the projection lies on. Tie-break
+ * order is left → right → top → bottom so corner ties are deterministic.
+ *
+ * Edge cases: a zero-width rect collapses left/right to t=0 (avoids
+ * NaN from division by zero); a zero-height rect collapses top/bottom the
+ * same way. A degenerate 0×0 rect returns `{ side: 'left', t: 0 }`.
+ *
+ * Pure — used by both the live drag preview and the persistence path.
+ */
+export const projectCursorToPerimeter = (rect: FloatingRect, cursor: XY): Pin => {
+  const relX = Math.max(0, Math.min(rect.w, cursor.x - rect.x));
+  const relY = Math.max(0, Math.min(rect.h, cursor.y - rect.y));
+  const dLeft = relX;
+  const dRight = rect.w - relX;
+  const dTop = relY;
+  const dBottom = rect.h - relY;
+  const min = Math.min(dLeft, dRight, dTop, dBottom);
+  const tVertical = rect.h === 0 ? 0 : relY / rect.h;
+  const tHorizontal = rect.w === 0 ? 0 : relX / rect.w;
+  if (min === dLeft) return { side: 'left', t: tVertical };
+  if (min === dRight) return { side: 'right', t: tVertical };
+  if (min === dTop) return { side: 'top', t: tHorizontal };
+  return { side: 'bottom', t: tHorizontal };
+};
+
+/**
  * Compute a perimeter point from a pin against a node's bbox. `t` is
  * clamped into [0, 1] so out-of-range values (e.g. from a future schema
  * widening) never produce off-perimeter coordinates.
