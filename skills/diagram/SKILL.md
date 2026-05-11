@@ -103,6 +103,67 @@ Quick guarantees from the schema (every emitter must satisfy these):
 - Handle role: `sourceHandle` ∈ `{r, b}`, `targetHandle` ∈ `{t, l}`. Cross
   values are rejected.
 
+### Two flavors of runnable node — triggers and observers
+
+A "dynamic" or "runnable" node is anything the reader perceives
+behavior from at runtime. The schema supports two distinct flavors,
+and a good diagram almost always contains BOTH paired together:
+
+- **Trigger nodes (`playNode`)** — clickable boxes that fire an HTTP
+  request when the user presses them. They have a `playAction` and
+  represent the user's "do something" affordance: call an API,
+  upload a file, replay an event, run a job. The studio renders a
+  Play button on each one.
+- **Observer nodes (`stateNode` with `stateSource: { kind: 'event' }`)**
+  — non-clickable boxes that display the state of a downstream
+  resource. The studio animates them: idle by default, **spinner /
+  waiting** when an upstream `emit()` reports `running`, **green
+  tick** on `done`, red on `error`. They represent the *consequence*
+  of a trigger — the database row that gets written, the S3 object
+  that arrives, the queue message that gets consumed, the email
+  that gets sent.
+
+Canonical pairing: a user clicks a **trigger** `playNode` labeled
+"Upload file"; the request flows through the harness; the harness
+emits `running` then `done` to a downstream **observer** `stateNode`
+labeled "S3 bucket". The reader watches the S3 box flip from spinner
+to green tick — visible confirmation the file arrived.
+
+Add an observer alongside a trigger when:
+
+- The trigger lands in a store the reader cares about (DB row,
+  cache write, S3 object).
+- The trigger publishes an event/queue message that another part of
+  the system reacts to.
+- The trigger kicks off async work (a worker run, a scheduled job)
+  whose completion the reader wants to see.
+- The trigger has a side effect a reader would want to confirm
+  visibly (email sent, webhook fired, notification posted).
+
+Skip the observer when:
+
+- The trigger is purely synchronous and returns the result inline
+  (a math endpoint, a validation check). The `playNode`'s own
+  request-state animation is enough.
+- The downstream resource is already drawn as a duplicated
+  cross-cutting node for visual clarity and adds no new information.
+
+How the pipeline produces the pair:
+
+- **Phase 4 (node-selector)** classifies candidates as `dynamic-play`
+  (becomes `playNode`) vs `dynamic-event` (becomes observer
+  `stateNode`). For every `dynamic-play` whose work has an observable
+  consequence, also propose the matching `dynamic-event` observer.
+- **Phase 5 (wiring-builder)** wires the pair with a connector —
+  `kind: 'event'` if the trigger emits a named event,
+  `kind: 'queue'` if it publishes to a queue, `kind: 'default'`
+  for plain read/write.
+- **Phase 5b (harness-author, Tier 2)** drives the observer by
+  calling `emit(demoId, observerNodeId, 'running')` immediately
+  and `emit(..., 'done')` when the bridge (CLI spawn, container
+  exec, broker publish, file drop, …) completes. On Tier 1, the
+  user's app must call `emit()` itself for the observer to animate.
+
 ### Two descriptions: short on the node, long in the panel
 
 `data.detail` has **two free-text description fields** — both optional, both

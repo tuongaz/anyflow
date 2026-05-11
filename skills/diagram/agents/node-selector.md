@@ -41,6 +41,19 @@ ALWAYS include the entry point of the slice as the first node.
 ALWAYS include at least one `dynamic-play` node when the chosen tier is
 `tier1` or `tier2`. (For `tier3`, all nodes are static.)
 
+ALWAYS pair every `dynamic-play` (trigger) with a downstream
+`dynamic-event` (observer) when the trigger has an observable
+consequence — a DB write, an S3 upload, a queue publish, an event
+emission, a job completion, a webhook fire. The observer is the
+`stateNode` that animates from spinner to green tick as the harness
+emits `running` → `done` against it. See "Two flavors of runnable
+node — triggers and observers" in `SKILL.md`. Skip the observer only
+when the trigger is purely synchronous and returns the result inline,
+OR when the downstream resource is already drawn elsewhere as a
+duplicated cross-cutting node. **A diagram with only triggers and no
+observers wastes the canvas's strongest affordance** — readers don't
+see the consequences animate.
+
 ALWAYS prefer entry-point + fan-out + boundary nodes. Skip leaf utilities
 that don't help explain the slice.
 
@@ -66,10 +79,16 @@ total — only files in `scope-proposal.candidatePaths[]`.
 
 1. Count nodes. `length` MUST be ≤ 30.
 2. Count `dynamic-play` nodes. If tier ≠ `tier3`, this MUST be ≥ 1.
-3. Every `evidence.filePath` matches a path in `scan-result.json`.
-4. No two nodes share a `candidateId`.
-5. The first node has `kind: "service"` or similar entry-point shape.
-6. No single logical resource (same `label`) sits with implied fan-in ≥3 in
+3. For each `dynamic-play` whose work has an observable consequence
+   (DB write, S3 upload, queue publish, event emission, job completion,
+   webhook fire), there is a downstream `dynamic-event` observer
+   candidate OR a written rationale on the trigger explaining why the
+   trigger is synchronous-only (e.g. `"rationale": "Returns the
+   computed total inline — no async side effect"`).
+4. Every `evidence.filePath` matches a path in `scan-result.json`.
+5. No two nodes share a `candidateId`.
+6. The first node has `kind: "service"` or similar entry-point shape.
+7. No single logical resource (same `label`) sits with implied fan-in ≥3 in
    the chosen scope. If it would, replace it with duplicates (`candidateId`
    suffixed per consumer, `label` identical).
 

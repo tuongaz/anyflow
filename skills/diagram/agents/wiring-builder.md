@@ -142,6 +142,19 @@ ALWAYS choose connector `kind` by evidence:
 
 ALWAYS set `direction: 'forward'` (or omit; that's the default).
 
+ALWAYS wire trigger → observer pairs. For every `dynamic-play`
+candidate whose work has an observable consequence (DB write, S3
+upload, queue publish, event emission, job completion, webhook fire),
+the candidate-nodes.json includes a matching `dynamic-event` observer
+node. Emit `playNode` for the trigger (`stateSource: { kind:
+'request' }`, `playAction` present) AND `stateNode` for the observer
+(`stateSource: { kind: 'event' }`, NO `playAction`), then wire them
+together with the connector kind that matches the evidence (`event`
+when an event name is known, `queue` when a queue name is known,
+`default` for plain reads/writes to a store). The observer is what
+animates from spinner → green tick when the harness emits to it; see
+"Two flavors of runnable node" in `SKILL.md`.
+
 ## SELF-CHECK BEFORE WRITING
 
 1. Top-level `"name"` is present and non-empty.
@@ -162,7 +175,11 @@ ALWAYS set `direction: 'forward'` (or omit; that's the default).
 10. `data.detail.summary` is ≤ 60 chars and reads as one short clause.
 11. `data.detail.description` is set on every dynamic (`playNode` /
     `stateNode`) node — full prose, not a copy of `summary`.
-12. Every node touching PII, secrets, payment data, health records, or
+12. Every `dynamic-event` observer in `candidate-nodes.json` is emitted
+    as a `stateNode` with `stateSource: { kind: 'event' }` and is
+    connected from its upstream trigger (`playNode`) by a connector
+    whose `kind` reflects the evidence (`event` / `queue` / `default`).
+13. Every node touching PII, secrets, payment data, health records, or
     irreversible side effects has `borderColor: 'red'`. Every external
     third-party service has `borderColor: 'pink'`. Most other nodes stay
     on `default`. Read `references/visual-clarity.md` ("Node colors")
