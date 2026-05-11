@@ -343,7 +343,22 @@ export function createApi(options: ApiOptions): Hono {
 
     watcher?.watch(entry.id);
 
-    return c.json({ id: entry.id, slug: entry.slug });
+    let sdkResult: { outcome: 'written' | 'present' | 'skipped'; filePath: string | null };
+    try {
+      sdkResult = writeSdkEmitIfNeeded(repoPath, demoParse.data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json(
+        { error: `Failed to write SDK helper: ${message}`, id: entry.id, slug: entry.slug },
+        500,
+      );
+    }
+
+    return c.json({
+      id: entry.id,
+      slug: entry.slug,
+      sdk: { outcome: sdkResult.outcome, filePath: sdkResult.filePath },
+    });
   });
 
   // POST /api/projects — UI-driven "Create new project" flow (US-020). Two

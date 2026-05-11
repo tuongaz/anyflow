@@ -55,7 +55,7 @@ const post = (app: ReturnType<typeof buildApp>['app'], path: string, body: unkno
   });
 
 describe('POST /api/demos/register', () => {
-  it('registers a valid demo and returns id + slug', async () => {
+  it('registers a valid demo and returns id + slug + skipped sdk for request-only demo', async () => {
     const { app, registry } = buildApp();
     const repoPath = tmpRepoWithDemo();
 
@@ -66,10 +66,58 @@ describe('POST /api/demos/register', () => {
     });
 
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { id: string; slug: string };
+    const json = (await res.json()) as {
+      id: string;
+      slug: string;
+      sdk: { outcome: string; filePath: string | null };
+    };
     expect(json.slug).toBe('checkout-flow');
     expect(registry.list()).toHaveLength(1);
     expect(registry.list()[0]?.id).toBe(json.id);
+    expect(json.sdk).toEqual({ outcome: 'skipped', filePath: null });
+  });
+
+  it('writes .anydemo/sdk/emit.ts when the demo declares an event-bound state node', async () => {
+    const { app } = buildApp();
+    const eventDemo = {
+      version: 1,
+      name: 'Event Flow',
+      nodes: [
+        {
+          id: 'queue-orders',
+          type: 'stateNode',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'orders.created',
+            kind: 'queue',
+            stateSource: { kind: 'event' },
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const repoPath = tmpRepoWithDemo(eventDemo);
+
+    const res = await post(app, '/api/demos/register', {
+      repoPath,
+      demoPath: '.anydemo/demo.json',
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      sdk: { outcome: string; filePath: string | null };
+    };
+    expect(json.sdk.outcome).toBe('written');
+    expect(json.sdk.filePath).toBe(join(repoPath, '.anydemo', 'sdk', 'emit.ts'));
+    const written = readFileSync(join(repoPath, '.anydemo', 'sdk', 'emit.ts'), 'utf8');
+    expect(written.length).toBeGreaterThan(0);
+
+    const second = await post(app, '/api/demos/register', {
+      repoPath,
+      demoPath: '.anydemo/demo.json',
+    });
+    const secondJson = (await second.json()) as { sdk: { outcome: string } };
+    expect(secondJson.sdk.outcome).toBe('present');
   });
 
   it('returns 400 with Zod issues when the demo file fails schema validation', async () => {

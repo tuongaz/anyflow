@@ -12,7 +12,6 @@ import {
   writePid,
 } from './runtime.ts';
 import { DemoSchema } from './schema.ts';
-import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import { serve } from './server.ts';
 
 const DEFAULT_DEMO_PATH = '.anydemo/demo.json';
@@ -188,14 +187,17 @@ async function runRegister() {
     process.exit(1);
   }
 
-  const { slug } = (await res.json()) as { id: string; slug: string };
-  console.log(`Registered "${parsed.data.name}" → ${url}/d/${slug}`);
+  const body = (await res.json()) as {
+    id: string;
+    slug: string;
+    sdk?: { outcome: 'written' | 'present' | 'skipped'; filePath: string | null };
+  };
+  console.log(`Registered "${parsed.data.name}" → ${url}/d/${body.slug}`);
 
-  const sdkResult = writeSdkEmitIfNeeded(repoPath, parsed.data);
-  if (sdkResult.outcome === 'written') {
-    console.log(`Wrote ${sdkResult.filePath} (event-bound state node detected)`);
-  } else if (sdkResult.outcome === 'present') {
-    console.log(`SDK helper already present at ${sdkResult.filePath} (skipped)`);
+  if (body.sdk?.outcome === 'written') {
+    console.log(`Wrote ${body.sdk.filePath} (event-bound state node detected)`);
+  } else if (body.sdk?.outcome === 'present') {
+    console.log(`SDK helper already present at ${body.sdk.filePath} (skipped)`);
   }
 }
 

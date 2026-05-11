@@ -211,15 +211,36 @@ If validation fails, return to Phase 5 with the validation report in context.
 
 ## Phase 8 — REGISTER
 
-Run the existing CLI:
+Probe the studio's `/health`. If it is up, register via the HTTP API
+directly. If it is down, fall back to the CLI (which auto-starts the
+studio in the background and registers in one shot).
 
 ```bash
-anydemo register --path "$TARGET"
+STUDIO_URL="${ANYDEMO_STUDIO_URL:-http://localhost:4321}"
+
+if curl -fsS --max-time 1 "$STUDIO_URL/health" >/dev/null 2>&1; then
+  # Studio is up — register via the API directly.
+  DEMO_NAME="$(jq -r .name "$TARGET/.anydemo/demo.json")"
+  REGISTER_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/register" \
+    -H 'content-type: application/json' \
+    -d "$(jq -nc \
+      --arg name "$DEMO_NAME" \
+      --arg repoPath "$TARGET" \
+      --arg demoPath ".anydemo/demo.json" \
+      '{name: $name, repoPath: $repoPath, demoPath: $demoPath}')")"
+  SLUG="$(printf '%s' "$REGISTER_RESPONSE" | jq -r .slug)"
+  echo "Registered \"$DEMO_NAME\" → $STUDIO_URL/d/$SLUG"
+else
+  # Studio is down — let the CLI start it and register in one shot.
+  anydemo register --path "$TARGET"
+fi
 ```
 
-This re-validates and POSTs to the running studio. If the studio is not
-running, the CLI starts it in the background. The user lands on the canvas
-at `http://localhost:4321/d/<slug>`.
+The studio re-validates the demo and upserts the registry entry either
+way. The user lands on the canvas at `<STUDIO_URL>/d/<slug>` (slug is in
+the API response or printed by the CLI). The API also writes the
+`.anydemo/sdk/emit.ts` helper if the demo declares any event-bound state
+node — same behavior as the CLI.
 
 If the chosen tier is `mock`, also print the harness run command:
 
