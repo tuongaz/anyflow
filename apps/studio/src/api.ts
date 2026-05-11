@@ -1,5 +1,4 @@
-import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
@@ -14,12 +13,21 @@ import {
 import type { EventBus } from './events.ts';
 import {
   CreateProjectBodySchema,
+  PositionBodySchema,
   RegisterBodySchema,
+  ReorderBodySchema,
+  addNodeImpl,
   createProjectImpl,
   deleteDemoImpl,
+  deleteNodeImpl,
   getDemoImpl,
   listDemosImpl,
+  moveNodeImpl,
   registerDemoImpl,
+  reorderNodeImpl,
+  resolveDemoPath,
+  withDemoWriteLock,
+  writeFileAtomic,
 } from './operations.ts';
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
@@ -37,11 +45,6 @@ const EmitBodySchema = z.object({
   status: z.enum(['running', 'done', 'error']),
   runId: z.string().optional(),
   payload: z.unknown().optional(),
-});
-
-const PositionBodySchema = z.object({
-  x: z.number().finite(),
-  y: z.number().finite(),
 });
 
 // Partial node update body. Top-level `position` lands on node.position; every
@@ -110,46 +113,6 @@ const ConnectorPatchBodySchema = z
   .strict();
 type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;
 
-// Per-demo serialization: read-modify-write of the demo file isn't atomic
-// across multiple PATCHes, so two concurrent drags would race
-// (later writer's older read clobbers the earlier writer's update). We chain
-// position writes per demoId so the read+write sequence is effectively
-// serialized.
-const demoWriteChains = new Map<string, Promise<unknown>>();
-const withDemoWriteLock = <T>(demoId: string, fn: () => Promise<T>): Promise<T> => {
-  const prev = demoWriteChains.get(demoId) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  // Replace with a tail that swallows errors so the chain keeps moving even
-  // if one write fails — but the original promise still rejects to its caller.
-  demoWriteChains.set(
-    demoId,
-    next.catch(() => undefined),
-  );
-  return next as Promise<T>;
-};
-
-/**
- * Atomic write: writes to a sibling tempfile then renames over the target.
- * `rename(2)` is atomic on POSIX, so a process reading mid-write either sees
- * the old file or the new one — never a half-written one. This keeps user
- * editor diffs clean (single fs.watch event for the rename) and means a crash
- * during write can never corrupt the original.
- */
-const writeFileAtomic = (filePath: string, content: string): void => {
-  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  try {
-    writeFileSync(tempPath, content);
-    renameSync(tempPath, filePath);
-  } catch (err) {
-    try {
-      if (existsSync(tempPath)) unlinkSync(tempPath);
-    } catch {
-      // best-effort cleanup
-    }
-    throw err;
-  }
-};
-
 const EMIT_STATUS_TO_EVENT = {
   running: 'node:running',
   done: 'node:done',
@@ -195,69 +158,6 @@ const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody)
   }
 };
 
-// Reorder a node within `demo.nodes[]`. The four ops mirror the typical
-// "send backward / bring forward / to back / to front" actions; `toIndex`
-// pins the node back to a captured absolute index so undo for `forward` /
-// `backward` from the middle is faithful even under concurrent edits.
-const ReorderBodySchema = z.discriminatedUnion('op', [
-  z.object({ op: z.literal('forward') }),
-  z.object({ op: z.literal('backward') }),
-  z.object({ op: z.literal('toFront') }),
-  z.object({ op: z.literal('toBack') }),
-  z.object({ op: z.literal('toIndex'), index: z.number().int().nonnegative() }),
-]);
-type ReorderBody = z.infer<typeof ReorderBodySchema>;
-
-const reorderNodes = (
-  nodes: Array<Record<string, unknown>>,
-  fromIdx: number,
-  body: ReorderBody,
-): boolean => {
-  const len = nodes.length;
-  switch (body.op) {
-    case 'forward': {
-      if (fromIdx >= len - 1) return false;
-      const tmp = nodes[fromIdx];
-      const next = nodes[fromIdx + 1];
-      if (tmp === undefined || next === undefined) return false;
-      nodes[fromIdx] = next;
-      nodes[fromIdx + 1] = tmp;
-      return true;
-    }
-    case 'backward': {
-      if (fromIdx <= 0) return false;
-      const tmp = nodes[fromIdx];
-      const prev = nodes[fromIdx - 1];
-      if (tmp === undefined || prev === undefined) return false;
-      nodes[fromIdx] = prev;
-      nodes[fromIdx - 1] = tmp;
-      return true;
-    }
-    case 'toFront': {
-      if (fromIdx === len - 1) return false;
-      const [removed] = nodes.splice(fromIdx, 1);
-      if (removed === undefined) return false;
-      nodes.push(removed);
-      return true;
-    }
-    case 'toBack': {
-      if (fromIdx === 0) return false;
-      const [removed] = nodes.splice(fromIdx, 1);
-      if (removed === undefined) return false;
-      nodes.unshift(removed);
-      return true;
-    }
-    case 'toIndex': {
-      const target = Math.min(Math.max(body.index, 0), len - 1);
-      if (target === fromIdx) return false;
-      const [removed] = nodes.splice(fromIdx, 1);
-      if (removed === undefined) return false;
-      nodes.splice(target, 0, removed);
-      return true;
-    }
-  }
-};
-
 // Kind-specific connector fields. When `kind` changes via PATCH, these are
 // dropped first so the resulting connector doesn't carry phantom payloads
 // from the previous kind (e.g. an event→default change leaving eventName
@@ -291,9 +191,6 @@ export interface ApiOptions {
   events?: EventBus;
   watcher?: DemoWatcher;
 }
-
-const resolveDemoPath = (repoPath: string, demoPath: string): string =>
-  isAbsolute(demoPath) ? demoPath : join(repoPath, demoPath);
 
 export function createApi(options: ApiOptions): Hono {
   const { registry, events, watcher } = options;
@@ -636,8 +533,6 @@ export function createApi(options: ApiOptions): Hono {
   api.patch('/demos/:id/nodes/:nodeId/position', async (c) => {
     const id = c.req.param('id');
     const nodeId = c.req.param('nodeId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
     let body: unknown;
     try {
@@ -649,54 +544,15 @@ export function createApi(options: ApiOptions): Hono {
     if (!parsed.success) {
       return c.json({ error: 'Invalid position body', issues: parsed.error.issues }, 400);
     }
-    const { x, y } = parsed.data;
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'unknownNode' }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      // Mutate the *raw* parsed JSON so we preserve every author-written
-      // field (including any v2 fields the schema doesn't know about yet).
-      const obj = raw as { nodes: Array<{ id: string; position: { x: number; y: number } }> };
-      const onDiskNode = obj.nodes.find((n) => n.id === nodeId);
-      if (!onDiskNode) return { kind: 'unknownNode' };
-      onDiskNode.position = { x, y };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(obj, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await moveNodeImpl({ registry, watcher }, id, nodeId, parsed.data);
     switch (result.kind) {
       case 'ok':
-        return c.json({ ok: true, position: { x, y } });
+        return c.json({ ok: true, position: result.data.position });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':
@@ -718,8 +574,6 @@ export function createApi(options: ApiOptions): Hono {
   api.patch('/demos/:id/nodes/:nodeId/order', async (c) => {
     const id = c.req.param('id');
     const nodeId = c.req.param('nodeId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
     let body: unknown;
     try {
@@ -731,59 +585,15 @@ export function createApi(options: ApiOptions): Hono {
     if (!parsed.success) {
       return c.json({ error: 'Invalid reorder body', issues: parsed.error.issues }, 400);
     }
-    const reorderOp = parsed.data;
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'unknownNode' }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as { nodes: Array<Record<string, unknown>> };
-      const fromIdx = obj.nodes.findIndex((n) => n.id === nodeId);
-      if (fromIdx < 0) return { kind: 'unknownNode' };
-
-      // No-op reorders (e.g. forward on the topmost node) succeed silently —
-      // skip the write so we don't trigger a watcher echo for nothing.
-      const moved = reorderNodes(obj.nodes, fromIdx, reorderOp);
-      if (!moved) return { kind: 'ok' };
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await reorderNodeImpl({ registry, watcher }, id, nodeId, parsed.data);
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':
@@ -884,8 +694,6 @@ export function createApi(options: ApiOptions): Hono {
   // PATCH path above, so a malformed node never produces a half-written file.
   api.post('/demos/:id/nodes', async (c) => {
     const id = c.req.param('id');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
     let body: unknown;
     try {
@@ -896,56 +704,15 @@ export function createApi(options: ApiOptions): Hono {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return c.json({ error: 'Body must be an object' }, 400);
     }
-    const newNode = { ...(body as Record<string, unknown>) };
-    if (typeof newNode.id !== 'string' || newNode.id.length === 0) {
-      newNode.id = `node-${crypto.randomUUID()}`;
-    }
-    const newId = newNode.id as string;
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as { nodes: Array<Record<string, unknown>> };
-      obj.nodes.push(newNode);
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await addNodeImpl({ registry, watcher }, id, body as Record<string, unknown>);
     switch (result.kind) {
       case 'ok':
-        return c.json({ ok: true, id: newId });
+        return c.json({ ok: true, id: result.data.id });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':
@@ -963,60 +730,15 @@ export function createApi(options: ApiOptions): Hono {
   api.delete('/demos/:id/nodes/:nodeId', async (c) => {
     const id = c.req.param('id');
     const nodeId = c.req.param('nodeId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'unknownNode' }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as {
-        nodes: Array<{ id: string }>;
-        connectors: Array<{ source: string; target: string }>;
-      };
-      const idx = obj.nodes.findIndex((n) => n.id === nodeId);
-      if (idx < 0) return { kind: 'unknownNode' };
-      obj.nodes.splice(idx, 1);
-      obj.connectors = obj.connectors.filter((cn) => cn.source !== nodeId && cn.target !== nodeId);
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await deleteNodeImpl({ registry, watcher }, id, nodeId);
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':

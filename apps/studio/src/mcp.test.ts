@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRegistry } from './registry.ts';
@@ -98,16 +98,20 @@ const expectError = (envelope: JsonRpcEnvelope): string => {
 };
 
 describe('POST /mcp tools/list', () => {
-  it('returns the 5 discovery tools registered in US-002', async () => {
+  it('returns the discovery + node-lifecycle tools (5 + 4)', async () => {
     const { app } = buildApp();
     const envelope = await mcpRequest(app, 'tools/list', {});
     const names = (envelope.result?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
+      'anydemo_add_node',
       'anydemo_create_project',
       'anydemo_delete_demo',
+      'anydemo_delete_node',
       'anydemo_get_demo',
       'anydemo_list_demos',
+      'anydemo_move_node',
       'anydemo_register_demo',
+      'anydemo_reorder_node',
     ]);
   });
 
@@ -267,5 +271,237 @@ describe('anydemo_create_project', () => {
       folderPath: 'relative/path',
     });
     expect(expectError(envelope)).toBe('folderPath must be an absolute filesystem path');
+  });
+});
+
+// ---------- Node lifecycle tools (US-003) ----------
+
+// Multi-node fixture for delete-cascade and reorder coverage. Nodes a/b/c
+// chained via connectors a→b and b→c.
+const VALID_DEMO_THREE_NODES = {
+  version: 1,
+  name: 'Three Nodes',
+  nodes: [
+    {
+      id: 'a',
+      type: 'playNode',
+      position: { x: 0, y: 0 },
+      data: {
+        label: 'A',
+        kind: 'service',
+        stateSource: { kind: 'request' },
+        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+      },
+    },
+    {
+      id: 'b',
+      type: 'playNode',
+      position: { x: 200, y: 0 },
+      data: {
+        label: 'B',
+        kind: 'service',
+        stateSource: { kind: 'request' },
+        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+      },
+    },
+    {
+      id: 'c',
+      type: 'playNode',
+      position: { x: 400, y: 0 },
+      data: {
+        label: 'C',
+        kind: 'service',
+        stateSource: { kind: 'request' },
+        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
+      },
+    },
+  ],
+  connectors: [
+    { id: 'a-to-b', source: 'a', target: 'b', kind: 'default' },
+    { id: 'b-to-c', source: 'b', target: 'c', kind: 'default' },
+  ],
+};
+
+interface RegisterResult {
+  id: string;
+  slug: string;
+}
+
+const registerFixture = async (
+  app: ReturnType<typeof buildApp>['app'],
+  demo: unknown = VALID_DEMO,
+) => {
+  const repoPath = tmpRepoWithDemo(demo);
+  const envelope = await callTool(app, 'anydemo_register_demo', {
+    repoPath,
+    demoPath: '.anydemo/demo.json',
+  });
+  const reg = expectOk(envelope) as RegisterResult;
+  return { repoPath, demoFile: join(repoPath, '.anydemo', 'demo.json'), reg };
+};
+
+describe('anydemo_add_node', () => {
+  it('appends a new node and auto-generates an id when absent', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_add_node', {
+      demoId: reg.id,
+      node: {
+        type: 'shapeNode',
+        position: { x: 100, y: 200 },
+        data: { shape: 'rectangle', label: 'Note A' },
+      },
+    });
+    const body = expectOk(envelope) as { ok: boolean; id: string };
+    expect(body.ok).toBe(true);
+    expect(body.id).toMatch(/^node-/);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; type: string }>;
+    };
+    expect(onDisk.nodes).toHaveLength(2);
+    expect(onDisk.nodes.find((n) => n.id === body.id)?.type).toBe('shapeNode');
+  });
+
+  it('returns isError with schema text when the new node is malformed', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+    const before = readFileSync(demoFile, 'utf8');
+
+    // shapeNode without required `shape` — DemoSchema rejects the post-merge.
+    const envelope = await callTool(app, 'anydemo_add_node', {
+      demoId: reg.id,
+      node: { type: 'shapeNode', position: { x: 0, y: 0 }, data: {} },
+    });
+    expect(expectError(envelope)).toContain('Demo failed schema validation');
+    // File untouched on failed validation.
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('errors with "unknown demo" for an unknown demoId', async () => {
+    const { app } = buildApp();
+    const envelope = await callTool(app, 'anydemo_add_node', {
+      demoId: 'does-not-exist',
+      node: { type: 'shapeNode', position: { x: 0, y: 0 }, data: { shape: 'rectangle' } },
+    });
+    expect(expectError(envelope)).toBe('unknown demo');
+  });
+});
+
+describe('anydemo_delete_node', () => {
+  it('removes the node and cascades adjacent connectors in one write', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
+
+    const envelope = await callTool(app, 'anydemo_delete_node', { demoId: reg.id, nodeId: 'b' });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string }>;
+      connectors: Array<{ id: string }>;
+    };
+    expect(onDisk.nodes.map((n) => n.id)).toEqual(['a', 'c']);
+    // Both a-to-b and b-to-c referenced node 'b' — cascade-removed.
+    expect(onDisk.connectors).toEqual([]);
+  });
+
+  it('errors with the node id in the message for an unknown nodeId', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app);
+    const envelope = await callTool(app, 'anydemo_delete_node', {
+      demoId: reg.id,
+      nodeId: 'missing',
+    });
+    expect(expectError(envelope)).toBe('Unknown nodeId: missing');
+  });
+});
+
+describe('anydemo_move_node', () => {
+  it('writes { x, y } back to the on-disk node position', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app);
+
+    const envelope = await callTool(app, 'anydemo_move_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      x: 250,
+      y: 320,
+    });
+    const body = expectOk(envelope) as { ok: boolean; position: { x: number; y: number } };
+    expect(body).toEqual({ ok: true, position: { x: 250, y: 320 } });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; position: { x: number; y: number } }>;
+    };
+    expect(onDisk.nodes[0]?.position).toEqual({ x: 250, y: 320 });
+  });
+
+  it('errors for an unknown nodeId', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app);
+    const envelope = await callTool(app, 'anydemo_move_node', {
+      demoId: reg.id,
+      nodeId: 'nope',
+      x: 0,
+      y: 0,
+    });
+    expect(expectError(envelope)).toBe('Unknown nodeId: nope');
+  });
+});
+
+describe('anydemo_reorder_node', () => {
+  const onDiskOrder = (demoFile: string) =>
+    (JSON.parse(readFileSync(demoFile, 'utf8')) as { nodes: Array<{ id: string }> }).nodes.map(
+      (n) => n.id,
+    );
+
+  it('moves a node forward (swap with the next sibling)', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
+
+    const envelope = await callTool(app, 'anydemo_reorder_node', {
+      demoId: reg.id,
+      nodeId: 'a',
+      op: 'forward',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+    expect(onDiskOrder(demoFile)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('toIndex pins the node to an absolute index', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
+
+    const envelope = await callTool(app, 'anydemo_reorder_node', {
+      demoId: reg.id,
+      nodeId: 'a',
+      op: 'toIndex',
+      index: 2,
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+    expect(onDiskOrder(demoFile)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('errors for an unknown nodeId', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
+    const envelope = await callTool(app, 'anydemo_reorder_node', {
+      demoId: reg.id,
+      nodeId: 'missing',
+      op: 'forward',
+    });
+    expect(expectError(envelope)).toBe('Unknown nodeId: missing');
+  });
+
+  it('rejects invalid op via the discriminated union', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app);
+    const envelope = await callTool(app, 'anydemo_reorder_node', {
+      demoId: reg.id,
+      nodeId: 'api-checkout',
+      op: 'noSuchOp',
+    });
+    expect(expectError(envelope)).toContain('Invalid reorder_node arguments');
   });
 });

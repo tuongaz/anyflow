@@ -4,17 +4,23 @@ import {
   type CallToolResult,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import type { ZodTypeAny } from 'zod';
+import { type ZodTypeAny, z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   CreateProjectBodySchema,
   type OperationsDeps,
+  PositionBodySchema,
   RegisterBodySchema,
+  ReorderBodySchema,
+  addNodeImpl,
   createProjectImpl,
   deleteDemoImpl,
+  deleteNodeImpl,
   getDemoImpl,
   listDemosImpl,
+  moveNodeImpl,
   registerDemoImpl,
+  reorderNodeImpl,
 } from './operations.ts';
 import type { Registry } from './registry.ts';
 import type { DemoWatcher } from './watcher.ts';
@@ -75,6 +81,43 @@ const requireDemoId = (args: unknown): { demoId: string } | { error: string } =>
   }
   return { demoId };
 };
+
+// {demoId, nodeId} body shape shared by move + reorder + delete inputs.
+const DemoNodeIdBaseSchema = z.object({
+  demoId: z.string().min(1),
+  nodeId: z.string().min(1),
+});
+
+// add_node input: { demoId, node: <node payload> }. The inner `node` object is
+// loose here (additionalProperties=true via passthrough) because DemoSchema
+// runs the full validation server-side after the new node is merged in.
+const AddNodeInputSchema = z.object({
+  demoId: z.string().min(1),
+  node: z.record(z.unknown()),
+});
+
+const DeleteNodeInputSchema = DemoNodeIdBaseSchema;
+
+// move_node input: { demoId, nodeId } extended with PositionBodySchema's
+// { x, y } fields so agents see one flat schema.
+const MoveNodeInputSchema = DemoNodeIdBaseSchema.extend({
+  x: PositionBodySchema.shape.x,
+  y: PositionBodySchema.shape.y,
+});
+
+// reorder_node input: each branch of the existing ReorderBodySchema
+// discriminated union extended with demoId/nodeId. Keeps the discriminator
+// on `op` so the emitted JSON Schema is an oneOf the agent can introspect.
+const ReorderNodeInputSchema = z.discriminatedUnion('op', [
+  DemoNodeIdBaseSchema.extend({ op: z.literal('forward') }),
+  DemoNodeIdBaseSchema.extend({ op: z.literal('backward') }),
+  DemoNodeIdBaseSchema.extend({ op: z.literal('toFront') }),
+  DemoNodeIdBaseSchema.extend({ op: z.literal('toBack') }),
+  DemoNodeIdBaseSchema.extend({
+    op: z.literal('toIndex'),
+    index: z.number().int().nonnegative(),
+  }),
+]);
 
 const buildTools = (deps: OperationsDeps): McpTool[] => [
   {
@@ -173,6 +216,127 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
           );
         case 'sdkWriteFailed':
           return errorResult(`Failed to write SDK helper: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_add_node',
+    description: 'Append a new node to a demo (cascade-safe; id auto-generated when omitted).',
+    inputSchema: inputSchemaFromZod(AddNodeInputSchema),
+    handler: async (args) => {
+      const parsed = AddNodeInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(`Invalid add_node arguments: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      const { demoId, node } = parsed.data;
+      const result = await addNodeImpl(deps, demoId, node);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true, id: result.data.id });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_delete_node',
+    description: 'Delete a node and cascade-remove every connector touching it.',
+    inputSchema: inputSchemaFromZod(DeleteNodeInputSchema),
+    handler: async (args) => {
+      const parsed = DeleteNodeInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(`Invalid delete_node arguments: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      const { demoId, nodeId } = parsed.data;
+      const result = await deleteNodeImpl(deps, demoId, nodeId);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'unknownNode':
+          return errorResult(`Unknown nodeId: ${nodeId}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_move_node',
+    description: "Set a node's { x, y } canvas position.",
+    inputSchema: inputSchemaFromZod(MoveNodeInputSchema),
+    handler: async (args) => {
+      const parsed = MoveNodeInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(`Invalid move_node arguments: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      const { demoId, nodeId, x, y } = parsed.data;
+      const result = await moveNodeImpl(deps, demoId, nodeId, { x, y });
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true, position: result.data.position });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'unknownNode':
+          return errorResult(`Unknown nodeId: ${nodeId}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_reorder_node',
+    description:
+      'Reorder a node within demo.nodes[] (forward / backward / toFront / toBack / toIndex).',
+    inputSchema: inputSchemaFromZod(ReorderNodeInputSchema),
+    handler: async (args) => {
+      const parsed = ReorderNodeInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(
+          `Invalid reorder_node arguments: ${JSON.stringify(parsed.error.issues)}`,
+        );
+      }
+      const { demoId, nodeId, ...body } = parsed.data;
+      // Delegate the op-specific shape to the existing ReorderBodySchema so
+      // reorderNodeImpl receives the same discriminated union the REST route
+      // does — keeps a single source of truth for op semantics.
+      const reorderBody = ReorderBodySchema.parse(body);
+      const result = await reorderNodeImpl(deps, demoId, nodeId, reorderBody);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'unknownNode':
+          return errorResult(`Unknown nodeId: ${nodeId}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
       }
     },
   },
