@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
@@ -12,30 +12,24 @@ import {
   validateDemo,
 } from './diagram.ts';
 import type { EventBus } from './events.ts';
+import {
+  CreateProjectBodySchema,
+  RegisterBodySchema,
+  createProjectImpl,
+  deleteDemoImpl,
+  getDemoImpl,
+  listDemosImpl,
+  registerDemoImpl,
+} from './operations.ts';
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
 import {
   ColorTokenSchema,
-  type Demo,
   DemoSchema,
   SourceHandleIdSchema,
   TargetHandleIdSchema,
 } from './schema.ts';
-import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
-import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
-
-const DEFAULT_DEMO_RELATIVE_PATH = '.anydemo/demo.json';
-
-const RegisterBodySchema = z.object({
-  name: z.string().min(1).optional(),
-  repoPath: z.string().min(1),
-  demoPath: z.string().min(1),
-});
-
-const CreateProjectBodySchema = z.object({
-  name: z.string().min(1),
-  folderPath: z.string().min(1),
-});
+import type { DemoWatcher } from './watcher.ts';
 
 const EmitBodySchema = z.object({
   demoId: z.string().min(1),
@@ -318,55 +312,26 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: 'Invalid register body', issues: parsed.error.issues }, 400);
     }
 
-    const { repoPath, demoPath } = parsed.data;
-    const fullPath = resolveDemoPath(repoPath, demoPath);
-
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 400);
+    const result = await registerDemoImpl({ registry, watcher }, parsed.data);
+    switch (result.kind) {
+      case 'ok':
+        return c.json(result.data);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 400);
+      case 'badJson':
+        return c.json({ error: 'Demo file is not valid JSON', detail: result.detail }, 400);
+      case 'badSchema':
+        return c.json({ error: 'Demo file failed schema validation', issues: result.issues }, 400);
+      case 'sdkWriteFailed':
+        return c.json(
+          {
+            error: `Failed to write SDK helper: ${result.message}`,
+            id: result.id,
+            slug: result.slug,
+          },
+          500,
+        );
     }
-
-    let demo: unknown;
-    try {
-      demo = await Bun.file(fullPath).json();
-    } catch (err) {
-      return c.json({ error: 'Demo file is not valid JSON', detail: String(err) }, 400);
-    }
-
-    const demoParse = DemoSchema.safeParse(demo);
-    if (!demoParse.success) {
-      return c.json(
-        { error: 'Demo file failed schema validation', issues: demoParse.error.issues },
-        400,
-      );
-    }
-
-    const lastModified = statSync(fullPath).mtimeMs;
-    const entry = registry.upsert({
-      name: parsed.data.name ?? demoParse.data.name,
-      repoPath,
-      demoPath,
-      valid: true,
-      lastModified,
-    });
-
-    watcher?.watch(entry.id);
-
-    let sdkResult: { outcome: 'written' | 'present' | 'skipped'; filePath: string | null };
-    try {
-      sdkResult = writeSdkEmitIfNeeded(repoPath, demoParse.data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json(
-        { error: `Failed to write SDK helper: ${message}`, id: entry.id, slug: entry.slug },
-        500,
-      );
-    }
-
-    return c.json({
-      id: entry.id,
-      slug: entry.slug,
-      sdk: { outcome: sdkResult.outcome, filePath: sdkResult.filePath },
-    });
   });
 
   // POST /api/demos/validate — dry-run validation. The skill's diagram
@@ -448,168 +413,54 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: 'Invalid create project body', issues: parsed.error.issues }, 400);
     }
 
-    const { name, folderPath } = parsed.data;
-    if (!isAbsolute(folderPath)) {
-      return c.json({ error: 'folderPath must be an absolute filesystem path' }, 400);
-    }
-
-    const demoFullPath = join(folderPath, DEFAULT_DEMO_RELATIVE_PATH);
-    const hasExistingProject = existsSync(demoFullPath);
-
-    if (hasExistingProject) {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(demoFullPath).json();
-      } catch (err) {
+    const result = await createProjectImpl({ registry, watcher }, parsed.data);
+    switch (result.kind) {
+      case 'ok':
+        return c.json(result.data);
+      case 'invalidPath':
+        return c.json({ error: 'folderPath must be an absolute filesystem path' }, 400);
+      case 'badJson':
+        return c.json({ error: `Existing demo file is not valid JSON: ${result.detail}` }, 400);
+      case 'badSchema':
         return c.json(
-          {
-            error: `Existing demo file is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-          },
+          { error: 'Existing demo file failed schema validation', issues: result.issues },
           400,
         );
-      }
-      const demoParse = DemoSchema.safeParse(raw);
-      if (!demoParse.success) {
+      case 'scaffoldFailed':
         return c.json(
-          {
-            error: 'Existing demo file failed schema validation',
-            issues: demoParse.error.issues,
-          },
-          400,
+          { error: `Failed to scaffold project at ${parsed.data.folderPath}: ${result.message}` },
+          500,
         );
-      }
-
-      const lastModified = statSync(demoFullPath).mtimeMs;
-      const entry = registry.upsert({
-        name,
-        repoPath: folderPath,
-        demoPath: DEFAULT_DEMO_RELATIVE_PATH,
-        valid: true,
-        lastModified,
-      });
-      watcher?.watch(entry.id);
-      return c.json({ id: entry.id, slug: entry.slug, scaffolded: false });
+      case 'sdkWriteFailed':
+        return c.json({ error: `Failed to write SDK helper: ${result.message}` }, 500);
     }
-
-    const scaffold: Demo = {
-      version: 1,
-      name,
-      nodes: [],
-      connectors: [],
-    };
-
-    try {
-      mkdirSync(join(folderPath, '.anydemo'), { recursive: true });
-      writeFileSync(demoFullPath, `${JSON.stringify(scaffold, null, 2)}\n`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `Failed to scaffold project at ${folderPath}: ${message}` }, 500);
-    }
-
-    // Use the same SDK-emit code path as the CLI register flow. For a
-    // fresh scaffold with no event-bound state nodes this returns
-    // 'skipped' and writes nothing — kept for parity with CLI register.
-    try {
-      writeSdkEmitIfNeeded(folderPath, scaffold);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `Failed to write SDK helper: ${message}` }, 500);
-    }
-
-    const lastModified = statSync(demoFullPath).mtimeMs;
-    const entry = registry.upsert({
-      name,
-      repoPath: folderPath,
-      demoPath: DEFAULT_DEMO_RELATIVE_PATH,
-      valid: true,
-      lastModified,
-    });
-    watcher?.watch(entry.id);
-    return c.json({ id: entry.id, slug: entry.slug, scaffolded: true });
   });
 
   api.get('/demos', (c) => {
-    return c.json(
-      registry.list().map((e) => {
-        const fullPath = resolveDemoPath(e.repoPath, e.demoPath);
-        const fileExists = existsSync(fullPath);
-        return {
-          id: e.id,
-          slug: e.slug,
-          name: e.name,
-          repoPath: e.repoPath,
-          lastModified: e.lastModified,
-          valid: e.valid && fileExists,
-        };
-      }),
-    );
+    const result = listDemosImpl({ registry });
+    return c.json(result.data);
   });
 
   api.get('/demos/:id', async (c) => {
-    const id = c.req.param('id');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'not found' }, 404);
-
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    const snap = watcher?.snapshot(id) ?? watcher?.reparse(id) ?? null;
-
-    const buildResponse = (s: DemoSnapshot) =>
-      c.json({
-        id: entry.id,
-        slug: entry.slug,
-        name: entry.name,
-        filePath: fullPath,
-        demo: s.demo,
-        valid: s.valid,
-        error: s.valid ? null : s.error,
-      });
-
-    if (snap) return buildResponse(snap);
-
-    // No watcher — fall back to a one-shot synchronous read.
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
+    const result = await getDemoImpl({ registry, watcher }, c.req.param('id'));
+    switch (result.kind) {
+      case 'ok':
+        return c.json(result.data);
+      case 'notFound':
+        return c.json({ error: 'not found' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
     }
-    let raw: unknown;
-    try {
-      raw = await Bun.file(fullPath).json();
-    } catch (err) {
-      return buildResponse({
-        demo: null,
-        valid: false,
-        error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`,
-        filePath: fullPath,
-        parsedAt: Date.now(),
-      });
-    }
-    const parsed = DemoSchema.safeParse(raw);
-    if (!parsed.success) {
-      return buildResponse({
-        demo: null,
-        valid: false,
-        error: parsed.error.issues
-          .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
-          .join('; '),
-        filePath: fullPath,
-        parsedAt: Date.now(),
-      });
-    }
-    return buildResponse({
-      demo: parsed.data,
-      valid: true,
-      error: null,
-      filePath: fullPath,
-      parsedAt: Date.now(),
-    });
   });
 
   api.delete('/demos/:id', (c) => {
-    const idOrSlug = c.req.param('id');
-    const entry = registry.getById(idOrSlug) ?? registry.getBySlug(idOrSlug);
-    if (!entry) return c.json({ ok: false, error: 'not found' }, 404);
-    watcher?.unwatch(entry.id);
-    registry.remove(entry.id);
-    return c.json({ ok: true });
+    const result = deleteDemoImpl({ registry, watcher }, c.req.param('id'));
+    switch (result.kind) {
+      case 'ok':
+        return c.json({ ok: true });
+      case 'notFound':
+        return c.json({ ok: false, error: 'not found' }, 404);
+    }
   });
 
   api.post('/demos/:id/play/:nodeId', async (c) => {
