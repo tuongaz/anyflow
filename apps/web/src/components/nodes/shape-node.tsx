@@ -36,12 +36,58 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
 // `text` deliberately omits border + background so the shape reads as a free
 // floating annotation (no chrome). Selection still draws an outline (handled
 // below by the `selected` branch on `colorStyle`).
-const SHAPE_CLASS: Record<ShapeKind, string> = {
+//
+// Exported (along with `shapeChromeClass` / `shapeChromeStyle` below) so the
+// drag-create ghost in demo-canvas.tsx (US-009) can mirror the committed
+// node's chrome byte-for-byte without duplicating literals. Any visual change
+// to a shape's chrome MUST land here so both the node and the ghost update
+// together.
+export const SHAPE_CLASS: Record<ShapeKind, string> = {
   rectangle: 'rounded-lg border-[3px] bg-transparent',
   ellipse: 'rounded-full border-[3px] bg-transparent',
   sticky: 'rounded-md border-[3px] shadow-md -rotate-1',
   text: 'bg-transparent',
 };
+
+/**
+ * Tailwind class string for a shape's chrome (border-radius, default border
+ * width, sticky tilt + shadow). The pair of `shapeChromeClass` +
+ * `shapeChromeStyle` is the single source of truth consumed by both
+ * `ShapeNode` (live render) and `demo-canvas.tsx`'s drag-create ghost
+ * (`canvas-draw-ghost`, US-009) so the preview shown during drag matches the
+ * committed node exactly.
+ */
+export function shapeChromeClass(shape: ShapeKind): string {
+  return SHAPE_CLASS[shape];
+}
+
+/**
+ * Inline style for a shape's chrome (borderColor / backgroundColor /
+ * borderWidth / borderStyle / borderRadius). Mirrors the resolution rules in
+ * `ShapeNode` so the ghost preview (US-009) and the committed node share the
+ * same values; pass an empty `data` to get the default-color look the
+ * drag-create flow commits via `onCreateShapeNode` (which sends only
+ * `{ shape, width, height }` — no color overrides).
+ */
+export function shapeChromeStyle(
+  shape: ShapeKind,
+  data?: Pick<
+    ShapeNodeData,
+    'backgroundColor' | 'borderColor' | 'borderSize' | 'borderStyle' | 'cornerRadius'
+  >,
+): CSSProperties {
+  if (shape === 'text') return {};
+  const effectiveBg = data?.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined);
+  const supportsCornerRadius = shape === 'rectangle' || shape === 'sticky';
+  return {
+    borderColor: colorTokenStyle(data?.borderColor, 'node').borderColor,
+    backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
+    borderWidth: data?.borderSize !== undefined ? data.borderSize : undefined,
+    borderStyle: data?.borderStyle,
+    borderRadius:
+      supportsCornerRadius && data?.cornerRadius !== undefined ? data.cornerRadius : undefined,
+  };
+}
 
 // Handles stay hidden by default and only render on the active (selected) node
 // — the `selected && '!opacity-100'` branch in each <Handle>'s className. While
@@ -73,13 +119,11 @@ export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<Shape
   // needs a visible affordance — handled below by the unified outer-rect
   // outline so text and chromed shapes share the exact same selection chrome.
   const isText = shape === 'text';
-  // borderColor: always pick from token (defaults to theme border).
-  // backgroundColor: sticky defaults to amber; rect/ellipse stay transparent
-  // (border-only) unless the author sets a background token explicitly. text
-  // has no background token at all.
-  const effectiveBg = isText
-    ? undefined
-    : (data.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined));
+  // For text shapes, `borderColor` is repurposed as the text color (the field
+  // is hidden as a border in the renderer, so reusing it avoids a redundant
+  // schema field). `colorTokenStyle(_, 'text')` returns {} for the default
+  // token so unset values fall through to the theme foreground.
+  const textColorStyle = isText ? colorTokenStyle(data.borderColor, 'text') : {};
   // US-016: selection draws a thin (1px), low-contrast outer rectangle 4px
   // outside the node — the standard design-tool selection box. Outline is
   // used (not a wider border or absolute overlay) so layout never shifts and
@@ -90,26 +134,8 @@ export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<Shape
   // US-004: cornerRadius only applies to shapes that have a square-ish border
   // we can round — rectangle and sticky. Ellipse keeps its rounded-full (50%)
   // and text has no border to round, so we leave them alone.
-  const supportsCornerRadius = shape === 'rectangle' || shape === 'sticky';
-  const resolvedBorderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
-  // For text shapes, `borderColor` is repurposed as the text color (the field
-  // is hidden as a border in the renderer, so reusing it avoids a redundant
-  // schema field). `colorTokenStyle(_, 'text')` returns {} for the default
-  // token so unset values fall through to the theme foreground.
-  const textColorStyle = isText ? colorTokenStyle(data.borderColor, 'text') : {};
   const colorStyle: CSSProperties = {
-    ...(isText
-      ? {}
-      : {
-          borderColor: resolvedBorderColor,
-          backgroundColor: effectiveBg
-            ? colorTokenStyle(effectiveBg, 'node').backgroundColor
-            : undefined,
-          borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
-          borderStyle: data.borderStyle,
-          borderRadius:
-            supportsCornerRadius && data.cornerRadius !== undefined ? data.cornerRadius : undefined,
-        }),
+    ...shapeChromeStyle(shape, data),
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
     ...(selected
       ? {
@@ -148,7 +174,7 @@ export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<Shape
       className={cn(
         'group relative flex items-center justify-center p-2 text-center text-[22px]',
         sized ? 'h-full w-full' : '',
-        SHAPE_CLASS[shape],
+        shapeChromeClass(shape),
       )}
       style={style}
       data-testid="shape-node"

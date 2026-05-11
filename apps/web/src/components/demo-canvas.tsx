@@ -3,7 +3,12 @@ import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable
 import { IconNode } from '@/components/nodes/icon-node';
 import { IMAGE_DEFAULT_SIZE, ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
-import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
+import {
+  SHAPE_DEFAULT_SIZE,
+  ShapeNode,
+  shapeChromeClass,
+  shapeChromeStyle,
+} from '@/components/nodes/shape-node';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import {
@@ -1819,12 +1824,17 @@ export function DemoCanvas({
     return { left: minX - offsetX, top: minY - offsetY, width: w, height: h };
   }, [drawStart, drawCurrent]);
 
-  const ghostShapeClass =
-    drawShape === 'ellipse'
-      ? 'rounded-full border-2 border-primary/60 bg-primary/10'
-      : drawShape === 'sticky'
-        ? 'rounded-md border border-amber-500/60 bg-amber-200/40'
-        : 'rounded-lg border-2 border-primary/60 bg-primary/10';
+  // US-009: WYSIWYG ghost — mirror the committed shape's chrome via the same
+  // helpers `ShapeNode` uses so background/border/radius/tilt match exactly.
+  // Approach: reuse the node's style module (shapeChromeClass/shapeChromeStyle
+  // from shape-node.tsx) with no `data` so we get the exact default look the
+  // drag-create flow commits via `onCreateShapeNode` (which sends only
+  // `{ shape, width, height }`). Text is intentionally chromeless on commit;
+  // we add a faint dashed outline ONLY for the ghost so the user can see
+  // what they're drawing — the placed text node still has no chrome.
+  const ghostShapeClass = drawShape ? shapeChromeClass(drawShape) : '';
+  const ghostShapeStyle = drawShape ? shapeChromeStyle(drawShape) : undefined;
+  const ghostTextOutline = drawShape === 'text';
 
   // Space-held pan mode (US-019). React Flow's panActivationKeyCode='Space'
   // toggles the pane into pan-on-drag mode for the duration of the keypress;
@@ -2138,9 +2148,15 @@ export function DemoCanvas({
       {ghostRect ? (
         <div
           data-testid="canvas-draw-ghost"
+          data-ghost-shape={drawShape ?? undefined}
           aria-hidden
-          className={cn('pointer-events-none absolute z-10', ghostShapeClass)}
+          className={cn(
+            'pointer-events-none absolute z-10',
+            ghostShapeClass,
+            ghostTextOutline ? 'rounded-sm border border-dashed border-muted-foreground/40' : '',
+          )}
           style={{
+            ...ghostShapeStyle,
             left: ghostRect.left,
             top: ghostRect.top,
             width: ghostRect.width,
