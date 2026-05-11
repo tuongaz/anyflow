@@ -1957,6 +1957,11 @@ export function DemoCanvas({
         // of selection — no extra node-vs-node elevation needed.
         elevateNodesOnSelect={false}
         elementsSelectable={!drawShape}
+        // US-018: dragging an unselected node moves it WITHOUT auto-selecting
+        // (and therefore without opening the detail panel). React Flow defaults
+        // this to true; an explicit click (mousedown + mouseup without
+        // movement) still selects via onNodeClick.
+        selectNodesOnDrag={false}
         // US-022 selection model: no marquee gesture. With selectionOnDrag and
         // panOnDrag both false, primary-mouse drag on the pane is a no-op —
         // selection only changes via click, Shift/Meta-click toggle, Cmd/Ctrl+A,
