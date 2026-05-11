@@ -32,3 +32,35 @@ describe('US-015: no per-handle connection limit', () => {
     });
   }
 });
+
+// US-025: every custom node renderer must forward NodeProps.isConnectable to
+// every <Handle> so the per-node `connectable: false` set in demo-canvas
+// buildNode actually gates connection-start. xyflow's Handle defaults
+// `isConnectable = true` — if a renderer omits the prop, the Handle stays
+// hit-testable as a connection origin regardless of node.connectable, defeating
+// the gate. Static-text fence on each renderer source is sufficient; any new
+// custom node added to this list inherits the same check.
+const nodeRenderers = [
+  'apps/web/src/components/nodes/shape-node.tsx',
+  'apps/web/src/components/nodes/play-node.tsx',
+  'apps/web/src/components/nodes/state-node.tsx',
+  'apps/web/src/components/nodes/icon-node.tsx',
+  'apps/web/src/components/nodes/image-node.tsx',
+];
+
+describe('US-025: nodes forward isConnectable to every <Handle>', () => {
+  for (const rel of nodeRenderers) {
+    it(`${rel} destructures isConnectable from NodeProps and forwards to all Handles`, () => {
+      const src = readFileSync(join(repoRoot, rel), 'utf-8');
+      // Verify the renderer reads isConnectable off NodeProps.
+      expect(src).toMatch(/\bisConnectable\b\s*[,}]/);
+      // Verify every JSX <Handle ...> declaration includes isConnectable=.
+      // Match only opening tags followed by whitespace (newline or space) —
+      // avoids the `<Handle>` reference in prose comments. Count those and
+      // ensure the prop-count matches.
+      const handleOpens = src.match(/<Handle\s/g) ?? [];
+      const isConnectableProps = src.match(/\bisConnectable=\{/g) ?? [];
+      expect(isConnectableProps.length).toBe(handleOpens.length);
+    });
+  }
+});

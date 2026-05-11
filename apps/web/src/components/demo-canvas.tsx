@@ -1212,6 +1212,15 @@ export function DemoCanvas({
       // data) on resize-stop.
       if (merged.data.width !== undefined) node.width = merged.data.width;
       if (merged.data.height !== undefined) node.height = merged.data.height;
+      // US-025: only the selected node may originate a new connection. Setting
+      // `connectable: false` on unselected nodes makes their Handles ignore
+      // connection-start gestures (xyflow's per-node `connectable` overrides
+      // the global `nodesConnectable`). Selected nodes leave the field
+      // undefined so the global gate (read-only mode, drawShape) still
+      // applies. Reconnect drops onto unselected nodes are unaffected —
+      // xyflow's reconnect path snaps via the always-present `.source`/
+      // `.target` DOM classes, not the Handle's `isConnectable` prop.
+      if (!selectedNodeIdSet.has(merged.id)) node.connectable = false;
       return node;
     };
     const fromServer = nodes.map((n) => buildNode(mergeNodeOverride(n, nodeOverrides?.[n.id])));

@@ -50,7 +50,7 @@ const SHAPE_CLASS: Record<ShapeKind, string> = {
 // up across all nodes during the drag, preserving the US-014 auto-snap UX.
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
-export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
+export function ShapeNode({ id, data, selected, isConnectable }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = SHAPE_DEFAULT_SIZE[shape];
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
@@ -167,12 +167,14 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         type="target"
         position={Position.Top}
         id="t"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="l"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       {isEditing && labelEditable ? (
@@ -202,12 +204,14 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         type="source"
         position={Position.Right}
         id="r"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="b"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
     </div>

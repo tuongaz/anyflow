@@ -22,7 +22,7 @@ const MIN_H = 40;
 
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
-export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
+export function ImageNode({ id, data, selected, isConnectable }: NodeProps<ImageNodeType>) {
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
@@ -66,12 +66,14 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         type="target"
         position={Position.Top}
         id="t"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="l"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <img
@@ -88,12 +90,14 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         type="source"
         position={Position.Right}
         id="r"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="b"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
     </div>

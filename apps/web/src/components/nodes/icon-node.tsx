@@ -43,7 +43,7 @@ function resolveIconColor(token: IconNodeData['color']): string {
 // Console-warn once per unknown icon name so a broken demo doesn't spam logs.
 const WARNED_NAMES = new Set<string>();
 
-export function IconNode({ id, data, selected }: NodeProps<IconNodeType>) {
+export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNodeType>) {
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
@@ -103,12 +103,14 @@ export function IconNode({ id, data, selected }: NodeProps<IconNodeType>) {
         type="target"
         position={Position.Top}
         id="t"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="l"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       {IconComponent ? (
@@ -124,12 +126,14 @@ export function IconNode({ id, data, selected }: NodeProps<IconNodeType>) {
         type="source"
         position={Position.Right}
         id="r"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="b"
+        isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
     </div>

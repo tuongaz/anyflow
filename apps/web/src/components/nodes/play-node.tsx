@@ -37,7 +37,7 @@ const MIN_W = 100;
 const MIN_H = 44;
 const DEFAULT_W = 200;
 
-export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
+export function PlayNode({ id, data, selected, isConnectable }: NodeProps<PlayNodeType>) {
   const status = data.status;
   const action = data.playAction;
   const description = data.detail?.summary ?? data.kind;
@@ -152,12 +152,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         type="target"
         position={Position.Top}
         id="t"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="l"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <div
@@ -255,12 +257,14 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         type="source"
         position={Position.Right}
         id="r"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="b"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
     </div>

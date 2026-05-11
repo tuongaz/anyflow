@@ -33,7 +33,7 @@ const MIN_W = 100;
 const MIN_H = 44;
 const DEFAULT_W = 200;
 
-export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
+export function StateNode({ id, data, selected, isConnectable }: NodeProps<StateNodeType>) {
   const status = data.status ?? 'idle';
   const description = data.detail?.summary ?? data.kind;
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
@@ -133,12 +133,14 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         type="target"
         position={Position.Top}
         id="t"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="l"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <div
@@ -212,12 +214,14 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         type="source"
         position={Position.Right}
         id="r"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="b"
+        isConnectable={isConnectable}
         className={cn('opacity-0 transition-opacity', selected && '!opacity-100')}
       />
     </div>
