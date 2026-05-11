@@ -3,9 +3,11 @@ import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { GroupNodeData } from '@/lib/api';
+import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import type { Node, NodeProps } from '@xyflow/react';
 import {
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   memo,
@@ -41,6 +43,31 @@ export const GROUP_DEFAULT_SIZE = { width: 320, height: 220 } as const;
 // so children whose `parentId` points at the group don't visually collide with
 // the label text. ~28px matches the AC's "empty ~28px tall strip" requirement.
 const LABEL_SLOT_HEIGHT = 28;
+
+// US-005: resolve persisted style fields into an inline CSSProperties block.
+// Only includes the keys that are actually set in `data` so the default CSS
+// chrome (.react-flow__node-group: 1px dashed border, transparent fill) keeps
+// applying for the unset axes. Color tokens are resolved via colorTokenStyle
+// (same path shape-node uses). `borderWidth` is the PRD-canonical name (NOT
+// `borderSize` — that's the shape-node spelling).
+export function groupChromeStyle(
+  data: Pick<GroupNodeData, 'backgroundColor' | 'borderColor' | 'borderWidth' | 'borderStyle'>,
+): CSSProperties {
+  const style: CSSProperties = {};
+  if (data.backgroundColor !== undefined) {
+    style.backgroundColor = colorTokenStyle(data.backgroundColor, 'node').backgroundColor;
+  }
+  if (data.borderColor !== undefined) {
+    style.borderColor = colorTokenStyle(data.borderColor, 'node').borderColor;
+  }
+  if (data.borderWidth !== undefined) {
+    style.borderWidth = data.borderWidth;
+  }
+  if (data.borderStyle !== undefined) {
+    style.borderStyle = data.borderStyle;
+  }
+  return style;
+}
 
 function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
@@ -78,15 +105,24 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   // Chrome (dashed border, transparent fill, selected outline) lives in CSS
   // (.react-flow__node-group rules in apps/web/src/index.css) so this
   // component's render stays minimal and theme/style changes don't touch JSX.
+  // US-005: when `data` provides any of the persisted style fields
+  // (backgroundColor / borderColor / borderWidth / borderStyle), the resolved
+  // values are merged onto the outer div's inline style so they win over the
+  // CSS defaults via specificity. Unset fields fall through to the CSS chrome.
+  const chromeStyle = groupChromeStyle(data);
+  const hasChromeStyle = Object.keys(chromeStyle).length > 0;
+  const sizeStyle: CSSProperties | null = sized
+    ? null
+    : { width: GROUP_DEFAULT_SIZE.width, height: GROUP_DEFAULT_SIZE.height };
+  const inlineStyle: CSSProperties | undefined =
+    sizeStyle || hasChromeStyle ? { ...(sizeStyle ?? {}), ...chromeStyle } : undefined;
   return (
     <div
       className={cn('relative', sized ? 'h-full w-full' : '')}
       data-testid="group-node"
       data-label={data.label && data.label.length > 0 ? data.label : undefined}
       data-active={data.isActive ? 'true' : undefined}
-      style={
-        sized ? undefined : { width: GROUP_DEFAULT_SIZE.width, height: GROUP_DEFAULT_SIZE.height }
-      }
+      style={inlineStyle}
     >
       <ResizeControls
         visible={!!selected && !!data.onResize && !isEditing && !data.locked}

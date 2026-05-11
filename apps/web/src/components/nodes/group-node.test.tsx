@@ -1,7 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { InlineEdit } from '@/components/inline-edit';
-import { GROUP_DEFAULT_SIZE, GroupNode } from '@/components/nodes/group-node';
+import { GROUP_DEFAULT_SIZE, GroupNode, groupChromeStyle } from '@/components/nodes/group-node';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { colorTokenStyle } from '@/lib/color-tokens';
 import type { NodeProps } from '@xyflow/react';
 import * as React from 'react';
 
@@ -337,5 +338,104 @@ describe('GroupNode label editing (US-014)', () => {
     // label string.
     const child = slot.props.children;
     expect(child).not.toBe('Pipeline');
+  });
+});
+
+describe('GroupNode style fields (US-005)', () => {
+  // US-005: when data exposes any of the persisted style fields
+  // (backgroundColor / borderColor / borderWidth / borderStyle), they render
+  // as inline styles on the outer div. Unset fields fall through to the
+  // default CSS chrome (.react-flow__node-group: 1px dashed, transparent).
+  it('applies no chrome-style keys when all style fields are absent', () => {
+    // sized=false (no width/height) so the inline style still carries the
+    // GROUP_DEFAULT_SIZE block but contains NO chrome keys — proves the
+    // helper only emits keys for set fields.
+    const tree = callGroupNode({});
+    if (!isElement(tree)) throw new Error('expected element');
+    const style = tree.props.style as Record<string, unknown> | undefined;
+    if (!style) throw new Error('expected an inline style block (GROUP_DEFAULT_SIZE)');
+    expect(style.backgroundColor).toBeUndefined();
+    expect(style.borderColor).toBeUndefined();
+    expect(style.borderWidth).toBeUndefined();
+    expect(style.borderStyle).toBeUndefined();
+    // GROUP_DEFAULT_SIZE block still applies — the absence-of-chrome assertion
+    // must not regress the existing default-size behavior.
+    expect(style.width).toBe(GROUP_DEFAULT_SIZE.width);
+    expect(style.height).toBe(GROUP_DEFAULT_SIZE.height);
+  });
+
+  it('applies all four style fields via inline style when set', () => {
+    const tree = callGroupNode({
+      backgroundColor: 'blue',
+      borderColor: 'amber',
+      borderWidth: 3,
+      borderStyle: 'dashed',
+    });
+    if (!isElement(tree)) throw new Error('expected element');
+    const style = tree.props.style as Record<string, unknown> | undefined;
+    if (!style) throw new Error('expected inline style');
+    // Color tokens resolve via colorTokenStyle('node') — match those exact
+    // values rather than hard-coding HSL strings here.
+    expect(style.backgroundColor).toBe(colorTokenStyle('blue', 'node').backgroundColor);
+    expect(style.borderColor).toBe(colorTokenStyle('amber', 'node').borderColor);
+    expect(style.borderWidth).toBe(3);
+    expect(style.borderStyle).toBe('dashed');
+  });
+
+  it('applies a partial set (borderWidth only) without polluting other keys', () => {
+    const tree = callGroupNode({ borderWidth: 5 });
+    if (!isElement(tree)) throw new Error('expected element');
+    const style = tree.props.style as Record<string, unknown> | undefined;
+    if (!style) throw new Error('expected inline style');
+    expect(style.borderWidth).toBe(5);
+    // Other chrome keys remain absent so the CSS default still wins.
+    expect(style.backgroundColor).toBeUndefined();
+    expect(style.borderColor).toBeUndefined();
+    expect(style.borderStyle).toBeUndefined();
+  });
+
+  it('applies chrome style even when sized (wrapper owns width/height)', () => {
+    // sized=true (data.width set) → previous behavior was style=undefined.
+    // With chrome fields set, the inline style now carries ONLY chrome keys
+    // (no width/height — wrapper still owns dimensions).
+    const tree = callGroupNode({
+      width: 400,
+      height: 300,
+      backgroundColor: 'green',
+      borderStyle: 'solid',
+    });
+    if (!isElement(tree)) throw new Error('expected element');
+    const style = tree.props.style as Record<string, unknown> | undefined;
+    if (!style) throw new Error('expected inline style with chrome keys');
+    expect(style.backgroundColor).toBe(colorTokenStyle('green', 'node').backgroundColor);
+    expect(style.borderStyle).toBe('solid');
+    // Wrapper owns dimensions — no width/height inline.
+    expect(style.width).toBeUndefined();
+    expect(style.height).toBeUndefined();
+  });
+
+  it('returns undefined inline style when sized AND no chrome fields set', () => {
+    // Regression: pre-US-005 behavior. sized + no chrome → no inline style at
+    // all (avoids redundant style block).
+    const tree = callGroupNode({ width: 400, height: 300 });
+    if (!isElement(tree)) throw new Error('expected element');
+    expect(tree.props.style).toBeUndefined();
+  });
+
+  it('groupChromeStyle helper returns an empty object for empty input', () => {
+    expect(groupChromeStyle({})).toEqual({});
+  });
+
+  it('groupChromeStyle helper resolves color tokens and passes width/style through', () => {
+    const result = groupChromeStyle({
+      backgroundColor: 'pink',
+      borderColor: 'purple',
+      borderWidth: 2,
+      borderStyle: 'dotted',
+    });
+    expect(result.backgroundColor).toBe(colorTokenStyle('pink', 'node').backgroundColor);
+    expect(result.borderColor).toBe(colorTokenStyle('purple', 'node').borderColor);
+    expect(result.borderWidth).toBe(2);
+    expect(result.borderStyle).toBe('dotted');
   });
 });

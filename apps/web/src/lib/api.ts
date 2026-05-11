@@ -111,6 +111,14 @@ export interface GroupNodeData {
   height?: number;
   /** US-019: lock state mirror — see NodeVisual.locked. */
   locked?: boolean;
+  /** US-001/US-005: group chrome overrides. When any field is absent, the
+   * default chrome from `apps/web/src/index.css` (`.react-flow__node-group`:
+   * 1px dashed, transparent fill) applies. Field naming follows the PRD
+   * (`borderWidth`, NOT `borderSize` like shape nodes use). */
+  backgroundColor?: ColorToken;
+  borderColor?: ColorToken;
+  borderWidth?: number;
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
 }
 
 interface NodeBase {
