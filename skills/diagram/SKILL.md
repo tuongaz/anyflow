@@ -123,6 +123,14 @@ and a good diagram almost always contains BOTH paired together:
   that arrives, the queue message that gets consumed, the email
   that gets sent.
 
+**Pair only across real seams.** Apply the abstraction rule ("Pick
+the right abstraction", below) FIRST to decide what counts as a node,
+then add observers for async consequences that cross those seams.
+An S3 bucket downstream of an "Upload file" trigger is a real seam —
+pair it. An auth middleware downstream of a `POST /orders` handler is
+not — collapse it into the handler's description, do not give it an
+observer.
+
 Canonical pairing: a user clicks a **trigger** `playNode` labeled
 "Upload file"; the request flows through the harness; the harness
 emits `running` then `done` to a downstream **observer** `stateNode`
@@ -328,19 +336,16 @@ Canonical trap: a Temporal workflow with twelve activities. DON'T draw
 twelve nodes for `validateOrder`, `chargePayment`, `reserveInventory`,
 `sendEmail`, and their compensation siblings — DO draw ONE node "Order
 workflow (Temporal)" and list the activities in
-`data.detail.description`. The same logic applies to: AWS Lambda
-handlers (one node, not gateway+authorizer+dispatcher), database
-transactions (one node, not every statement), middleware chains (one
-node, not auth+rate-limit+CORS+logging), React component trees (one
-node per page), ETL CLI invocations (one node per CLI command), state
-machines (one stateNode for the FSM, not one per state), caching
-layers (one stateNode for the cache), and MCP/gRPC services (one
-node per *tool the demo exercises*, not per dispatcher layer).
+`data.detail.description`. The same logic applies to Lambda handlers,
+DB transactions, middleware chains, React component trees, ETL CLI
+invocations, state machines, caching layers, message-broker consumer
+groups, auth/IdP handshakes, and MCP/gRPC services.
 
-**Read `references/abstraction-level.md`** for the full catalogue
-across workflow engines, serverless, databases, app code structure,
-data pipelines, state/caching, service mesh, and protocol surfaces,
-plus the "when TO expand internals" criteria.
+**Read `references/abstraction-level.md`** for the full DO/DON'T
+catalogue across workflow engines, serverless, databases, app code
+structure, data pipelines, state/caching, service mesh, protocol
+surfaces, message-broker internals, and auth/identity, plus the "when
+TO expand internals" criteria.
 
 ### The "next adjacent node" test
 

@@ -123,6 +123,41 @@ didn't ask about.
   DO draw only the topics the demo's flow publishes to or consumes
   from.
 
+### Message broker internals
+
+- **Kafka consumer group** — DON'T draw broker + partition assigner
+  + rebalance coordinator + per-partition consumer as four nodes.
+  DO draw ONE node per logical consumer (e.g. "Orders consumer")
+  and mention the consumer-group / partition strategy in the
+  description.
+- **SQS + SNS fan-out** — DON'T draw SNS topic + per-subscription
+  filter + per-queue + per-consumer. DO draw ONE node per logical
+  subscriber that the reader cares about; collapse the fan-out
+  topology into the publisher's description.
+- **Redis Streams consumer group** — DON'T draw `XADD` + `XREADGROUP`
+  + claim handler + PEL inspector. DO draw ONE node per logical
+  worker; note the group/PEL behavior in the description only when
+  the reader cares about retry semantics.
+- **Pub/Sub push vs pull subscriptions** — DON'T draw the
+  push-endpoint + the retry-policy + the dead-letter as separate
+  nodes. DO draw ONE subscriber node and mention DLQ/retry policy
+  in the description.
+
+### Auth / identity providers
+
+- **OIDC / OAuth2 handshake** — DON'T draw redirect → authorize
+  endpoint → callback → token exchange → JWKS lookup → refresh as
+  six nodes. DO draw ONE node "Auth0" (or "Okta", "Cognito",
+  "Clerk", …) with the protocol in the description.
+- **JWT verification** — DON'T draw "extract token" + "fetch JWKS"
+  + "verify signature" + "check claims" as four nodes inside an
+  API request flow. DO collapse it into the API handler's
+  description; the reader doesn't need to navigate the verification
+  pipeline.
+- **Session management** — DON'T draw session store + CSRF guard
+  + cookie signer + session refresher. DO draw ONE `stateNode`
+  "Session store" if it matters; otherwise omit.
+
 ## When TO expand internals
 
 Expose internal structure ONLY when:
