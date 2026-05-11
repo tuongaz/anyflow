@@ -1,5 +1,6 @@
 import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
+import { IconNode } from '@/components/nodes/icon-node';
 import { IMAGE_DEFAULT_SIZE, ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
 import { SHAPE_DEFAULT_SIZE, ShapeNode } from '@/components/nodes/shape-node';
@@ -397,6 +398,7 @@ const nodeTypes = {
   stateNode: StateNode,
   shapeNode: ShapeNode,
   imageNode: ImageNode,
+  iconNode: IconNode,
 };
 const edgeTypes = { editableEdge: EditableEdge };
 
