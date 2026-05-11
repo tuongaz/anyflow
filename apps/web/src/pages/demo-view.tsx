@@ -594,6 +594,85 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-007: atomic multi-select bounding-box resize. The canvas overlay
+  // pre-computes each scaled node's position/size and dispatches the whole
+  // batch via this callback; we commit it as ONE undo entry — Cmd+Z reverts
+  // every node's position + size together. Mirrors `onGroupResizeWithChildren`
+  // (US-006) and `onStyleNodes` (US-008): snapshot prev for each target, fan
+  // out optimistic overrides BEFORE the PATCHes so the canvas stays pinned
+  // through the SSE round-trip, push ONE undo, then fire-and-forget PATCH
+  // fan-out. Per-node PATCH failure drops that node's override + surfaces a
+  // single banner — the undo entry stays intact (mirrors the group-resize
+  // batch path).
+  const onMultiResize = useCallback(
+    (
+      updates: {
+        id: string;
+        position: { x: number; y: number };
+        width?: number;
+        height?: number;
+      }[],
+    ) => {
+      if (!demoId || updates.length === 0) return;
+      type DimsPatch = {
+        width?: number;
+        height?: number;
+        position: { x: number; y: number };
+      };
+      type Target = { id: string; prev: DimsPatch; next: DimsPatch };
+      const targets: Target[] = [];
+      for (const u of updates) {
+        const node = demoNodes?.find((n) => n.id === u.id);
+        if (!node) continue;
+        const nData = node.data as { width?: number; height?: number };
+        const prev: DimsPatch = {
+          position: { x: node.position.x, y: node.position.y },
+        };
+        if (nData.width !== undefined) prev.width = nData.width;
+        if (nData.height !== undefined) prev.height = nData.height;
+        const next: DimsPatch = { position: u.position };
+        if (u.width !== undefined) next.width = u.width;
+        if (u.height !== undefined) next.height = u.height;
+        targets.push({ id: u.id, prev, next });
+      }
+      if (targets.length === 0) return;
+      for (const t of targets) {
+        const dataPatch: { width?: number; height?: number } = {};
+        if (t.next.width !== undefined) dataPatch.width = t.next.width;
+        if (t.next.height !== undefined) dataPatch.height = t.next.height;
+        setNodeOverride(t.id, {
+          position: t.next.position,
+          ...(Object.keys(dataPatch).length > 0 ? { data: dataPatch } : {}),
+        } as Partial<DemoNode>);
+      }
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled(targets.map((t) => updateNode(demoId, t.id, t.next)));
+        },
+        undo: async () => {
+          await Promise.allSettled(targets.map((t) => updateNode(demoId, t.id, t.prev)));
+        },
+      });
+      Promise.all(
+        targets.map(async (t) => {
+          try {
+            await updateNode(demoId, t.id, t.next);
+            return null;
+          } catch (err) {
+            dropNodeOverride(t.id);
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ).then((errs) => {
+        const first = errs.find((e): e is string => e !== null);
+        if (first) setEditError(first);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   const { setOverride: setConnectorOverride, dropOverride: dropConnectorOverride } =
     connectorPending;
 
@@ -3029,6 +3108,7 @@ export function DemoView({
           onNodePositionsChange={onNodePositionsChange}
           onNodeResize={onNodeResize}
           onGroupResizeWithChildren={onGroupResizeWithChildren}
+          onMultiResize={onMultiResize}
           onNodeLabelChange={onNodeLabelChange}
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}

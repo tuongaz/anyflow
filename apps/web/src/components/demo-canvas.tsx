@@ -13,6 +13,11 @@ import {
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import {
+  type MultiResizeUpdate,
+  type OverlayInputNode,
+  SelectionResizeOverlay,
+} from '@/components/selection-resize-overlay';
+import {
   type ConnectorStylePatch,
   type NodeStylePatch,
   StyleStrip,
@@ -140,6 +145,21 @@ export interface DemoCanvasProps {
       height?: number;
     }[];
   }) => void;
+  /**
+   * US-007: atomic multi-select bounding-box resize. Fired once per resize-stop
+   * with EVERY scaled node's final position (and, for sized nodes, width/
+   * height). The selection bounding overlay renders when ≥ 2 loose nodes are
+   * selected and computes the scale via `scaleNodesWithinRect`; the parent
+   * commits the batch as ONE undo entry so Cmd+Z reverts every scaled node
+   * together. Locked nodes inside the selection are filtered out of the
+   * dispatched updates (the helper passes them through unchanged, so they'd
+   * be no-op PATCHes otherwise). When this prop is absent the overlay still
+   * renders for visual feedback but resize gestures dispatch nothing —
+   * legacy callers that haven't wired the batch path get a no-op gesture
+   * (no per-node fallback because there's no defensible single-node
+   * substitute for a multi-node scale).
+   */
+  onMultiResize?: (updates: MultiResizeUpdate[]) => void;
   /** Persist a new node label (PATCH /nodes/:id { label }). */
   onNodeLabelChange?: (nodeId: string, label: string) => void;
   /** Persist a new node description on detail.summary. */
@@ -643,6 +663,7 @@ export function DemoCanvas({
   onNodePositionsChange,
   onNodeResize,
   onGroupResizeWithChildren,
+  onMultiResize,
   onNodeLabelChange,
   onNodeDescriptionChange,
   onConnectorLabelChange,
@@ -1359,6 +1380,41 @@ export function DemoCanvas({
     () => new Set(selectedConnectorIds),
     [selectedConnectorIds],
   );
+
+  // US-007: payload for the multi-select bounding-box resize overlay. Reduces
+  // the canvas's `nodes` prop down to the minimum shape `<SelectionResizeOverlay>`
+  // needs (id + position + parentId + width/height/locked) and applies any
+  // optimistic position/data overrides so the overlay rect tracks the live
+  // canvas, not the server snapshot. The overlay decides presence internally
+  // (≥ 2 selected AND not all sharing a single parent) so we pass through
+  // unconditionally — empty / ineligible selections render nothing.
+  const selectionOverlayNodes = useMemo<OverlayInputNode[]>(() => {
+    if (selectedNodeIds.length < 2) return [];
+    const overrides = nodeOverrides;
+    const overlayInputs: OverlayInputNode[] = [];
+    for (const id of selectedNodeIds) {
+      const base = nodes.find((n) => n.id === id);
+      if (!base) continue;
+      const override = overrides?.[id];
+      const oData = (override?.data ?? {}) as {
+        width?: number;
+        height?: number;
+        locked?: boolean;
+      };
+      const bData = base.data as { width?: number; height?: number; locked?: boolean };
+      overlayInputs.push({
+        id,
+        position: override?.position ?? base.position,
+        parentId: base.parentId,
+        data: {
+          width: oData.width ?? bData.width,
+          height: oData.height ?? bData.height,
+          locked: oData.locked ?? bData.locked,
+        },
+      });
+    }
+    return overlayInputs;
+  }, [nodes, nodeOverrides, selectedNodeIds]);
 
   // When the active group disappears from `nodes` (ungrouped, deleted, or the
   // demo loaded a different file), drop the activeGroupId so the gating
@@ -2765,6 +2821,14 @@ export function DemoCanvas({
         <StoreApiBridge storeApiRef={storeApiRef} />
         <Background gap={12} size={0.6} />
         <Controls showInteractive={false} />
+        {/* US-007: multi-select bounding-box resize overlay. Renders only when
+            ≥ 2 selected nodes are NOT all children of the same group; the
+            internal check is in `<SelectionResizeOverlay>`. We pass through
+            unconditionally — empty / ineligible selections render nothing. */}
+        <SelectionResizeOverlay
+          selectedNodes={selectionOverlayNodes}
+          onMultiResize={onMultiResize}
+        />
         {onCreateShapeNode || onStyleNode || onStyleConnector ? (
           <Panel position="top-left">
             <div className="flex flex-col gap-2">

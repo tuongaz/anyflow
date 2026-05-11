@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { DemoCanvas, type DemoCanvasProps } from '@/components/demo-canvas';
+import {
+  type MultiResizeUpdate,
+  SelectionResizeOverlay,
+} from '@/components/selection-resize-overlay';
 import type { DemoNode } from '@/lib/api';
 import { type Connection, type Node, ReactFlow } from '@xyflow/react';
 import * as React from 'react';
@@ -1069,6 +1073,146 @@ describe('DemoCanvas', () => {
       cb('g', { x: 0, y: 0, width: 200, height: 200 });
       expect(captured.length).toBe(0);
       expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
+    });
+  });
+
+  describe('US-007: multi-select bounding-box resize overlay', () => {
+    // The overlay component itself decides presence via
+    // `selectionEligibleForOverlay`; here we test the canvas-side wiring —
+    // that the right `selectedNodes` payload reaches the overlay (with
+    // optimistic overrides applied and parent-id preserved) and that
+    // `onMultiResize` is forwarded through. The pointer-driven scaling is
+    // exercised in selection-resize-overlay.test.tsx via the pure helpers.
+    function makeSizedShape(
+      id: string,
+      pos: { x: number; y: number },
+      dims: { width: number; height: number },
+      extra: { locked?: boolean; parentId?: string } = {},
+    ): DemoNode {
+      const node: DemoNode = {
+        id,
+        type: 'shapeNode',
+        position: pos,
+        data: { label: id, shape: 'rectangle', width: dims.width, height: dims.height },
+      };
+      if (extra.locked !== undefined) {
+        (node.data as { locked?: boolean }).locked = extra.locked;
+      }
+      if (extra.parentId !== undefined) node.parentId = extra.parentId;
+      return node;
+    }
+
+    function findOverlay(props: Partial<DemoCanvasProps>): {
+      tree: unknown;
+      overlay: ReturnType<typeof findElement>;
+    } {
+      const tree = callDemoCanvas(props);
+      const overlay = findElement(tree, (el) => el.type === SelectionResizeOverlay);
+      return { tree, overlay };
+    }
+
+    it('renders the overlay element with the selected nodes payload when ≥ 2 are selected', () => {
+      const { overlay } = findOverlay({
+        nodes: [
+          makeSizedShape('a', { x: 0, y: 0 }, { width: 50, height: 50 }),
+          makeSizedShape('b', { x: 100, y: 100 }, { width: 50, height: 50 }),
+        ],
+        selectedNodeIds: ['a', 'b'],
+        onMultiResize: () => {},
+      });
+      if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
+      const selected = overlay.props.selectedNodes as ReadonlyArray<{
+        id: string;
+        position: { x: number; y: number };
+        data: { width?: number; height?: number; locked?: boolean };
+      }>;
+      expect(selected.map((n) => n.id)).toEqual(['a', 'b']);
+      expect(selected[0]?.data.width).toBe(50);
+      expect(selected[1]?.position).toEqual({ x: 100, y: 100 });
+    });
+
+    it('passes an empty selectedNodes array when fewer than 2 nodes are selected', () => {
+      const { overlay } = findOverlay({
+        nodes: [makeSizedShape('a', { x: 0, y: 0 }, { width: 50, height: 50 })],
+        selectedNodeIds: ['a'],
+      });
+      if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
+      const selected = overlay.props.selectedNodes as ReadonlyArray<unknown>;
+      expect(selected).toEqual([]);
+    });
+
+    it('preserves each selected node’s parentId so the overlay can gate same-group selections', () => {
+      // Same-group children — the overlay's own eligibility check (tested in
+      // selection-resize-overlay.test.tsx) returns false here; the canvas
+      // just needs to forward the parentId so the gating can fire.
+      const { overlay } = findOverlay({
+        nodes: [
+          {
+            id: 'g',
+            type: 'group',
+            position: { x: 0, y: 0 },
+            data: { width: 200, height: 200 },
+          },
+          makeSizedShape('c1', { x: 10, y: 10 }, { width: 30, height: 30 }, { parentId: 'g' }),
+          makeSizedShape('c2', { x: 50, y: 50 }, { width: 30, height: 30 }, { parentId: 'g' }),
+        ],
+        selectedNodeIds: ['c1', 'c2'],
+      });
+      if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
+      const selected = overlay.props.selectedNodes as ReadonlyArray<{
+        id: string;
+        parentId?: string;
+      }>;
+      expect(selected.map((n) => n.parentId)).toEqual(['g', 'g']);
+    });
+
+    it('forwards the onMultiResize prop unchanged so resize-stop dispatches to the parent', () => {
+      const dispatched: MultiResizeUpdate[][] = [];
+      const onMultiResize = (updates: MultiResizeUpdate[]) => {
+        dispatched.push(updates);
+      };
+      const { overlay } = findOverlay({
+        nodes: [
+          makeSizedShape('a', { x: 0, y: 0 }, { width: 50, height: 50 }),
+          makeSizedShape('b', { x: 100, y: 100 }, { width: 50, height: 50 }),
+        ],
+        selectedNodeIds: ['a', 'b'],
+        onMultiResize,
+      });
+      if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
+      const wired = overlay.props.onMultiResize as ((u: MultiResizeUpdate[]) => void) | undefined;
+      expect(typeof wired).toBe('function');
+      wired?.([{ id: 'a', position: { x: 5, y: 5 } }]);
+      expect(dispatched).toEqual([[{ id: 'a', position: { x: 5, y: 5 } }]]);
+    });
+
+    it('applies optimistic position + data overrides to the overlay payload', () => {
+      // The canvas merges overrides over the server snapshot before handing
+      // the array to the overlay — a mid-flight PATCH on node A's position
+      // should pin the rect to the optimistic value, not snap back to the
+      // server one while waiting for the SSE echo.
+      const { overlay } = findOverlay({
+        nodes: [
+          makeSizedShape('a', { x: 0, y: 0 }, { width: 50, height: 50 }),
+          makeSizedShape('b', { x: 100, y: 100 }, { width: 50, height: 50 }),
+        ],
+        selectedNodeIds: ['a', 'b'],
+        nodeOverrides: {
+          a: {
+            position: { x: 25, y: 30 },
+            data: { width: 70, height: 70, locked: true },
+          } as Partial<DemoNode>,
+        },
+      });
+      if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
+      const selected = overlay.props.selectedNodes as ReadonlyArray<{
+        id: string;
+        position: { x: number; y: number };
+        data: { width?: number; height?: number; locked?: boolean };
+      }>;
+      const a = selected.find((n) => n.id === 'a');
+      expect(a?.position).toEqual({ x: 25, y: 30 });
+      expect(a?.data).toEqual({ width: 70, height: 70, locked: true });
     });
   });
 });
