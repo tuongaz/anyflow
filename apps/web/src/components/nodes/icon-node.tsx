@@ -1,3 +1,4 @@
+import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { IconNodeData } from '@/lib/api';
@@ -5,7 +6,7 @@ import { colorTokenStyle } from '@/lib/color-tokens';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
 
 export type IconNodeRuntimeData = IconNodeData & {
   onResize?: (
@@ -13,11 +14,12 @@ export type IconNodeRuntimeData = IconNodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
-  // US-016: double-click an iconNode → open the picker in replace mode.
-  // Wired by demo-canvas's buildNode for iconNode-typed nodes and dispatched
-  // by demo-view's openIconPicker('replace', id). Absent → dblclick is a no-op
-  // (the no-demo / readonly contexts where the picker isn't wired).
-  onRequestIconReplace?: (nodeId: string) => void;
+  // US-004: persist the inline-edited label (PATCH /nodes/:id { label }).
+  // Mirrors the shape-node label-edit path; demo-view's onNodeLabelChange
+  // pushes a single coalesced undo entry per edit session (500ms window).
+  // Absent → dblclick is a no-op (the no-demo / readonly contexts where
+  // label edits aren't wired).
+  onLabelChange?: (nodeId: string, label: string) => void;
 } & Record<string, unknown>;
 export type IconNodeType = Node<IconNodeRuntimeData, 'iconNode'>;
 
@@ -49,6 +51,8 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
     setResizing: data.setResizing,
   });
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
+  const labelEditable = !!data.onLabelChange;
+  const [isEditing, setIsEditing] = useState(false);
 
   const requested = ICON_REGISTRY[data.icon];
   if (!requested && !WARNED_NAMES.has(data.icon)) {
@@ -74,14 +78,14 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
       : {}),
   };
 
-  // US-016: dblclick opens the picker in replace mode for this node. Mirrors
-  // shape-node's dblclick-to-edit-label convention — primary content gets
-  // edited. stopPropagation prevents React Flow's canvas dblclick handler from
-  // also firing (which creates a new shape in some regions).
+  // US-004: dblclick enters inline label-edit mode (replaces the US-016
+  // picker-on-dblclick binding; the picker now opens via the US-003 right-click
+  // "Change icon" item). No-op when label edits aren't wired (e.g. readonly).
+  // stopPropagation prevents React Flow's canvas dblclick handler from firing.
   const handleDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!data.onRequestIconReplace) return;
+    if (!labelEditable || isEditing) return;
     e.stopPropagation();
-    data.onRequestIconReplace(id);
+    setIsEditing(true);
   };
 
   return (
@@ -92,7 +96,7 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
       onDoubleClick={handleDoubleClick}
     >
       <ResizeControls
-        visible={!!selected && !!data.onResize}
+        visible={!!selected && !!data.onResize && !isEditing}
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
@@ -122,7 +126,21 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
           className="block h-full w-full pointer-events-none select-none"
         />
       ) : null}
-      {data.label ? (
+      {isEditing && labelEditable ? (
+        // US-004: positioned where the read-mode caption would render (below
+        // the icon, full node width, centered). Wrapped in an absolutely
+        // positioned strip so the icon's bounding box (read by React Flow
+        // for layout + edge geometry) stays identical to the read state.
+        <div className="absolute left-0 right-0 top-full mt-1 text-center text-xs text-muted-foreground">
+          <InlineEdit
+            initialValue={data.label ?? ''}
+            field="icon-node-label"
+            onCommit={(v) => data.onLabelChange?.(id, v)}
+            onExit={() => setIsEditing(false)}
+            placeholder="Label"
+          />
+        </div>
+      ) : data.label ? (
         // US-002: caption below the icon. Absolutely positioned so the icon's
         // bounding box (read by React Flow for layout + edge geometry) is
         // identical whether or not a label is set. Width matches the node so

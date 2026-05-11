@@ -305,8 +305,9 @@ export interface DemoCanvasProps {
   /**
    * US-013/015 (icon picker): controlled-open state for the toolbar's Insert
    * icon popover. Wired through to `<CanvasToolbar>` unchanged. The parent
-   * (demo-view) owns the state slice + pick handler so the detail panel and
-   * iconNode double-click (US-015/US-016) can dispatch into the same picker.
+   * (demo-view) owns the state slice + pick handler so the detail panel,
+   * the right-click "Change icon" menu item (US-003) can all dispatch into
+   * the same picker.
    */
   iconPickerOpen?: boolean;
   /** Open the picker in insert mode (toolbar button click). */
@@ -316,11 +317,14 @@ export interface DemoCanvasProps {
   /** Handle a tile-pick from the popover (mode + viewport are owned upstream). */
   onPickIcon?: (name: string) => void;
   /**
-   * US-016: dispatched by an iconNode's double-click handler. The canvas
-   * injects this into the iconNode's `data` so the wrapper's onDoubleClick
-   * can request the picker open in replace mode for that node. Same handler
-   * the detail panel's "Change icon…" button uses (US-015), just a different
-   * entry point. Absent → iconNode dblclick is a no-op.
+   * US-003: dispatched by the right-click "Change icon" menu item on an
+   * iconNode. The canvas uses this from the menu's onSelect to request the
+   * picker open in replace mode for that node. Same handler the detail
+   * panel's "Change icon…" button uses (US-015), just a different entry
+   * point. Absent → the menu item is hidden. (Previously US-016 also wired
+   * this onto iconNode dblclick; US-004 replaced that path with inline
+   * label edit and the picker is now reachable only via the right-click
+   * menu and the StyleStrip button.)
    */
   onRequestIconReplace?: (nodeId: string) => void;
 }
@@ -1207,10 +1211,6 @@ export function DemoCanvas({
             merged.type === 'shapeNode' || merged.type === 'imageNode' || merged.type === 'iconNode'
               ? undefined
               : onNodeDescriptionChange,
-          // US-016: only wire the replace dispatch on iconNodes — other node
-          // types ignore it, but keeping it iconNode-scoped means the data
-          // shape stays clean (no stray callback on shape/state/image data).
-          onRequestIconReplace: merged.type === 'iconNode' ? onRequestIconReplace : undefined,
           // US-015: inject autoEditOnMount on the freshly drop-popover-created
           // node so it opens in label-edit mode. The flag is consumed once at
           // mount by the node component (lazy useState initializer); leaving
@@ -1264,7 +1264,6 @@ export function DemoCanvas({
     nodeOverrides,
     onNodeLabelChange,
     onNodeDescriptionChange,
-    onRequestIconReplace,
     pendingEditNodeId,
   ]);
 

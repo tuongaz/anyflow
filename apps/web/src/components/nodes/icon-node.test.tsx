@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { InlineEdit } from '@/components/inline-edit';
 import { ICON_FALLBACK_NAME, IconNode } from '@/components/nodes/icon-node';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
@@ -22,7 +23,13 @@ type Hooks = {
   useEffect: () => void;
 };
 
-function renderWithHooks<T>(fn: () => T): T {
+/**
+ * `useStateOverrides`, when provided, replaces the Nth useState call's initial
+ * value with the corresponding entry from the array (undefined = passthrough).
+ * The setter remains a no-op — tests that need to observe a post-setter render
+ * call the renderer again with the desired override instead.
+ */
+function renderWithHooks<T>(fn: () => T, useStateOverrides?: ReadonlyArray<unknown>): T {
   const internals = (
     React as unknown as {
       __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED: {
@@ -31,8 +38,12 @@ function renderWithHooks<T>(fn: () => T): T {
     }
   ).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
   const prev = internals.ReactCurrentDispatcher.current;
+  let useStateIndex = 0;
   internals.ReactCurrentDispatcher.current = {
     useState: <S,>(initial: S | (() => S)) => {
+      const idx = useStateIndex++;
+      const override = useStateOverrides?.[idx];
+      if (override !== undefined) return [override as S, () => {}];
       const value = typeof initial === 'function' ? (initial as () => S)() : initial;
       return [value, () => {}];
     },
@@ -92,7 +103,11 @@ function findAll(tree: unknown, predicate: (el: ReactElementLike) => boolean): R
   return out;
 }
 
-function callIconNode(data: Record<string, unknown>, overrides: Partial<NodeProps> = {}): unknown {
+function callIconNode(
+  data: Record<string, unknown>,
+  overrides: Partial<NodeProps> = {},
+  useStateOverrides?: ReadonlyArray<unknown>,
+): unknown {
   const props = {
     id: 'n1',
     type: 'iconNode',
@@ -108,7 +123,10 @@ function callIconNode(data: Record<string, unknown>, overrides: Partial<NodeProp
     selectable: true,
     ...overrides,
   } as unknown as NodeProps;
-  return renderWithHooks(() => (IconNode as unknown as (p: NodeProps) => unknown)(props));
+  return renderWithHooks(
+    () => (IconNode as unknown as (p: NodeProps) => unknown)(props),
+    useStateOverrides,
+  );
 }
 
 describe('IconNode', () => {
@@ -272,32 +290,93 @@ describe('IconNode', () => {
     expect(onResize).toHaveBeenCalledWith('n1', { width: 200, height: 120, x: 10, y: 20 });
   });
 
-  it('dblclick dispatches onRequestIconReplace with the node id and stops propagation', () => {
-    // US-016: double-click an iconNode → open the picker in replace mode.
-    const onRequestIconReplace = mock(() => {});
-    // The tree's root element IS the wrapper div, so we inspect its
-    // onDoubleClick prop directly. No need to walk — `callIconNode` returns
-    // the JSX returned by IconNode, which is the wrapper.
-    const tree = callIconNode({ icon: 'shopping-cart', onRequestIconReplace }, {
-      id: 'icon-42',
-    } as Partial<NodeProps>);
+  it('dblclick enters inline label-edit mode when onLabelChange is wired (US-004)', () => {
+    // US-004: dblclick now enters inline label-edit mode (replacing the
+    // US-016 picker-on-dblclick binding; the picker is now reachable via
+    // the US-003 right-click menu item).
+    const onLabelChange = mock(() => {});
+    const tree = callIconNode({ icon: 'shopping-cart', onLabelChange });
     if (!isElement(tree)) throw new Error('IconNode did not return a React element');
-    expect(tree.props['data-testid']).toBe('icon-node');
     const onDoubleClick = tree.props.onDoubleClick as
       | ((e: { stopPropagation: () => void }) => void)
       | undefined;
     expect(onDoubleClick).toBeDefined();
 
-    // Verify stopPropagation is called BEFORE the dispatch (matches the
-    // PRD's "wrapping div with its own onDoubleClick spy" — under the
-    // hook-shim there's no real DOM event, so we approximate by spying on
-    // stopPropagation directly; a real wrapping listener wouldn't fire if
-    // stopPropagation is called on the event).
+    // The handler stops propagation so React Flow's pane dblclick (which
+    // creates a new shape in some regions) doesn't also fire. A wrapping
+    // listener wouldn't fire if stopPropagation is called on the event.
     const stopPropagation = mock(() => {});
     onDoubleClick?.({ stopPropagation });
     expect(stopPropagation).toHaveBeenCalledTimes(1);
-    expect(onRequestIconReplace).toHaveBeenCalledTimes(1);
-    expect(onRequestIconReplace).toHaveBeenCalledWith('icon-42');
+    // The handler does NOT call onLabelChange directly — it flips local
+    // editing state, then the InlineEdit commits on Enter/blur.
+    expect(onLabelChange).not.toHaveBeenCalled();
+  });
+
+  it('renders an InlineEdit positioned below the icon when editing (US-004)', () => {
+    // Force isEditing=true via the useState override so the editing branch
+    // renders. The InlineEdit wires the prior label as `initialValue`,
+    // forwards commits to `data.onLabelChange(id, ...)`, and clears the
+    // editing flag via `onExit`.
+    const onLabelChange = mock(() => {});
+    const tree = callIconNode(
+      { icon: 'shopping-cart', label: 'Cart', onLabelChange },
+      { id: 'icon-99' } as Partial<NodeProps>,
+      // index 0 = useResizeGesture's `isResizing` (passthrough); index 1 =
+      // the icon-node's own `isEditing` flag (force true to render the editor).
+      [undefined, true],
+    );
+    const editors = findAll(tree, (el) => el.type === InlineEdit);
+    expect(editors).toHaveLength(1);
+    const editor = editors[0];
+    if (!editor) throw new Error('InlineEdit not rendered');
+    const editorProps = editor.props as {
+      initialValue: string;
+      field: string;
+      onCommit: (v: string) => void;
+      onExit: () => void;
+      placeholder?: string;
+    };
+    expect(editorProps.initialValue).toBe('Cart');
+    expect(editorProps.field).toBe('icon-node-label');
+    expect(editorProps.placeholder).toBe('Label');
+    editorProps.onCommit('Basket');
+    expect(onLabelChange).toHaveBeenCalledTimes(1);
+    expect(onLabelChange).toHaveBeenCalledWith('icon-99', 'Basket');
+
+    // Saving an empty string clears the label (US-002 hides the caption when
+    // data.label is empty); the icon-node simply forwards the value.
+    editorProps.onCommit('');
+    expect(onLabelChange).toHaveBeenLastCalledWith('icon-99', '');
+
+    // The read-mode caption is replaced by the editor while editing — no
+    // duplicate label rendered.
+    const readCaptions = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'icon-node-label',
+    );
+    expect(readCaptions).toHaveLength(0);
+
+    // Editor is wrapped in an absolutely-positioned strip below the icon so
+    // the node's bounding box (read by React Flow) is unchanged in edit mode.
+    const strips = findAll(tree, (el) => {
+      if (el.type !== 'div') return false;
+      const cls = String((el.props as { className?: string }).className ?? '');
+      return cls.includes('absolute') && cls.includes('top-full');
+    });
+    expect(strips.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('empty label + editing: InlineEdit initialValue is empty (US-004)', () => {
+    const onLabelChange = mock(() => {});
+    const tree = callIconNode({ icon: 'shopping-cart', onLabelChange }, undefined, [
+      undefined,
+      true,
+    ]);
+    const editors = findAll(tree, (el) => el.type === InlineEdit);
+    expect(editors).toHaveLength(1);
+    const editorProps = editors[0]?.props as { initialValue: string };
+    expect(editorProps.initialValue).toBe('');
   });
 
   it('renders 4 connection handles wired for source/target hit-testing (US-023)', () => {
@@ -328,7 +407,7 @@ describe('IconNode', () => {
     expect(byId.get('b')?.props.position).toBe(Position.Bottom);
   });
 
-  it('dblclick is a no-op (and does NOT stop propagation) when onRequestIconReplace is absent', () => {
+  it('dblclick is a no-op (and does NOT stop propagation) when onLabelChange is absent (US-004)', () => {
     // Read-only / no-demo contexts don't wire the callback; the wrapper
     // should still render with an onDoubleClick handler, but the handler
     // bails before stopPropagation so a wrapping listener (e.g. the canvas
