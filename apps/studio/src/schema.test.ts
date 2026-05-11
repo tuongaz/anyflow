@@ -1413,6 +1413,115 @@ describe('DemoSchema', () => {
     }
   });
 
+  // US-001 (text-and-group-resize): group nodes gain optional style fields
+  // (backgroundColor, borderColor, borderWidth 1–8, borderStyle). They must
+  // round-trip when set and stay absent when omitted (the latter covered by
+  // existing US-011 tests above).
+  it('round-trips a group node with all style fields set (US-001 text-and-group-resize)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'styled-group',
+      nodes: [
+        {
+          id: 'group-1',
+          type: 'group' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'API',
+            width: 320,
+            height: 220,
+            backgroundColor: 'slate' as const,
+            borderColor: 'blue' as const,
+            borderWidth: 3,
+            borderStyle: 'dashed' as const,
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'group') throw new Error('expected group node');
+    expect(node.data.backgroundColor).toBe('slate');
+    expect(node.data.borderColor).toBe('blue');
+    expect(node.data.borderWidth).toBe(3);
+    expect(node.data.borderStyle).toBe('dashed');
+  });
+
+  it('accepts a group node with no style fields (US-001 back-compat)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'minimal-group',
+      nodes: [
+        {
+          id: 'group-1',
+          type: 'group' as const,
+          position: { x: 0, y: 0 },
+          data: { width: 320, height: 220 },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'group') throw new Error('expected group node');
+    expect(node.data.backgroundColor).toBeUndefined();
+    expect(node.data.borderColor).toBeUndefined();
+    expect(node.data.borderWidth).toBeUndefined();
+    expect(node.data.borderStyle).toBeUndefined();
+  });
+
+  it('rejects a group node with borderWidth outside the 1–8 range (US-001)', () => {
+    const tooSmall = {
+      version: 1 as const,
+      name: 'g',
+      nodes: [
+        {
+          id: 'g',
+          type: 'group' as const,
+          position: { x: 0, y: 0 },
+          data: { borderWidth: 0 },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(tooSmall).success).toBe(false);
+
+    const tooLarge = {
+      ...tooSmall,
+      nodes: [
+        {
+          ...tooSmall.nodes[0],
+          data: { borderWidth: 9 },
+        },
+      ],
+    };
+    expect(DemoSchema.safeParse(tooLarge).success).toBe(false);
+  });
+
+  it('rejects a group node with an unknown borderStyle (US-001)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'g',
+      nodes: [
+        {
+          id: 'g',
+          type: 'group' as const,
+          position: { x: 0, y: 0 },
+          data: { borderStyle: 'wobbly' as unknown as 'solid' },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
   it('loads the group-fixture.json smoke fixture with one group + 2 children (US-011)', async () => {
     const data = await readFixture('group-fixture.json');
     const result = DemoSchema.safeParse(data);

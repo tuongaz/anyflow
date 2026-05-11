@@ -180,6 +180,10 @@ const IconNodeSchema = z.object({
 // them relative to the group. No semantic payload; the visual chrome
 // (dashed border, transparent fill) lives in CSS so a future style story
 // can theme it without schema churn.
+// US-001 (text-and-group-resize): optional style fields render via inline
+// style in group-node.tsx (US-005); absent → existing CSS defaults apply.
+// Note: `borderWidth` (not `borderSize`) is the canonical field on groups
+// per the PRD — it constrains to 1–8 vs shape nodes' open-ended borderSize.
 const GroupNodeDataSchema = z.object({
   label: z.string().optional(),
   width: z.number().positive().optional(),
@@ -187,6 +191,10 @@ const GroupNodeDataSchema = z.object({
   // US-019: lock state mirror of NodeVisualBaseShape.locked. GroupNode does
   // not spread the visual base so we declare it here explicitly.
   locked: z.boolean().optional(),
+  backgroundColor: ColorTokenSchema.optional(),
+  borderColor: ColorTokenSchema.optional(),
+  borderWidth: z.number().min(1).max(8).optional(),
+  borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
 });
 
 const GroupNodeSchema = z.object({
