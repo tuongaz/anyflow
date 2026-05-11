@@ -1,3 +1,4 @@
+import { IconPickerPopover } from '@/components/icon-picker-popover';
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -6,6 +7,7 @@ import {
   LayoutDashboard,
   Loader2,
   Printer,
+  Sparkles,
   Square,
   StickyNote,
   Type,
@@ -34,6 +36,22 @@ export interface CanvasToolbarProps {
    * lets the toolbar show an in-flight spinner until the export settles.
    */
   onExportPdf?: () => Promise<unknown> | unknown;
+  /**
+   * US-013 (icon picker): controlled-open state for the insert-icon popover.
+   * The Insert icon button anchors the IconPickerPopover; the toolbar's parent
+   * (demo-canvas) owns the open/close lifecycle so the same slice can serve
+   * insert and replace modes from different call sites.
+   */
+  iconPickerOpen?: boolean;
+  /** Open the picker in insert mode. Wired to the toolbar button's click. */
+  onOpenIconPicker?: () => void;
+  /** Close the picker (outside-click / ESC / programmatic). */
+  onCloseIconPicker?: () => void;
+  /**
+   * Receive the picked icon name. When all four icon-picker props are omitted
+   * the Insert icon button is hidden.
+   */
+  onPickIcon?: (name: string) => void;
 }
 
 export interface ToolbarShapeEntry {
@@ -54,6 +72,7 @@ export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
 const TIDY_LABEL = 'Tidy layout (⌘⇧L)';
 const EXPORT_SVG_LABEL = 'Export SVG';
 const EXPORT_PDF_LABEL = 'Export PDF';
+const INSERT_ICON_LABEL = 'Insert icon';
 
 export function CanvasToolbar({
   activeShape,
@@ -61,6 +80,10 @@ export function CanvasToolbar({
   onTidy,
   onExportSvg,
   onExportPdf,
+  iconPickerOpen,
+  onOpenIconPicker,
+  onCloseIconPicker,
+  onPickIcon,
 }: CanvasToolbarProps) {
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -159,6 +182,36 @@ export function CanvasToolbar({
             <Printer className="h-4 w-4" aria-hidden="true" />
           )}
         </button>
+      ) : null}
+      {onPickIcon ? (
+        <>
+          <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
+          <IconPickerPopover
+            open={iconPickerOpen ?? false}
+            onOpenChange={(next) => {
+              if (next) onOpenIconPicker?.();
+              else onCloseIconPicker?.();
+            }}
+            anchor={
+              <button
+                type="button"
+                data-testid="toolbar-insert-icon"
+                aria-label={INSERT_ICON_LABEL}
+                aria-pressed={iconPickerOpen ?? false}
+                title={INSERT_ICON_LABEL}
+                className={cn(
+                  'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+                  iconPickerOpen
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'hover:bg-accent hover:text-accent-foreground',
+                )}
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              </button>
+            }
+            onPick={onPickIcon}
+          />
+        </>
       ) : null}
     </div>
   );

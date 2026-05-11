@@ -1,5 +1,6 @@
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
 import { IMAGE_DEFAULT_SIZE } from '@/components/nodes/image-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
@@ -1176,6 +1177,56 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-013 (icon picker): commit a new iconNode at the picked viewport
+  // position. Mirrors `onCreateImageNode`: client-side id, optimistic override
+  // so the node appears before the SSE echo arrives, single undo entry pushed
+  // from the .then so it binds to the server-issued id. The new node is also
+  // marked selected on success so the detail panel + style strip open on it.
+  const onCreateIconNode = useCallback(
+    (iconName: string, position: Position) => {
+      if (!demoId) return;
+      setEditError(null);
+      const id = `node-${crypto.randomUUID()}`;
+      const data = {
+        icon: iconName,
+        width: ICON_DEFAULT_SIZE.width,
+        height: ICON_DEFAULT_SIZE.height,
+      };
+      const payload = {
+        id,
+        type: 'iconNode' as const,
+        position,
+        data,
+      };
+      const optimistic: DemoNode = {
+        id,
+        type: 'iconNode',
+        position,
+        data,
+      };
+      setNodeOverride(id, optimistic as Partial<DemoNode>);
+      setSelectedIds([id]);
+      markMutation();
+      createNode(demoId, payload)
+        .then(({ id: returnedId }) => {
+          pushUndo({
+            do: async () => {
+              await createNode(demoId, { ...payload, id: returnedId });
+            },
+            undo: async () => {
+              await deleteNode(demoId, returnedId);
+            },
+          });
+        })
+        .catch((err) => {
+          dropNodeOverride(id);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createNode (icon) failed', err);
+        });
+    },
+    [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   // US-012: ingest an http(s) URL dropped on the canvas. The canvas hands us
   // the URL it pulled from text/uri-list or text/plain plus the translated
   // drop position. We fetch the URL, validate it's actually an image (Content-
@@ -2171,6 +2222,7 @@ export function DemoView({
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
           onCreateImageNode={demoId ? onCreateImageNode : undefined}
+          onCreateIconNode={demoId ? onCreateIconNode : undefined}
           onIngestImageUrl={demoId ? onIngestImageUrl : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
