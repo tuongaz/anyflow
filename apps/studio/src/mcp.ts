@@ -7,19 +7,23 @@ import {
 import { type ZodTypeAny, z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
+  ConnectorPatchBodySchema,
   CreateProjectBodySchema,
   NodePatchBodySchema,
   type OperationsDeps,
   PositionBodySchema,
   RegisterBodySchema,
   ReorderBodySchema,
+  addConnectorImpl,
   addNodeImpl,
   createProjectImpl,
+  deleteConnectorImpl,
   deleteDemoImpl,
   deleteNodeImpl,
   getDemoImpl,
   listDemosImpl,
   moveNodeImpl,
+  patchConnectorImpl,
   patchNodeImpl,
   registerDemoImpl,
   reorderNodeImpl,
@@ -128,6 +132,30 @@ const ReorderNodeInputSchema = z.discriminatedUnion('op', [
 const PatchNodeInputSchema = NodePatchBodySchema.extend({
   demoId: z.string().min(1),
   nodeId: z.string().min(1),
+});
+
+// add_connector input: { demoId, connector: <connector payload> }. The inner
+// `connector` object is loose (additionalProperties=true via z.record) because
+// DemoSchema runs the full validation server-side after the new connector is
+// merged in (post-mutation parse catches dangling source/target refs and
+// kind-discriminator violations).
+const AddConnectorInputSchema = z.object({
+  demoId: z.string().min(1),
+  connector: z.record(z.unknown()),
+});
+
+// patch_connector input: { demoId, connectorId } merged with the strict
+// ConnectorPatchBodySchema. .extend() preserves strict mode so unknown
+// top-level keys trip the Zod parse before any IO — matching the REST
+// handler's "Invalid connector patch body" 400 path.
+const PatchConnectorInputSchema = ConnectorPatchBodySchema.extend({
+  demoId: z.string().min(1),
+  connectorId: z.string().min(1),
+});
+
+const DeleteConnectorInputSchema = z.object({
+  demoId: z.string().min(1),
+  connectorId: z.string().min(1),
 });
 
 const buildTools = (deps: OperationsDeps): McpTool[] => [
@@ -376,6 +404,99 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
           return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
         case 'unknownNode':
           return errorResult(`Unknown nodeId: ${nodeId}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_add_connector',
+    description:
+      "Append a new connector between two nodes (kind defaults to 'default'; id auto-generated when omitted).",
+    inputSchema: inputSchemaFromZod(AddConnectorInputSchema),
+    handler: async (args) => {
+      const parsed = AddConnectorInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(
+          `Invalid add_connector arguments: ${JSON.stringify(parsed.error.issues)}`,
+        );
+      }
+      const { demoId, connector } = parsed.data;
+      const result = await addConnectorImpl(deps, demoId, connector);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true, id: result.data.id });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_patch_connector',
+    description:
+      'Update fields on an existing connector (label, style, color, kind, per-kind payload, reconnect endpoints).',
+    inputSchema: inputSchemaFromZod(PatchConnectorInputSchema),
+    handler: async (args) => {
+      const parsed = PatchConnectorInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(
+          `Invalid patch_connector arguments: ${JSON.stringify(parsed.error.issues)}`,
+        );
+      }
+      const { demoId, connectorId, ...updates } = parsed.data;
+      const result = await patchConnectorImpl(deps, demoId, connectorId, updates);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'unknownConnector':
+          return errorResult(`Unknown connectorId: ${connectorId}`);
+        case 'writeFailed':
+          return errorResult(`Failed to write demo file: ${result.message}`);
+      }
+    },
+  },
+  {
+    name: 'anydemo_delete_connector',
+    description: 'Delete a connector by id.',
+    inputSchema: inputSchemaFromZod(DeleteConnectorInputSchema),
+    handler: async (args) => {
+      const parsed = DeleteConnectorInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return errorResult(
+          `Invalid delete_connector arguments: ${JSON.stringify(parsed.error.issues)}`,
+        );
+      }
+      const { demoId, connectorId } = parsed.data;
+      const result = await deleteConnectorImpl(deps, demoId, connectorId);
+      switch (result.kind) {
+        case 'ok':
+          return okResult({ ok: true });
+        case 'demoNotFound':
+          return errorResult('unknown demo');
+        case 'fileNotFound':
+          return errorResult(`Demo file not found: ${result.path}`);
+        case 'badJson':
+          return errorResult(`Demo file is not valid JSON: ${result.message}`);
+        case 'badSchema':
+          return errorResult(`Demo failed schema validation: ${JSON.stringify(result.issues)}`);
+        case 'unknownConnector':
+          return errorResult(`Unknown connectorId: ${connectorId}`);
         case 'writeFailed':
           return errorResult(`Failed to write demo file: ${result.message}`);
       }

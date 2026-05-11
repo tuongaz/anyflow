@@ -98,18 +98,21 @@ const expectError = (envelope: JsonRpcEnvelope): string => {
 };
 
 describe('POST /mcp tools/list', () => {
-  it('returns the discovery + node-lifecycle + patch tools (5 + 4 + 1)', async () => {
+  it('returns the discovery + node-lifecycle + patch + connector tools (5 + 4 + 1 + 3)', async () => {
     const { app } = buildApp();
     const envelope = await mcpRequest(app, 'tools/list', {});
     const names = (envelope.result?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
+      'anydemo_add_connector',
       'anydemo_add_node',
       'anydemo_create_project',
+      'anydemo_delete_connector',
       'anydemo_delete_demo',
       'anydemo_delete_node',
       'anydemo_get_demo',
       'anydemo_list_demos',
       'anydemo_move_node',
+      'anydemo_patch_connector',
       'anydemo_patch_node',
       'anydemo_register_demo',
       'anydemo_reorder_node',
@@ -723,5 +726,351 @@ describe('anydemo_patch_node', () => {
     };
     expect(onDisk.nodes[0]?.futureField).toBe('survives');
     expect(onDisk.nodes[0]?.data.label).toBe('After Patch');
+  });
+});
+
+// ---------- Connector CRUD tools (US-005) ----------
+
+const VALID_DEMO_TWO_NODES = {
+  version: 1,
+  name: 'Two Nodes',
+  nodes: [
+    {
+      id: 'a',
+      type: 'playNode',
+      position: { x: 0, y: 0 },
+      data: {
+        label: 'A',
+        kind: 'service',
+        stateSource: { kind: 'request' },
+        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+      },
+    },
+    {
+      id: 'b',
+      type: 'playNode',
+      position: { x: 200, y: 0 },
+      data: {
+        label: 'B',
+        kind: 'service',
+        stateSource: { kind: 'request' },
+        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+      },
+    },
+  ],
+  connectors: [],
+};
+
+const VALID_DEMO_WITH_CONN = {
+  ...VALID_DEMO_TWO_NODES,
+  connectors: [{ id: 'a-to-b', source: 'a', target: 'b', kind: 'default', label: 'flow' }],
+};
+
+describe('anydemo_add_connector', () => {
+  it('appends a new connector, defaults kind to default, auto-generates id', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_TWO_NODES);
+
+    const envelope = await callTool(app, 'anydemo_add_connector', {
+      demoId: reg.id,
+      connector: { source: 'a', target: 'b' },
+    });
+    const body = expectOk(envelope) as { ok: boolean; id: string };
+    expect(body.ok).toBe(true);
+    expect(body.id).toMatch(/^conn-/);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<{ id: string; source: string; target: string; kind: string }>;
+    };
+    expect(onDisk.connectors).toHaveLength(1);
+    const created = onDisk.connectors[0];
+    expect(created?.id).toBe(body.id);
+    expect(created?.source).toBe('a');
+    expect(created?.target).toBe('b');
+    expect(created?.kind).toBe('default');
+  });
+
+  it('honors a caller-provided id and kind=event with eventName', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_TWO_NODES);
+
+    const envelope = await callTool(app, 'anydemo_add_connector', {
+      demoId: reg.id,
+      connector: {
+        id: 'my-conn',
+        source: 'a',
+        target: 'b',
+        kind: 'event',
+        eventName: 'OrderPlaced',
+      },
+    });
+    const body = expectOk(envelope) as { id: string };
+    expect(body.id).toBe('my-conn');
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<{ id: string; kind: string; eventName?: string }>;
+    };
+    const created = onDisk.connectors.find((c) => c.id === 'my-conn');
+    expect(created?.kind).toBe('event');
+    expect(created?.eventName).toBe('OrderPlaced');
+  });
+
+  it('returns isError with schema text when source references an unknown node', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_TWO_NODES);
+    const before = readFileSync(demoFile, 'utf8');
+
+    const envelope = await callTool(app, 'anydemo_add_connector', {
+      demoId: reg.id,
+      connector: { source: 'ghost', target: 'b' },
+    });
+    expect(expectError(envelope)).toContain('Demo failed schema validation');
+    // File untouched on failed validation.
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('errors with "unknown demo" for an unknown demoId', async () => {
+    const { app } = buildApp();
+    const envelope = await callTool(app, 'anydemo_add_connector', {
+      demoId: 'does-not-exist',
+      connector: { source: 'a', target: 'b' },
+    });
+    expect(expectError(envelope)).toBe('unknown demo');
+  });
+});
+
+describe('anydemo_patch_connector', () => {
+  it('exposes ConnectorPatchBodySchema fields plus demoId/connectorId in inputSchema', async () => {
+    const { app } = buildApp();
+    const envelope = await mcpRequest(app, 'tools/list', {});
+    const tool = (envelope.result?.tools ?? []).find((t) => t.name === 'anydemo_patch_connector');
+    expect(tool).toBeDefined();
+    const props = tool?.inputSchema?.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(
+      expect.arrayContaining([
+        'demoId',
+        'connectorId',
+        'label',
+        'style',
+        'color',
+        'direction',
+        'kind',
+        'eventName',
+        'queueName',
+        'method',
+        'url',
+        'source',
+        'target',
+        'sourceHandle',
+        'targetHandle',
+      ]),
+    );
+    const required = tool?.inputSchema?.required as string[];
+    expect(required).toEqual(expect.arrayContaining(['demoId', 'connectorId']));
+  });
+
+  it('merges visual fields into the connector and rewrites the demo', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+      label: 'renamed',
+      style: 'dashed',
+      color: 'blue',
+      direction: 'both',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<{
+        id: string;
+        kind: string;
+        label?: string;
+        style?: string;
+        color?: string;
+        direction?: string;
+      }>;
+    };
+    const conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    expect(conn?.label).toBe('renamed');
+    expect(conn?.style).toBe('dashed');
+    expect(conn?.color).toBe('blue');
+    expect(conn?.direction).toBe('both');
+    expect(conn?.kind).toBe('default');
+  });
+
+  it('clears stale kind-specific fields when kind changes (event → default)', async () => {
+    const demo = {
+      ...VALID_DEMO_TWO_NODES,
+      connectors: [
+        { id: 'a-to-b', source: 'a', target: 'b', kind: 'event', eventName: 'OrderPlaced' },
+      ],
+    };
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, demo);
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+      kind: 'default',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<Record<string, unknown>>;
+    };
+    const conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    expect(conn?.kind).toBe('default');
+    // Stale 'eventName' from the previous kind must be removed.
+    expect(conn?.eventName).toBeUndefined();
+  });
+
+  it('switching to kind=event with an eventName succeeds (kind-change happy path)', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+      kind: 'event',
+      eventName: 'OrderPlaced',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<{ id: string; kind: string; eventName?: string }>;
+    };
+    const conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    expect(conn?.kind).toBe('event');
+    expect(conn?.eventName).toBe('OrderPlaced');
+  });
+
+  it('clears handle id when patch body passes sourceHandle: null', async () => {
+    const demo = {
+      ...VALID_DEMO_TWO_NODES,
+      connectors: [
+        {
+          id: 'a-to-b',
+          source: 'a',
+          target: 'b',
+          kind: 'default',
+          sourceHandle: 'r',
+          targetHandle: 't',
+        },
+      ],
+    };
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, demo);
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+      sourceHandle: null,
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<Record<string, unknown>>;
+    };
+    const conn = onDisk.connectors.find((c) => c.id === 'a-to-b');
+    // sourceHandle deleted on disk; targetHandle untouched.
+    expect(conn).toBeDefined();
+    expect('sourceHandle' in (conn as object)).toBe(false);
+    expect(conn?.targetHandle).toBe('t');
+  });
+
+  it('returns Demo failed schema validation when kind=event lacks eventName', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
+    const before = readFileSync(demoFile, 'utf8');
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+      kind: 'event',
+    });
+    expect(expectError(envelope)).toContain('Demo failed schema validation');
+    expect(readFileSync(demoFile, 'utf8')).toBe(before);
+  });
+
+  it('rejects unknown top-level keys via .strict()', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+      somethingMadeUp: true,
+    });
+    expect(expectError(envelope)).toContain('Invalid patch_connector arguments');
+  });
+
+  it('returns isError for an unknown demoId', async () => {
+    const { app } = buildApp();
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: 'does-not-exist',
+      connectorId: 'a-to-b',
+      label: 'x',
+    });
+    expect(expectError(envelope)).toBe('unknown demo');
+  });
+
+  it('returns isError with the connector id in the message for an unknown connectorId', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
+
+    const envelope = await callTool(app, 'anydemo_patch_connector', {
+      demoId: reg.id,
+      connectorId: 'missing',
+      label: 'x',
+    });
+    expect(expectError(envelope)).toBe('Unknown connectorId: missing');
+  });
+});
+
+describe('anydemo_delete_connector', () => {
+  const VALID_DEMO_WITH_TWO_CONNS = {
+    ...VALID_DEMO_TWO_NODES,
+    connectors: [
+      { id: 'a-to-b', source: 'a', target: 'b', kind: 'default' },
+      { id: 'b-to-a', source: 'b', target: 'a', kind: 'default' },
+    ],
+  };
+
+  it('removes only the targeted connector and leaves the rest', async () => {
+    const { app } = buildApp();
+    const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_TWO_CONNS);
+
+    const envelope = await callTool(app, 'anydemo_delete_connector', {
+      demoId: reg.id,
+      connectorId: 'a-to-b',
+    });
+    expect(expectOk(envelope)).toEqual({ ok: true });
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      connectors: Array<{ id: string }>;
+    };
+    expect(onDisk.connectors.map((c) => c.id)).toEqual(['b-to-a']);
+  });
+
+  it('errors with the connector id in the message for an unknown connectorId', async () => {
+    const { app } = buildApp();
+    const { reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
+    const envelope = await callTool(app, 'anydemo_delete_connector', {
+      demoId: reg.id,
+      connectorId: 'missing',
+    });
+    expect(expectError(envelope)).toBe('Unknown connectorId: missing');
+  });
+
+  it('errors with "unknown demo" for an unknown demoId', async () => {
+    const { app } = buildApp();
+    const envelope = await callTool(app, 'anydemo_delete_connector', {
+      demoId: 'does-not-exist',
+      connectorId: 'a-to-b',
+    });
+    expect(expectError(envelope)).toBe('unknown demo');
   });
 });

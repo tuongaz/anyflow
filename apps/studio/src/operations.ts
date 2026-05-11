@@ -11,7 +11,13 @@ import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync 
 import { isAbsolute, join } from 'node:path';
 import { type ZodIssue, z } from 'zod';
 import type { Registry } from './registry.ts';
-import { ColorTokenSchema, type Demo, DemoSchema } from './schema.ts';
+import {
+  ColorTokenSchema,
+  type Demo,
+  DemoSchema,
+  SourceHandleIdSchema,
+  TargetHandleIdSchema,
+} from './schema.ts';
 import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
 
@@ -217,6 +223,102 @@ export type PatchNodeOutcome =
   | { kind: 'badJson'; message: string }
   | { kind: 'badSchema'; issues: ZodIssue[] }
   | { kind: 'unknownNode' }
+  | { kind: 'writeFailed'; message: string };
+
+// Partial connector update body. Strict at the top level so client typos
+// surface as 400. Per-kind invariants (e.g. kind='event' requires eventName)
+// are enforced post-merge by re-parsing the whole demo through DemoSchema.
+const ConnectorKindSchema = z.enum(['http', 'event', 'queue', 'default']);
+export const ConnectorPatchBodySchema = z
+  .object({
+    label: z.string().optional(),
+    style: z.enum(['solid', 'dashed', 'dotted']).optional(),
+    color: ColorTokenSchema.optional(),
+    direction: z.enum(['forward', 'backward', 'both']).optional(),
+    borderSize: z.number().positive().optional(),
+    path: z.enum(['curve', 'step']).optional(),
+    kind: ConnectorKindSchema.optional(),
+    eventName: z.string().optional(),
+    queueName: z.string().optional(),
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+    url: z.string().optional(),
+    // Reconnect: drag an edge endpoint onto another node's handle. The
+    // post-merge DemoSchema parse rejects dangling references, so we don't
+    // need a referential check here.
+    source: z.string().min(1).optional(),
+    target: z.string().min(1).optional(),
+    // Reconnect to a different handle on the same (or a new) node. Handle ids
+    // identify which side (top/right/bottom/left) of the node the connector
+    // attaches to (US-013); the role is locked — `sourceHandle` must be a
+    // source-side id, `targetHandle` must be a target-side id (US-022).
+    // Nullable so a body-drop reconnect (US-025) can clear a previously-pinned
+    // handle id by sending `null`; mergeConnectorUpdates deletes the field
+    // when the value is null.
+    sourceHandle: SourceHandleIdSchema.nullable().optional(),
+    targetHandle: TargetHandleIdSchema.nullable().optional(),
+    // US-021: auto-pick flags. Originally written by the picker on body-drop
+    // create / reconnect. US-025 keeps the schema shape but redefines the
+    // semantics: `true`/absent means "render floating" against the line
+    // through the two node centers; `false` means "render pinned to the
+    // stored handle id".
+    sourceHandleAutoPicked: z.boolean().optional(),
+    targetHandleAutoPicked: z.boolean().optional(),
+  })
+  .strict();
+export type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;
+
+// Kind-specific connector fields. When `kind` changes via PATCH, these are
+// dropped first so the resulting connector doesn't carry phantom payloads
+// from the previous kind (e.g. an event→default change leaving eventName
+// behind, which DemoSchema would silently strip on parse but leave on disk).
+const CONNECTOR_KIND_FIELDS = ['method', 'url', 'eventName', 'queueName'] as const;
+
+export const mergeConnectorUpdates = (
+  conn: Record<string, unknown>,
+  updates: ConnectorPatchBody,
+): void => {
+  if (updates.kind !== undefined && updates.kind !== conn.kind) {
+    for (const key of CONNECTOR_KIND_FIELDS) {
+      delete conn[key];
+    }
+  }
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) continue;
+    // US-025: explicit null in the patch body means "clear this field on
+    // disk". Used by reconnect-to-body to drop a previously-pinned handle
+    // id when the endpoint flips back to floating.
+    if (value === null) {
+      delete conn[key];
+      continue;
+    }
+    conn[key] = value;
+  }
+};
+
+export type AddConnectorOutcome =
+  | { kind: 'ok'; data: { id: string } }
+  | { kind: 'demoNotFound' }
+  | { kind: 'fileNotFound'; path: string }
+  | { kind: 'badJson'; message: string }
+  | { kind: 'badSchema'; issues: ZodIssue[] }
+  | { kind: 'writeFailed'; message: string };
+
+export type PatchConnectorOutcome =
+  | { kind: 'ok' }
+  | { kind: 'demoNotFound' }
+  | { kind: 'fileNotFound'; path: string }
+  | { kind: 'badJson'; message: string }
+  | { kind: 'badSchema'; issues: ZodIssue[] }
+  | { kind: 'unknownConnector' }
+  | { kind: 'writeFailed'; message: string };
+
+export type DeleteConnectorOutcome =
+  | { kind: 'ok' }
+  | { kind: 'demoNotFound' }
+  | { kind: 'fileNotFound'; path: string }
+  | { kind: 'badJson'; message: string }
+  | { kind: 'badSchema'; issues: ZodIssue[] }
+  | { kind: 'unknownConnector' }
   | { kind: 'writeFailed'; message: string };
 
 export const resolveDemoPath = (repoPath: string, demoPath: string): string =>
@@ -767,6 +869,172 @@ export async function reorderNodeImpl(
 
     const moved = reorderNodes(obj.nodes, fromIdx, body);
     if (!moved) return { kind: 'ok' };
+
+    const finalParse = DemoSchema.safeParse(raw);
+    if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+    try {
+      writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+    } catch (err) {
+      return { kind: 'writeFailed', message: err instanceof Error ? err.message : String(err) };
+    }
+    return { kind: 'ok' };
+  });
+
+  return result;
+}
+
+// Append a new connector to demo.connectors. `id` is auto-generated when
+// absent and `kind` defaults to 'default' (the no-semantics user-drawn
+// variant). Source/target referential integrity is enforced by DemoSchema's
+// superRefine on the post-mutation parse.
+export async function addConnectorImpl(
+  deps: OperationsDeps,
+  demoId: string,
+  connBody: Record<string, unknown>,
+): Promise<AddConnectorOutcome> {
+  const entry = deps.registry.getById(demoId);
+  if (!entry) return { kind: 'demoNotFound' };
+
+  const newConn = { ...connBody };
+  if (typeof newConn.id !== 'string' || newConn.id.length === 0) {
+    newConn.id = `conn-${crypto.randomUUID()}`;
+  }
+  if (typeof newConn.kind !== 'string' || newConn.kind.length === 0) {
+    newConn.kind = 'default';
+  }
+  const newId = newConn.id as string;
+
+  const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+  if (!existsSync(fullPath)) return { kind: 'fileNotFound', path: fullPath };
+
+  type Inner =
+    | { kind: 'ok' }
+    | { kind: 'badJson'; message: string }
+    | { kind: 'badSchema'; issues: ZodIssue[] }
+    | { kind: 'writeFailed'; message: string };
+
+  const result = await withDemoWriteLock<Inner>(demoId, async () => {
+    let raw: unknown;
+    try {
+      raw = await Bun.file(fullPath).json();
+    } catch (err) {
+      return { kind: 'badJson', message: err instanceof Error ? err.message : String(err) };
+    }
+    const demoParsed = DemoSchema.safeParse(raw);
+    if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+    const obj = raw as { connectors: Array<Record<string, unknown>> };
+    obj.connectors.push(newConn);
+
+    const finalParse = DemoSchema.safeParse(raw);
+    if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+    try {
+      writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+    } catch (err) {
+      return { kind: 'writeFailed', message: err instanceof Error ? err.message : String(err) };
+    }
+    return { kind: 'ok' };
+  });
+
+  if (result.kind === 'ok') return { kind: 'ok', data: { id: newId } };
+  return result;
+}
+
+// Apply a partial PATCH body to a single connector. Mutation runs against
+// the raw parsed JSON (so unknown forward-compat fields survive a round-trip).
+// When `kind` changes, the previous kind's payload fields are dropped first
+// so the connector doesn't carry phantom data; explicit `null` in the patch
+// clears the field on disk (used by reconnect-to-body to drop a pinned
+// handle id). The whole demo is re-validated through DemoSchema before
+// commit so the discriminated union catches missing-required-fields
+// (e.g. kind='event' without eventName) and the superRefine gates
+// source/target referential integrity + handle role invariants.
+export async function patchConnectorImpl(
+  deps: OperationsDeps,
+  demoId: string,
+  connectorId: string,
+  updates: ConnectorPatchBody,
+): Promise<PatchConnectorOutcome> {
+  const entry = deps.registry.getById(demoId);
+  if (!entry) return { kind: 'demoNotFound' };
+
+  const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+  if (!existsSync(fullPath)) return { kind: 'fileNotFound', path: fullPath };
+
+  type Inner =
+    | { kind: 'ok' }
+    | { kind: 'badJson'; message: string }
+    | { kind: 'badSchema'; issues: ZodIssue[] }
+    | { kind: 'unknownConnector' }
+    | { kind: 'writeFailed'; message: string };
+
+  const result = await withDemoWriteLock<Inner>(demoId, async () => {
+    let raw: unknown;
+    try {
+      raw = await Bun.file(fullPath).json();
+    } catch (err) {
+      return { kind: 'badJson', message: err instanceof Error ? err.message : String(err) };
+    }
+    const demoParsed = DemoSchema.safeParse(raw);
+    if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+    const obj = raw as { connectors: Array<Record<string, unknown>> };
+    const onDiskConn = obj.connectors.find((cn) => cn.id === connectorId);
+    if (!onDiskConn) return { kind: 'unknownConnector' };
+
+    mergeConnectorUpdates(onDiskConn, updates);
+
+    const finalParse = DemoSchema.safeParse(raw);
+    if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
+
+    try {
+      writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
+    } catch (err) {
+      return { kind: 'writeFailed', message: err instanceof Error ? err.message : String(err) };
+    }
+    return { kind: 'ok' };
+  });
+
+  return result;
+}
+
+// Remove a connector by id. No cascade — node deletion is what cascades,
+// not connector deletion. Final DemoSchema parse still runs so a pre-existing
+// schema violation surfaces honestly instead of being silently papered over.
+export async function deleteConnectorImpl(
+  deps: OperationsDeps,
+  demoId: string,
+  connectorId: string,
+): Promise<DeleteConnectorOutcome> {
+  const entry = deps.registry.getById(demoId);
+  if (!entry) return { kind: 'demoNotFound' };
+
+  const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
+  if (!existsSync(fullPath)) return { kind: 'fileNotFound', path: fullPath };
+
+  type Inner =
+    | { kind: 'ok' }
+    | { kind: 'badJson'; message: string }
+    | { kind: 'badSchema'; issues: ZodIssue[] }
+    | { kind: 'unknownConnector' }
+    | { kind: 'writeFailed'; message: string };
+
+  const result = await withDemoWriteLock<Inner>(demoId, async () => {
+    let raw: unknown;
+    try {
+      raw = await Bun.file(fullPath).json();
+    } catch (err) {
+      return { kind: 'badJson', message: err instanceof Error ? err.message : String(err) };
+    }
+    const demoParsed = DemoSchema.safeParse(raw);
+    if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
+
+    const obj = raw as { connectors: Array<{ id: string }> };
+    const idx = obj.connectors.findIndex((cn) => cn.id === connectorId);
+    if (idx < 0) return { kind: 'unknownConnector' };
+    obj.connectors.splice(idx, 1);
 
     const finalParse = DemoSchema.safeParse(raw);
     if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };

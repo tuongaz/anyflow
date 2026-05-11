@@ -12,33 +12,30 @@ import {
 } from './diagram.ts';
 import type { EventBus } from './events.ts';
 import {
+  ConnectorPatchBodySchema,
   CreateProjectBodySchema,
   NodePatchBodySchema,
   PositionBodySchema,
   RegisterBodySchema,
   ReorderBodySchema,
+  addConnectorImpl,
   addNodeImpl,
   createProjectImpl,
+  deleteConnectorImpl,
   deleteDemoImpl,
   deleteNodeImpl,
   getDemoImpl,
   listDemosImpl,
   moveNodeImpl,
+  patchConnectorImpl,
   patchNodeImpl,
   registerDemoImpl,
   reorderNodeImpl,
   resolveDemoPath,
-  withDemoWriteLock,
-  writeFileAtomic,
 } from './operations.ts';
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
-import {
-  ColorTokenSchema,
-  DemoSchema,
-  SourceHandleIdSchema,
-  TargetHandleIdSchema,
-} from './schema.ts';
+import { DemoSchema } from './schema.ts';
 import type { DemoWatcher } from './watcher.ts';
 
 const EmitBodySchema = z.object({
@@ -49,81 +46,11 @@ const EmitBodySchema = z.object({
   payload: z.unknown().optional(),
 });
 
-// Partial connector update body. Strict at the top level so client typos
-// surface as 400. Per-kind invariants (e.g. kind='event' requires eventName)
-// are enforced post-merge by re-parsing the whole demo through DemoSchema.
-const ConnectorKindSchema = z.enum(['http', 'event', 'queue', 'default']);
-const ConnectorPatchBodySchema = z
-  .object({
-    label: z.string().optional(),
-    style: z.enum(['solid', 'dashed', 'dotted']).optional(),
-    color: ColorTokenSchema.optional(),
-    direction: z.enum(['forward', 'backward', 'both']).optional(),
-    borderSize: z.number().positive().optional(),
-    path: z.enum(['curve', 'step']).optional(),
-    kind: ConnectorKindSchema.optional(),
-    eventName: z.string().optional(),
-    queueName: z.string().optional(),
-    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
-    url: z.string().optional(),
-    // Reconnect: drag an edge endpoint onto another node's handle. The
-    // post-merge DemoSchema parse rejects dangling references, so we don't
-    // need a referential check here.
-    source: z.string().min(1).optional(),
-    target: z.string().min(1).optional(),
-    // Reconnect to a different handle on the same (or a new) node. Handle ids
-    // identify which side (top/right/bottom/left) of the node the connector
-    // attaches to (US-013); the role is locked — `sourceHandle` must be a
-    // source-side id, `targetHandle` must be a target-side id (US-022).
-    // Nullable so a body-drop reconnect (US-025) can clear a previously-pinned
-    // handle id by sending `null`; mergeConnectorUpdates deletes the field
-    // when the value is null.
-    sourceHandle: SourceHandleIdSchema.nullable().optional(),
-    targetHandle: TargetHandleIdSchema.nullable().optional(),
-    // US-021: auto-pick flags. Originally written by the picker on body-drop
-    // create / reconnect. US-025 keeps the schema shape but redefines the
-    // semantics: `true`/absent means "render floating" against the line
-    // through the two node centers; `false` means "render pinned to the
-    // stored handle id".
-    sourceHandleAutoPicked: z.boolean().optional(),
-    targetHandleAutoPicked: z.boolean().optional(),
-  })
-  .strict();
-type ConnectorPatchBody = z.infer<typeof ConnectorPatchBodySchema>;
-
 const EMIT_STATUS_TO_EVENT = {
   running: 'node:running',
   done: 'node:done',
   error: 'node:error',
 } as const;
-
-// Kind-specific connector fields. When `kind` changes via PATCH, these are
-// dropped first so the resulting connector doesn't carry phantom payloads
-// from the previous kind (e.g. an event→default change leaving eventName
-// behind, which DemoSchema would silently strip on parse but leave on disk).
-const CONNECTOR_KIND_FIELDS = ['method', 'url', 'eventName', 'queueName'] as const;
-
-const mergeConnectorUpdates = (
-  conn: Record<string, unknown>,
-  updates: ConnectorPatchBody,
-): void => {
-  if (updates.kind !== undefined && updates.kind !== conn.kind) {
-    for (const key of CONNECTOR_KIND_FIELDS) {
-      delete conn[key];
-    }
-  }
-  for (const [key, value] of Object.entries(updates)) {
-    if (value === undefined) continue;
-    // US-025: explicit null in the patch body means "clear this field on
-    // disk". Used by reconnect-to-body to drop a previously-pinned handle
-    // id when the endpoint flips back to floating.
-    if (value === null) {
-      delete conn[key];
-      continue;
-    }
-    conn[key] = value;
-  }
-};
 
 export interface ApiOptions {
   registry: Registry;
@@ -656,8 +583,6 @@ export function createApi(options: ApiOptions): Hono {
   api.patch('/demos/:id/connectors/:connId', async (c) => {
     const id = c.req.param('id');
     const connId = c.req.param('connId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
     let body: unknown;
     try {
@@ -669,56 +594,15 @@ export function createApi(options: ApiOptions): Hono {
     if (!parsed.success) {
       return c.json({ error: 'Invalid connector patch body', issues: parsed.error.issues }, 400);
     }
-    const updates = parsed.data;
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'unknownConnector' }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as { connectors: Array<Record<string, unknown>> };
-      const onDiskConn = obj.connectors.find((cn) => cn.id === connId);
-      if (!onDiskConn) return { kind: 'unknownConnector' };
-
-      mergeConnectorUpdates(onDiskConn, updates);
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await patchConnectorImpl({ registry, watcher }, id, connId, parsed.data);
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':
@@ -736,8 +620,6 @@ export function createApi(options: ApiOptions): Hono {
   // DemoSchema's superRefine on the post-mutation parse.
   api.post('/demos/:id/connectors', async (c) => {
     const id = c.req.param('id');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
     let body: unknown;
     try {
@@ -748,59 +630,19 @@ export function createApi(options: ApiOptions): Hono {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return c.json({ error: 'Body must be an object' }, 400);
     }
-    const newConn = { ...(body as Record<string, unknown>) };
-    if (typeof newConn.id !== 'string' || newConn.id.length === 0) {
-      newConn.id = `conn-${crypto.randomUUID()}`;
-    }
-    if (typeof newConn.kind !== 'string' || newConn.kind.length === 0) {
-      newConn.kind = 'default';
-    }
-    const newId = newConn.id as string;
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as { connectors: Array<Record<string, unknown>> };
-      obj.connectors.push(newConn);
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await addConnectorImpl(
+      { registry, watcher },
+      id,
+      body as Record<string, unknown>,
+    );
     switch (result.kind) {
       case 'ok':
-        return c.json({ ok: true, id: newId });
+        return c.json({ ok: true, id: result.data.id });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':
@@ -815,56 +657,15 @@ export function createApi(options: ApiOptions): Hono {
   api.delete('/demos/:id/connectors/:connId', async (c) => {
     const id = c.req.param('id');
     const connId = c.req.param('connId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
 
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-
-    type Outcome =
-      | { kind: 'ok' }
-      | { kind: 'badJson'; message: string }
-      | { kind: 'badSchema'; issues: unknown }
-      | { kind: 'unknownConnector' }
-      | { kind: 'writeFailed'; message: string };
-
-    const result = await withDemoWriteLock<Outcome>(id, async () => {
-      let raw: unknown;
-      try {
-        raw = await Bun.file(fullPath).json();
-      } catch (err) {
-        return {
-          kind: 'badJson',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const demoParsed = DemoSchema.safeParse(raw);
-      if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
-
-      const obj = raw as { connectors: Array<{ id: string }> };
-      const idx = obj.connectors.findIndex((cn) => cn.id === connId);
-      if (idx < 0) return { kind: 'unknownConnector' };
-      obj.connectors.splice(idx, 1);
-
-      const finalParse = DemoSchema.safeParse(raw);
-      if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
-
-      try {
-        writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
-      } catch (err) {
-        return {
-          kind: 'writeFailed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      return { kind: 'ok' };
-    });
-
+    const result = await deleteConnectorImpl({ registry, watcher }, id, connId);
     switch (result.kind) {
       case 'ok':
         return c.json({ ok: true });
+      case 'demoNotFound':
+        return c.json({ error: 'unknown demo' }, 404);
+      case 'fileNotFound':
+        return c.json({ error: `Demo file not found: ${result.path}` }, 404);
       case 'badJson':
         return c.json({ error: `Demo file is not valid JSON: ${result.message}` }, 400);
       case 'badSchema':
