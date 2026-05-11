@@ -6,8 +6,8 @@
       "id": "create-order",
       "type": "playNode",
       "position": {
-        "x": -599.3832150993771,
-        "y": -987.638347271029
+        "x": -495.3036564466477,
+        "y": -975.2109372826435
       },
       "data": {
         "label": "POST /orders",
@@ -64,8 +64,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": 241.61678490062286,
-        "y": -1746.388347271029
+        "x": 115.78925876821867,
+        "y": -1782.1171509876376
       },
       "data": {
         "label": "POST /payments/charge",
@@ -161,6 +161,20 @@
         "borderSize": 3,
         "borderStyle": "solid"
       }
+    },
+    {
+      "id": "node-14a639b3-9136-40e0-aef7-1fdadbbe225c",
+      "type": "iconNode",
+      "position": {
+        "x": 276.07845737449026,
+        "y": -1289.6029233453612
+      },
+      "data": {
+        "icon": "lucide-clover",
+        "width": 82,
+        "height": 80,
+        "color": "blue"
+      }
     }
   ],
   "connectors": [
@@ -174,8 +188,8 @@
       "label": "charge",
       "color": "blue",
       "borderSize": 4,
-      "path": "step",
-      "targetHandle": "t"
+      "path": "curve",
+      "targetHandleAutoPicked": true
     },
     {
       "id": "c-orders-shipping",
@@ -196,30 +210,6 @@
       "kind": "default",
       "path": "step",
       "style": "dashed"
-    },
-    {
-      "id": "conn-8490f2d8-39dd-4e5b-af7d-8bdc15fe567a",
-      "source": "create-order",
-      "target": "charge-payment",
-      "sourceHandle": "r",
-      "targetHandle": "l",
-      "kind": "default"
-    },
-    {
-      "id": "conn-6c566e27-02df-425a-9540-e2813dbb9f54",
-      "source": "create-order",
-      "target": "charge-payment",
-      "sourceHandle": "r",
-      "targetHandle": "t",
-      "kind": "default"
-    },
-    {
-      "id": "conn-31cd0656-5783-42ad-8e49-180ee300950f",
-      "source": "create-order",
-      "target": "charge-payment",
-      "sourceHandle": "r",
-      "targetHandle": "t",
-      "kind": "default"
     },
     {
       "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
