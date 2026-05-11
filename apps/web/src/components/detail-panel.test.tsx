@@ -368,10 +368,16 @@ describe('EditableDescription (US-005)', () => {
 
     // No save button until edit mode.
     expect(findElement(tree, testIdEquals('detail-panel-description-save'))).toBeNull();
-    expect(findElement(tree, testIdEquals('detail-panel-description-textarea'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-description-editor'))).toBeNull();
   });
 
-  it('renders the textarea + save button in edit mode', () => {
+  // US-017: editor is a contentEditable div, not a textarea. The element is
+  // uncontrolled — the source is seeded via useEffect+textContent on enter-
+  // edit (not as a JSX value/children prop). Tests assert the editor's
+  // wire-up (attributes, handlers, accessibility) and the textContent-based
+  // commit path; the raw-markdown-visible side is exercised in the browser
+  // verification because useEffect is shimmed to no-op in the test renderer.
+  it('renders the contentEditable editor + save button in edit mode', () => {
     // The component's first two useState calls are `isEditing` and `draft`.
     // Force isEditing=true, draft='draft body' to render edit mode.
     const tree = renderWithHooks(
@@ -387,12 +393,30 @@ describe('EditableDescription (US-005)', () => {
     if (!block) throw new Error('description block wrapper not found');
     expect(block.props['data-editing']).toBe('true');
 
-    const textarea = findElement(tree, testIdEquals('detail-panel-description-textarea'));
-    if (!textarea) throw new Error('textarea not found');
-    expect(textarea.props.value).toBe('draft body');
-    expect(typeof textarea.props.onChange).toBe('function');
-    expect(typeof textarea.props.onKeyDown).toBe('function');
-    expect(typeof textarea.props.onBlur).toBe('function');
+    const editor = findElement(tree, testIdEquals('detail-panel-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    // plaintext-only forces paste-as-text on Chromium/Safari; Firefox falls
+    // back to the manual onPaste / onKeyDown Enter overrides below.
+    expect(editor.props.contentEditable).toBe('plaintext-only');
+    // Editor is uncontrolled — no value/children prop. Source seeding lives
+    // in a useEffect that writes el.textContent imperatively.
+    expect(editor.props.children).toBeUndefined();
+    expect(typeof editor.props.onKeyDown).toBe('function');
+    expect(typeof editor.props.onPaste).toBe('function');
+    expect(typeof editor.props.onInput).toBe('function');
+    expect(typeof editor.props.onBlur).toBe('function');
+    // Accessibility: announced as a multiline textbox to screen readers so
+    // the contentEditable feels like a textarea to AT users.
+    expect(editor.props.role).toBe('textbox');
+    expect(editor.props['aria-multiline']).toBe('true');
+    expect(editor.props['aria-label']).toBe('Edit description');
+    // Styling: inherits the panel's regular text size (NOT the textarea's
+    // prior font-mono text-xs), with whitespace-pre-wrap so newlines render.
+    const editorClass = editor.props.className as string;
+    expect(editorClass).toContain('text-sm');
+    expect(editorClass).toContain('whitespace-pre-wrap');
+    expect(editorClass).toContain('pr-8'); // leave room for the save icon
+    expect(editorClass).not.toContain('font-mono');
 
     const save = findElement(tree, testIdEquals('detail-panel-description-save'));
     if (!save) throw new Error('save (check) button not found');
@@ -406,6 +430,11 @@ describe('EditableDescription (US-005)', () => {
   });
 
   it('save button onClick commits the current draft via onSave(nodeId, value)', () => {
+    // The editor is uncontrolled — `draft` mirrors textContent via onInput,
+    // and commit reads `editorRef.current?.textContent ?? draft`. In the
+    // hook-shim test environment, useRef returns { current: null }, so the
+    // commit falls back to `draft`. Force draft='new body' via the
+    // useStateOverrides slot to simulate a typed-in value.
     const calls: Array<{ nodeId: string; value: string }> = [];
     const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
     const tree = renderWithHooks(
@@ -423,14 +452,89 @@ describe('EditableDescription (US-005)', () => {
     expect(calls).toEqual([{ nodeId: 'node-42', value: 'new body' }]);
   });
 
-  it('Escape in the textarea cancels via onKeyDown (no commit, stops propagation)', () => {
+  it('save commits the raw markdown source verbatim (no rendering)', () => {
+    // US-017 AC: typing the literal string "**bold**" shows asterisks in the
+    // editor and saves the asterisks verbatim — markdown is NOT rendered
+    // until read mode (DescriptionMarkdown). With the editor uncontrolled,
+    // `draft` mirrors textContent via onInput, so a draft value containing
+    // literal markdown syntax round-trips through commit unmodified.
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const rawMarkdown = '# Heading\n\n**bold** and *italic* with `code` and a [link](https://x).';
+    const tree = renderWithHooks(
+      () =>
+        (EditableDescription as unknown as (p: Props) => unknown)({
+          nodeId: 'n1',
+          source: 'old',
+          onSave,
+        } as Props),
+      [true, rawMarkdown],
+    );
+    const save = findElement(tree, testIdEquals('detail-panel-description-save'));
+    if (!save) throw new Error('save button not found');
+    (save.props.onClick as () => void)();
+    expect(calls).toEqual([{ nodeId: 'n1', value: rawMarkdown }]);
+  });
+
+  it('onPaste strips clipboard formatting (Firefox plaintext-only fallback)', () => {
+    // contentEditable='plaintext-only' is unsupported in Firefox — the
+    // onPaste handler is our cross-browser guarantee: e.preventDefault()
+    // followed by document.execCommand('insertText', false, plainText) lands
+    // the clipboard as plain text in every browser. Verify the handler
+    // calls preventDefault and pulls text/plain (not text/html) from
+    // clipboardData. We mock execCommand so the test runs in Bun's no-DOM
+    // environment.
+    const tree = renderWithHooks(
+      () =>
+        (EditableDescription as unknown as (p: Props) => unknown)({
+          nodeId: 'n1',
+          source: 'old',
+          onSave: () => {},
+        } as Props),
+      [true, 'draft'],
+    );
+    const editor = findElement(tree, testIdEquals('detail-panel-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    const realExec = (
+      globalThis as { document?: { execCommand?: (...args: unknown[]) => boolean } }
+    ).document?.execCommand;
+    const execCalls: Array<{ cmd: string; arg: unknown }> = [];
+    (globalThis as { document?: unknown }).document = {
+      ...((globalThis as { document?: object }).document ?? {}),
+      execCommand: (cmd: string, _show: boolean, arg: unknown) => {
+        execCalls.push({ cmd, arg });
+        return true;
+      },
+    };
+    let preventedDefault = false;
+    const fakeEvent = {
+      preventDefault: () => {
+        preventedDefault = true;
+      },
+      clipboardData: {
+        getData: (mime: string) => (mime === 'text/plain' ? 'pasted text' : ''),
+      },
+    };
+    (editor.props.onPaste as (e: unknown) => void)(fakeEvent);
+    expect(preventedDefault).toBe(true);
+    expect(execCalls).toEqual([{ cmd: 'insertText', arg: 'pasted text' }]);
+    // Restore.
+    if (realExec) {
+      (
+        (globalThis as { document?: { execCommand?: unknown } }).document as {
+          execCommand?: unknown;
+        }
+      ).execCommand = realExec;
+    }
+  });
+
+  it('Escape in the editor cancels via onKeyDown (no commit, stops propagation)', () => {
     // The component's React onKeyDown handles Escape locally — preventDefault
-    // (so the browser's native Escape doesn't reset the textarea), stop
-    // propagation (so canvas-level Backspace/Delete handling doesn't react),
-    // and roll back to read mode without firing onSave. Sheet-level
-    // Escape-to-close suppression is layered separately via SheetContent's
-    // onEscapeKeyDown (see DetailPanel) — exercised via the US-005 browser
-    // verification.
+    // (so the browser's native Escape doesn't reset the editor), stop
+    // propagation on both the React-synthetic and native events (so canvas-
+    // level Backspace/Delete handling doesn't react), and roll back to read
+    // mode without firing onSave. Sheet-level Escape-to-close suppression is
+    // layered separately via SheetContent's onEscapeKeyDown (see DetailPanel).
     const calls: Array<{ nodeId: string; value: string }> = [];
     const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
     const tree = renderWithHooks(
@@ -442,10 +546,11 @@ describe('EditableDescription (US-005)', () => {
         } as Props),
       [true, 'discarded'],
     );
-    const textarea = findElement(tree, testIdEquals('detail-panel-description-textarea'));
-    if (!textarea) throw new Error('textarea not found');
+    const editor = findElement(tree, testIdEquals('detail-panel-description-editor'));
+    if (!editor) throw new Error('editor not found');
     let preventedDefault = false;
     let stoppedPropagation = false;
+    let stoppedNativePropagation = false;
     const fakeEvent = {
       key: 'Escape',
       preventDefault: () => {
@@ -454,10 +559,16 @@ describe('EditableDescription (US-005)', () => {
       stopPropagation: () => {
         stoppedPropagation = true;
       },
+      nativeEvent: {
+        stopPropagation: () => {
+          stoppedNativePropagation = true;
+        },
+      },
     };
-    (textarea.props.onKeyDown as (e: unknown) => void)(fakeEvent);
+    (editor.props.onKeyDown as (e: unknown) => void)(fakeEvent);
     expect(preventedDefault).toBe(true);
     expect(stoppedPropagation).toBe(true);
+    expect(stoppedNativePropagation).toBe(true);
     expect(calls).toEqual([]);
   });
 
@@ -473,9 +584,9 @@ describe('EditableDescription (US-005)', () => {
         } as Props),
       [true, 'discarded'],
     );
-    const textarea = findElement(tree, testIdEquals('detail-panel-description-textarea'));
-    if (!textarea) throw new Error('textarea not found');
-    (textarea.props.onBlur as () => void)();
+    const editor = findElement(tree, testIdEquals('detail-panel-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    (editor.props.onBlur as () => void)();
     // Blur path on its own discards — no onSave invocation.
     expect(calls).toEqual([]);
   });

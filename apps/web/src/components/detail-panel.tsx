@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import { Check, Pencil, RefreshCw } from 'lucide-react';
 import {
   type CSSProperties,
+  type ClipboardEvent as ReactClipboardEvent,
+  type FormEvent as ReactFormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
@@ -104,14 +106,14 @@ export function DetailPanel({
         style={widthStyle}
         data-testid="detail-panel"
         onEscapeKeyDown={(e) => {
-          // US-005: when the description textarea is in edit mode, Escape is
-          // the cancel-edit shortcut — preventDefault stops Radix from also
+          // US-005/US-017: when the description editor is in edit mode, Escape
+          // is the cancel-edit shortcut — preventDefault stops Radix from also
           // closing the entire Sheet. The EditableDescription's own
           // onKeyDown handles the cancel side. Without this, Escape would
           // discard the edit AND close the panel, dropping the user out of
           // the inspector entirely.
           const active = document.activeElement as HTMLElement | null;
-          if (active?.getAttribute('data-testid') === 'detail-panel-description-textarea') {
+          if (active?.getAttribute('data-testid') === 'detail-panel-description-editor') {
             e.preventDefault();
           }
         }}
@@ -258,14 +260,28 @@ export function DescriptionMarkdown({ source }: { source: string }) {
   );
 }
 
-// US-005: editable wrapper around the rendered Description markdown. The
-// pencil/save icons live in the top-right of the block; the pencil is the
+// US-005/US-017: editable wrapper around the rendered Description markdown.
+// The pencil/save icons live in the top-right of the block; the pencil is the
 // only affordance — no always-visible Edit button. Default is rendered
-// markdown; clicking the pencil swaps to a textarea prefilled with the
-// current source; the save (check) icon commits; Escape or blurring to a
-// non-save target discards. Save and discard each route through
+// markdown; clicking the pencil swaps to a contentEditable div seeded with
+// the RAW markdown source (no live preview — asterisks/hashes/etc. visible
+// character-for-character); the save (check) icon commits; Escape or blurring
+// to a non-save target discards. Save and discard each route through
 // `onSave(nodeId, value)` which the parent translates into a single undo
 // entry (see demo-view.tsx::onDetailDescriptionChange).
+//
+// WHY contentEditable + plaintext-only over <textarea>: the editor inherits
+// the panel's typography (no jarring font-mono swap on enter-edit) and feels
+// inline / WYSIWYG-ish while still showing raw markdown source. Firefox
+// doesn't implement contentEditable='plaintext-only', so Enter and paste are
+// intercepted to force plain-text insertion via execCommand — the resulting
+// DOM textContent always matches the textarea-like value our save path
+// expects. We read on commit via textContent (NEVER innerHTML — would leak
+// pasted HTML; NEVER innerText — normalizes whitespace in ways that mangle
+// markdown). The element is uncontrolled: the source is seeded ONCE on
+// enter-edit (useEffect imperative write), then the browser owns the DOM
+// until commit/cancel — React must not write children on every keystroke or
+// caret positioning fights the IME.
 export function EditableDescription({
   nodeId,
   source,
@@ -277,8 +293,8 @@ export function EditableDescription({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(source);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  // Prevent textarea onBlur from discarding when focus is moving to the save
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  // Prevent editor onBlur from discarding when focus is moving to the save
   // button (which fires its onClick AFTER blur). The save button's
   // onMouseDown sets this flag; we re-enable blur-discard after onClick.
   const suppressBlurRef = useRef(false);
@@ -289,13 +305,25 @@ export function EditableDescription({
     if (!isEditing) setDraft(source);
   }, [source, isEditing]);
 
+  // On enter-edit: seed the editor's text via direct DOM write, focus, and
+  // select-all so the user can immediately overtype. This is parity with the
+  // textarea's `el.select()` behavior. We seed via DOM (not via JSX children)
+  // because contentEditable + React children fights React's reconciliation —
+  // see InlineEdit for the same rationale.
   useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      const el = textareaRef.current;
-      el.focus();
-      el.select();
+    if (!isEditing) return;
+    const el = editorRef.current;
+    if (!el) return;
+    el.textContent = source;
+    el.focus();
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
-  }, [isEditing]);
+  }, [isEditing, source]);
 
   // When `onSave` isn't wired (read-only mode), render the plain markdown
   // with no chrome — same DOM as the prior implementation so callers that
@@ -308,7 +336,11 @@ export function EditableDescription({
   };
 
   const commit = () => {
-    onSave(nodeId, draft);
+    // textContent is authoritative when the editor is mounted; `draft` is a
+    // mirror updated via onInput (so tests can override it via the hook-shim
+    // when no real DOM exists).
+    const text = editorRef.current?.textContent ?? draft;
+    onSave(nodeId, text);
     setIsEditing(false);
   };
 
@@ -317,16 +349,41 @@ export function EditableDescription({
     setIsEditing(false);
   };
 
-  const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     // Stop the keystroke from bubbling to the canvas — Backspace/Delete on
-    // the canvas would otherwise trigger node deletion (US-027).
+    // the canvas would otherwise trigger node deletion (US-027). Cover the
+    // native side too: window-level shortcuts listen for native events, not
+    // React's synthetic ones.
     e.stopPropagation();
+    e.nativeEvent.stopPropagation();
     if (e.key === 'Escape') {
       e.preventDefault();
       cancel();
       // Sheet's Escape-to-close suppression is handled at the SheetContent
       // level via onEscapeKeyDown (see DetailPanel below).
+      return;
     }
+    if (e.key === 'Enter') {
+      // contentEditable='plaintext-only' on Chromium/Safari inserts a literal
+      // '\n' on Enter; Firefox doesn't honor plaintext-only and would insert
+      // a <br> or <div>. Force '\n' via execCommand so textContent always
+      // round-trips through markdown without spurious double-newlines.
+      e.preventDefault();
+      document.execCommand('insertText', false, '\n');
+    }
+  };
+
+  const onPaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
+    // plaintext-only forces paste-as-text on Chromium/Safari; Firefox needs
+    // an explicit preventDefault + insertText to strip rich-text formatting
+    // from the clipboard payload. Either way the result is plain text only.
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+  };
+
+  const onInput = (e: ReactFormEvent<HTMLDivElement>) => {
+    setDraft((e.currentTarget as HTMLDivElement).textContent ?? '');
   };
 
   const onBlur = () => {
@@ -345,15 +402,20 @@ export function EditableDescription({
     >
       {isEditing ? (
         <>
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+          <div
+            ref={editorRef}
+            contentEditable="plaintext-only"
+            suppressContentEditableWarning
+            spellCheck={false}
+            tabIndex={0}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onInput={onInput}
             onBlur={onBlur}
-            data-testid="detail-panel-description-textarea"
-            className="block w-full resize-y rounded-md border bg-background px-2 py-1.5 pr-8 font-mono text-xs leading-relaxed"
-            rows={Math.min(12, Math.max(3, draft.split('\n').length + 1))}
+            data-testid="detail-panel-description-editor"
+            className="block w-full whitespace-pre-wrap break-words rounded-md border bg-background px-2 py-1.5 pr-8 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-ring"
+            role="textbox"
+            aria-multiline="true"
             aria-label="Edit description"
           />
           <Button
