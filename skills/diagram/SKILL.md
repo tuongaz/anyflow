@@ -83,10 +83,8 @@ process so they can see its output, restart it, and clean up cleanly.
 Starting it from inside the skill creates an orphan process the user
 can't kill.
 
-If the check passes, proceed to Phase 0. Phase 0 re-probes
-`/health` as a safety net (so the orchestration is robust if the
-studio dies mid-run), but the precheck above is the user-facing
-gate.
+If the check passes, proceed to Phase 0 (which re-probes as a
+safety net for mid-run failures).
 
 ## Trigger examples
 
@@ -158,19 +156,15 @@ A "dynamic" or "runnable" node is anything the reader perceives
 behavior from at runtime. The schema supports two distinct flavors,
 and a good diagram almost always contains BOTH paired together:
 
-- **Trigger nodes (`playNode`)** — clickable boxes that fire an HTTP
-  request when the user presses them. They have a `playAction` and
-  represent the user's "do something" affordance: call an API,
-  upload a file, replay an event, run a job. The studio renders a
-  Play button on each one.
+- **Trigger nodes (`playNode`)** — clickable boxes with a
+  `playAction`. Fire an HTTP request when the user clicks. Studio
+  renders a Play button.
 - **Observer nodes (`stateNode` with `stateSource: { kind: 'event' }`)**
-  — non-clickable boxes that display the state of a downstream
-  resource. The studio animates them: idle by default, **spinner /
-  waiting** when an upstream `emit()` reports `running`, **green
-  tick** on `done`, red on `error`. They represent the *consequence*
-  of a trigger — the database row that gets written, the S3 object
-  that arrives, the queue message that gets consumed, the email
-  that gets sent.
+  — non-clickable. Studio animates: idle → spinner
+  (`emit('running')`) → green tick (`emit('done')`) or red
+  (`emit('error')`). Represent the *consequence* of a trigger — the
+  DB row written, the S3 object arrived, the queue message consumed,
+  the email sent.
 
 **Pair only across real seams.** Apply the abstraction rule ("Pick
 the right abstraction", below) FIRST to decide what counts as a node,
@@ -180,46 +174,13 @@ pair it. An auth middleware downstream of a `POST /orders` handler is
 not — collapse it into the handler's description, do not give it an
 observer.
 
-Canonical pairing: a user clicks a **trigger** `playNode` labeled
-"Upload file"; the request flows through the harness; the harness
-emits `running` then `done` to a downstream **observer** `stateNode`
-labeled "S3 bucket". The reader watches the S3 box flip from spinner
-to green tick — visible confirmation the file arrived.
-
-Add an observer alongside a trigger when:
-
-- The trigger lands in a store the reader cares about (DB row,
-  cache write, S3 object).
-- The trigger publishes an event/queue message that another part of
-  the system reacts to.
-- The trigger kicks off async work (a worker run, a scheduled job)
-  whose completion the reader wants to see.
-- The trigger has a side effect a reader would want to confirm
-  visibly (email sent, webhook fired, notification posted).
-
-Skip the observer when:
-
-- The trigger is purely synchronous and returns the result inline
-  (a math endpoint, a validation check). The `playNode`'s own
-  request-state animation is enough.
-- The downstream resource is already drawn as a duplicated
-  cross-cutting node for visual clarity and adds no new information.
-
-How the pipeline produces the pair:
-
-- **Phase 4 (node-selector)** classifies candidates as `dynamic-play`
-  (becomes `playNode`) vs `dynamic-event` (becomes observer
-  `stateNode`). For every `dynamic-play` whose work has an observable
-  consequence, also propose the matching `dynamic-event` observer.
-- **Phase 5 (wiring-builder)** wires the pair with a connector —
-  `kind: 'event'` if the trigger emits a named event,
-  `kind: 'queue'` if it publishes to a queue, `kind: 'default'`
-  for plain read/write.
-- **Phase 5b (harness-author, Tier 2)** drives the observer by
-  calling `emit(demoId, observerNodeId, 'running')` immediately
-  and `emit(..., 'done')` when the bridge (CLI spawn, container
-  exec, broker publish, file drop, …) completes. On Tier 1, the
-  user's app must call `emit()` itself for the observer to animate.
+**Read `references/two-flavors.md`** for the full pair-when /
+skip-when criteria, the per-phase mechanics (Phase 4 classification,
+Phase 5 connector-kind selection, Phase 5b harness emit pattern with
+a running/done/error code sketch), the Tier-1 expectation that the
+user's app emits itself, and the anti-pattern list. Read it whenever
+Phase 4 is classifying a `dynamic-play` candidate or Phase 5b is
+authoring a bridge handler.
 
 ### Two descriptions: short on the node, long in the panel
 
@@ -608,11 +569,15 @@ eye lands on the runnable choice before the static fallback:
 3. **Tier 3 (static)** — present last. Frame it as "no live behavior,
    just a labeled diagram" so the trade-off is explicit.
 
-The first option in the AskUserQuestion list is whichever playable
-tier (Tier 1 or Tier 2) the `tier-detector` named in `recommendation`.
-Static appears at the bottom of the list, never at the top, **even
-when Tier 1 isn't feasible** — Tier 2 still beats Tier 3 in the
-ordering. Do NOT let static be the user's path of least resistance.
+Concrete option orders by `tier-evidence.json.recommendation`:
+
+- `recommendation === "tier1"` → list **Tier 1, Tier 2, Tier 3**.
+- `recommendation === "tier2"` (or Tier 1 not feasible) → list
+  **Tier 2, Tier 1** (omit Tier 1 entirely if `tier1RealEvidence.feasible === false`), **Tier 3**.
+
+Static never goes at the top, even when Tier 1 isn't feasible —
+Tier 2 still beats Tier 3 in the ordering. Do NOT let static be the
+user's path of least resistance.
 
 If `--tier=` was passed, skip the checkpoint and stamp `chosenTier`
 directly into `tier-evidence.json`.
@@ -847,6 +812,11 @@ For detailed information loaded only when needed:
 - **`references/demo-schema.md`** — Authoritative demo schema: every
   node/connector variant, the canonical example, common rejection causes.
   Read before any Phase 5/6/7 emission.
+- **`references/two-flavors.md`** — Full pair-when / skip-when criteria
+  for trigger (`playNode`) ↔ observer (`stateNode` with event source)
+  pairing, per-phase mechanics, and the harness emit pattern. Read
+  during Phase 4 candidate classification or Phase 5b harness handler
+  authoring.
 - **`references/visual-clarity.md`** — Full rule set for duplicating
   cross-cutting nodes, with worked examples and per-phase enforcement
   notes. Read before producing wiring or layout.
