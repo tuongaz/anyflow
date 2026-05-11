@@ -258,15 +258,16 @@ export function DemoView({
 
   // US-003: explicit click handlers drive the detail panel. xyflow fires
   // these only for click gestures (no drag), so a node-drag-start no longer
-  // pops the inspector open. Clicking a node opens its panel; clicking an
-  // edge opens the edge's panel; clicking the empty pane closes both.
+  // pops the inspector open. Clicking a node opens its panel; clicking the
+  // empty pane closes it.
+  // US-015: connector clicks no longer open the panel (decorative edges
+  // shouldn't inflate the inspector). Selection still works via xyflow
+  // `onSelectionChange`. `panelConnectorId` clear-to-null sites are
+  // intentionally retained so a future story can re-introduce a connector
+  // panel without re-deriving the cleanup paths.
   const onNodeClickOpenPanel = useCallback((nodeId: string) => {
     setPanelNodeId(nodeId);
     setPanelConnectorId(null);
-  }, []);
-  const onConnectorClickOpenPanel = useCallback((connectorId: string) => {
-    setPanelConnectorId(connectorId);
-    setPanelNodeId(null);
   }, []);
   const onPaneClickClosePanel = useCallback(() => {
     setPanelNodeId(null);
@@ -2874,7 +2875,6 @@ export function DemoView({
           onRfInit={onRfInit}
           onTidy={demoNodes ? onToolbarTidy : undefined}
           onNodeClick={onNodeClickOpenPanel}
-          onConnectorClick={onConnectorClickOpenPanel}
           onPaneClick={onPaneClickClosePanel}
           onCreateAndConnectFromPane={onCreateAndConnectFromPane}
           pendingEditNodeId={pendingEditNodeId}
