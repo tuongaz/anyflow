@@ -22,7 +22,6 @@ export interface DetailPanelProps {
   demoId: string | null;
   node: DemoNode | null;
   connector: Connector | null;
-  filePath?: string;
   /** Current run state for the selected node, when known. */
   run?: NodeRunState;
   /** Last N node:* events for the selected node (newest first). */
@@ -34,7 +33,6 @@ export function DetailPanel({
   demoId,
   node,
   connector,
-  filePath,
   run,
   recentEvents,
   onClose,
@@ -163,13 +161,6 @@ export function DetailPanel({
 
               {recentEvents && recentEvents.length > 0 ? (
                 <RecentEventsSection events={recentEvents} />
-              ) : null}
-
-              {filePath ? (
-                <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
-                  <div className="font-medium tracking-wide text-[10px] mb-1">Demo file</div>
-                  <div className="font-mono break-all">{filePath}</div>
-                </div>
               ) : null}
             </div>
           </div>

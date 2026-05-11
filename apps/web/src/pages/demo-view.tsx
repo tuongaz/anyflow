@@ -2350,7 +2350,6 @@ export function DemoView({
         demoId={detail?.id ?? null}
         node={inspectedNode}
         connector={inspectedConnector}
-        filePath={detail?.filePath}
         run={inspectedRun}
         recentEvents={inspectedEvents}
         onClose={() => {
