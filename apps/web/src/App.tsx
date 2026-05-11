@@ -1,12 +1,12 @@
 import { Header } from '@/components/header';
-import { ReloadIndicator } from '@/components/reload-indicator';
+import { ResetDemoButton } from '@/components/reset-demo-button';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDemoData } from '@/hooks/use-demo-data';
 import { useDemos } from '@/hooks/use-demos';
 import { useNodeEvents } from '@/hooks/use-node-events';
 import { useNodeRuns } from '@/hooks/use-node-runs';
 import { useStudioEvents } from '@/hooks/use-studio-events';
-import { type CreateProjectResult, playNode } from '@/lib/api';
+import { type CreateProjectResult, playNode, resetDemo } from '@/lib/api';
 import { pickInitialDemo, readLastProjectId, writeLastProjectId } from '@/lib/last-project';
 import { navigate, usePathname } from '@/lib/router';
 import { DemoView } from '@/pages/demo-view';
@@ -44,7 +44,16 @@ export function App() {
     [applyRun, applyNodeEvent],
   );
 
-  const { lastReload } = useStudioEvents(demoId, { onReload, onEvent });
+  useStudioEvents(demoId, { onReload, onEvent });
+
+  const onResetDemo = useCallback(async (): Promise<void> => {
+    if (!demoId) return;
+    try {
+      await resetDemo(demoId);
+    } catch (err) {
+      console.error('Failed to reset demo:', err);
+    }
+  }, [demoId]);
 
   const onProjectCreated = useCallback(
     (result: CreateProjectResult) => {
@@ -100,7 +109,7 @@ export function App() {
         <Header
           demos={demos}
           currentSlug={slug ?? undefined}
-          trailing={demoId ? <ReloadIndicator lastReload={lastReload} /> : null}
+          trailing={demoId ? <ResetDemoButton onResetDemo={onResetDemo} /> : null}
           onProjectCreated={onProjectCreated}
         />
         <main className="min-h-0 flex-1">

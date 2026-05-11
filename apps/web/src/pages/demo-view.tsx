@@ -22,7 +22,6 @@ import {
   deleteConnector,
   deleteNode,
   reorderNode,
-  resetDemo,
   updateConnector,
   updateNode,
   updateNodePosition,
@@ -1945,21 +1944,6 @@ export function DemoView({
     onTidy(scope);
   }, [onTidy]);
 
-  // US-009: fire the demo's reset action and broadcast a `demo:reload` so the
-  // canvas refreshes from disk. The SSE listener in App.tsx handles the reload
-  // — this just triggers the request and surfaces failures via the editError
-  // banner. Returns a promise so the canvas's Reset button can track its
-  // in-flight state until the request settles.
-  const onResetDemo = useCallback(async (): Promise<void> => {
-    if (!demoId) return;
-    setEditError(null);
-    try {
-      await resetDemo(demoId);
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : String(err));
-    }
-  }, [demoId]);
-
   // US-013: capture the canvas as an SVG and download it. We fitView so the
   // entire graph is in frame, snapshot the previous viewport so we can restore
   // it after, then call html-to-image on the `.react-flow__viewport` element.
@@ -2336,7 +2320,6 @@ export function DemoView({
           onPaneClick={onPaneClickClosePanel}
           onCreateAndConnectFromPane={onCreateAndConnectFromPane}
           pendingEditNodeId={pendingEditNodeId}
-          onResetDemo={demoId ? onResetDemo : undefined}
           onExportSvg={demoId ? onExportSvg : undefined}
           onExportPdf={demoId ? onExportPdf : undefined}
         />
