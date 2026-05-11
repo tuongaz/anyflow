@@ -3,27 +3,43 @@ description: Generate a playable AnyDemo architecture diagram from the current c
 argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
 ---
 
-Use the `anydemo-diagram` skill (in `skills/diagram/SKILL.md`) to generate a
-playable single-flat AnyDemo diagram for the current repository.
+Use the `anydemo-diagram` skill (full instructions in
+`$PLUGIN_ROOT/skills/diagram/SKILL.md`, where `$PLUGIN_ROOT` is resolved by
+the skill's Phase 0) to generate a playable single-flat AnyDemo diagram for
+the current repository.
 
 User request: `$ARGUMENTS`
 
 Run the full pipeline:
 
-1. **Phase 0** — Pre-flight: resolve target root (cwd unless overridden),
-   create `.anydemo/intermediate/`.
-2. **Phase 1** — Run `scan-target.mjs`, `extract-routes.mjs`, and
-   `propose-scope.mjs`, then dispatch the `target-scanner` subagent.
+1. **Phase 0** — Pre-flight: resolve `$TARGET` (cwd unless overridden),
+   `$STUDIO_URL` (default `http://localhost:4321`), and `$PLUGIN_ROOT`
+   (env `CLAUDE_PLUGIN_ROOT` → `~/.claude/plugins/anydemo-diagram` →
+   `~/.claude/skills/anydemo-diagram` → cwd). Probe `GET $STUDIO_URL/health`.
+   Create `.anydemo/intermediate/`.
+2. **Phase 1** — Run the two filesystem scripts under
+   `$PLUGIN_ROOT/skills/diagram/scripts/` (`scan-target.mjs`,
+   `extract-routes.mjs`), then `POST $STUDIO_URL/api/diagram/propose-scope`,
+   then dispatch the `target-scanner` subagent.
 3. **Phase 2** — Dispatch `scope-proposer`. CHECKPOINT 1 unless `--scope=` was passed.
 4. **Phase 3** — Dispatch `tier-detector`. CHECKPOINT 2 unless `--tier=` was passed.
 5. **Phase 4** — Dispatch `node-selector`. CHECKPOINT 3 (always).
 6. **Phase 5** — Dispatch `wiring-builder` (and `harness-author` on Tier 2).
+   The wiring plan MUST include a top-level `"name"` so the studio doesn't
+   register the demo as "Untitled diagram".
 7. **Phase 6** — Dispatch `layout-arranger`.
-8. **Phase 7** — Run `assemble-demo.mjs` and `validate-demo.mjs`. On
-   validation failure, return to Phase 5 (max 2 retries).
-9. **Phase 8** — Run `anydemo register --path <target>` and report the URL.
+8. **Phase 7** — `POST $STUDIO_URL/api/diagram/assemble` and
+   `POST $STUDIO_URL/api/demos/validate`. On validation failure, return to
+   Phase 5 (max 2 retries).
+9. **Phase 8** — `POST $STUDIO_URL/api/demos/register` and report
+   `$STUDIO_URL/d/<slug>`. If the canvas appears blank, walk the user through
+   the four-step recovery in `skills/diagram/references/troubleshooting.md`
+   (hard-refresh, direct slug URL, confirm registration, tail studio logs).
 
 Use `AskUserQuestion` for the three checkpoints. Preserve `.anydemo/intermediate/`
 on failure for resumability.
 
-See `skills/diagram/SKILL.md` for the full pipeline contract and constraints.
+The diagram is **for humans to read at a glance** — duplicate cross-cutting
+nodes (db, cache, auth, queues) per consumer rather than letting many
+connectors converge on a single box. See the "Visual clarity for humans"
+section in `SKILL.md` for the rules every phase enforces.

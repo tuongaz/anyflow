@@ -44,6 +44,18 @@ ALWAYS include at least one `dynamic-play` node when the chosen tier is
 ALWAYS prefer entry-point + fan-out + boundary nodes. Skip leaf utilities
 that don't help explain the slice.
 
+ALWAYS estimate fan-in for each cross-cutting resource (database, cache,
+auth, logging, metrics, queue). If a single logical resource will receive
+≥3 incoming connectors in the wired diagram, **emit one candidate node per
+consumer cluster** instead of one merged node. Each duplicate counts toward
+the ≤30 cap. Give each duplicate a distinct `candidateId` (`db-orders`,
+`db-payments`) but keep `label` identical so wiring-builder and the reader
+recognize them as the same logical thing. The rationale should say
+"duplicate of <logical-name> for visual clarity, used by <consumer>".
+
+This is the "Visual clarity for humans" rule from `SKILL.md` — read it if
+this is the first time you've encountered it.
+
 ## TARGETED READS ALLOWED
 
 To find evidence (line ranges, summaries), read up to **8 source files**
@@ -56,6 +68,9 @@ total — only files in `scope-proposal.candidatePaths[]`.
 3. Every `evidence.filePath` matches a path in `scan-result.json`.
 4. No two nodes share a `candidateId`.
 5. The first node has `kind: "service"` or similar entry-point shape.
+6. No single logical resource (same `label`) sits with implied fan-in ≥3 in
+   the chosen scope. If it would, replace it with duplicates (`candidateId`
+   suffixed per consumer, `label` identical).
 
 ## OUTPUT (write to `<target>/.anydemo/intermediate/candidate-nodes.json`)
 

@@ -14,9 +14,11 @@ with the running studio so the user can click the result.
 ## Requirements
 
 - A running AnyDemo studio reachable at `$ANYDEMO_STUDIO_URL` (default
-  `http://localhost:4321`). Probe `GET /health` if you need to confirm.
-- **Node.js** (any LTS) on `PATH` — the two filesystem scripts in
-  `${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/` run under Node.
+  `http://localhost:4321`). Probe `GET /health` to confirm.
+- **Node.js** (any LTS) on `PATH` — the two filesystem scripts under
+  `$PLUGIN_ROOT/skills/diagram/scripts/` run on Node. `$PLUGIN_ROOT` is
+  resolved in Phase 0 (it falls back to `~/.claude/plugins/anydemo-diagram`
+  when Claude Code does not export `CLAUDE_PLUGIN_ROOT`).
 - `curl` and `jq` for the HTTP calls below.
 
 All schema validation, scope scoring, demo assembly, and registration happen
@@ -26,6 +28,18 @@ walk the user's `$TARGET` filesystem; everything else is a `curl` call.
 ## Announcement
 
 Announce: "Using anydemo-diagram skill to generate a playable diagram for: <request>"
+
+## Trigger examples
+
+Invoke this skill (or run `/diagram <request>`) for any of these — they all
+work for any codebase, any team, any language the framework hints support:
+
+- "diagram this codebase"
+- "show me the order pipeline"
+- "explain how auth works as a playable diagram"
+- "make me an anydemo of the checkout flow"
+- "I want a tier-2 mock diagram of the ingest worker"
+- "render the public API surface"
 
 ## Inputs
 
@@ -59,264 +73,110 @@ The orchestrator (this file) coordinates the phases and surfaces checkpoints.
 
 ## Demo Schema Reference
 
-**The studio's `/api/demos/validate` and `/api/demos/register` endpoints reject
-anything that doesn't match this schema exactly.** Every phase that emits JSON
-nodes or connectors (Phase 5 wiring, Phase 6 layout, Phase 7 assemble) must
-conform. Read this section before producing wiring.
+The studio's `/api/demos/validate` and `/api/demos/register` endpoints reject
+anything that doesn't match the demo schema exactly.
 
-### Top level
+**The full schema, every node and connector variant, the canonical valid
+demo example, and the list of common rejection causes live in
+`references/demo-schema.md`.** Read that file before emitting any JSON in
+Phases 5, 6, or 7. The schema is authoritative — do not infer fields.
 
-```ts
-type Demo = {
-  version: 1;                    // literal, never any other number
-  name: string;                  // min length 1
-  nodes: Node[];
-  connectors: Connector[];
-  resetAction?: HttpAction;      // optional declarative reset endpoint
-};
-```
+Quick guarantees from the schema (every emitter must satisfy these):
 
-### Node — discriminated union on `type`
+- `version` is the literal `1`.
+- `name` is a non-empty string (otherwise the demo registers as "Untitled
+  diagram").
+- Every node `id` is unique. Connectors reference `source` and `target`
+  (not `from`/`to`) and every id must match an existing node.
+- `playNode` REQUIRES `playAction`; `kind: 'event'` REQUIRES `eventName`;
+  `kind: 'queue'` REQUIRES `queueName`.
+- Handle role: `sourceHandle` ∈ `{r, b}`, `targetHandle` ∈ `{t, l}`. Cross
+  values are rejected.
 
-Every node has `{ id, type, position, data }`. `id` is a non-empty string and
-**must be unique** across `nodes[]`. `position` is `{ x: number, y: number }`.
+## Visual clarity for humans — duplicate to declutter
 
-```ts
-type Node = PlayNode | StateNode | ShapeNode | ImageNode;
-```
+This skill produces diagrams **for humans to read**, not data graphs for
+machines. A wiring with 30 nodes and 80 connectors that all converge on one
+`db` box is correct but unreadable; the same diagram with the `db` *drawn
+three times* near its three consumers is the goal.
 
-**PlayNode** — has a `playAction` (clickable, runs an HTTP call):
+The studio's schema allows — and the pipeline *encourages* — duplicating a
+single logical resource into multiple node instances with distinct ids:
 
-```ts
-{
-  id: string;
-  type: 'playNode';
-  position: { x: number; y: number };
-  data: {
-    label: string;               // min 1, the visible text
-    kind: string;                 // free-form: 'service'|'worker'|'queue'|'database'|'actor'|...
-    stateSource: { kind: 'request' } | { kind: 'event' };
-    playAction: HttpAction;       // REQUIRED for playNode
-    detail?: Detail;
-    handlerModule?: string;       // reserved v2, leave unset
-    // visual (all optional):
-    width?: number; height?: number;
-    borderColor?: ColorToken; backgroundColor?: ColorToken;
-    borderSize?: number; borderStyle?: 'solid' | 'dashed' | 'dotted';
-    fontSize?: number; cornerRadius?: number;
-  };
-}
-```
+- Every node has a unique `id`, but `label`, `kind`, `playAction`, and
+  `data.detail` can be repeated across duplicates. Two `stateNode`s both
+  labeled "Orders DB" are valid; the studio's `/api/diagram/assemble` keeps
+  them separate, and React Flow renders them as two boxes.
+- Duplicates exist to **shorten arrows and keep lanes clean**. They are not
+  for representing different state.
 
-**StateNode** — same data as PlayNode but `playAction` is **optional**:
+**When to duplicate (apply in Phases 4, 5, 6):**
 
-```ts
-{
-  id: string;
-  type: 'stateNode';
-  position: { x: number; y: number };
-  data: {
-    label: string;
-    kind: string;
-    stateSource: { kind: 'request' } | { kind: 'event' };
-    playAction?: HttpAction;      // optional
-    detail?: Detail;
-    handlerModule?: string;
-    // visual fields (same as PlayNode)
-  };
-}
-```
+1. **Fan-in ≥ 3.** Any node that would receive ≥3 incoming connectors must be
+   split into one instance per cluster of callers.
+2. **Cross-cutting infra.** Always duplicate `database`, `cache`, `auth`,
+   `logging`, `metrics`, `error reporter`, and any primary queue per consumer
+   group — even at 2 callers.
+3. **Long-distance edges.** If a connector would cross more than one other
+   connector to reach its target, duplicate the target instead of routing
+   around the crossing.
 
-**ShapeNode** — decorative; no kind/stateSource/playAction:
+**Id conventions for duplicates:** suffix with the consumer name —
+`db-orders`, `db-payments`, `cache-checkout`, `auth-public`,
+`auth-admin`. Keep `label` identical across the set so a reader recognizes
+them as the same logical thing.
 
-```ts
-{
-  id: string;
-  type: 'shapeNode';
-  position: { x: number; y: number };
-  data: {
-    shape: 'rectangle' | 'ellipse' | 'sticky' | 'text';
-    label?: string;
-    // visual fields (same as PlayNode)
-  };
-}
-```
+**What stays single:**
 
-**ImageNode** — decorative; embeds a base64 data URL:
+- The user-facing entry points (one `POST /orders`, not three).
+- Domain-owning services (one `orders-service`, not three).
+- Anything that genuinely is one box per logical thing.
 
-```ts
-{
-  id: string;
-  type: 'imageNode';
-  position: { x: number; y: number };
-  data: {
-    image: string;                // MUST start with "data:image/"
-    alt?: string;
-    // visual fields (same as PlayNode)
-  };
-}
-```
+Phases 4, 5, and 6 each enforce a slice of this:
 
-### Connector — discriminated union on `kind`
-
-Every connector has the base fields below plus per-kind required fields.
-**`source` and `target` MUST reference existing node `id`s** — the studio's
-superRefine rejects dangling connectors.
-
-```ts
-type ConnectorBase = {
-  id: string;                    // min 1, unique across connectors[]
-  source: string;                // node id
-  target: string;                // node id
-  sourceHandle?: 'r' | 'b';      // source-side handles only (right / bottom)
-  targetHandle?: 't' | 'l';      // target-side handles only (top / left)
-  sourceHandleAutoPicked?: boolean;
-  targetHandleAutoPicked?: boolean;
-  label?: string;
-  style?: 'solid' | 'dashed' | 'dotted';
-  color?: ColorToken;
-  direction?: 'forward' | 'backward' | 'both';   // default 'forward' when omitted
-  borderSize?: number;
-  path?: 'curve' | 'step';
-};
-
-type Connector =
-  | (ConnectorBase & { kind: 'http';    method?: HttpMethod; url?: string })
-  | (ConnectorBase & { kind: 'event';   eventName: string })   // REQUIRED
-  | (ConnectorBase & { kind: 'queue';   queueName: string })   // REQUIRED
-  | (ConnectorBase & { kind: 'default' });
-```
-
-**Handle-role rule:** sending a target-side id (`'t'` or `'l'`) as
-`sourceHandle`, or a source-side id (`'r'` or `'b'`) as `targetHandle`, is a
-schema violation (US-022). Omitting both is fine; React Flow auto-routes.
-
-### Shared types
-
-```ts
-type HttpAction = {
-  kind: 'http';
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  url: string;                   // min 1
-  body?: unknown;
-  bodySchema?: unknown;
-};
-
-type Detail = {
-  filePath?: string;
-  summary?: string;
-  fields?: Array<{ label: string; value: string }>;
-  dynamicSource?: HttpAction;   // same shape as playAction; fetched lazily for the side-panel
-};
-
-type ColorToken =
-  | 'default' | 'slate' | 'blue' | 'green'
-  | 'amber'   | 'red'   | 'purple' | 'pink';
-
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-```
-
-### Canonical valid demo
-
-```json
-{
-  "version": 1,
-  "name": "Order Pipeline",
-  "nodes": [
-    {
-      "id": "user",
-      "type": "shapeNode",
-      "position": { "x": 0, "y": 0 },
-      "data": { "shape": "sticky", "label": "User" }
-    },
-    {
-      "id": "api-create-order",
-      "type": "playNode",
-      "position": { "x": 240, "y": 0 },
-      "data": {
-        "label": "POST /orders",
-        "kind": "service",
-        "stateSource": { "kind": "request" },
-        "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3040/orders",
-          "body": { "sku": "abc", "qty": 1 }
-        },
-        "detail": {
-          "filePath": "src/routes/orders.ts",
-          "summary": "Creates an order row and emits orders.created.",
-          "fields": [
-            { "label": "Returns", "value": "{ orderId }" }
-          ]
-        }
-      }
-    },
-    {
-      "id": "queue-orders",
-      "type": "stateNode",
-      "position": { "x": 480, "y": 0 },
-      "data": {
-        "label": "orders.created",
-        "kind": "queue",
-        "stateSource": { "kind": "event" }
-      }
-    }
-  ],
-  "connectors": [
-    {
-      "id": "c-user-api",
-      "source": "user",
-      "target": "api-create-order",
-      "kind": "default"
-    },
-    {
-      "id": "c-api-queue",
-      "source": "api-create-order",
-      "target": "queue-orders",
-      "kind": "event",
-      "eventName": "orders.created"
-    }
-  ]
-}
-```
-
-### Common rejection causes
-
-- `version` not literal `1` → reject.
-- Connector `source`/`target` doesn't match any node `id` → reject.
-- `EventConnector` without `eventName` (or empty) → reject.
-- `QueueConnector` without `queueName` → reject.
-- `PlayNode` without `playAction` → reject.
-- `imageNode.data.image` doesn't start with `data:image/` → reject.
-- `sourceHandle: 't'` / `targetHandle: 'r'` (wrong role) → reject.
-- Duplicate node ids or duplicate connector ids → undefined behavior; the
-  studio's assemble endpoint dedupes, but author-side duplicates indicate a
-  bug — keep ids unique.
-- `name` empty string → reject.
+- **Phase 4 (node-selector)** counts incoming fan-in and proposes duplicates.
+- **Phase 5 (wiring-builder)** rejects any node with fan-in ≥3 in self-check.
+- **Phase 6 (layout-arranger)** places duplicates next to their consumer, not
+  in the original lane.
 
 ## Phase 0 — Pre-flight
 
-Resolve the target root and the studio URL, then prepare directories:
+Resolve the target root, the studio URL, **and the plugin root**, then prepare
+directories. `CLAUDE_PLUGIN_ROOT` is only exported when the skill is invoked as
+part of a Claude Code plugin — on direct `/diagram` usage or in a vendored
+checkout it is empty, which is why this step has a fallback chain.
 
 ```bash
 TARGET="${TARGET:-$(pwd)}"
 STUDIO_URL="${ANYDEMO_STUDIO_URL:-http://localhost:4321}"
+
+# Resolve plugin root — first the env var, then the standard install paths.
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+for candidate in \
+  "$HOME/.claude/plugins/anydemo-diagram" \
+  "$HOME/.claude/skills/anydemo-diagram" \
+  "$(pwd)"; do
+  [ -n "$PLUGIN_ROOT" ] && break
+  [ -f "$candidate/skills/diagram/SKILL.md" ] && PLUGIN_ROOT="$candidate"
+done
+[ -n "$PLUGIN_ROOT" ] || { echo "Cannot locate anydemo-diagram plugin root." >&2; exit 1; }
+
 mkdir -p "$TARGET/.anydemo/intermediate"
 
 # Studio must be reachable — every non-filesystem step is an HTTP call.
 curl -fsS --max-time 1 "$STUDIO_URL/health" >/dev/null \
-  || { echo "AnyDemo studio not reachable at $STUDIO_URL. Start it and re-run." >&2; exit 1; }
+  || { echo "AnyDemo studio not reachable at $STUDIO_URL. Start it with 'cd $PLUGIN_ROOT && bun run dev' (or pass ANYDEMO_STUDIO_URL=...) and re-run." >&2; exit 1; }
 ```
 
 ## Phase 1 — SCAN
 
 Two filesystem-walking scripts (`node`, no `bun` needed) write deterministic
-JSON for the rest of the pipeline:
+JSON for the rest of the pipeline. **Use `$PLUGIN_ROOT` from Phase 0** — never
+hardcode `${CLAUDE_PLUGIN_ROOT}` here:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/scan-target.mjs --root "$TARGET"
-node ${CLAUDE_PLUGIN_ROOT}/skills/diagram/scripts/extract-routes.mjs --root "$TARGET"
+node "$PLUGIN_ROOT/skills/diagram/scripts/scan-target.mjs"   --root "$TARGET"
+node "$PLUGIN_ROOT/skills/diagram/scripts/extract-routes.mjs" --root "$TARGET"
 ```
 
 These write `scan-result.json` and `boundary-surfaces.json` under
@@ -332,7 +192,7 @@ curl -fsS -X POST "$STUDIO_URL/api/diagram/propose-scope" \
 ```
 
 Then dispatch the **target-scanner** subagent (see
-`${CLAUDE_PLUGIN_ROOT}/agents/target-scanner.md`). It reads the JSON outputs,
+`$PLUGIN_ROOT/agents/target-scanner.md`). It reads the JSON outputs,
 produces a one-paragraph project summary, and lists detected diagrammable
 subsystems. Output: `intermediate/project-summary.json`.
 
@@ -408,6 +268,10 @@ reject anything that doesn't conform.
 
 Constraints baked into the prompt:
 
+- **`wiring-plan.json` MUST include a top-level `"name": "<diagram title>"`
+  field.** The studio's `/api/diagram/assemble` endpoint falls back to
+  `"Untitled diagram"` when this is missing — visible in the studio sidebar
+  and in the registered slug. Use the title from the approved scope.
 - `playNode` for `dynamic-play` (real URL on Tier 1; harness URL on Tier 2;
   demoted to `stateNode` on Tier 3)
 - `stateNode` for `dynamic-event` with `stateSource: { kind: 'event' }`
@@ -417,6 +281,8 @@ Constraints baked into the prompt:
 - Connector `kind` chosen by evidence: `http` / `event` / `queue` / `default`
 - Every node populates `data.detail.summary` (1–2 sentences) and 0–4
   `data.detail.fields` from real evidence
+- Apply the **Visual clarity for humans** rules below — favor duplicated
+  fan-in nodes over spaghetti connections.
 
 Output: `intermediate/wiring-plan.json`.
 
@@ -528,6 +394,12 @@ If the chosen tier is `mock`, also print the harness run command:
 > Mock harness ready. Run `cd .anydemo/harness && bun install && bun run start`
 > to play the diagram.
 
+### If the canvas appears blank
+
+The studio is a React SPA — the most common cause is a stale JS bundle. See
+**`references/troubleshooting.md`** "If the canvas appears blank" for the
+exact four-step user instruction to relay.
+
 ## Determinism boundary
 
 | Concern | Where | Why |
@@ -551,19 +423,45 @@ If the chosen tier is `mock`, also print the harness run command:
 - Schema drift is impossible: the validator runs inside the studio, so it
   always uses the schema the studio enforces.
 
-## Plugin-bundled resources
+## Common pitfalls
 
-All paths below are relative to `${CLAUDE_PLUGIN_ROOT}`:
+See **`references/troubleshooting.md`** for a lookup table mapping every
+common failure (studio not reachable, "Untitled diagram", spaghetti edges,
+schema rejection, missing harness, …) to a one-line fix.
 
-- **`agents/`** — subagent definitions referenced by phase: `target-scanner.md`,
-  `scope-proposer.md`, `tier-detector.md`, `node-selector.md`,
-  `wiring-builder.md`, `harness-author.md` (Tier 2 only), `layout-arranger.md`.
-- **`frameworks/`** — per-framework hints (`express.md`, `hono.md`,
-  `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`). Read the matching hint
-  when the scan reports that framework.
+## Additional Resources
+
+All paths below are relative to `$PLUGIN_ROOT` (resolved in Phase 0).
+
+### Reference Files
+
+For detailed information loaded only when needed:
+
+- **`skills/diagram/references/demo-schema.md`** — Authoritative demo schema:
+  every node/connector variant, the canonical example, common rejection
+  causes. Read before any Phase 5/6/7 emission.
+- **`skills/diagram/references/troubleshooting.md`** — Lookup table mapping
+  every common failure to its one-line fix. Surface lines from this when an
+  HTTP call returns non-2xx or the canvas appears blank.
+
+### Bundled Assets
+
 - **`skills/diagram/scripts/`** — `scan-target.mjs`, `extract-routes.mjs`.
-- **`skills/diagram/templates/`** — Tier 2 harness templates:
-  `harness-server.ts.tmpl`, `harness-package.json.tmpl`, `harness-readme.md.tmpl`.
+  Run via `node` under `$PLUGIN_ROOT` (see Phase 1).
+- **`skills/diagram/templates/`** — Tier-2 harness templates:
+  `harness-server.ts.tmpl`, `harness-package.json.tmpl`,
+  `harness-readme.md.tmpl`. Consumed by `harness-author`.
+- **`skills/diagram/frameworks/`** — Per-framework hints (`express.md`,
+  `hono.md`, `nestjs.md`, `fastapi.md`, `django.md`, `rails.md`). Read the
+  matching hint when the scan reports that framework.
+
+### Subagents
+
+Phase orchestration uses these subagent definitions under `agents/`:
+`target-scanner.md` (Phase 1), `scope-proposer.md` (Phase 2),
+`tier-detector.md` (Phase 3), `node-selector.md` (Phase 4),
+`wiring-builder.md` (Phase 5), `harness-author.md` (Phase 5b, Tier 2 only),
+`layout-arranger.md` (Phase 6).
 
 ## Self-check before exit
 

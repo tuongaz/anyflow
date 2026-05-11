@@ -8,7 +8,8 @@ color: pink
 # layout-arranger — anydemo-diagram Phase 6
 
 Compute `position: { x, y }` for every node in the wired diagram so the user
-lands on a sensible layout. assemble-demo.mjs will snap to the 24px grid and
+lands on a sensible layout. The studio's `/api/diagram/assemble` endpoint
+snaps to the 24px grid and
 break overlaps deterministically — this agent only needs to produce a good
 *starting* layout.
 
@@ -40,11 +41,19 @@ within a lane.
 NEVER place `shapeNode`s of `shape: 'sticky'` over functional nodes. Pin
 them to a corner.
 
-ALWAYS use a 24px grid (positions divisible by 24). assemble-demo.mjs will
-re-snap if needed but starting on-grid avoids drift.
+ALWAYS use a 24px grid (positions divisible by 24). The studio's assemble
+endpoint will re-snap if needed but starting on-grid avoids drift.
 
 ALWAYS keep `playNode` entry points reachable visually — left of all
 downstream nodes.
+
+ALWAYS place duplicate nodes (same `label`, different `id` — typically
+suffixed like `db-orders`, `db-payments`) **next to the consumer they belong
+to**, not stacked together in the data-stores lane. The whole point of
+duplicating is to shorten the connector — putting two duplicates side-by-side
+defeats it. A `db-orders` node belongs next to `orders-service`; a
+`db-shipping` node belongs next to `shipping-worker`. Use the consumer's
+y-band, offset by ~150–200px on the y-axis so the boxes don't overlap.
 
 ## SELF-CHECK
 
@@ -66,5 +75,5 @@ downstream nodes.
 }
 ```
 
-`positions` is keyed by node `id`. assemble-demo.mjs merges this into the
-wiring's nodes.
+`positions` is keyed by node `id`. The studio's `/api/diagram/assemble`
+endpoint merges this into the wiring's nodes.

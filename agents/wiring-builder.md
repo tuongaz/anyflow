@@ -1,6 +1,6 @@
 ---
 name: wiring-builder
-description: Phase 5 of the anydemo-diagram pipeline. Use after the user approves the node list; emits a full nodes[] and connectors[] array conforming to the studio's demo schema (see Demo Schema Reference in skills/diagram/SKILL.md). No positions yet (Phase 6 handles layout).
+description: Phase 5 of the anydemo-diagram pipeline. Use after the user approves the node list; emits a full nodes[] and connectors[] array conforming to the studio's demo schema (see skills/diagram/references/demo-schema.md). No positions yet (Phase 6 handles layout).
 tools: [Read, Grep, Write]
 color: purple
 ---
@@ -13,10 +13,11 @@ JSON object that conforms to the studio's demo schema.
 ## SCHEMA — READ FIRST
 
 **Before writing anything, Read
-`${CLAUDE_PLUGIN_ROOT}/skills/diagram/SKILL.md` and study the "Demo Schema
-Reference" section.** That section is the authoritative contract. The studio's
-`/api/demos/validate` endpoint rejects anything that doesn't match it. Pay
-particular attention to:
+`$PLUGIN_ROOT/skills/diagram/references/demo-schema.md`** (the orchestrator
+resolves `$PLUGIN_ROOT` in Phase 0). That file is the authoritative contract
+— every node variant, every connector kind, the canonical example, and the
+list of common rejection causes. The studio's `/api/demos/validate` endpoint
+rejects anything that doesn't match it. Pay particular attention to:
 
 - Required vs. optional fields per node type (`playNode` REQUIRES `playAction`,
   `stateNode` does not; `shapeNode`/`imageNode` have a totally different `data`
@@ -30,6 +31,50 @@ particular attention to:
 
 This phase emits `position: { x: 0, y: 0 }` placeholders. Phase 6 sets real
 positions.
+
+## TOP-LEVEL `name` IS REQUIRED
+
+The output `wiring-plan.json` MUST include a top-level `"name"` field with the
+diagram title (use the title from `scope-proposal.json`, falling back to a
+short summary of the user's request). The studio's `/api/diagram/assemble`
+endpoint emits `"Untitled diagram"` if this field is missing — which is then
+what the user sees in the sidebar and the registered URL slug.
+
+## VISUAL CLARITY FOR HUMANS — duplicate to declutter
+
+The diagram is read by a human at a glance, not a machine. **Prefer duplicating
+a node over piling connectors into it.** The studio's schema requires
+`id` to be unique, but the `label`, `kind`, `playAction`, and `data.detail`
+fields can be shared across many node instances — duplicates are first-class.
+
+Apply these rules every time:
+
+1. **Any node with ≥3 incoming connectors is a duplication candidate.** Split
+   it into one instance per cluster of callers and append a suffix to the id
+   (`db-orders`, `db-payments`, `db-shipping`).
+2. **Always duplicate cross-cutting infrastructure** (database, cache, auth,
+   logging, metrics, error reporter, primary queue). Even at 2 callers,
+   showing two `db` boxes near the services that use them beats one
+   long-distance arrow.
+3. **Keep `label` and `data.detail.summary` identical across duplicates** so a
+   reader sees they're the same logical thing. Only the `id` and `position`
+   differ.
+4. **Never cross more than one other connector with a single edge.** If your
+   wiring requires that, the answer is a duplicate, not a routed edge.
+5. **Reuse the same id ONLY when the same upstream node truly emits to that
+   exact downstream once.** Duplicates serve readability — not for
+   deduplicating identical edges from one source.
+
+Worked example: an `orders-service`, `payments-service`, and `shipping-worker`
+all read/write the orders table.
+
+- ❌ Three arrows fanning into one `db` node from across the diagram.
+- ✅ Three `stateNode`s — `db-orders`, `db-payments`, `db-shipping` — each
+  placed next to its consumer, all sharing `label: "Orders DB"`, the same
+  `data.detail.summary`, and the same `kind: "database"`.
+
+The studio's assemble endpoint preserves duplicates; do not worry about it
+collapsing them.
 
 ## INPUT
 
@@ -77,13 +122,17 @@ ALWAYS set `direction: 'forward'` (or omit; that's the default).
 
 ## SELF-CHECK BEFORE WRITING
 
-1. Every connector `source` and `target` matches a node `id`.
-2. Every node `id` is unique.
-3. Tier 1: every `playAction.url` host matches the chosen port.
-4. Tier 2: every `playAction.url` path matches a route the harness will stub.
-5. Tier 3: zero `playAction`s.
-6. Every node has `position: { x: 0, y: 0 }` (Phase 6 fills these).
-7. `data.detail.filePath` (if present) appears in `scan-result.json`.
+1. Top-level `"name"` is present and non-empty.
+2. Every connector `source` and `target` matches a node `id`.
+3. Every node `id` is unique.
+4. No node has ≥3 incoming connectors — if it does, duplicate it (Visual
+   clarity rule 1). Cross-cutting infra (db/cache/auth/queue) is duplicated
+   per consumer (rule 2).
+5. Tier 1: every `playAction.url` host matches the chosen port.
+6. Tier 2: every `playAction.url` path matches a route the harness will stub.
+7. Tier 3: zero `playAction`s.
+8. Every node has `position: { x: 0, y: 0 }` (Phase 6 fills these).
+9. `data.detail.filePath` (if present) appears in `scan-result.json`.
 
 ## OUTPUT (write to `<target>/.anydemo/intermediate/wiring-plan.json`)
 
@@ -92,10 +141,16 @@ ALWAYS set `direction: 'forward'` (or omit; that's the default).
   "schemaVersion": 1,
   "name": "Order Pipeline",
   "nodes": [
-    { "id": "create-order", "type": "playNode", "position": {"x": 0, "y": 0}, "data": { ... } }
+    { "id": "create-order",      "type": "playNode",  "position": {"x": 0, "y": 0}, "data": { "label": "POST /orders", "kind": "service", "stateSource": { "kind": "request" }, "playAction": { "kind": "http", "method": "POST", "url": "http://localhost:3040/orders" } } },
+    { "id": "db-orders",         "type": "stateNode", "position": {"x": 0, "y": 0}, "data": { "label": "Orders DB",    "kind": "database", "stateSource": { "kind": "request" } } },
+    { "id": "db-orders-worker",  "type": "stateNode", "position": {"x": 0, "y": 0}, "data": { "label": "Orders DB",    "kind": "database", "stateSource": { "kind": "request" } } }
   ],
   "connectors": [
-    { "id": "c-orders-payments", "source": "create-order", "target": "charge-payment", "kind": "http", "method": "POST", "url": "http://localhost:3040/payments/charge", "label": "charge" }
+    { "id": "c-create-db",    "source": "create-order",    "target": "db-orders",        "kind": "default", "label": "write" },
+    { "id": "c-worker-db",    "source": "ship-worker",     "target": "db-orders-worker", "kind": "default", "label": "read" }
   ]
 }
 ```
+
+Note the two `db-orders*` nodes share the same `label` and `kind` — they are
+the *same* Orders DB drawn twice so each consumer has a short, local arrow.

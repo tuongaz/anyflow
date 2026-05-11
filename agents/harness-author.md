@@ -16,9 +16,11 @@ event-bound state nodes.
 
 - `<target>/.anydemo/intermediate/wiring-plan.json` — final wiring
 - `<target>/.anydemo/intermediate/tier-evidence.json` — tier choice + harness port
-- `${CLAUDE_PLUGIN_ROOT}/skills/diagram/templates/harness-server.ts.tmpl`
-- `${CLAUDE_PLUGIN_ROOT}/skills/diagram/templates/harness-package.json.tmpl`
-- `${CLAUDE_PLUGIN_ROOT}/skills/diagram/templates/harness-readme.md.tmpl`
+- `$PLUGIN_ROOT/skills/diagram/templates/harness-server.ts.tmpl`
+- `$PLUGIN_ROOT/skills/diagram/templates/harness-package.json.tmpl`
+- `$PLUGIN_ROOT/skills/diagram/templates/harness-readme.md.tmpl`
+
+(`$PLUGIN_ROOT` is resolved by the orchestrator in Phase 0 — see SKILL.md.)
 
 ## OUTPUTS
 
@@ -41,7 +43,7 @@ register CLI sets this) and fall back to the slug.
 NEVER omit the `// TODO: replace with real call` comment per stubbed route.
 The harness must be visibly fake.
 
-ALWAYS use `import { Hono } from 'hono'` and `import { emit } from '../sdk/emit'`. The relative import resolves to `.anydemo/sdk/emit.ts`, which `anydemo register` writes into the target repo on first run. Do NOT use `@anydemo/sdk` (it's workspace-private and won't resolve outside the monorepo).
+ALWAYS use `import { Hono } from 'hono'` and `import { emit } from '../sdk/emit'`. The relative import resolves to `.anydemo/sdk/emit.ts`, which the studio's `/api/demos/register` endpoint writes into the target repo on first run. Do NOT use `@anydemo/sdk` (it's workspace-private and won't resolve outside the monorepo).
 
 ALWAYS pick the harness port deterministically: read
 `tier-evidence.json.harnessPort` if set; else use 3041; else if 3041 is
