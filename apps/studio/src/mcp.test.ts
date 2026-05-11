@@ -529,6 +529,7 @@ describe('anydemo_patch_node', () => {
         'borderColor',
         'backgroundColor',
         'borderSize',
+        'borderWidth',
         'borderStyle',
         'fontSize',
         'cornerRadius',

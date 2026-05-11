@@ -130,6 +130,33 @@ function shapeNode(id: string): DemoNode {
   } as DemoNode;
 }
 
+// US-008 helper. `active` mirrors the transient `data.isActive` flag injected
+// by demo-canvas when the user has double-clicked into the group. Style fields
+// default to undefined so each test can dial in a partial chrome state.
+function groupNode(
+  id: string,
+  opts: {
+    active?: boolean;
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+  } = {},
+): DemoNode {
+  return {
+    id,
+    type: 'group',
+    position: { x: 0, y: 0 },
+    data: {
+      ...(opts.active ? { isActive: true } : {}),
+      ...(opts.backgroundColor ? { backgroundColor: opts.backgroundColor } : {}),
+      ...(opts.borderColor ? { borderColor: opts.borderColor } : {}),
+      ...(opts.borderWidth !== undefined ? { borderWidth: opts.borderWidth } : {}),
+      ...(opts.borderStyle ? { borderStyle: opts.borderStyle } : {}),
+    },
+  } as DemoNode;
+}
+
 describe('StyleStrip — iconNode color picker (US-014)', () => {
   it('renders only the icon-color swatch when an iconNode is selected', () => {
     const tree = callStrip({ nodes: [iconNode('n1', 'blue')] });
@@ -275,5 +302,178 @@ describe('StyleStrip — iconNode Change-icon button (US-022)', () => {
       onRequestIconReplace: () => {},
     });
     expect(findElement(tree, testIdEquals('style-strip-change-icon'))).toBeNull();
+  });
+});
+
+describe('StyleStrip — active group chrome editor (US-008)', () => {
+  it('renders the group chrome controls when an isActive group is selected', () => {
+    const tree = callStrip({ nodes: [groupNode('g1', { active: true })] });
+    // The four chrome controls are the only buttons the group strip needs;
+    // every other test id (shape-only controls) must be absent.
+    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-fill'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-style'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-width'))).not.toBeNull();
+    // Shape-only controls must NOT leak into the group branch.
+    expect(findElement(tree, testIdEquals('style-strip-border-color'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-fill'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-border-style'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-border-size'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-font-size'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-corner-radius'))).toBeNull();
+  });
+
+  it('does NOT render the group chrome branch when isActive is absent', () => {
+    // A selected-but-not-entered group should fall through to the shape strip
+    // branch, which filters groups out of visualNodes — net effect: the strip
+    // still mounts (border-color swatch exists for the empty-visualNode case),
+    // but the group-specific test ids never appear.
+    const tree = callStrip({ nodes: [groupNode('g1')] });
+    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-width'))).toBeNull();
+  });
+
+  it('does NOT render the group chrome branch when the group is mixed with another node', () => {
+    // Pure single-node guard: a group + a sibling shape falls through to the
+    // shared shape strip (the shape's borderColor swatch is what the user
+    // expects to drive). The active-group editor is single-target only.
+    const tree = callStrip({
+      nodes: [groupNode('g1', { active: true }), shapeNode('s1')],
+    });
+    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-border-color'))).not.toBeNull();
+  });
+
+  it('does NOT render the group chrome branch when a connector is also selected', () => {
+    // pureNode gate: any connector in the selection routes to the shared
+    // shape+connector strip, so the group editor stays hidden.
+    const cn: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+    } as Connector;
+    const tree = callStrip({
+      nodes: [groupNode('g1', { active: true })],
+      connectors: [cn],
+    });
+    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).toBeNull();
+  });
+
+  it('seeds the active tokens from the group data fields', () => {
+    const tree = callStrip({
+      nodes: [
+        groupNode('g1', {
+          active: true,
+          backgroundColor: 'blue',
+          borderColor: 'amber',
+          borderStyle: 'dotted',
+          borderWidth: 5,
+        }),
+      ],
+    });
+    const borderColor = findElement(tree, testIdEquals('style-strip-group-border-color'));
+    const fill = findElement(tree, testIdEquals('style-strip-group-fill'));
+    expect((borderColor?.props as { activeToken?: string }).activeToken).toBe('amber');
+    expect((fill?.props as { activeToken?: string }).activeToken).toBe('blue');
+  });
+
+  it("falls back to 'default' tokens when chrome fields are unset", () => {
+    const tree = callStrip({ nodes: [groupNode('g1', { active: true })] });
+    const borderColor = findElement(tree, testIdEquals('style-strip-group-border-color'));
+    const fill = findElement(tree, testIdEquals('style-strip-group-fill'));
+    expect((borderColor?.props as { activeToken?: string }).activeToken).toBe('default');
+    expect((fill?.props as { activeToken?: string }).activeToken).toBe('default');
+  });
+
+  it('clicking the border-color swatch dispatches onStyleNode with { borderColor }', () => {
+    const onStyleNode = mock(() => {});
+    const tree = callStrip({
+      nodes: [groupNode('g1', { active: true })],
+      onStyleNode,
+    });
+    const swatch = findElement(tree, testIdEquals('style-strip-group-border-color'));
+    if (!swatch) throw new Error('group border-color swatch missing');
+    const onSelect = (swatch.props as { onSelect: (token: string) => void }).onSelect;
+    onSelect('blue');
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('g1', { borderColor: 'blue' });
+  });
+
+  it('clicking the fill swatch dispatches onStyleNode with { backgroundColor }', () => {
+    const onStyleNode = mock(() => {});
+    const tree = callStrip({
+      nodes: [groupNode('g1', { active: true })],
+      onStyleNode,
+    });
+    const swatch = findElement(tree, testIdEquals('style-strip-group-fill'));
+    if (!swatch) throw new Error('group fill swatch missing');
+    const onSelect = (swatch.props as { onSelect: (token: string) => void }).onSelect;
+    onSelect('amber');
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('g1', { backgroundColor: 'amber' });
+  });
+
+  it('the border-width slider commits + previews to onStyleNode/onStyleNodePreview', () => {
+    const onStyleNode = mock(() => {});
+    const onStyleNodePreview = mock(() => {});
+    const tree = callStrip({
+      nodes: [groupNode('g1', { active: true })],
+      onStyleNode,
+      onStyleNodePreview,
+    });
+    const popover = findElement(tree, testIdEquals('style-strip-group-border-width'));
+    if (!popover) throw new Error('group border-width popover missing');
+    // The popover contains a SliderControl element whose onCommit/onPreview
+    // are pre-bound to applyGroupBorderWidth + previewGroupBorderWidth. Walk
+    // into the popover's children to find the SliderControl props.
+    const slider = findElement(popover, (el) => {
+      const p = el.props as { testId?: string };
+      return p.testId === 'style-tab-group-border-width-slider';
+    });
+    if (!slider) throw new Error('border-width slider missing');
+    const sliderProps = slider.props as {
+      onCommit: (n: number) => void;
+      onPreview?: (n: number) => void;
+      min: number;
+      max: number;
+    };
+    expect(sliderProps.min).toBe(1);
+    expect(sliderProps.max).toBe(8);
+    sliderProps.onPreview?.(3);
+    sliderProps.onCommit(6);
+    expect(onStyleNodePreview).toHaveBeenCalledTimes(1);
+    expect(onStyleNodePreview).toHaveBeenCalledWith('g1', { borderWidth: 3 });
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('g1', { borderWidth: 6 });
+  });
+
+  it('the border-style toggle dispatches onStyleNode with { borderStyle }', () => {
+    const onStyleNode = mock(() => {});
+    const tree = callStrip({
+      nodes: [groupNode('g1', { active: true })],
+      onStyleNode,
+    });
+    const popover = findElement(tree, testIdEquals('style-strip-group-border-style'));
+    if (!popover) throw new Error('group border-style popover missing');
+    // Locate the inner IconToggleGroup (its props carry `onChange` + `value`).
+    const toggle = findElement(popover, (el) => {
+      const p = el.props as { ariaLabel?: string };
+      return p.ariaLabel === 'Border style';
+    });
+    if (!toggle) throw new Error('border-style toggle missing');
+    const onChange = (toggle.props as { onChange: (s: 'solid' | 'dashed' | 'dotted') => void })
+      .onChange;
+    onChange('solid');
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('g1', { borderStyle: 'solid' });
+  });
+
+  it('the patch shape uses `borderWidth` (NOT borderSize) — type-level check', () => {
+    // Compile-time guard: removing `borderWidth` from NodeStylePatch breaks
+    // this test. The shape-node strip writes `borderSize`; the group strip
+    // writes `borderWidth` to land in the GroupNodeData schema field.
+    const patch: NodeStylePatch = { borderWidth: 4 };
+    expect(patch.borderWidth).toBe(4);
   });
 });

@@ -76,6 +76,9 @@ export const NodePatchBodySchema = z
     borderColor: ColorTokenSchema.optional(),
     backgroundColor: ColorTokenSchema.optional(),
     borderSize: z.number().positive().optional(),
+    // US-008: group chrome border-thickness. Range matches GroupNodeDataSchema
+    // (1–8) — distinct from shape nodes' open-ended `borderSize`.
+    borderWidth: z.number().min(1).max(8).optional(),
     borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
     fontSize: z.number().positive().optional(),
     cornerRadius: z.number().min(0).optional(),
@@ -111,6 +114,7 @@ const NODE_DATA_PATCH_KEYS = [
   'borderColor',
   'backgroundColor',
   'borderSize',
+  'borderWidth',
   'borderStyle',
   'fontSize',
   'cornerRadius',

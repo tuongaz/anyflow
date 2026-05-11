@@ -36,6 +36,8 @@ export interface NodeStylePatch {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  /** US-008: group-only border thickness (1–8). Shape nodes use `borderSize`. */
+  borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
   cornerRadius?: number;
@@ -198,6 +200,17 @@ export function StyleStrip({
   const firstIconNode = pureIconNode
     ? (nodes.find((n) => n.type === 'iconNode') as Extract<DemoNode, { type: 'iconNode' }>)
     : undefined;
+  // US-008: when a single group is selected AND the user has entered it
+  // (data.isActive === true, injected by demo-canvas), the strip collapses to
+  // the group chrome controls (border color, fill, border style, border
+  // width). Edits dispatch via the same onStyleNode path used by shape
+  // styling — the writer applies the patch keys directly to data, and the
+  // group renderer (group-node.tsx) reads them inline via groupChromeStyle.
+  // Note: groups use `borderWidth` (1–8), NOT `borderSize` like shape nodes.
+  const activeGroupNode =
+    pureNode && nodes.length === 1 && nodes[0]?.type === 'group' && nodes[0].data.isActive === true
+      ? (nodes[0] as Extract<DemoNode, { type: 'group' }>)
+      : undefined;
   // Text-shape simplification only applies to pure-node selections of a single
   // text shape. Mixed selections (text-shape node + connector) still need the
   // shared border controls visible, so the guard is gated on `pureNode`.
@@ -339,6 +352,104 @@ export function StyleStrip({
       : 'style-tab-border-color-trigger';
   const colorTokenPrefix =
     pureConnector || isTextShape ? 'style-tab-color' : 'style-tab-border-color';
+
+  if (activeGroupNode) {
+    // US-008: dedicated branch for an entered (isActive) group. Renders the
+    // same four chrome controls a shape gets (border color, fill, border
+    // style, border width) but writes through `borderWidth` (1–8) instead of
+    // `borderSize`. Each control dispatches via onStyleNode on the group's id,
+    // reusing the existing PATCH+undo path (coalesce key `node:<id>:style`).
+    const groupId = activeGroupNode.id;
+    const groupData = activeGroupNode.data;
+    const groupBorderColor: ColorToken = groupData.borderColor ?? 'default';
+    const groupBackground: ColorToken = groupData.backgroundColor ?? 'default';
+    const groupBorderStyle = (groupData.borderStyle ?? 'dashed') as 'solid' | 'dashed' | 'dotted';
+    const groupBorderWidth = groupData.borderWidth ?? 1;
+    const applyGroupBorderColor = (token: ColorToken) =>
+      onStyleNode(groupId, { borderColor: token });
+    const applyGroupBackground = (token: ColorToken) =>
+      onStyleNode(groupId, { backgroundColor: token });
+    const applyGroupBorderStyle = (style: 'solid' | 'dashed' | 'dotted') =>
+      onStyleNode(groupId, { borderStyle: style });
+    const applyGroupBorderWidth = (n: number) => onStyleNode(groupId, { borderWidth: n });
+    const previewGroupBorderWidth = (n: number) =>
+      onStyleNodePreview?.(groupId, { borderWidth: n });
+    return (
+      <TooltipProvider delayDuration={300}>
+        <div
+          data-testid="canvas-style-strip"
+          data-group-active="true"
+          className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
+        >
+          <SwatchButton
+            testId="style-strip-group-border-color"
+            tooltip="Border color"
+            ariaLabel="group border color"
+            activeToken={groupBorderColor}
+            previewKind="border"
+            tokenTestIdPrefix="style-tab-group-border-color"
+            innerTestId="style-tab-group-border-color-trigger"
+            onSelect={applyGroupBorderColor}
+          />
+          <SwatchButton
+            testId="style-strip-group-fill"
+            tooltip="Fill"
+            ariaLabel="group fill"
+            activeToken={groupBackground}
+            previewKind="background"
+            tokenTestIdPrefix="style-tab-group-background-color"
+            innerTestId="style-tab-group-background-color-trigger"
+            onSelect={applyGroupBackground}
+          />
+          <PopoverButton
+            testId="style-strip-group-border-style"
+            tooltip="Border style"
+            ariaLabel="group border style"
+            renderIcon={() => {
+              const Icon =
+                BORDER_STYLE_OPTIONS.find((o) => o.value === groupBorderStyle)?.icon ??
+                LineDashedIcon;
+              return <Icon className="h-4 w-4" />;
+            }}
+          >
+            <IconToggleGroup<'solid' | 'dashed' | 'dotted'>
+              ariaLabel="Border style"
+              value={groupBorderStyle}
+              onChange={applyGroupBorderStyle}
+              options={BORDER_STYLE_OPTIONS}
+            />
+          </PopoverButton>
+          <PopoverButton
+            testId="style-strip-group-border-width"
+            tooltip="Border width"
+            ariaLabel="group border width"
+            renderIcon={() => (
+              <span className="font-mono text-[10px] tabular-nums">{groupBorderWidth}</span>
+            )}
+          >
+            <SliderControl
+              value={groupData.borderWidth}
+              defaultValue={1}
+              min={1}
+              max={8}
+              suffix="px"
+              onPreview={previewGroupBorderWidth}
+              onCommit={applyGroupBorderWidth}
+              testId="style-tab-group-border-width-slider"
+            />
+          </PopoverButton>
+          {showLockToggle ? (
+            <LockToggleButton
+              locked={allNodesLocked}
+              tooltip={lockTooltip}
+              Icon={LockIcon}
+              onClick={handleLockToggle}
+            />
+          ) : null}
+        </div>
+      </TooltipProvider>
+    );
+  }
 
   if (pureIconNode) {
     // US-022: Change-icon button reuses the same callback the iconNode's

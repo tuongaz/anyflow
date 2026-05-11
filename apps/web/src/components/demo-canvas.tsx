@@ -1416,6 +1416,21 @@ export function DemoCanvas({
     return overlayInputs;
   }, [nodes, nodeOverrides, selectedNodeIds]);
 
+  // US-008: enrich `selectedNodes` with the transient `data.isActive` flag for
+  // the group matching activeGroupId. The StyleStrip uses this to gate its
+  // "entered-group chrome editor" branch. selectedNodes is the on-disk shape
+  // (no transient flags) — we only inject the flag right before handing it to
+  // the strip, mirroring the equivalent injection in `buildNode`.
+  const selectedNodesForStyleStrip = useMemo<DemoNode[]>(() => {
+    if (!selectedNodes) return [];
+    if (activeGroupId === null) return selectedNodes;
+    return selectedNodes.map((n) =>
+      n.type === 'group' && n.id === activeGroupId
+        ? ({ ...n, data: { ...n.data, isActive: true } } as DemoNode)
+        : n,
+    );
+  }, [selectedNodes, activeGroupId]);
+
   // When the active group disappears from `nodes` (ungrouped, deleted, or the
   // demo loaded a different file), drop the activeGroupId so the gating
   // doesn't leak across an unrelated set of nodes. The lookup is cheap (O(N))
@@ -2845,7 +2860,7 @@ export function DemoCanvas({
               ) : null}
               {onStyleNode && onStyleConnector ? (
                 <StyleStrip
-                  nodes={selectedNodes ?? []}
+                  nodes={selectedNodesForStyleStrip}
                   connectors={selectedConnectors ?? []}
                   onStyleNode={onStyleNode}
                   onStyleNodePreview={onStyleNodePreview}

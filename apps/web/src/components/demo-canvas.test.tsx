@@ -4,6 +4,7 @@ import {
   type MultiResizeUpdate,
   SelectionResizeOverlay,
 } from '@/components/selection-resize-overlay';
+import { StyleStrip } from '@/components/style-strip';
 import type { DemoNode } from '@/lib/api';
 import { type Connection, type Node, ReactFlow } from '@xyflow/react';
 import * as React from 'react';
@@ -1213,6 +1214,96 @@ describe('DemoCanvas', () => {
       const a = selected.find((n) => n.id === 'a');
       expect(a?.position).toEqual({ x: 25, y: 30 });
       expect(a?.data).toEqual({ width: 70, height: 70, locked: true });
+    });
+  });
+
+  describe('US-008: inject isActive into StyleStrip selectedNodes', () => {
+    // The strip's "entered group" branch keys off data.isActive, but the
+    // selectedNodes prop carries the on-disk shape (no transient flags).
+    // The canvas injects isActive: true on the group whose id matches the
+    // local activeGroupId state — slot 1 in useStateOverrides. These tests
+    // pin the injection contract so the strip never has to ask the canvas
+    // for the active id separately.
+    function findStripNodes(tree: unknown): DemoNode[] | null {
+      const strip = findElement(tree, (el) => el.type === StyleStrip);
+      if (!strip) return null;
+      return strip.props.nodes as DemoNode[];
+    }
+
+    it('injects data.isActive=true on the group whose id matches activeGroupId', () => {
+      const tree = callDemoCanvas(
+        {
+          nodes: [makeGroupNode('g1'), makeShapeNode('s1')],
+          selectedNodeIds: ['g1'],
+          selectedNodes: [makeGroupNode('g1')],
+          onStyleNode: () => {},
+          onStyleConnector: () => {},
+        },
+        // Slot 0 = drawShape, slot 1 = activeGroupId. Setting slot 1 = 'g1'
+        // simulates the user having double-clicked into g1.
+        { useStateOverrides: [undefined, 'g1'] },
+      );
+      const nodes = findStripNodes(tree);
+      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
+      const group = nodes.find((n) => n.id === 'g1');
+      expect(group?.type).toBe('group');
+      expect((group?.data as { isActive?: boolean }).isActive).toBe(true);
+    });
+
+    it('does NOT inject isActive when the active group is not in the selection', () => {
+      const tree = callDemoCanvas(
+        {
+          nodes: [makeGroupNode('g1'), makeShapeNode('s1')],
+          selectedNodeIds: ['s1'],
+          selectedNodes: [makeShapeNode('s1')],
+          onStyleNode: () => {},
+          onStyleConnector: () => {},
+        },
+        { useStateOverrides: [undefined, 'g1'] },
+      );
+      const nodes = findStripNodes(tree);
+      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
+      const shape = nodes.find((n) => n.id === 's1');
+      // A shape node should never carry isActive — it's a group-only flag.
+      expect((shape?.data as { isActive?: boolean }).isActive).toBeUndefined();
+    });
+
+    it('does NOT inject isActive when activeGroupId is null (no group entered)', () => {
+      const tree = callDemoCanvas(
+        {
+          nodes: [makeGroupNode('g1')],
+          selectedNodeIds: ['g1'],
+          selectedNodes: [makeGroupNode('g1')],
+          onStyleNode: () => {},
+          onStyleConnector: () => {},
+        },
+        // Default activeGroupId is null (useState slot 1 unset).
+        { useStateOverrides: [] },
+      );
+      const nodes = findStripNodes(tree);
+      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
+      const group = nodes.find((n) => n.id === 'g1');
+      expect((group?.data as { isActive?: boolean }).isActive).toBeUndefined();
+    });
+
+    it('passes through non-group nodes unchanged when a different group is active', () => {
+      const tree = callDemoCanvas(
+        {
+          nodes: [makeGroupNode('g1'), makeShapeNode('s1')],
+          selectedNodeIds: ['g1', 's1'],
+          selectedNodes: [makeGroupNode('g1'), makeShapeNode('s1')],
+          onStyleNode: () => {},
+          onStyleConnector: () => {},
+        },
+        { useStateOverrides: [undefined, 'g1'] },
+      );
+      const nodes = findStripNodes(tree);
+      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
+      // The matched group gets isActive=true; the shape passes through.
+      const group = nodes.find((n) => n.id === 'g1');
+      const shape = nodes.find((n) => n.id === 's1');
+      expect((group?.data as { isActive?: boolean }).isActive).toBe(true);
+      expect((shape?.data as { isActive?: boolean }).isActive).toBeUndefined();
     });
   });
 });

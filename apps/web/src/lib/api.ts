@@ -119,6 +119,10 @@ export interface GroupNodeData {
   borderColor?: ColorToken;
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
+  /** US-008: transient flag injected by demo-canvas when the user has entered
+   * this group via double-click. Never persisted to disk — drives the
+   * property-panel "group style" branch and the `[data-active]` CSS chrome. */
+  isActive?: boolean;
 }
 
 interface NodeBase {
@@ -326,6 +330,9 @@ export interface UpdateNodeBody {
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
+  /** US-008: group chrome border-thickness (1–8). Distinct from shape nodes'
+   * open-ended `borderSize` — see `GroupNodeData.borderWidth`. */
+  borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
   cornerRadius?: number;
