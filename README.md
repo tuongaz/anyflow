@@ -62,6 +62,38 @@ If you'd rather skip the skill, a demo is a single file at
 working example, and [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts)
 for the Zod schema that validates it.
 
+## Install the MCP server
+
+AnyDemo ships an MCP server so any MCP-aware coding agent (Claude Code,
+Cursor, Windsurf, etc.) can list, register, and edit demos directly —
+adding nodes, moving them, wiring connectors, patching styles. The studio
+must be running (`npx @tuongaz/anydemo start`); the MCP server is a thin
+stdio shim that proxies to its `/mcp` endpoint.
+
+**Claude Code** — one command:
+
+```bash
+claude mcp add anydemo -- npx -y -p @tuongaz/anydemo anydemo-mcp
+```
+
+**Anything that reads `.mcp.json`** (Claude Code project-scoped, Cursor,
+etc.) — drop this into the project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "anydemo": {
+      "command": "npx",
+      "args": ["-y", "-p", "@tuongaz/anydemo", "anydemo-mcp"]
+    }
+  }
+}
+```
+
+The shim talks to `http://127.0.0.1:4321/mcp` by default. Override with
+`ANYDEMO_STUDIO_URL` if the studio runs elsewhere. If the studio isn't
+running, tool calls return a clear error instead of hanging.
+
 ## Develop on AnyDemo itself
 
 ```bash
