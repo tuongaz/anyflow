@@ -1,5 +1,6 @@
 import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
+import { GroupNode } from '@/components/nodes/group-node';
 import { IconNode } from '@/components/nodes/icon-node';
 import { IMAGE_DEFAULT_SIZE, ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
@@ -440,6 +441,10 @@ const nodeTypes = {
   shapeNode: ShapeNode,
   imageNode: ImageNode,
   iconNode: IconNode,
+  // US-011: container node grouping other nodes via `parentId`. React Flow
+  // positions children relative to the group; dragging the group moves the
+  // group + every child together.
+  group: GroupNode,
 };
 const edgeTypes = { editableEdge: EditableEdge };
 
@@ -1261,6 +1266,9 @@ export function DemoCanvas({
       // data) on resize-stop.
       if (merged.data.width !== undefined) node.width = merged.data.width;
       if (merged.data.height !== undefined) node.height = merged.data.height;
+      // US-011: forward `parentId` so React Flow positions this node relative
+      // to its container group and drags the parent + children together.
+      if (merged.parentId !== undefined) node.parentId = merged.parentId;
       // US-025: only the selected node may originate a new connection. Setting
       // `connectable: false` on unselected nodes makes their Handles ignore
       // connection-start gestures (xyflow's per-node `connectable` overrides

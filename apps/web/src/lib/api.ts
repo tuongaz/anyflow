@@ -93,9 +93,25 @@ export interface IconNodeData {
   label?: string;
 }
 
+// US-011: container node grouping other nodes via their `parentId`. No
+// semantic payload; chrome (dashed border, transparent fill) lives in CSS.
+// `width`/`height` size the group's bounding box for the renderer.
+export interface GroupNodeData {
+  label?: string;
+  width?: number;
+  height?: number;
+}
+
 interface NodeBase {
   id: string;
   position: { x: number; y: number };
+  /**
+   * US-011: optional parent-node id. When set, React Flow positions this
+   * node relative to the parent's top-left and drags the parent + children
+   * together. Mirrors the optional `parentId` on every node variant in
+   * apps/studio/src/schema.ts.
+   */
+  parentId?: string;
 }
 
 export type DemoNode =
@@ -103,7 +119,8 @@ export type DemoNode =
   | (NodeBase & { type: 'stateNode'; data: NodeData })
   | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData })
   | (NodeBase & { type: 'imageNode'; data: ImageNodeData })
-  | (NodeBase & { type: 'iconNode'; data: IconNodeData });
+  | (NodeBase & { type: 'iconNode'; data: IconNodeData })
+  | (NodeBase & { type: 'group'; data: GroupNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
 export type ConnectorDirection = 'forward' | 'backward' | 'both';
@@ -394,9 +411,11 @@ export const updateConnector = async (
 
 export interface CreateNodeBody {
   id?: string;
-  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode';
+  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode' | 'group';
   position: { x: number; y: number };
   data: Record<string, unknown>;
+  /** US-011: optional parent-node id (must reference an existing node). */
+  parentId?: string;
 }
 
 export const createNode = async (

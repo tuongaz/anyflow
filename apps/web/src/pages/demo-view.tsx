@@ -1066,7 +1066,8 @@ export function DemoView({
         !node ||
         node.type === 'shapeNode' ||
         node.type === 'imageNode' ||
-        node.type === 'iconNode'
+        node.type === 'iconNode' ||
+        node.type === 'group'
       )
         return;
       const prevDetail = node.data.detail;
@@ -1105,7 +1106,8 @@ export function DemoView({
         !node ||
         node.type === 'shapeNode' ||
         node.type === 'imageNode' ||
-        node.type === 'iconNode'
+        node.type === 'iconNode' ||
+        node.type === 'group'
       )
         return;
       const prevDetail = node.data.detail;

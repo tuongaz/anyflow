@@ -1161,6 +1161,232 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(12)).success).toBe(true);
   });
 
+  // US-011: group node + parentId foundation. parentId is optional on every
+  // node variant, the group variant is new, and existing demo files round-trip
+  // unchanged (the example demos in /examples have no parentId / group nodes).
+  it('round-trips a group node with optional label + size (US-011)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'group-demo',
+      nodes: [
+        {
+          id: 'group-1',
+          type: 'group' as const,
+          position: { x: 10, y: 20 },
+          data: { label: 'Auth flow', width: 320, height: 220 },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'group') throw new Error('expected group node');
+    expect(node.data.label).toBe('Auth flow');
+    expect(node.data.width).toBe(320);
+    expect(node.data.height).toBe(220);
+  });
+
+  it('accepts a group node with no label and no size (US-011)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'minimal-group',
+      nodes: [{ id: 'group-1', type: 'group' as const, position: { x: 0, y: 0 }, data: {} }],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(true);
+  });
+
+  it('round-trips a group with two parent-linked children (US-011 fixture shape)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'group-with-children',
+      nodes: [
+        {
+          id: 'group-1',
+          type: 'group' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'API', width: 320, height: 220 },
+        },
+        {
+          id: 'child-a',
+          type: 'stateNode' as const,
+          position: { x: 20, y: 40 },
+          parentId: 'group-1',
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'child-b',
+          type: 'stateNode' as const,
+          position: { x: 180, y: 40 },
+          parentId: 'group-1',
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    expect(result.data.nodes).toHaveLength(3);
+    expect(result.data.nodes[1]?.parentId).toBe('group-1');
+    expect(result.data.nodes[2]?.parentId).toBe('group-1');
+  });
+
+  it('rejects a node whose parentId references an unknown node (US-011)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'orphan-child',
+      nodes: [
+        {
+          id: 'child-a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'ghost-group',
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path.includes('parentId'));
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain('ghost-group');
+  });
+
+  it('rejects a node that lists itself as its parent (US-011)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'self-parent',
+      nodes: [
+        {
+          id: 'n1',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'n1',
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('accepts every existing node type with an optional parentId (back-compat for US-011)', () => {
+    // Each variant must round-trip with AND without parentId.
+    const demo = {
+      version: 1 as const,
+      name: 'parent-everywhere',
+      nodes: [
+        {
+          id: 'group-1',
+          type: 'group' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'G' },
+        },
+        {
+          id: 'p1',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'group-1',
+          data: {
+            label: 'P',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+          },
+        },
+        {
+          id: 's1',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'group-1',
+          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'sh1',
+          type: 'shapeNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'group-1',
+          data: { shape: 'rectangle' as const },
+        },
+        {
+          id: 'img1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'group-1',
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+          },
+        },
+        {
+          id: 'ic1',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 0 },
+          parentId: 'group-1',
+          data: { icon: 'check' },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    // parentId survives the round-trip for each variant.
+    for (let i = 1; i < result.data.nodes.length; i++) {
+      expect(result.data.nodes[i]?.parentId).toBe('group-1');
+    }
+  });
+
+  it('loads the group-fixture.json smoke fixture with one group + 2 children (US-011)', async () => {
+    const data = await readFixture('group-fixture.json');
+    const result = DemoSchema.safeParse(data);
+    if (!result.success) {
+      throw new Error(
+        `expected group-fixture.json to parse, got: ${JSON.stringify(result.error.issues, null, 2)}`,
+      );
+    }
+    expect(result.data.nodes).toHaveLength(3);
+    const group = result.data.nodes.find((n) => n.id === 'group-1');
+    if (!group || group.type !== 'group') throw new Error('expected group node');
+    expect(group.data.label).toBe('Auth flow');
+    const children = result.data.nodes.filter((n) => n.parentId === 'group-1');
+    expect(children).toHaveLength(2);
+    expect(children.map((c) => c.id).sort()).toEqual(['child-a', 'child-b']);
+  });
+
+  it('existing example demos round-trip unchanged through a parse cycle (US-011 back-compat)', async () => {
+    // The three on-disk examples in /examples/*/.anydemo/demo.json predate
+    // US-011's parentId / group additions. Both fields are optional, so a
+    // parse → serialize → parse cycle must produce a deep-equal demo.
+    const examples = [
+      '../../../examples/order-pipeline/.anydemo/demo.json',
+      '../../../examples/checkout-demo/.anydemo/demo.json',
+      '../../../examples/todo-demo-target/.anydemo/demo.json',
+    ];
+    for (const rel of examples) {
+      const url = new URL(rel, import.meta.url);
+      const raw = (await Bun.file(url.pathname).json()) as unknown;
+      const parsed = DemoSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error(
+          `expected ${rel} to parse, got: ${JSON.stringify(parsed.error.issues, null, 2)}`,
+        );
+      }
+      // Round-trip through JSON serialization to catch any silent field
+      // injection (e.g. parentId defaulting to undefined leaking out).
+      const serialized = JSON.parse(JSON.stringify(parsed.data)) as unknown;
+      expect(serialized).toEqual(raw);
+    }
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

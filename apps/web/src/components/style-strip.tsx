@@ -165,8 +165,11 @@ export function StyleStrip({
   // iconNode is unboxed (no border/background/cornerRadius/fontSize). Filter
   // it out for the shared border/font/corner controls — the iconNode-only
   // color picker handled below writes `data.color` via a dedicated apply.
+  // US-011: group nodes have only label + width/height; the strip's shared
+  // visual controls don't apply to them either (chrome lives in CSS).
   const visualNodes = nodes.filter(
-    (n): n is Exclude<DemoNode, { type: 'iconNode' }> => n.type !== 'iconNode',
+    (n): n is Exclude<DemoNode, { type: 'iconNode' } | { type: 'group' }> =>
+      n.type !== 'iconNode' && n.type !== 'group',
   );
   const firstVisualNode = visualNodes[0];
   // US-014: when every selected node is an iconNode the strip collapses to

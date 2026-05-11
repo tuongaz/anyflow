@@ -87,17 +87,25 @@ const StateNodeDataSchema = NodeDataBaseSchema.extend({
   playAction: PlayActionSchema.optional(),
 });
 
-const PlayNodeSchema = z.object({
+// US-011: shared fields on every node variant. `parentId` lets a node declare
+// another node as its container (group) — React Flow then positions the child
+// relative to the parent and drags the parent + children together. Optional;
+// existing demo files predate it and must round-trip unchanged.
+const NodeBaseShape = {
   id: z.string().min(1),
-  type: z.literal('playNode'),
   position: PositionSchema,
+  parentId: z.string().optional(),
+};
+
+const PlayNodeSchema = z.object({
+  ...NodeBaseShape,
+  type: z.literal('playNode'),
   data: PlayNodeDataSchema,
 });
 
 const StateNodeSchema = z.object({
-  id: z.string().min(1),
+  ...NodeBaseShape,
   type: z.literal('stateNode'),
-  position: PositionSchema,
   data: StateNodeDataSchema,
 });
 
@@ -113,9 +121,8 @@ const ShapeNodeDataSchema = z.object({
 });
 
 const ShapeNodeSchema = z.object({
-  id: z.string().min(1),
+  ...NodeBaseShape,
   type: z.literal('shapeNode'),
-  position: PositionSchema,
   data: ShapeNodeDataSchema,
 });
 
@@ -133,9 +140,8 @@ const ImageNodeDataSchema = z.object({
 });
 
 const ImageNodeSchema = z.object({
-  id: z.string().min(1),
+  ...NodeBaseShape,
   type: z.literal('imageNode'),
-  position: PositionSchema,
   data: ImageNodeDataSchema,
 });
 
@@ -156,10 +162,26 @@ const IconNodeDataSchema = z.object({
 });
 
 const IconNodeSchema = z.object({
-  id: z.string().min(1),
+  ...NodeBaseShape,
   type: z.literal('iconNode'),
-  position: PositionSchema,
   data: IconNodeDataSchema,
+});
+
+// US-011: group node — a container with an optional label and explicit
+// dimensions. Children declare it via `parentId` and React Flow positions
+// them relative to the group. No semantic payload; the visual chrome
+// (dashed border, transparent fill) lives in CSS so a future style story
+// can theme it without schema churn.
+const GroupNodeDataSchema = z.object({
+  label: z.string().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+});
+
+const GroupNodeSchema = z.object({
+  ...NodeBaseShape,
+  type: z.literal('group'),
+  data: GroupNodeDataSchema,
 });
 
 const NodeSchema = z.discriminatedUnion('type', [
@@ -168,6 +190,7 @@ const NodeSchema = z.discriminatedUnion('type', [
   ShapeNodeSchema,
   ImageNodeSchema,
   IconNodeSchema,
+  GroupNodeSchema,
 ]);
 
 // Connector is the semantic edge between two nodes — describes HOW they are
@@ -307,6 +330,27 @@ export const DemoSchema = z
         });
       }
     });
+    // US-011: a node's parentId must reference an existing node (otherwise
+    // React Flow would silently strand the child off-canvas). Self-parenting
+    // is also rejected to keep the parent graph acyclic at the trivial level.
+    demo.nodes.forEach((n, idx) => {
+      if (n.parentId === undefined) return;
+      if (n.parentId === n.id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['nodes', idx, 'parentId'],
+          message: `Node ${n.id} cannot be its own parent`,
+        });
+        return;
+      }
+      if (!nodeIds.has(n.parentId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['nodes', idx, 'parentId'],
+          message: `Node ${n.id} references unknown parent: ${n.parentId}`,
+        });
+      }
+    });
   });
 
 export type Demo = z.infer<typeof DemoSchema>;
@@ -314,6 +358,7 @@ export type DemoNode = z.infer<typeof NodeSchema>;
 export type ShapeNode = z.infer<typeof ShapeNodeSchema>;
 export type ImageNode = z.infer<typeof ImageNodeSchema>;
 export type IconNode = z.infer<typeof IconNodeSchema>;
+export type GroupNode = z.infer<typeof GroupNodeSchema>;
 export type ShapeKind = z.infer<typeof ShapeKindSchema>;
 export type ColorToken = z.infer<typeof ColorTokenSchema>;
 export type Connector = z.infer<typeof ConnectorSchema>;

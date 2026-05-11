@@ -430,6 +430,52 @@ button:disabled {
   outline-offset: 4px;
 }
 
+/* US-011: group node — a container that wraps a multi-selection. Chrome
+ * lives here (not in JSX) so the GroupNode component stays minimal and a
+ * future style story can re-theme without touching React. Default: 1px
+ * dashed border with the theme border color, transparent fill. Selected:
+ * 2px solid accent border. The label slot sits at the top edge of the
+ * bounding box at z-index 2 so it paints above sibling edges (whose
+ * `defaultEdgeOptions.zIndex` is 1 per US-010) and never gets clipped.
+ *
+ * `pointer-events: none` on the inner wrapper lets clicks pass through
+ * the empty middle of the group onto whatever lies underneath (canvas
+ * pane, child node), so the only interactive surface is the border and
+ * the label strip. xyflow's `.react-flow__node` outer wrapper still
+ * receives the dashed-border hit area + cursor, so the group remains
+ * clickable on its perimeter.
+ *
+ * NOTE: the dashed border lives on the xyflow outer `.react-flow__node`
+ * element (not on our inner div) because React Flow's selection class
+ * (`.selected`) lands there and the border is what we want to thicken on
+ * selection. The inner `[data-testid="group-node"]` div fills via
+ * `h-full w-full` (set in JSX) so its bounds align exactly with the
+ * outer wrapper. */
+.react-flow__node-group {
+  border: 1px dashed hsl(var(--border));
+  background: transparent;
+  border-radius: 4px;
+}
+.react-flow__node-group.selected {
+  border: 2px solid hsl(var(--primary));
+}
+.react-flow__node-group .react-flow__node-group-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  pointer-events: none;
+  z-index: 2;
+  user-select: none;
+}
+
 /* US-007: when a node is selected, its 4 connection handles relocate from
  * the node body's edge midpoints to the OUTER selection-rectangle's edge
  * midpoints — 4px outward, matching the `outlineOffset: 4px` on each node

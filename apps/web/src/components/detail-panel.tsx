@@ -56,7 +56,9 @@ export function DetailPanel({
   // style-strip / resize handles still work for them because they live on
   // the React Flow node, not the panel.
   const inspectableNode =
-    node && node.type !== 'imageNode' && node.type !== 'iconNode' ? node : null;
+    node && node.type !== 'imageNode' && node.type !== 'iconNode' && node.type !== 'group'
+      ? node
+      : null;
   const open = inspectableNode !== null || connector !== null;
   // Shape and image nodes are decorative — no detail/dynamicSource/run surface.
   const functionalNode =
