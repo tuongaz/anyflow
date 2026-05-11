@@ -14,7 +14,11 @@ with the running studio so the user can click the result.
 ## Requirements
 
 - A running AnyDemo studio reachable at `$ANYDEMO_STUDIO_URL` (default
-  `http://localhost:4321`). Probe `GET /health` to confirm.
+  `http://localhost:4321`). The skill probes `GET /health` as its very
+  first action (see "Studio precheck" below) and STOPS with a
+  user-facing start instruction if the probe fails — start the studio
+  with `npx @tuongaz/anydemo start` (npm install) or `bun run dev`
+  (monorepo checkout) before re-running.
 - **Node.js** (any LTS) on `PATH` — the two filesystem scripts under
   `$SKILL_DIR/scripts/` run on Node. `$PLUGIN_ROOT` and `$SKILL_DIR` are
   resolved in Phase 0; they handle both the plugin install at
@@ -38,6 +42,51 @@ to resolve a path on disk use the explicit `$SKILL_DIR/...` form.
 ## Announcement
 
 Announce: "Using anydemo-diagram skill to generate a playable diagram for: <request>"
+
+## Studio precheck — before any phase
+
+The studio MUST be running before any phase executes; every
+non-filesystem step in the pipeline is an HTTP call into it. **Run
+this check BEFORE Phase 0** (and before any other Bash tool call in
+the skill):
+
+```bash
+STUDIO_URL="${ANYDEMO_STUDIO_URL:-http://localhost:4321}"
+curl -fsS --max-time 3 "$STUDIO_URL/health" >/dev/null 2>&1
+```
+
+If the check exits non-zero, **STOP the skill** and tell the user in
+plain prose (not a stack trace or a bash dump). Use this template,
+substituting `$STUDIO_URL`:
+
+> The AnyDemo studio is not running at `<STUDIO_URL>`. Start it in a
+> separate terminal with one of:
+>
+> ```
+> npx @tuongaz/anydemo start
+> ```
+>
+> (uses the published npm package — the default for most users), or
+> from inside an AnyDemo monorepo checkout:
+>
+> ```
+> bun run dev
+> ```
+>
+> Then re-run `/diagram` (or the request that triggered this skill).
+> If the studio is on a non-default host/port, set
+> `ANYDEMO_STUDIO_URL=http://host:port` before re-running.
+
+Do NOT attempt to start the studio yourself with `Bash`
+(`run_in_background` or otherwise) — the user owns the studio
+process so they can see its output, restart it, and clean up cleanly.
+Starting it from inside the skill creates an orphan process the user
+can't kill.
+
+If the check passes, proceed to Phase 0. Phase 0 re-probes
+`/health` as a safety net (so the orchestration is robust if the
+studio dies mid-run), but the precheck above is the user-facing
+gate.
 
 ## Trigger examples
 
@@ -445,8 +494,18 @@ fi
 mkdir -p "$TARGET/.anydemo/intermediate"
 
 # Studio must be reachable — every non-filesystem step is an HTTP call.
-curl -fsS --max-time 1 "$STUDIO_URL/health" >/dev/null \
-  || { echo "AnyDemo studio not reachable at $STUDIO_URL. Start it with 'cd $PLUGIN_ROOT && bun run dev' (or pass ANYDEMO_STUDIO_URL=...) and re-run." >&2; exit 1; }
+# This is a safety-net re-probe; the user-facing precheck (see "Studio
+# precheck" above) already gated entry to Phase 0.
+curl -fsS --max-time 3 "$STUDIO_URL/health" >/dev/null 2>&1 || {
+  cat >&2 <<EOF
+AnyDemo studio not reachable at $STUDIO_URL.
+Start it in a separate terminal with one of:
+  npx @tuongaz/anydemo start          # npm package (most users)
+  bun run dev                         # from an AnyDemo monorepo checkout
+Or set ANYDEMO_STUDIO_URL=http://host:port if it lives elsewhere.
+EOF
+  exit 1
+}
 ```
 
 ## Phase 1 — SCAN
