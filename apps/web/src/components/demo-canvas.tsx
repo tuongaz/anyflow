@@ -307,22 +307,6 @@ export interface DemoCanvasProps {
    */
   onIngestImageUrl?: (url: string, position: { x: number; y: number }) => void;
   /**
-   * US-013: capture the canvas viewport and download it as an SVG file.
-   * Wiring this enables the Export SVG button in the canvas toolbar; absent →
-   * button is hidden. The parent owns the fitView/setViewport dance, the
-   * html-to-image capture, and the download trigger so the canvas stays free
-   * of dependency on the export library.
-   */
-  onExportSvg?: () => Promise<unknown> | unknown;
-  /**
-   * US-014: capture the canvas viewport and download it as a PDF file.
-   * Wiring this enables the Export PDF button in the canvas toolbar; absent →
-   * button is hidden. The parent owns the fitView/setViewport dance, the
-   * html-to-image capture, and the jsPDF generation so the canvas stays free
-   * of dependency on the export libraries.
-   */
-  onExportPdf?: () => Promise<unknown> | unknown;
-  /**
    * US-013/015 (icon picker): controlled-open state for the toolbar's Insert
    * icon popover. Wired through to `<CanvasToolbar>` unchanged. The parent
    * (demo-view) owns the state slice + pick handler so the detail panel,
@@ -665,8 +649,6 @@ export function DemoCanvas({
   pendingEditNodeId,
   onCreateImageNode,
   onIngestImageUrl,
-  onExportSvg,
-  onExportPdf,
   iconPickerOpen,
   onOpenIconPicker,
   onCloseIconPicker,
@@ -2478,8 +2460,6 @@ export function DemoCanvas({
                   activeShape={drawShape}
                   onSelectShape={setDrawShape}
                   onTidy={onTidy}
-                  onExportSvg={onExportSvg}
-                  onExportPdf={onExportPdf}
                   iconPickerOpen={iconPickerOpen ?? false}
                   onOpenIconPicker={onOpenIconPicker}
                   onCloseIconPicker={onCloseIconPicker}

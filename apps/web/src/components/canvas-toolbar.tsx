@@ -1,18 +1,7 @@
 import { IconPickerPopover } from '@/components/icon-picker-popover';
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import {
-  Circle,
-  FileImage,
-  LayoutDashboard,
-  Loader2,
-  Printer,
-  Square,
-  Sticker,
-  StickyNote,
-  Type,
-} from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { Circle, LayoutDashboard, Square, Sticker, StickyNote, Type } from 'lucide-react';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
@@ -24,18 +13,6 @@ export interface CanvasToolbarProps {
    * renders but is disabled — used while no demo is loaded.
    */
   onTidy?: () => void;
-  /**
-   * US-013: capture the canvas viewport and download an SVG. When omitted,
-   * the Export SVG button is hidden (no demo loaded). Returning a promise
-   * lets the toolbar show an in-flight spinner until the export settles.
-   */
-  onExportSvg?: () => Promise<unknown> | unknown;
-  /**
-   * US-014: capture the canvas viewport and download a PDF. When omitted,
-   * the Export PDF button is hidden (no demo loaded). Returning a promise
-   * lets the toolbar show an in-flight spinner until the export settles.
-   */
-  onExportPdf?: () => Promise<unknown> | unknown;
   /**
    * US-013 (icon picker): controlled-open state for the insert-icon popover.
    * The Insert icon button anchors the IconPickerPopover; the toolbar's parent
@@ -70,33 +47,17 @@ export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
 ];
 
 const TIDY_LABEL = 'Tidy layout (⌘⇧L)';
-const EXPORT_SVG_LABEL = 'Export SVG';
-const EXPORT_PDF_LABEL = 'Export PDF';
 const INSERT_ICON_LABEL = 'Insert icon';
 
 export function CanvasToolbar({
   activeShape,
   onSelectShape,
   onTidy,
-  onExportSvg,
-  onExportPdf,
   iconPickerOpen,
   onOpenIconPicker,
   onCloseIconPicker,
   onPickIcon,
 }: CanvasToolbarProps) {
-  const [exporting, setExporting] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const handleExportSvg = useCallback(() => {
-    if (!onExportSvg || exporting) return;
-    setExporting(true);
-    Promise.resolve(onExportSvg()).finally(() => setExporting(false));
-  }, [onExportSvg, exporting]);
-  const handleExportPdf = useCallback(() => {
-    if (!onExportPdf || exportingPdf) return;
-    setExportingPdf(true);
-    Promise.resolve(onExportPdf()).finally(() => setExportingPdf(false));
-  }, [onExportPdf, exportingPdf]);
   return (
     <div
       data-testid="canvas-toolbar"
@@ -141,48 +102,6 @@ export function CanvasToolbar({
       >
         <LayoutDashboard className="h-4 w-4" />
       </button>
-      {onExportSvg ? (
-        <button
-          type="button"
-          data-testid="toolbar-export-svg"
-          aria-label={EXPORT_SVG_LABEL}
-          title={EXPORT_SVG_LABEL}
-          disabled={exporting}
-          onClick={handleExportSvg}
-          className={cn(
-            'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-            'hover:bg-accent hover:text-accent-foreground',
-            'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
-          )}
-        >
-          {exporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <FileImage className="h-4 w-4" aria-hidden="true" />
-          )}
-        </button>
-      ) : null}
-      {onExportPdf ? (
-        <button
-          type="button"
-          data-testid="toolbar-export-pdf"
-          aria-label={EXPORT_PDF_LABEL}
-          title={EXPORT_PDF_LABEL}
-          disabled={exportingPdf}
-          onClick={handleExportPdf}
-          className={cn(
-            'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-            'hover:bg-accent hover:text-accent-foreground',
-            'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
-          )}
-        >
-          {exportingPdf ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <Printer className="h-4 w-4" aria-hidden="true" />
-          )}
-        </button>
-      ) : null}
       {onPickIcon ? (
         <>
           <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />

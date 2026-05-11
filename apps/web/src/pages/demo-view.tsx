@@ -3,6 +3,7 @@ import { DetailPanel } from '@/components/detail-panel';
 import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
 import { IMAGE_DEFAULT_SIZE } from '@/components/nodes/image-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
+import { ShareMenu } from '@/components/share-menu';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
@@ -28,6 +29,7 @@ import {
   updateNodePosition,
 } from '@/lib/api';
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
+import { captureViewportPng, downloadDataUrl } from '@/lib/export-png';
 import {
   type GroupableNode,
   computeGroupBbox,
@@ -46,7 +48,6 @@ import {
   resolveClipboardChord,
 } from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
-import { toPng, toSvg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -2505,99 +2506,70 @@ export function DemoView({
     onTidy(scope);
   }, [onTidy]);
 
-  // US-013: capture the canvas as an SVG and download it. We fitView so the
-  // entire graph is in frame, snapshot the previous viewport so we can restore
-  // it after, then call html-to-image on the `.react-flow__viewport` element.
-  // The viewport's siblings (Controls, MiniMap, Panel-mounted toolbar/style
-  // strip) are outside the captured DOM subtree by construction; the filter
-  // is a safety net in case xyflow ever moves them under the viewport.
-  const onExportSvg = useCallback(async (): Promise<void> => {
+  // US-022: capture the React Flow viewport as a PNG. Shared `captureViewportPng`
+  // helper handles the html-to-image call + chrome filter so PNG and PDF render
+  // exactly the same content. The orchestration (fitView so the whole graph is
+  // in frame, snapshot/restore the prior viewport, surface failures via
+  // editError) stays here because it touches UI state owned by this view.
+  const captureViewportFramed = useCallback(async () => {
     const rf = rfInstanceRef.current;
-    if (!rf) return;
+    if (!rf) return null;
     const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport');
-    if (!viewportEl) return;
-    const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
-    setEditError(null);
+    if (!viewportEl) return null;
     const prev = rf.getViewport();
     try {
       await rf.fitView({ duration: 0, padding: 0.1 });
       // Wait one frame so the new transform is reflected in the DOM before
       // html-to-image samples computed styles.
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const dataUrl = await toSvg(viewportEl, {
-        cacheBust: true,
-        filter: (node) => {
-          if (!(node instanceof Element)) return true;
-          if (node.classList.contains('react-flow__minimap')) return false;
-          if (node.classList.contains('react-flow__controls')) return false;
-          if (node.classList.contains('react-flow__panel')) return false;
-          return true;
-        },
-      });
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `${sanitizeFileName(demoName)}.svg`;
-      link.rel = 'noopener';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : String(err));
+      return await captureViewportPng(viewportEl);
     } finally {
       rf.setViewport(prev, { duration: 0 });
     }
-  }, [detail, slug]);
+  }, []);
 
-  // US-014: capture the canvas as a PNG via html-to-image, then embed it into
-  // a jsPDF document sized to the captured aspect ratio (landscape if wider
-  // than tall). Same fitView/restore + filter dance as onExportSvg above —
-  // only the encoding differs.
-  const onExportPdf = useCallback(async (): Promise<void> => {
-    const rf = rfInstanceRef.current;
-    if (!rf) return;
-    const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport');
-    if (!viewportEl) return;
-    const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
+  const exportFileName = useCallback(
+    (ext: 'pdf' | 'png'): string => {
+      const demoName = detail?.demo?.name ?? detail?.name ?? slug ?? 'demo';
+      return `${sanitizeFileName(demoName)}.${ext}`;
+    },
+    [detail, slug],
+  );
+
+  // US-022: download the canvas as a PNG (replaces the prior SVG export).
+  const onExportPng = useCallback(async (): Promise<void> => {
     setEditError(null);
-    const prev = rf.getViewport();
     try {
-      await rf.fitView({ duration: 0, padding: 0.1 });
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const dataUrl = await toPng(viewportEl, {
-        cacheBust: true,
-        filter: (node) => {
-          if (!(node instanceof Element)) return true;
-          if (node.classList.contains('react-flow__minimap')) return false;
-          if (node.classList.contains('react-flow__controls')) return false;
-          if (node.classList.contains('react-flow__panel')) return false;
-          return true;
-        },
-      });
-      // Probe the captured image's natural pixel dimensions so the PDF page
-      // matches the aspect ratio without distortion. Decoding happens in the
-      // browser; failures (rare for our own data URL) bubble up to editError.
-      const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-        img.onerror = () => reject(new Error('Failed to decode captured image'));
-        img.src = dataUrl;
-      });
+      const captured = await captureViewportFramed();
+      if (!captured) return;
+      downloadDataUrl(captured.dataUrl, exportFileName('png'));
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    }
+  }, [captureViewportFramed, exportFileName]);
+
+  // US-022: download the canvas as a PDF. Embeds the same captured PNG into a
+  // jsPDF document sized to the captured aspect ratio (landscape if wider than
+  // tall) so PDF + PNG share one capture path.
+  const onExportPdf = useCallback(async (): Promise<void> => {
+    setEditError(null);
+    try {
+      const captured = await captureViewportFramed();
+      if (!captured) return;
       const orientation: 'landscape' | 'portrait' =
-        dims.width > dims.height ? 'landscape' : 'portrait';
+        captured.width > captured.height ? 'landscape' : 'portrait';
       const doc = new jsPDF({
         orientation,
         unit: 'px',
-        format: [dims.width, dims.height],
+        format: [captured.width, captured.height],
         hotfixes: ['px_scaling'],
       });
-      doc.addImage(dataUrl, 'PNG', 0, 0, dims.width, dims.height);
-      doc.save(`${sanitizeFileName(demoName)}.pdf`);
+      doc.addImage(captured.dataUrl, 'PNG', 0, 0, captured.width, captured.height);
+      doc.save(exportFileName('pdf'));
     } catch (err) {
       setEditError(err instanceof Error ? err.message : String(err));
-    } finally {
-      rf.setViewport(prev, { duration: 0 });
     }
-  }, [detail, slug]);
+  }, [captureViewportFramed, exportFileName]);
 
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
@@ -2924,6 +2896,13 @@ export function DemoView({
         </div>
       ) : null}
 
+      <div className="pointer-events-auto absolute right-3 top-3 z-20">
+        <ShareMenu
+          onDownloadPdf={demoId ? onExportPdf : undefined}
+          onDownloadPng={demoId ? onExportPng : undefined}
+        />
+      </div>
+
       {demo ? (
         <DemoCanvas
           nodes={visibleNodes ?? demo.nodes}
@@ -2975,8 +2954,6 @@ export function DemoView({
           onPaneClick={onPaneClickClosePanel}
           onCreateAndConnectFromPane={onCreateAndConnectFromPane}
           pendingEditNodeId={pendingEditNodeId}
-          onExportSvg={demoId ? onExportSvg : undefined}
-          onExportPdf={demoId ? onExportPdf : undefined}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
