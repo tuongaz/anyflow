@@ -1,6 +1,6 @@
 ---
 name: anydemo-diagram
-description: This skill should be used when the user asks to "show me the architecture", "diagram this codebase", "explain how X works", "make a playable diagram", "generate an anydemo", "show me the order pipeline", "diagram the auth flow", or any request to produce a single flat playable architecture diagram for the AnyDemo studio. Drives a 6-phase pipeline (scan → scope → tier → nodes → wiring → layout → register) with three user checkpoints.
+description: This skill should be used when the user asks to "show me the architecture", "diagram this codebase", "explain how X works", "make a playable diagram", "generate an anydemo", "show me the order pipeline", "diagram the auth flow", or any request to produce a single flat playable architecture diagram for the AnyDemo studio. Drives a pre-flight + 8-phase pipeline (scan → scope → tier → nodes → wiring → layout → assemble → register) with three user checkpoints.
 version: 0.1.0
 argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
 ---
@@ -162,21 +162,95 @@ emitting wiring.
 
 A playable diagram (Tier 1 real, Tier 2 mock) is dramatically more useful
 than a static one — the reader can click a node and watch live state
-appear. When a viable choice exists, **prefer Playable over Static**:
+appear. When a viable choice exists, **prefer Playable over Static**.
+
+**Key insight: Tier 2 is the universal fallback.** The schema only allows
+`playAction.kind: 'http'`, but every `playAction.url` points at the
+**harness** we generate, not at the target. The harness is a Hono+Bun
+process whose handlers can do anything Bun can do — spawn a CLI, drop a
+fixture into a watched directory, `docker exec` into a container,
+publish to a real broker, `import()` a library function, call a `make`
+target, or just return faked JSON. **The target does NOT need
+customer-facing HTTP for Tier 2 to work.** That misconception is the
+single biggest reason demos get sleepwalked into Tier 3.
+
+Tier selection:
 
 - **Tier 1 (real)** is the gold standard. Pick it whenever
-  `tier-evidence.json` shows a reachable dev server on a known port.
-- **Tier 2 (mock)** is the strong fallback. Pick it whenever the diagram
-  has at least one HTTP-callable boundary and Tier 1 isn't feasible — the
-  `harness-author` agent stubs every referenced route so every play button
-  works.
-- **Tier 3 (static)** is the last resort. Pick it only when the codebase
-  has no HTTP/event/queue surface at all (pure libraries, generators) or
-  the user explicitly asks for a static rendering.
+  `tier-evidence.json` shows a reachable dev server on a known port AND
+  the diagram's clickable surface is HTTP-native.
+- **Tier 2 (mock)** is the strong default for everything else. Pick it
+  whenever the project has *any* identifiable trigger surface — HTTP
+  route, CLI entry, file watcher, queue/event consumer, container
+  entrypoint, library export, scheduled job, or any combination. The
+  `tier-detector` records the matched surface in `triggerSurface`; the
+  `harness-author` picks the matching bridge pattern.
+- **Tier 3 (static)** is the last resort. Pick it ONLY when the project
+  has literally no executable surface — pure type definitions,
+  schema-only repos, config bundles, docs, design tokens. If the
+  project has `package.json#bin`, `scripts.start`, a Dockerfile/CMD,
+  exported functions, a queue consumer, a file watcher, or a scheduled
+  job, it qualifies for Tier 2.
 
-When presenting Checkpoint 2 (tier selection), surface the playable option
-first and explain WHY it's the recommendation. Don't let the user
-sleepwalk into Tier 3 just because static is "simpler".
+The harness picks a **bridge pattern** matching the project's natural
+trigger surface (one of `http` / `cli` / `file-watch` / `queue` /
+`container` / `library` / `scheduled` / `mixed`). The harness is also
+allowed to ship **polyglot helper scripts** in the target's own
+language — small `*.py` / `*.go` / `*.rb` runners under
+`.anydemo/harness/runners/` that the Node handler spawns when the
+demo needs an async kick (manually triggering an event, uploading a
+file, sending a signal) that's awkward to do from Bun alone. The full
+set of bridge patterns and helper-script conventions — for Compose
+stacks, file-driven ETL, queue/event-driven services, libraries, CLIs,
+MCP servers, and language servers — lives in
+**`references/trigger-bridges.md`**. Read it before grading Tier 2
+feasibility (Phase 3) or authoring the harness (Phase 5b).
+
+When presenting Checkpoint 2, surface the playable option first and
+explain WHY it's the recommendation. Do NOT let the user sleepwalk into
+Tier 3 just because the target "isn't a web server" — that's not a
+Tier 3 condition.
+
+### Right-size the demo — split, merge, or scope down
+
+A single AnyDemo diagram caps at 30 nodes (Phase 4 enforces it) and reads
+best when a human can absorb the whole flow at a glance. When the user's
+request implies more — 50+ playable surfaces, three or four independent
+user flows, a polyglot stack with dozens of services — do NOT try to
+cram everything into one diagram. The scope-proposer surfaces a
+right-sizing recommendation at CHECKPOINT 1 before the user has to ask.
+
+Four alternatives, in preference order:
+
+- **Split into multiple demos**, one per user flow / use case.
+  "Order placement" + "Fulfillment" + "Refunds" become three separate
+  registered demos. Each has its own slug and tells one coherent
+  ≤25-node story; cross-references use `shapeNode` placeholders
+  labeled with the other demo's name. Pick this when each flow has a
+  distinct entry point and the user is exploring the system
+  breadth-first.
+- **Merge multiple actions into one playable node.** A single `playNode`
+  can compress "validate → persist → emit" behind one click whose
+  `detail.description` spells out the internal steps. Pick this when
+  the user cares about the boundary (the API surface, the entry point)
+  not the internals.
+- **Promote a sub-cluster to a single static shape.** When the diagram
+  drags in a supporting subsystem for context (auth service inside an
+  order-pipeline diagram), fold the whole cluster into one `shapeNode`
+  / `stateNode` labeled with the subsystem name. Pick this when the
+  cluster is context, not the subject.
+- **Narrow the scope.** Drop a subsystem the user didn't actually ask
+  about. Pick this when scope grew during proposal by reflex, not by
+  request.
+
+Trigger: scope-proposer's `estimatedNodeCount` exceeds ~30, OR
+`boundary-surfaces.json` shows three or more independent entry-point
+clusters, OR the user's request names multiple unrelated flows ("show
+me the order pipeline AND the search index AND the billing job"). The
+proposal must include a `sizeRecommendation` block naming the preferred
+alternative (`split` / `merge` / `promote-to-shape` / `narrow`) and the
+natural split / merge lines; CHECKPOINT 1 surfaces the matching
+right-sizing option alongside Approve / Expand / Contract / Redirect.
 
 ## Visual clarity for humans — duplicate to declutter
 
@@ -310,12 +384,35 @@ candidatePaths, estimatedNodeCount, questionsForUser[] }`.
 ### CHECKPOINT 1
 
 Use `AskUserQuestion` to present the proposed scope. Options:
-- **Approve** — proceed to Phase 3
-- **Expand** — widen scope (re-run scope-proposer with hint)
-- **Contract** — narrow the slice (re-run scope-proposer with hint)
-- **Redirect** — let the user rewrite the framing entirely
 
-If `--scope=<name>` was passed, skip the checkpoint.
+- **Approve** — proceed to Phase 3.
+- **Expand** — widen scope (re-run scope-proposer with hint).
+- **Contract** — narrow the slice generally (re-run scope-proposer
+  with hint).
+- **Split** — break into multiple demos along the lines the
+  scope-proposer recommended in `sizeRecommendation.splits[]`. Each
+  split re-enters the pipeline from Phase 2 with its own scope; the
+  registered demos cross-link via `shapeNode` placeholders.
+- **Merge** — collapse the sibling actions named in
+  `sizeRecommendation.mergeGroups[]` into one `playNode` each whose
+  `detail.description` spells out the internal steps. Re-run
+  scope-proposer with the merge hint.
+- **Promote to shape** — fold the supporting subsystem(s) named in
+  `sizeRecommendation.promoteClusters[]` into a single decorative
+  `shapeNode` / `stateNode`. Re-run scope-proposer with the hint.
+- **Narrow** — drop the subsystem(s) named in
+  `sizeRecommendation.narrowedAway[]`. Re-run scope-proposer with
+  the hint.
+- **Redirect** — let the user rewrite the framing entirely.
+
+When `sizeRecommendation` is present, **surface the option whose name
+matches `sizeRecommendation.kind` FIRST** (so `kind: "split"` puts
+Split at the top, `kind: "promote-to-shape"` puts Promote to shape at
+the top, …). When `sizeRecommendation` is null or omitted, hide the
+four right-sizing options and show only Approve / Expand / Contract /
+Redirect.
+
+If `--scope=<name>` was passed, skip the checkpoint entirely.
 
 ## Phase 3 — TIER DETECTION
 
@@ -566,6 +663,12 @@ For detailed information loaded only when needed:
 - **`references/visual-clarity.md`** — Full rule set for duplicating
   cross-cutting nodes, with worked examples and per-phase enforcement
   notes. Read before producing wiring or layout.
+- **`references/trigger-bridges.md`** — Tier 2 bridge patterns for
+  non-HTTP projects: Docker/Compose/K8s, file-driven ETL, queue/event/
+  gRPC, libraries/CLIs/MCP/LSP, plus polyglot helper-script conventions
+  when the harness needs a same-language runner inside the target. Read
+  before grading Tier 2 feasibility (Phase 3) or authoring the harness
+  (Phase 5b).
 - **`references/troubleshooting.md`** — Lookup table mapping every common
   failure to its one-line fix. Surface lines from this when an HTTP call
   returns non-2xx or the canvas appears blank.

@@ -7,10 +7,74 @@ color: orange
 
 # harness-author — anydemo-diagram Phase 5b (Tier 2 only)
 
-Generate a small mock server under `<target>/.anydemo/harness/` that stubs
-every HTTP route the diagram's `playAction.url` values reference. The harness
-is Hono on Bun, in TypeScript, and uses `@anydemo/sdk`'s `emit()` to drive
-event-bound state nodes.
+Generate a small server under `<target>/.anydemo/harness/` that exposes
+one HTTP endpoint per `playAction.url` in the diagram. Behind each
+endpoint, the handler runs whatever **bridges the click to the target's
+real trigger** — spawning a CLI, `docker exec`-ing into a container,
+dropping a fixture file into a watched directory, publishing to a real
+broker, dynamically importing a library function, or just returning
+faked JSON. The HTTP layer is the constant; the handler body is free
+to do anything Bun can do.
+
+Pick the bridge pattern from `tier-evidence.json.triggerSurface` (or
+`bridgeTargets[].kind` per route when `mixed`). The full catalogue with
+sample handler bodies lives in `references/trigger-bridges.md` — read
+it first. The harness is Hono on Bun in TypeScript and uses
+`@anydemo/sdk`'s `emit()` to drive event-bound state nodes.
+
+## POLYGLOT HELPER SCRIPTS
+
+The harness handler runs in Bun, but the *bridge* doesn't have to. When
+the demo requires asynchronous activity in the target's own language —
+manually triggering an event in a Python worker's process, uploading a
+file via the target's Ruby SDK, signalling a Go daemon over a unix
+socket — write a small helper script in that language under
+`<target>/.anydemo/harness/runners/` and have the Node handler
+`Bun.spawn` it.
+
+Layout convention:
+
+```
+<target>/.anydemo/harness/runners/
+  publish_event.py        # imports the target's pub-sub client + sends one event
+  upload_fixture.rb       # uses the target's S3 wrapper + uploads fixtures/orders.csv
+  signal_worker.go        # opens the target's unix socket + writes a trigger byte
+  trigger_etl.sh          # invokes the project's `make ingest` with curated env
+  README.md               # one line per runner: what it does + which playNode fires it
+```
+
+Rules for helper scripts:
+
+- **Write in the target's language**, not Bun. The point is to reuse the
+  target's own SDK/client code so the demo exercises the real path.
+- **Keep them tiny.** Aim for 20–40 lines. They're glue, not logic.
+- **Single-purpose.** One runner per asynchronous trigger; named after
+  the action (`publish_event.py`, not `helpers.py`).
+- **Read inputs from argv / env.** No interactive prompts. The Node
+  handler passes a fixture path or message id as an argument.
+- **Print one line of JSON on stdout for success/failure.** The Node
+  handler parses it and emits accordingly:
+  `{"ok": true, "messageId": "..."}` or `{"ok": false, "error": "..."}`.
+- **Document the runtime requirement.** If the script needs Python ≥ 3.10
+  with `kafka-python` installed, the harness README says so — don't
+  silently assume.
+
+The Node handler invokes a runner like:
+
+```ts
+app.post('/play/publish-order', async (c) => {
+  await emit(DEMO_ID, 'kafka-producer', 'running');
+  const proc = Bun.spawn(['python3', '../harness/runners/publish_event.py',
+    'orders.created', `${FIX}/orders.json`], { cwd: TARGET });
+  const out = await new Response(proc.stdout).text();
+  const result = JSON.parse(out);
+  await emit(DEMO_ID, 'kafka-producer', result.ok ? 'done' : 'error');
+  return c.json(result);
+});
+```
+
+Record any helper scripts in `tier-evidence.json.helperScripts[]` so a
+re-run regenerates them deterministically.
 
 ## INPUT
 
@@ -30,12 +94,17 @@ event-bound state nodes.
 
 ## RULES
 
-NEVER stub routes the diagram does NOT reference. The harness is exactly
-the surface the diagram needs — nothing more.
+NEVER expose routes the diagram does NOT reference. The harness is
+exactly the surface the diagram needs — nothing more.
 
-NEVER invent route handlers that talk to a real database or external API.
-Each handler returns plausible-but-fake JSON, then (where applicable) calls
-`emit()` to drive event state nodes.
+NEVER call third-party APIs or production data stores in a handler.
+DO call the user's own code — `Bun.spawn` their CLI, `docker exec` into
+their container, `await import('../../src/...')` their library, publish
+to their local broker, spawn a polyglot helper script — when
+`tier-evidence.json.triggerSurface` (or the per-route
+`bridgeTargets[].kind`) indicates that's the bridge. The whole point of
+Tier 2 is to exercise the user's real entry points; only fall back to
+plausible-but-fake JSON when no bridge applies.
 
 NEVER hard-code the demo ID. Read it from `process.env.ANYDEMO_DEMO_ID` (the
 register CLI sets this) and fall back to the slug.
@@ -87,12 +156,24 @@ Replace these in the templates:
 
 ## SELF-CHECK
 
-1. Every `playAction.url` path appears as a registered route in `server.ts`.
-2. Every event/queue connector originating from a stubbed route triggers
+1. Every `playAction.url` path appears as a registered route in
+   `server.ts`, AND the handler implements the bridge pattern dictated
+   by `tier-evidence.json.triggerSurface` (or per-route
+   `bridgeTargets[].kind` when `mixed`).
+2. Every event/queue connector originating from a bridged route triggers
    `emit()` to its target stateNode in the corresponding handler.
-3. `package.json` has exactly one runtime dep: `hono`. The SDK comes from
-   the workspace via `@anydemo/sdk`.
-4. README explains: "this is fake — replace when wiring to the real app".
+3. `package.json` runtime deps are minimal: `hono` plus any broker SDK
+   the bridge pattern needs (`kafkajs`, `ioredis`, …). The `emit()`
+   function is imported from `../sdk/emit` (a file the studio's
+   `/api/demos/register` endpoint writes into the target on first
+   run) — NOT from `@anydemo/sdk` (workspace-private, won't resolve
+   outside the monorepo).
+4. Any polyglot helper scripts under `harness/runners/` are recorded in
+   `tier-evidence.json.helperScripts[]` and have a `README.md` line
+   stating their runtime requirements.
+5. README explains: "this harness bridges clicks to the target's real
+   trigger surface; review every handler and replace stubs before
+   demoing to outsiders."
 
 ## OUTPUT
 

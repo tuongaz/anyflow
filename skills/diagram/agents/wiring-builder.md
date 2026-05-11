@@ -91,7 +91,15 @@ collapsing them.
   `http://localhost:<port>`).
 - **Tier 2**: `playAction.url` points at the harness port (default 3041 if
   not specified). Update `tier-evidence.json.harnessPort` when picking a
-  different port. Confirm every URL matches a route the harness will stub.
+  different port. The harness handler behind each URL is free to do
+  ANYTHING — spawn a CLI, `docker exec`, drop a fixture file, publish
+  to a broker, dynamic `import()`, run a polyglot helper script — so
+  the URL paths are NOT constrained to mirror real routes in the
+  target. When the target has no native HTTP surface, invent clean,
+  readable paths like `POST /play/render`, `POST /play/ingest-file`,
+  `POST /play/run-job`, `POST /play/publish-order` — the harness will
+  wire them to whatever bridge the project's `triggerSurface`
+  indicates. See `references/trigger-bridges.md`.
 - **Tier 3**: NO `playAction`s. Every `dynamic-play` candidate is demoted to
   `stateNode` (no playAction, `stateSource: { kind: 'request' }`). Every
   `dynamic-event` keeps `stateSource: { kind: 'event' }` but obviously
@@ -143,7 +151,11 @@ ALWAYS set `direction: 'forward'` (or omit; that's the default).
    clarity rule 1). Cross-cutting infra (db/cache/auth/queue) is duplicated
    per consumer (rule 2).
 5. Tier 1: every `playAction.url` host matches the chosen port.
-6. Tier 2: every `playAction.url` path matches a route the harness will stub.
+6. Tier 2: every `playAction.url` path will be exposed by the harness.
+   The path does NOT need to mirror a route in the target — the harness
+   picks the bridge pattern (CLI spawn, docker exec, file drop, broker
+   publish, library import, polyglot helper) from
+   `tier-evidence.json.triggerSurface`.
 7. Tier 3: zero `playAction`s.
 8. Every node has `position: { x: 0, y: 0 }` (Phase 6 fills these).
 9. `data.detail.filePath` (if present) appears in `scan-result.json`.
