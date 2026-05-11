@@ -197,6 +197,9 @@ const ConnectorVisualBaseShape = {
   direction: ConnectorDirectionSchema.optional(),
   borderSize: z.number().positive().optional(),
   path: ConnectorPathSchema.optional(),
+  // US-018: per-connector label font size in CSS pixels. Absent → fall back to
+  // the editable-edge default (11px). Mirrors NodeVisualBaseShape.fontSize.
+  fontSize: z.number().positive().optional(),
 };
 
 // Handle ids — every node kind in this codebase uses the same four-handle

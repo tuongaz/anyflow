@@ -149,8 +149,14 @@ export function InlineEdit({
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // Stop the keystroke from bubbling to the canvas — Backspace/Delete on the
-    // canvas would otherwise trigger node deletion (US-027).
+    // canvas would otherwise trigger node deletion (US-027). React's
+    // stopPropagation only halts React's synthetic event tree; window-level
+    // listeners (e.g. demo-view.tsx's Delete/Backspace shortcut) listen for
+    // the NATIVE event and need a separate stop. Without this, a Backspace
+    // press whose default action emptied the editor could still bubble to
+    // window and delete the focused connector (US-018 delete-on-empty bug).
     e.stopPropagation();
+    e.nativeEvent.stopPropagation();
     if (e.key === 'Enter') {
       // 'blur-only' (US-013) treats Enter as a typing key — never commits.
       // For 'enter-commits', Shift+Enter inserts a newline when multiline.

@@ -797,6 +797,22 @@ export function DemoCanvas({
   }, [onCreateImageNode, onIngestImageUrl]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
+  // US-018: per-edge imperative handle map. Each EditableEdge registers its
+  // `enter inline-edit` callback on mount; demo-canvas calls the registered
+  // handle from onEdgeDoubleClick so a double-click anywhere on the edge body
+  // (not just the label button) opens the inline editor. Map (not React
+  // state) so registering/unregistering doesn't churn re-renders.
+  const editHandlesRef = useRef<Map<string, () => void>>(new Map());
+  const registerEditHandle = useCallback((id: string, enter: () => void) => {
+    editHandlesRef.current.set(id, enter);
+    return () => {
+      const current = editHandlesRef.current.get(id);
+      // Only delete if it's the same handle — guards against stale unregisters
+      // racing a remount.
+      if (current === enter) editHandlesRef.current.delete(id);
+    };
+  }, []);
+
   // already left hover and the user needs to discover drop targets without
   // hover-then-aim. Toggled via onConnectStart/End + onReconnectStart/End.
   const [connecting, setConnecting] = useState(false);
@@ -1709,6 +1725,9 @@ export function DemoCanvas({
           reconnectable: enableReconnect,
           onPinEndpoint,
           onEndpointContextMenu: handleEndpointContextMenu,
+          // US-018: stable callback (useCallback with empty deps) so the
+          // memoized edge cache key doesn't churn.
+          registerEditHandle,
         },
       };
     };
@@ -1746,6 +1765,7 @@ export function DemoCanvas({
     reconnectableEdges,
     onPinEndpoint,
     handleEndpointContextMenu,
+    registerEditHandle,
   ]);
 
   // Mirror rfEdges into a ref so onEdgesChange (declared earlier) reads the
@@ -2318,6 +2338,13 @@ export function DemoCanvas({
         // the panel as a side effect.
         onNodeClick={onNodeClick ? (_e, node) => onNodeClick(node.id) : undefined}
         onEdgeClick={onConnectorClick ? (_e, edge) => onConnectorClick(edge.id) : undefined}
+        // US-018: double-click anywhere on the edge body opens the inline
+        // label editor (not just the existing label-button onDoubleClick). The
+        // per-edge `registerEditHandle` map gives us O(1) dispatch without
+        // forcing edge identity to change when editing state flips.
+        onEdgeDoubleClick={(_e, edge) => {
+          editHandlesRef.current.get(edge.id)?.();
+        }}
         onPaneClick={onPaneClick}
         onNodeContextMenu={
           contextEnabled

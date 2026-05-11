@@ -20,7 +20,13 @@ import {
   useInternalNode,
   useReactFlow,
 } from '@xyflow/react';
-import { type MouseEvent as ReactMouseEvent, useCallback, useRef, useState } from 'react';
+import {
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 
 // Smoothstep corner rounding — matches typical "zigzag" diagrams without
 // looking jagged. (US-017)
@@ -57,6 +63,16 @@ export type EditableEdgeData = {
   onLabelChange?: (id: string, label: string) => void;
   /** Path geometry — 'curve' (default bezier) or 'step' (smoothstep). */
   path?: ConnectorPath;
+  /** US-018: per-connector label font size in px (undefined → 11px default). */
+  fontSize?: number;
+  /**
+   * US-018: register a stable handle that enters inline label edit mode.
+   * Called once on mount with `(id, enter) => unregister`. demo-canvas calls
+   * the registered `enter()` from its onEdgeDoubleClick callback so a
+   * double-click anywhere on the edge body opens the editor — not just on
+   * the existing label button.
+   */
+  registerEditHandle?: (id: string, enter: () => void) => () => void;
   /**
    * US-025: floating endpoints when !== false (true OR absent). When false
    * (user-pinned via a precise handle drop), React Flow's stored handle
@@ -236,6 +252,19 @@ export function EditableEdge({
   const onLabelChange = data?.onLabelChange;
   const labelText = typeof label === 'string' ? label : '';
   const editable = !!onLabelChange;
+  const fontSize = data?.fontSize;
+  // Inline style overrides text-[11px] only when fontSize is set, so existing
+  // unstyled connectors continue to render identically (back-compat).
+  const fontSizeStyle = typeof fontSize === 'number' ? { fontSize: `${fontSize}px` } : undefined;
+
+  // US-018: register an external entry point to enter edit mode. demo-canvas
+  // wires this via onEdgeDoubleClick so a dblclick anywhere on the edge body
+  // (not just the label button) opens the editor.
+  const registerEditHandle = data?.registerEditHandle;
+  useEffect(() => {
+    if (!registerEditHandle || !editable) return;
+    return registerEditHandle(id, () => setEditing(true));
+  }, [id, registerEditHandle, editable]);
 
   // US-024 / US-007: only render the visible endpoint dots when this edge is
   // reconnectable (sole-selected). Outside that mode, the edge has no
@@ -360,16 +389,24 @@ export function EditableEdge({
               field="connector-label"
               onCommit={(v) => onLabelChange?.(id, v)}
               onExit={() => setEditing(false)}
-              className="text-[11px]"
+              // US-018: opaque background masks the SVG path behind the editor
+              // so the line doesn't bleed through the editing affordance.
+              // bg-background (theme-aware) wins over the prior bg-card (which
+              // is semi-transparent and let the line show through).
+              className="rounded border border-border/40 bg-background px-1.5 py-0.5 text-[11px] text-foreground shadow-sm"
+              style={fontSizeStyle}
               placeholder="Label"
             />
           ) : labelText ? (
             <button
               type="button"
               className={cn(
-                'rounded border border-border/40 bg-card px-1.5 py-0.5 text-[11px] text-foreground shadow-sm',
+                // US-018: bg-background (opaque) masks the connector line beneath
+                // the label so the path doesn't bleed through the text.
+                'rounded border border-border/40 bg-background px-1.5 py-0.5 text-[11px] text-foreground shadow-sm',
                 editable ? 'hover:bg-muted/60' : '',
               )}
+              style={fontSizeStyle}
               onDoubleClick={
                 editable
                   ? (e) => {
@@ -385,7 +422,9 @@ export function EditableEdge({
             <button
               type="button"
               aria-label="Add connector label"
-              className="rounded-full border border-dashed border-muted-foreground/40 bg-card/60 px-1 text-[10px] text-muted-foreground/60 opacity-0 transition-opacity hover:opacity-100 group-hover/canvas:opacity-50"
+              // US-018: bg-background (opaque) when visible so the '+' affordance
+              // masks the connector line beneath it.
+              className="rounded-full border border-dashed border-muted-foreground/40 bg-background px-1 text-[10px] text-muted-foreground/60 opacity-0 transition-opacity hover:opacity-100 group-hover/canvas:opacity-50"
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 setEditing(true);

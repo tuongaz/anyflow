@@ -354,4 +354,18 @@ describe('connectorToEdge', () => {
     expect(e2).not.toBe(e1);
     expect(e2.data.kind).toBe('event');
   });
+
+  it('forwards optional connector fontSize to edge data (US-018)', () => {
+    const sized: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+      label: 'wide',
+      fontSize: 18,
+    };
+    const unsized: Connector = { id: 'c2', source: 'a', target: 'b', kind: 'default' };
+    expect(connectorToEdge(sized, false).data.fontSize).toBe(18);
+    expect(connectorToEdge(unsized, false).data.fontSize).toBeUndefined();
+  });
 });

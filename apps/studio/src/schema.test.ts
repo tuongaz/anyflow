@@ -1105,6 +1105,62 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(48, -10)).success).toBe(false);
   });
 
+  it('round-trips optional connector fontSize (US-018)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'connector-fontsize',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default' as const, fontSize: 16 }],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const conn = result.data.connectors[0];
+    if (conn?.kind !== 'default') throw new Error('expected default connector');
+    expect(conn.fontSize).toBe(16);
+  });
+
+  it('rejects non-positive connector fontSize (US-018)', () => {
+    const make = (size: number) => ({
+      version: 1 as const,
+      name: 'connector-fontsize-bad',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        { id: 'c1', source: 'a', target: 'b', kind: 'default' as const, fontSize: size },
+      ],
+    });
+    expect(DemoSchema.safeParse(make(0)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(-1)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(12)).success).toBe(true);
+  });
+
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
       label: 'worker',

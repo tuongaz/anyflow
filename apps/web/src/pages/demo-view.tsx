@@ -959,6 +959,13 @@ export function DemoView({
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (isEditableElement(document.activeElement)) return;
+      // US-018 defense in depth: if any inline editor is mounted (e.g. a
+      // connector label being typed into), a stray Backspace whose default
+      // action emptied a contenteditable could blur it in Chromium, dropping
+      // activeElement to body before this handler runs. Skip the global
+      // delete shortcut while ANY editor is on screen — the user must
+      // explicitly commit (Enter / blur) or cancel (Escape) first.
+      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
       const nodeIds = selectedIdsRef.current;
       const connIds = selectedConnectorIdsRef.current;
       if (nodeIds.length === 0 && connIds.length === 0) return;

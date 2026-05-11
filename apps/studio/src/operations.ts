@@ -254,6 +254,8 @@ export const ConnectorPatchBodySchema = z
     direction: z.enum(['forward', 'backward', 'both']).optional(),
     borderSize: z.number().positive().optional(),
     path: z.enum(['curve', 'step']).optional(),
+    // US-018: per-connector label font size (mirrors NodeVisualBaseShape.fontSize).
+    fontSize: z.number().positive().optional(),
     kind: ConnectorKindSchema.optional(),
     eventName: z.string().optional(),
     queueName: z.string().optional(),

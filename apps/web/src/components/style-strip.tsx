@@ -43,6 +43,8 @@ export interface ConnectorStylePatch {
   direction?: ConnectorDirection;
   borderSize?: number;
   path?: ConnectorPath;
+  /** US-018: per-connector label font size (mirrors NodeStylePatch.fontSize). */
+  fontSize?: number;
 }
 
 export interface StyleStripProps {
@@ -74,6 +76,9 @@ export interface StyleStripProps {
 
 // Mirror detail-panel.tsx defaults so slider start positions stay consistent.
 const NODE_FONT_SIZE_DEFAULT = 22;
+// US-018: connector label baseline (matches editable-edge.tsx's text-[11px]
+// fallback when data.fontSize is absent).
+const CONNECTOR_FONT_SIZE_DEFAULT = 11;
 const DEFAULT_BORDER_SIZE = 3;
 const DEFAULT_STROKE_WIDTH = 2;
 // US-005: opt-in default for the Corners slider when a node has no
@@ -245,6 +250,17 @@ export function StyleStrip({
   const fontSizeIndeterminate =
     visualNodes.length > 1 &&
     new Set(visualNodes.map((n) => n.data.fontSize ?? NODE_FONT_SIZE_DEFAULT)).size > 1;
+  // US-018: per-connector label font size. Fan-out + indeterminate handling
+  // mirror the node fontSize fan-out above.
+  const applyConnectorFontSize = (n: number) => {
+    for (const c of connectors) onStyleConnector(c.id, { fontSize: n });
+  };
+  const previewConnectorFontSize = (n: number) => {
+    for (const c of connectors) onStyleConnectorPreview?.(c.id, { fontSize: n });
+  };
+  const connectorFontSizeIndeterminate =
+    connectors.length > 1 &&
+    new Set(connectors.map((c) => c.fontSize ?? CONNECTOR_FONT_SIZE_DEFAULT)).size > 1;
   // US-005: corner-radius apply/preview. Mirrors the borderSize fan-out
   // (per-node loop) so multi-select drags update every selected node and
   // the live preview surfaces optimistic overrides during the drag.
@@ -444,6 +460,27 @@ export function StyleStrip({
               onPreview={previewFontSize}
               onCommit={applyFontSize}
               testId="style-tab-font-size-slider"
+            />
+          </PopoverButton>
+        ) : null}
+
+        {pureConnector ? (
+          <PopoverButton
+            testId="style-strip-connector-font-size"
+            tooltip="Label font size"
+            ariaLabel="connector label font size"
+            renderIcon={() => <Type className="h-4 w-4" />}
+          >
+            <SliderControl
+              value={firstConnector?.fontSize}
+              defaultValue={CONNECTOR_FONT_SIZE_DEFAULT}
+              min={8}
+              max={32}
+              suffix="px"
+              indeterminate={connectorFontSizeIndeterminate}
+              onPreview={previewConnectorFontSize}
+              onCommit={applyConnectorFontSize}
+              testId="style-tab-connector-font-size-slider"
             />
           </PopoverButton>
         ) : null}

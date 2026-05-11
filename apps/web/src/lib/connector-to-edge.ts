@@ -34,6 +34,8 @@ export interface DerivedEdge {
     targetHandleAutoPicked?: boolean;
     sourcePin?: EdgePin;
     targetPin?: EdgePin;
+    /** US-018: per-connector label font size in px (undefined → 11px). */
+    fontSize?: number;
   };
   style: { strokeDasharray?: string; stroke?: string; strokeWidth?: number; opacity?: number };
   markerStart?: EdgeMarker;
@@ -154,6 +156,7 @@ export const connectorToEdge = (
       targetHandleAutoPicked: connector.targetHandleAutoPicked,
       sourcePin: connector.sourcePin,
       targetPin: connector.targetPin,
+      fontSize: connector.fontSize,
     },
     style,
     markerStart,

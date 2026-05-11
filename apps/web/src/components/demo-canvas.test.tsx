@@ -223,10 +223,13 @@ describe('DemoCanvas', () => {
     const REF = {
       wrapper: 0,
       rfInstance: 1,
-      drawShape: 10,
-      drawStart: 11,
-      drawCurrent: 12,
-      drawing: 13,
+      // US-018 added editHandlesRef (slot 3, after storeApiRef) so every
+      // draw-* ref shifted down by one. Update this map alongside any future
+      // useRef addition above drawShape.
+      drawShape: 11,
+      drawStart: 12,
+      drawCurrent: 13,
+      drawing: 14,
     } as const;
 
     // Bracket access on a sparse array returns `T | undefined`; this asserts

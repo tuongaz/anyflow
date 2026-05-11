@@ -156,6 +156,8 @@ export interface ConnectorBase {
   borderSize?: number;
   /** Path geometry — orthogonal to `style` (which is dash pattern). */
   path?: ConnectorPath;
+  /** US-018: per-connector label font size in px. Absent → 11px default. */
+  fontSize?: number;
 }
 
 export interface HttpConnector extends ConnectorBase {
@@ -328,6 +330,8 @@ export interface UpdateConnectorBody {
   direction?: ConnectorDirection;
   borderSize?: number;
   path?: ConnectorPath;
+  /** US-018: per-connector label font size in px. */
+  fontSize?: number;
   kind?: Connector['kind'];
   eventName?: string;
   queueName?: string;
