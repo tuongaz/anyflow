@@ -194,8 +194,13 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
             // US-018: circular play button. On error, a thick red border
             // wraps the circle — replaces the standalone status chip. The
             // play glyph (or running spinner) stays visible inside.
+            // US-021: hover/focus-visible flips the fill to a saturated
+            // emerald and the icon (currentColor) to white — color-codes
+            // the action without re-rendering. `disabled:pointer-events-none`
+            // on the Button base class blocks the hover state while running
+            // or unplayable, so the rule below applies only to live targets.
             className={cn(
-              'h-8 w-8 rounded-full p-0',
+              'h-8 w-8 rounded-full p-0 hover:bg-emerald-500 hover:text-white focus-visible:bg-emerald-500 focus-visible:text-white dark:hover:bg-emerald-400 dark:focus-visible:bg-emerald-400',
               isError && 'border-2 border-rose-500 dark:border-rose-400',
             )}
             data-testid="play-button"
