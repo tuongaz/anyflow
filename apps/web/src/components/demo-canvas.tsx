@@ -326,6 +326,14 @@ export interface DemoCanvasProps {
   onCloseIconPicker?: () => void;
   /** Handle a tile-pick from the popover (mode + viewport are owned upstream). */
   onPickIcon?: (name: string) => void;
+  /**
+   * US-016: dispatched by an iconNode's double-click handler. The canvas
+   * injects this into the iconNode's `data` so the wrapper's onDoubleClick
+   * can request the picker open in replace mode for that node. Same handler
+   * the detail panel's "Change icon…" button uses (US-015), just a different
+   * entry point. Absent → iconNode dblclick is a no-op.
+   */
+  onRequestIconReplace?: (nodeId: string) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -585,6 +593,7 @@ export function DemoCanvas({
   onOpenIconPicker,
   onCloseIconPicker,
   onPickIcon,
+  onRequestIconReplace,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1210,6 +1219,10 @@ export function DemoCanvas({
             merged.type === 'shapeNode' || merged.type === 'imageNode' || merged.type === 'iconNode'
               ? undefined
               : onNodeDescriptionChange,
+          // US-016: only wire the replace dispatch on iconNodes — other node
+          // types ignore it, but keeping it iconNode-scoped means the data
+          // shape stays clean (no stray callback on shape/state/image data).
+          onRequestIconReplace: merged.type === 'iconNode' ? onRequestIconReplace : undefined,
           // US-015: inject autoEditOnMount on the freshly drop-popover-created
           // node so it opens in label-edit mode. The flag is consumed once at
           // mount by the node component (lazy useState initializer); leaving
@@ -1254,6 +1267,7 @@ export function DemoCanvas({
     nodeOverrides,
     onNodeLabelChange,
     onNodeDescriptionChange,
+    onRequestIconReplace,
     pendingEditNodeId,
   ]);
 

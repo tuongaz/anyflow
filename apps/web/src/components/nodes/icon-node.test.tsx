@@ -168,4 +168,49 @@ describe('IconNode', () => {
     expect(onResize).toHaveBeenCalledTimes(1);
     expect(onResize).toHaveBeenCalledWith('n1', { width: 100, height: 80, x: 10, y: 20 });
   });
+
+  it('dblclick dispatches onRequestIconReplace with the node id and stops propagation', () => {
+    // US-016: double-click an iconNode → open the picker in replace mode.
+    const onRequestIconReplace = mock(() => {});
+    // The tree's root element IS the wrapper div, so we inspect its
+    // onDoubleClick prop directly. No need to walk — `callIconNode` returns
+    // the JSX returned by IconNode, which is the wrapper.
+    const tree = callIconNode({ icon: 'shopping-cart', onRequestIconReplace }, {
+      id: 'icon-42',
+    } as Partial<NodeProps>);
+    if (!isElement(tree)) throw new Error('IconNode did not return a React element');
+    expect(tree.props['data-testid']).toBe('icon-node');
+    const onDoubleClick = tree.props.onDoubleClick as
+      | ((e: { stopPropagation: () => void }) => void)
+      | undefined;
+    expect(onDoubleClick).toBeDefined();
+
+    // Verify stopPropagation is called BEFORE the dispatch (matches the
+    // PRD's "wrapping div with its own onDoubleClick spy" — under the
+    // hook-shim there's no real DOM event, so we approximate by spying on
+    // stopPropagation directly; a real wrapping listener wouldn't fire if
+    // stopPropagation is called on the event).
+    const stopPropagation = mock(() => {});
+    onDoubleClick?.({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(onRequestIconReplace).toHaveBeenCalledTimes(1);
+    expect(onRequestIconReplace).toHaveBeenCalledWith('icon-42');
+  });
+
+  it('dblclick is a no-op (and does NOT stop propagation) when onRequestIconReplace is absent', () => {
+    // Read-only / no-demo contexts don't wire the callback; the wrapper
+    // should still render with an onDoubleClick handler, but the handler
+    // bails before stopPropagation so a wrapping listener (e.g. the canvas
+    // dblclick-to-create-shape handler) still gets to run.
+    const tree = callIconNode({ icon: 'shopping-cart' });
+    if (!isElement(tree)) throw new Error('IconNode did not return a React element');
+    const onDoubleClick = tree.props.onDoubleClick as
+      | ((e: { stopPropagation: () => void }) => void)
+      | undefined;
+    expect(onDoubleClick).toBeDefined();
+
+    const stopPropagation = mock(() => {});
+    onDoubleClick?.({ stopPropagation });
+    expect(stopPropagation).not.toHaveBeenCalled();
+  });
 });

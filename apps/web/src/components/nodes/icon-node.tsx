@@ -4,7 +4,7 @@ import { colorTokenStyle } from '@/lib/color-tokens';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, useState } from 'react';
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
 
 export type IconNodeRuntimeData = IconNodeData & {
   onResize?: (
@@ -12,6 +12,11 @@ export type IconNodeRuntimeData = IconNodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
+  // US-016: double-click an iconNode → open the picker in replace mode.
+  // Wired by demo-canvas's buildNode for iconNode-typed nodes and dispatched
+  // by demo-view's openIconPicker('replace', id). Absent → dblclick is a no-op
+  // (the no-demo / readonly contexts where the picker isn't wired).
+  onRequestIconReplace?: (nodeId: string) => void;
 } & Record<string, unknown>;
 export type IconNodeType = Node<IconNodeRuntimeData, 'iconNode'>;
 
@@ -65,11 +70,22 @@ export function IconNode({ id, data, selected }: NodeProps<IconNodeType>) {
       : {}),
   };
 
+  // US-016: dblclick opens the picker in replace mode for this node. Mirrors
+  // shape-node's dblclick-to-edit-label convention — primary content gets
+  // edited. stopPropagation prevents React Flow's canvas dblclick handler from
+  // also firing (which creates a new shape in some regions).
+  const handleDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!data.onRequestIconReplace) return;
+    e.stopPropagation();
+    data.onRequestIconReplace(id);
+  };
+
   return (
     <div
       className={cn('group relative', sized ? 'h-full w-full' : '')}
       style={containerStyle}
       data-testid="icon-node"
+      onDoubleClick={handleDoubleClick}
     >
       <ResizeControls
         visible={!!selected && !!data.onResize}

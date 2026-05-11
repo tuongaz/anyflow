@@ -2312,6 +2312,7 @@ export function DemoView({
           onOpenIconPicker={demoId ? handleOpenIconPickerInsert : undefined}
           onCloseIconPicker={demoId ? closeIconPicker : undefined}
           onPickIcon={demoId ? handleIconPicked : undefined}
+          onRequestIconReplace={demoId ? handleChangeIcon : undefined}
           onIngestImageUrl={demoId ? onIngestImageUrl : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
