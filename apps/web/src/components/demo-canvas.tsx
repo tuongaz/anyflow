@@ -28,6 +28,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
+import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { cn } from '@/lib/utils';
 import {
@@ -571,6 +572,23 @@ const dataStatusFor = (runs: NodeRuns | undefined, id: string): NodeStatus | und
 const dataErrorMessageFor = (runs: NodeRuns | undefined, id: string): string | undefined =>
   runs?.[id]?.status === 'error' ? runs[id]?.error : undefined;
 
+/**
+ * Promise-wrapped FileReader → base64 data: URL. Injected into
+ * `handleCanvasDrop` so the orchestration stays testable (tests pass a
+ * deterministic stub instead of constructing a real FileReader).
+ */
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') resolve(result);
+      else reject(new Error('FileReader did not produce a string'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'));
+    reader.readAsDataURL(file);
+  });
+
 export function DemoCanvas({
   nodes,
   connectors,
@@ -682,111 +700,38 @@ export function DemoCanvas({
     document.addEventListener('paste', handler);
     return () => document.removeEventListener('paste', handler);
   }, [onCreateImageNode]);
-  // US-011 / US-012: drag-drop image ingestion. Listeners are attached to the
-  // wrapper directly (drop events fire on the actual drop target, unlike
-  // paste which bubbles to document). `dragover` is required to call
-  // preventDefault so the browser permits the subsequent `drop`; we gate that
-  // on a payload that we know how to handle (Files for US-011, text/uri-list
-  // or text/plain for US-012) so internal canvas drag gestures (node drag,
-  // connector drag, draw-shape drag) keep their default behaviour.
+  // US-011 / US-012 / US-023: drag-drop image ingestion. Listeners are
+  // attached to the wrapper directly (drop events fire on the actual drop
+  // target, unlike paste which bubbles to document). `dragover` is required
+  // to call preventDefault so the browser permits the subsequent `drop`; we
+  // gate that on a payload we know how to handle (Files for US-011,
+  // text/uri-list or text/plain for US-012) so internal canvas drag gestures
+  // (node drag, connector drag, draw-shape drag) keep their default behaviour.
   //
-  // On drop the file branch wins when image/* files are present (US-011);
-  // otherwise we fall back to the URL branch (US-012) and pass the first
-  // http(s) URL up to the parent, which owns the fetch → base64 conversion
-  // so fetch failures (CORS, network, non-image content-type) surface
-  // through the same editError banner as other create-node errors.
+  // Orchestration lives in @/lib/canvas-drop so the test suite can pin the
+  // behaviour without a DOM. US-023 extracted it after a regression-report
+  // that turned out to be non-reproducible — the unit tests now make sure a
+  // future marquee/perf refactor can't silently break the drop path.
   useEffect(() => {
     if (!onCreateImageNode && !onIngestImageUrl) return;
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    const hasType = (e: DragEvent, t: string): boolean => {
-      const types = e.dataTransfer?.types;
-      if (!types) return false;
-      for (let i = 0; i < types.length; i++) {
-        if (types[i] === t) return true;
-      }
-      return false;
-    };
-    const isCandidateDrag = (e: DragEvent): boolean => {
-      if (onCreateImageNode && hasType(e, 'Files')) return true;
-      if (onIngestImageUrl && (hasType(e, 'text/uri-list') || hasType(e, 'text/plain'))) {
-        return true;
-      }
-      return false;
-    };
-    const pickHttpUrl = (text: string): string | null => {
-      if (!text) return null;
-      for (const raw of text.split(/\r?\n/)) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        if (/^https?:\/\//i.test(line)) return line;
-      }
-      return null;
-    };
+    const gates = { file: !!onCreateImageNode, url: !!onIngestImageUrl };
     const onDragOver = (e: DragEvent) => {
-      if (!isCandidateDrag(e)) return;
+      if (!isCandidateImageDrag(e.dataTransfer?.types, gates)) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     };
     const onDrop = (e: DragEvent) => {
-      const dt = e.dataTransfer;
-      if (!dt) return;
-      // File branch (US-011) — runs first so a drag carrying both files and a
-      // text payload (e.g. some browsers attach a fallback text/plain) keeps
-      // the local file as the source of truth.
-      if (onCreateImageNode) {
-        const files = dt.files;
-        if (files && files.length > 0) {
-          const imageFiles: File[] = [];
-          for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            if (file?.type.startsWith('image/')) imageFiles.push(file);
-          }
-          if (imageFiles.length > 0) {
-            const rfInstance = rfInstanceRef.current;
-            if (!rfInstance) return;
-            e.preventDefault();
-            const baseFlow = rfInstance.screenToFlowPosition({
-              x: e.clientX,
-              y: e.clientY,
-            });
-            imageFiles.forEach((file, index) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const dataUrl = reader.result;
-                if (typeof dataUrl !== 'string') return;
-                const offset = index * 24;
-                onCreateImageNode(dataUrl, {
-                  x: baseFlow.x - IMAGE_DEFAULT_SIZE.width / 2 + offset,
-                  y: baseFlow.y - IMAGE_DEFAULT_SIZE.height / 2 + offset,
-                });
-              };
-              reader.readAsDataURL(file);
-            });
-            return;
-          }
-        }
-      }
-      // URL branch (US-012) — dragging an <img> from a webpage exposes the
-      // image src on text/uri-list (and usually a duplicate on text/plain).
-      // Prefer text/uri-list per RFC 2483.
-      if (onIngestImageUrl) {
-        const url =
-          pickHttpUrl(dt.getData('text/uri-list')) ?? pickHttpUrl(dt.getData('text/plain'));
-        if (url) {
-          const rfInstance = rfInstanceRef.current;
-          if (!rfInstance) return;
-          e.preventDefault();
-          const baseFlow = rfInstance.screenToFlowPosition({
-            x: e.clientX,
-            y: e.clientY,
-          });
-          onIngestImageUrl(url, {
-            x: baseFlow.x - IMAGE_DEFAULT_SIZE.width / 2,
-            y: baseFlow.y - IMAGE_DEFAULT_SIZE.height / 2,
-          });
-        }
-      }
+      const rfInstance = rfInstanceRef.current;
+      if (!rfInstance) return;
+      void handleCanvasDrop(e, {
+        onCreateImageNode,
+        onIngestImageUrl,
+        screenToFlowPosition: rfInstance.screenToFlowPosition,
+        imageDefaultSize: IMAGE_DEFAULT_SIZE,
+        readFileAsDataUrl: readFileAsDataUrl,
+      });
     };
     wrapper.addEventListener('dragover', onDragOver);
     wrapper.addEventListener('drop', onDrop);
