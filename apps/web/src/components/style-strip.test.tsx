@@ -228,3 +228,52 @@ describe('StyleStrip — iconNode color picker (US-014)', () => {
     expect(findElement(tree, testIdEquals('style-strip-icon-color'))).toBeNull();
   });
 });
+
+describe('StyleStrip — iconNode Change-icon button (US-022)', () => {
+  it('renders the Change-icon button when a single iconNode is selected and the callback is wired', () => {
+    const tree = callStrip({
+      nodes: [iconNode('n1')],
+      onRequestIconReplace: () => {},
+    });
+    const btn = findElement(tree, testIdEquals('style-strip-change-icon'));
+    expect(btn).not.toBeNull();
+  });
+
+  it('clicking the Change-icon button calls onRequestIconReplace with the node id', () => {
+    const onRequestIconReplace = mock((_id: string) => {});
+    const tree = callStrip({
+      nodes: [iconNode('n-42')],
+      onRequestIconReplace,
+    });
+    const btn = findElement(tree, testIdEquals('style-strip-change-icon'));
+    if (!btn) throw new Error('change-icon button missing');
+    const onClick = btn.props.onClick as () => void;
+    onClick();
+    expect(onRequestIconReplace).toHaveBeenCalledTimes(1);
+    expect(onRequestIconReplace).toHaveBeenCalledWith('n-42');
+  });
+
+  it('hides the Change-icon button when onRequestIconReplace is undefined', () => {
+    const tree = callStrip({ nodes: [iconNode('n1')] });
+    expect(findElement(tree, testIdEquals('style-strip-change-icon'))).toBeNull();
+    // The color swatch is still present — only the change button hides.
+    expect(findElement(tree, testIdEquals('style-strip-icon-color'))).not.toBeNull();
+  });
+
+  it('hides the Change-icon button on a multi-iconNode selection (ambiguous target)', () => {
+    const tree = callStrip({
+      nodes: [iconNode('a'), iconNode('b')],
+      onRequestIconReplace: () => {},
+    });
+    expect(findElement(tree, testIdEquals('style-strip-change-icon'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-icon-color'))).not.toBeNull();
+  });
+
+  it('hides the Change-icon button on a non-iconNode selection', () => {
+    const tree = callStrip({
+      nodes: [shapeNode('s1')],
+      onRequestIconReplace: () => {},
+    });
+    expect(findElement(tree, testIdEquals('style-strip-change-icon'))).toBeNull();
+  });
+});

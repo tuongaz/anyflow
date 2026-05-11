@@ -2035,6 +2035,7 @@ export function DemoCanvas({
                   onStyleNodesPreview={onStyleNodesPreview}
                   onStyleConnector={onStyleConnector}
                   onStyleConnectorPreview={onStyleConnectorPreview}
+                  onRequestIconReplace={onRequestIconReplace}
                 />
               ) : null}
             </div>

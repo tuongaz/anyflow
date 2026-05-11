@@ -19,7 +19,7 @@ import type {
 } from '@/lib/api';
 import { COLOR_TOKENS } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
-import { ArrowLeftRight, ArrowRight, Check, MoveLeft, Squircle, Type } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Check, MoveLeft, Squircle, Sticker, Type } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 
 export interface NodeStylePatch {
@@ -63,6 +63,13 @@ export interface StyleStripProps {
   onStyleNodesPreview?: (nodeIds: string[], patch: NodeStylePatch) => void;
   onStyleConnector: (connId: string, patch: ConnectorStylePatch) => void;
   onStyleConnectorPreview?: (connId: string, patch: ConnectorStylePatch) => void;
+  /**
+   * US-022: open the icon picker in replace mode against the selected
+   * iconNode. Same callback the iconNode's double-click handler invokes
+   * (US-016). Plumbed from demo-view via demo-canvas. Absent → the
+   * Change-icon button hides.
+   */
+  onRequestIconReplace?: (nodeId: string) => void;
 }
 
 // Mirror detail-panel.tsx defaults so slider start positions stay consistent.
@@ -136,6 +143,7 @@ export function StyleStrip({
   onStyleNodesPreview,
   onStyleConnector,
   onStyleConnectorPreview,
+  onRequestIconReplace,
 }: StyleStripProps) {
   const hasNodes = nodes.length > 0;
   const hasConnectors = connectors.length > 0;
@@ -282,6 +290,14 @@ export function StyleStrip({
     pureConnector || isTextShape ? 'style-tab-color' : 'style-tab-border-color';
 
   if (pureIconNode) {
+    // US-022: Change-icon button reuses the same callback the iconNode's
+    // double-click handler invokes (US-016) — `firstIconNode.id` is the
+    // representative target; for a multi-iconNode selection the button is
+    // hidden because "change icon" is ambiguous across the set.
+    const showChangeIcon = !!onRequestIconReplace && nodes.length === 1 && !!firstIconNode;
+    const onChangeIconClick = () => {
+      if (firstIconNode && onRequestIconReplace) onRequestIconReplace(firstIconNode.id);
+    };
     return (
       <TooltipProvider delayDuration={300}>
         <div
@@ -298,6 +314,28 @@ export function StyleStrip({
             innerTestId="style-tab-icon-color-trigger"
             onSelect={applyIconColor}
           />
+          {showChangeIcon ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="style-strip-change-icon"
+                  aria-label="change icon"
+                  title="Change icon"
+                  onClick={onChangeIconClick}
+                  className={cn(
+                    'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                  )}
+                >
+                  <Sticker className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="px-2 py-1 text-xs">
+                Change icon
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
       </TooltipProvider>
     );

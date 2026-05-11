@@ -1,30 +1,19 @@
 import { JsonTree } from '@/components/json-tree';
 import { StatusPill } from '@/components/nodes/status-pill';
-import type { NodeStylePatch } from '@/components/style-strip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
-import { Slider } from '@/components/ui/slider';
 import { useNodeDetail } from '@/hooks/use-node-detail';
 import type { NodeEventLogEntry } from '@/hooks/use-node-events';
 import type { NodeRunState } from '@/hooks/use-node-runs';
-import type { ColorToken, Connector, DemoNode } from '@/lib/api';
-import { COLOR_TOKENS } from '@/lib/color-tokens';
+import type { Connector, DemoNode } from '@/lib/api';
 import {
   getStoredDetailPanelWidth,
   setStoredDetailPanelWidth,
   startResizeGesture,
 } from '@/lib/detail-panel-width';
-import { ICON_REGISTRY } from '@/lib/icon-registry';
 import { cn } from '@/lib/utils';
-import { Check, RefreshCw } from 'lucide-react';
-import {
-  type CSSProperties,
-  type ChangeEvent,
-  type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  useEffect,
-  useState,
-} from 'react';
+import { RefreshCw } from 'lucide-react';
+import { type CSSProperties, type PointerEvent as ReactPointerEvent, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -38,36 +27,8 @@ export interface DetailPanelProps {
   run?: NodeRunState;
   /** Last N node:* events for the selected node (newest first). */
   recentEvents?: NodeEventLogEntry[];
-  /**
-   * US-015: open the icon picker in replace mode against the selected
-   * iconNode. Wired via demo-view's openIconPicker slice; absent when no
-   * demo is loaded.
-   */
-  onChangeIcon?: (nodeId: string) => void;
-  /**
-   * US-015: apply a single-field patch to a node — used by the iconNode
-   * detail section to edit color/strokeWidth/alt. Same channel the canvas
-   * style strip uses, so optimistic preview + undo behaviour matches.
-   */
-  onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
   onClose: () => void;
 }
-
-const ICON_PALETTE_TOKENS: ColorToken[] = [
-  'default',
-  'slate',
-  'blue',
-  'green',
-  'amber',
-  'red',
-  'purple',
-  'pink',
-];
-const ICON_FALLBACK_NAME = 'help-circle';
-const DEFAULT_STROKE_WIDTH = 2;
-const STROKE_MIN = 0.5;
-const STROKE_MAX = 4;
-const STROKE_STEP = 0.25;
 
 export function DetailPanel({
   demoId,
@@ -76,18 +37,15 @@ export function DetailPanel({
   filePath,
   run,
   recentEvents,
-  onChangeIcon,
-  onStyleNode,
   onClose,
 }: DetailPanelProps) {
-  // imageNode is decorative — clicking it must NOT open the detail panel
-  // (US-007). iconNode used to be excluded too but now opens an iconNode
-  // section (US-015). Selection / style-strip / resize handles still work for
-  // imageNode because they live on the React Flow node, not the panel.
+  // Decorative nodes (imageNode, iconNode) never open the detail panel —
+  // they're edited inline via the left StyleStrip (US-022). Selection /
+  // style-strip / resize handles still work for them because they live on
+  // the React Flow node, not the panel.
   const inspectableNode =
     node && node.type !== 'imageNode' && node.type !== 'iconNode' ? node : null;
-  const iconNode = node && node.type === 'iconNode' ? node : null;
-  const open = inspectableNode !== null || iconNode !== null || connector !== null;
+  const open = inspectableNode !== null || connector !== null;
   // Shape and image nodes are decorative — no detail/dynamicSource/run surface.
   const functionalNode =
     inspectableNode && inspectableNode.type !== 'shapeNode' ? inspectableNode : null;
@@ -215,8 +173,6 @@ export function DetailPanel({
               ) : null}
             </div>
           </div>
-        ) : iconNode ? (
-          <IconNodeSection node={iconNode} onChangeIcon={onChangeIcon} onStyleNode={onStyleNode} />
         ) : connector ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
@@ -275,182 +231,6 @@ export function DescriptionMarkdown({ source }: { source: string }) {
       >
         {source}
       </ReactMarkdown>
-    </div>
-  );
-}
-
-// US-015: iconNode detail-panel section. Renders a preview tile + Change-icon
-// button, a color swatch row, a stroke-width slider, and an alt-text input.
-// All edits flow through `onStyleNode` (the same channel the canvas style
-// strip uses), so optimistic preview + coalesced undo behaviour matches.
-// Exported so unit tests can render it without standing up the Radix Sheet
-// portal — Sheet/SheetContent are sub-components and would be captured as
-// placeholders by the hook-shim renderer.
-export function IconNodeSection({
-  node,
-  onChangeIcon,
-  onStyleNode,
-}: {
-  node: Extract<DemoNode, { type: 'iconNode' }>;
-  onChangeIcon?: (nodeId: string) => void;
-  onStyleNode?: (nodeId: string, patch: NodeStylePatch) => void;
-}) {
-  const PreviewIcon = ICON_REGISTRY[node.data.icon] ?? ICON_REGISTRY[ICON_FALLBACK_NAME];
-  const activeColor: ColorToken = node.data.color ?? 'default';
-  const strokeWidth = node.data.strokeWidth ?? DEFAULT_STROKE_WIDTH;
-  const [altLocal, setAltLocal] = useState<string>(node.data.alt ?? '');
-  // Keep local alt in sync with upstream (e.g. SSE echo or undo) without
-  // fighting in-flight typing — only re-sync when the upstream value changes.
-  useEffect(() => {
-    setAltLocal(node.data.alt ?? '');
-  }, [node.data.alt]);
-  const [strokeLocal, setStrokeLocal] = useState<number>(strokeWidth);
-  useEffect(() => {
-    setStrokeLocal(strokeWidth);
-  }, [strokeWidth]);
-
-  const onChangeIconClick = () => onChangeIcon?.(node.id);
-  const onPickColor = (token: ColorToken) => {
-    onStyleNode?.(node.id, { color: token });
-  };
-  const onCommitStrokeWidth = ([value]: number[]) => {
-    const next = value ?? DEFAULT_STROKE_WIDTH;
-    setStrokeLocal(next);
-    onStyleNode?.(node.id, { strokeWidth: next });
-  };
-  const onAltChange = (e: ChangeEvent<HTMLInputElement>) => setAltLocal(e.target.value);
-  const onAltCommit = () => {
-    if (altLocal === (node.data.alt ?? '')) return;
-    onStyleNode?.(node.id, { alt: altLocal });
-  };
-  const onAltKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') e.currentTarget.blur();
-  };
-
-  return (
-    <div className="flex flex-col gap-3" data-testid="detail-panel-icon-node">
-      <div className="flex flex-col gap-1">
-        <SheetTitle data-testid="detail-panel-title">{node.data.icon}</SheetTitle>
-        <SheetDescription className="font-mono text-[11px]">{node.id} · iconNode</SheetDescription>
-      </div>
-
-      <div className="mt-0 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <div
-            data-testid="detail-panel-icon-preview"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-foreground"
-          >
-            {PreviewIcon ? <PreviewIcon className="h-7 w-7" strokeWidth={2} /> : null}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onChangeIconClick}
-            disabled={!onChangeIcon}
-            data-testid="detail-panel-change-icon"
-          >
-            Change icon…
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Color
-          </div>
-          <div className="grid grid-cols-8 gap-1.5" data-testid="detail-panel-icon-color">
-            {ICON_PALETTE_TOKENS.map((token) => {
-              const isActive = activeColor === token;
-              const palette = COLOR_TOKENS[token];
-              const isDefault = token === 'default';
-              return (
-                <button
-                  key={token}
-                  type="button"
-                  onClick={() => onPickColor(token)}
-                  disabled={!onStyleNode}
-                  data-testid={`detail-panel-icon-color-${token}`}
-                  data-active={isActive}
-                  aria-label={`icon color ${token}`}
-                  aria-pressed={isActive}
-                  title={token}
-                  className={cn(
-                    'relative flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all',
-                    isActive
-                      ? 'ring-2 ring-ring ring-offset-2 ring-offset-popover'
-                      : 'hover:scale-110',
-                  )}
-                  style={{ backgroundColor: palette.edge, borderColor: palette.edge }}
-                >
-                  {isDefault ? (
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 rounded-full"
-                      style={{
-                        backgroundImage:
-                          'linear-gradient(45deg, transparent 45%, currentColor 45%, currentColor 55%, transparent 55%)',
-                        color: 'hsl(var(--muted-foreground))',
-                        opacity: 0.5,
-                      }}
-                    />
-                  ) : null}
-                  {isActive ? (
-                    <Check
-                      className="h-3 w-3 drop-shadow-sm"
-                      style={{ color: 'hsl(var(--foreground))' }}
-                    />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Stroke width
-            </div>
-            <span
-              data-testid="detail-panel-icon-stroke-value"
-              className="font-mono text-[11px] tabular-nums text-muted-foreground"
-            >
-              {strokeLocal}
-            </span>
-          </div>
-          <Slider
-            min={STROKE_MIN}
-            max={STROKE_MAX}
-            step={STROKE_STEP}
-            value={[strokeLocal]}
-            onValueChange={([v]) => setStrokeLocal(v ?? DEFAULT_STROKE_WIDTH)}
-            onValueCommit={onCommitStrokeWidth}
-            disabled={!onStyleNode}
-            data-testid="detail-panel-icon-stroke-slider"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor={`detail-panel-icon-alt-${node.id}`}
-            className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-          >
-            Alt text
-          </label>
-          <input
-            id={`detail-panel-icon-alt-${node.id}`}
-            type="text"
-            value={altLocal}
-            onChange={onAltChange}
-            onBlur={onAltCommit}
-            onKeyDown={onAltKeyDown}
-            disabled={!onStyleNode}
-            placeholder="Describe the icon for screen readers"
-            data-testid="detail-panel-icon-alt"
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          />
-        </div>
-      </div>
     </div>
   );
 }

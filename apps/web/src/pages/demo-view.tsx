@@ -2353,8 +2353,6 @@ export function DemoView({
         filePath={detail?.filePath}
         run={inspectedRun}
         recentEvents={inspectedEvents}
-        onChangeIcon={demoId ? handleChangeIcon : undefined}
-        onStyleNode={demoId ? onStyleNode : undefined}
         onClose={() => {
           // US-003: panel state is decoupled from selection — closing the
           // panel only clears the open-target. The user's selection ring
