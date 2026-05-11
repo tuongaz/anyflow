@@ -30,6 +30,20 @@ fold the tail into one or more `category: static-shape` nodes labeled like
 NEVER invent routes, queue names, or event names. Use only what appears in
 `boundary-surfaces.json`.
 
+NEVER decompose a self-contained subsystem into its internal steps.
+Each Temporal/Step-Functions/Inngest workflow, Lambda handler, DB
+transaction, middleware chain, ETL CLI invocation, React component
+tree, state machine, or caching mechanism is ONE node unless (a) the
+user's framing explicitly asks for its internals, (b) multiple
+internals are independently triggerable (each becomes its own
+`playNode`), or (c) the internals span distinct owners. Push internal
+detail into `data.detail.description` / `data.detail.fields`, not into
+extra nodes. **Apply the "next adjacent node" test**: if the next
+candidate belongs to the same owner, runtime, AND network hop as the
+current one, do NOT add it — fold it into the parent. See "Pick the
+right abstraction — hide internals, show seams" in `SKILL.md` and
+the full catalogue in `references/abstraction-level.md`.
+
 ALWAYS classify each node into exactly one of:
 - `dynamic-play`     → will become a `playNode` with `playAction`
 - `dynamic-event`    → will become a `stateNode` with `stateSource: { kind: 'event' }`
@@ -91,6 +105,10 @@ total — only files in `scope-proposal.candidatePaths[]`.
 7. No single logical resource (same `label`) sits with implied fan-in ≥3 in
    the chosen scope. If it would, replace it with duplicates (`candidateId`
    suffixed per consumer, `label` identical).
+8. No node represents an internal step of a self-contained subsystem
+   already covered by another node — apply the "next adjacent node"
+   test for each candidate (same owner + runtime + network hop as a
+   neighbor → fold, do not add).
 
 ## OUTPUT (write to `<target>/.anydemo/intermediate/candidate-nodes.json`)
 

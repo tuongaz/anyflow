@@ -313,6 +313,51 @@ alternative (`split` / `merge` / `promote-to-shape` / `narrow`) and the
 natural split / merge lines; CHECKPOINT 1 surfaces the matching
 right-sizing option alongside Approve / Expand / Contract / Redirect.
 
+## Pick the right abstraction — hide internals, show seams
+
+A node represents a system at the right zoom level for the **reader**,
+not for the implementer. The diagram exists for a teammate asking "what
+happens when a user does X?" — not for someone refactoring the
+implementation. **Pick the boundary the reader cares about and hide
+what's behind it.** Decomposing a single self-contained subsystem into
+its internal steps inflates the node count, drowns the real seams, and
+rewards the reader for clicking through implementation detail they
+didn't ask about.
+
+Canonical trap: a Temporal workflow with twelve activities. DON'T draw
+twelve nodes for `validateOrder`, `chargePayment`, `reserveInventory`,
+`sendEmail`, and their compensation siblings — DO draw ONE node "Order
+workflow (Temporal)" and list the activities in
+`data.detail.description`. The same logic applies to: AWS Lambda
+handlers (one node, not gateway+authorizer+dispatcher), database
+transactions (one node, not every statement), middleware chains (one
+node, not auth+rate-limit+CORS+logging), React component trees (one
+node per page), ETL CLI invocations (one node per CLI command), state
+machines (one stateNode for the FSM, not one per state), caching
+layers (one stateNode for the cache), and MCP/gRPC services (one
+node per *tool the demo exercises*, not per dispatcher layer).
+
+**Read `references/abstraction-level.md`** for the full catalogue
+across workflow engines, serverless, databases, app code structure,
+data pipelines, state/caching, service mesh, and protocol surfaces,
+plus the "when TO expand internals" criteria.
+
+### The "next adjacent node" test
+
+Before adding a node, ask: **does the next adjacent node belong to a
+different owner, a different runtime, or a different network hop?**
+
+- Yes → the seam is real; add the node.
+- No → the candidate is an internal step of a single thing; collapse
+  it into the parent.
+
+This rule complements "Visual clarity for humans" below: that one says
+duplicate cross-cutting infra (databases, caches, auth) so arrows stay
+short; this one says collapse self-contained mechanisms (workflows,
+transactions, handler chains) so the diagram stays at the right zoom.
+Together: **draw shared infrastructure many times; draw private
+internals not at all.**
+
 ## Visual clarity for humans — duplicate to declutter
 
 Diagrams are read by a human at a glance, not a machine. **Prefer
@@ -724,6 +769,13 @@ For detailed information loaded only when needed:
 - **`references/visual-clarity.md`** — Full rule set for duplicating
   cross-cutting nodes, with worked examples and per-phase enforcement
   notes. Read before producing wiring or layout.
+- **`references/abstraction-level.md`** — Full catalogue of
+  self-contained subsystems to collapse into one node (workflow
+  engines, serverless, transactions, middleware chains, ETL, state
+  machines, caching, service mesh, MCP/gRPC) with DO/DON'T pairs
+  and the "when to expand internals" criteria. Read during Phase 4
+  whenever the candidate list has multiple nodes from inside a
+  single subsystem.
 - **`references/trigger-bridges.md`** — Tier 2 bridge patterns for
   non-HTTP projects: Docker/Compose/K8s, file-driven ETL, queue/event/
   gRPC, libraries/CLIs/MCP/LSP, plus polyglot helper-script conventions
