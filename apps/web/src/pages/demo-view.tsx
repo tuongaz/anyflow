@@ -3,6 +3,7 @@ import { DetailPanel } from '@/components/detail-panel';
 import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
 import { IMAGE_DEFAULT_SIZE } from '@/components/nodes/image-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
+import { ResetDemoButton } from '@/components/reset-demo-button';
 import { ShareMenu } from '@/components/share-menu';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
@@ -140,6 +141,7 @@ export interface DemoViewProps {
   runs: NodeRuns;
   nodeEvents: NodeEventLog;
   onPlayNode: (nodeId: string) => void;
+  onResetDemo?: () => Promise<unknown>;
 }
 
 export function DemoView({
@@ -150,6 +152,7 @@ export function DemoView({
   runs,
   nodeEvents,
   onPlayNode,
+  onResetDemo,
 }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   // US-019: multi-select. Selection is now an array; the inspector still
@@ -2896,7 +2899,8 @@ export function DemoView({
         </div>
       ) : null}
 
-      <div className="pointer-events-auto absolute right-3 top-3 z-20">
+      <div className="pointer-events-auto absolute right-3 top-3 z-20 flex items-center gap-1">
+        {onResetDemo ? <ResetDemoButton onResetDemo={onResetDemo} /> : null}
         <ShareMenu
           onDownloadPdf={demoId ? onExportPdf : undefined}
           onDownloadPng={demoId ? onExportPng : undefined}

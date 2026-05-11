@@ -14,3 +14,5 @@ docs
 ralph
 .claude/scheduled_tasks.lock
 .claude/skills/agent-browser
+.claude/ralph-loop.local.md
+,claude/settings.local.json

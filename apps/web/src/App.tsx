@@ -1,5 +1,4 @@
 import { Header } from '@/components/header';
-import { ResetDemoButton } from '@/components/reset-demo-button';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDemoData } from '@/hooks/use-demo-data';
 import { useDemos } from '@/hooks/use-demos';
@@ -106,12 +105,7 @@ export function App() {
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full w-full flex-col bg-background text-foreground">
-        <Header
-          demos={demos}
-          currentSlug={slug ?? undefined}
-          trailing={demoId ? <ResetDemoButton onResetDemo={onResetDemo} /> : null}
-          onProjectCreated={onProjectCreated}
-        />
+        <Header demos={demos} currentSlug={slug ?? undefined} onProjectCreated={onProjectCreated} />
         <main className="min-h-0 flex-1">
           {slug ? (
             <DemoView
@@ -122,6 +116,7 @@ export function App() {
               runs={runs}
               nodeEvents={nodeEvents}
               onPlayNode={onPlayNode}
+              onResetDemo={demoId ? onResetDemo : undefined}
             />
           ) : (
             <StudioHome demos={demos} />

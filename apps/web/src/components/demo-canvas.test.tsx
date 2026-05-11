@@ -125,6 +125,15 @@ function makeShapeNode(id: string): DemoNode {
   };
 }
 
+function makeGroupNode(id: string): DemoNode {
+  return {
+    id,
+    type: 'group',
+    position: { x: 0, y: 0 },
+    data: { width: 200, height: 200 },
+  };
+}
+
 describe('DemoCanvas', () => {
   it('wires selectNodesOnDrag={false} on the ReactFlow root', () => {
     // US-018: dragging an unselected node moves it without auto-selecting
@@ -459,6 +468,84 @@ describe('DemoCanvas', () => {
       expect(refAt(refs, REF.drawing).current).toBe(false);
       (wrapper.props.onPointerUp as (e: unknown) => void)(evt);
       expect(captured.length).toBe(0);
+    });
+  });
+
+  describe('US-012: right-click context menu Group item visibility', () => {
+    // After a marquee selects multiple nodes, the right-click context menu
+    // must offer a "Group" action — this is the only path users have to wrap
+    // a selection into a group node. The Group item renders only when
+    // `groupableCount >= 2 && ungroupableCount === 0 && onGroupNodes`. Each
+    // condition has bitten us:
+    //   • groupableCount: filters out already-parented nodes and group nodes
+    //   • ungroupableCount: blocks Group when a group is in the selection
+    //     (Ungroup takes over)
+    //   • onGroupNodes: parent must wire the callback (gated on demoId)
+    const findByTestId = (tree: unknown, id: string) =>
+      findElement(tree, (el) => (el.props as { 'data-testid'?: unknown })['data-testid'] === id);
+
+    it('renders the Group item when ≥ 2 free nodes are selected', () => {
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a'), makeShapeNode('b')],
+        selectedNodeIds: ['a', 'b'],
+        onGroupNodes: () => {},
+      });
+      expect(findByTestId(tree, 'node-context-menu-group')).not.toBeNull();
+    });
+
+    it('hides the Group item when only 1 node is selected', () => {
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a'), makeShapeNode('b')],
+        selectedNodeIds: ['a'],
+        onGroupNodes: () => {},
+      });
+      expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
+    });
+
+    it('hides Group and shows Ungroup when a group is in the selection', () => {
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a'), makeShapeNode('b'), makeGroupNode('g')],
+        selectedNodeIds: ['a', 'b', 'g'],
+        onGroupNodes: () => {},
+        onUngroupSelection: () => {},
+      });
+      expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
+      expect(findByTestId(tree, 'node-context-menu-ungroup')).not.toBeNull();
+    });
+
+    it('counts only free nodes — already-parented ids are filtered out', () => {
+      // Two selected nodes, but one is parented to a group already. That
+      // leaves a single groupable node — Group must not render.
+      const child: DemoNode = {
+        ...makeShapeNode('a'),
+        parentId: 'g',
+      };
+      const tree = callDemoCanvas({
+        nodes: [child, makeShapeNode('b'), makeGroupNode('g')],
+        selectedNodeIds: ['a', 'b'],
+        onGroupNodes: () => {},
+      });
+      expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
+    });
+
+    it('handleGroupPick forwards selectedNodeIds to onGroupNodes', () => {
+      // Closure over the selection prop — the handler that fires when the
+      // user clicks the Group menu item must pass the current selection ids
+      // (a snapshot copy) to the parent's group op.
+      const captured: string[][] = [];
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a'), makeShapeNode('b'), makeShapeNode('c')],
+        selectedNodeIds: ['a', 'b', 'c'],
+        onGroupNodes: (ids) => {
+          captured.push([...ids]);
+        },
+      });
+      const item = findByTestId(tree, 'node-context-menu-group');
+      if (!item) throw new Error('Group item missing');
+      const onSelect = item.props.onSelect as (() => void) | undefined;
+      if (!onSelect) throw new Error('Group item has no onSelect');
+      onSelect();
+      expect(captured).toEqual([['a', 'b', 'c']]);
     });
   });
 });
