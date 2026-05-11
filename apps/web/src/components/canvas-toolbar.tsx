@@ -7,8 +7,8 @@ import {
   LayoutDashboard,
   Loader2,
   Printer,
-  Sparkles,
   Square,
+  Sticker,
   StickyNote,
   Type,
 } from 'lucide-react';
@@ -206,7 +206,7 @@ export function CanvasToolbar({
                     : 'hover:bg-accent hover:text-accent-foreground',
                 )}
               >
-                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                <Sticker className="h-4 w-4" aria-hidden="true" />
               </button>
             }
             onPick={onPickIcon}
