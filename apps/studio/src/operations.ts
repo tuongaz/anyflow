@@ -75,6 +75,9 @@ export const NodePatchBodySchema = z
     width: z.number().positive().optional(),
     height: z.number().positive().optional(),
     shape: z.enum(['rectangle', 'ellipse', 'sticky', 'text']).optional(),
+    // iconNode-only: stroke color token. Lands at data.color; DemoSchema's
+    // post-merge reparse gates that this is only valid on an iconNode.
+    color: ColorTokenSchema.optional(),
   })
   .strict();
 export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
@@ -95,6 +98,7 @@ const NODE_DATA_PATCH_KEYS = [
   'width',
   'height',
   'shape',
+  'color',
 ] as const satisfies ReadonlyArray<keyof NodePatchBody>;
 
 export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {

@@ -29,6 +29,8 @@ export interface NodeStylePatch {
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
   cornerRadius?: number;
+  /** iconNode-only: stroke color token. Lands at data.color. */
+  color?: ColorToken;
 }
 
 export interface ConnectorStylePatch {
@@ -144,12 +146,20 @@ export function StyleStrip({
   const firstNode = nodes[0];
   const firstConnector = connectors[0];
   // iconNode is unboxed (no border/background/cornerRadius/fontSize). Filter
-  // it out for the shared border/font/corner controls — US-014 wires the
-  // iconNode-only color picker through this strip separately.
+  // it out for the shared border/font/corner controls — the iconNode-only
+  // color picker handled below writes `data.color` via a dedicated apply.
   const visualNodes = nodes.filter(
     (n): n is Exclude<DemoNode, { type: 'iconNode' }> => n.type !== 'iconNode',
   );
   const firstVisualNode = visualNodes[0];
+  // US-014: when every selected node is an iconNode the strip collapses to
+  // a single icon-color swatch (icons have no border/background/font/corner
+  // to control). Mixed selections (iconNode + shape) hide the icon picker
+  // and let the shared controls drive the non-icon nodes only.
+  const pureIconNode = pureNode && nodes.every((n) => n.type === 'iconNode');
+  const firstIconNode = pureIconNode
+    ? (nodes.find((n) => n.type === 'iconNode') as Extract<DemoNode, { type: 'iconNode' }>)
+    : undefined;
   // Text-shape simplification only applies to pure-node selections of a single
   // text shape. Mixed selections (text-shape node + connector) still need the
   // shared border controls visible, so the guard is gated on `pureNode`.
@@ -241,6 +251,12 @@ export function StyleStrip({
   const applyConnectorDirection = (direction: ConnectorDirection) => {
     for (const c of connectors) onStyleConnector(c.id, { direction });
   };
+  // US-014: iconNode stroke color writes to data.color via the same
+  // onStyleNode path the shapeNode color picker uses — no new update plumbing.
+  const applyIconColor = (token: ColorToken) => {
+    for (const n of nodes) onStyleNode(n.id, { color: token });
+  };
+  const iconColorActive: ColorToken = firstIconNode?.data.color ?? 'default';
 
   // Width slider source value: connector borderSize for pure-connector,
   // node borderSize otherwise (mixed selections fall back to the node's
@@ -260,6 +276,28 @@ export function StyleStrip({
       : 'style-tab-border-color-trigger';
   const colorTokenPrefix =
     pureConnector || isTextShape ? 'style-tab-color' : 'style-tab-border-color';
+
+  if (pureIconNode) {
+    return (
+      <TooltipProvider delayDuration={300}>
+        <div
+          data-testid="canvas-style-strip"
+          className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
+        >
+          <SwatchButton
+            testId="style-strip-icon-color"
+            tooltip="Icon color"
+            ariaLabel="icon color"
+            activeToken={iconColorActive}
+            previewKind="edge"
+            tokenTestIdPrefix="style-tab-icon-color"
+            innerTestId="style-tab-icon-color-trigger"
+            onSelect={applyIconColor}
+          />
+        </div>
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={300}>

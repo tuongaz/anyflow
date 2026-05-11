@@ -262,6 +262,8 @@ export interface UpdateNodeBody {
   width?: number;
   height?: number;
   shape?: ShapeKind;
+  /** iconNode-only: stroke color token. Lands at data.color. */
+  color?: ColorToken;
 }
 
 export const updateNode = async (
