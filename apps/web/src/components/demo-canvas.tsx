@@ -24,8 +24,6 @@ import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
 import { connectorToEdge } from '@/lib/connector-to-edge';
-import { computeIconInsertPosition } from '@/lib/icon-insert';
-import { pushRecent } from '@/lib/icon-recents';
 import { cn } from '@/lib/utils';
 import {
   Background,
@@ -316,13 +314,18 @@ export interface DemoCanvasProps {
    */
   onExportPdf?: () => Promise<unknown> | unknown;
   /**
-   * US-013 (icon picker): commit a new iconNode at the picked viewport
-   * position. The canvas computes the flow-space position via the React Flow
-   * instance; the parent owns id generation, optimistic overrides, persistence,
-   * the undo entry, and post-create selection (mirrors `onCreateImageNode`).
-   * When omitted, the toolbar's Insert icon button is hidden.
+   * US-013/015 (icon picker): controlled-open state for the toolbar's Insert
+   * icon popover. Wired through to `<CanvasToolbar>` unchanged. The parent
+   * (demo-view) owns the state slice + pick handler so the detail panel and
+   * iconNode double-click (US-015/US-016) can dispatch into the same picker.
    */
-  onCreateIconNode?: (iconName: string, position: { x: number; y: number }) => void;
+  iconPickerOpen?: boolean;
+  /** Open the picker in insert mode (toolbar button click). */
+  onOpenIconPicker?: () => void;
+  /** Close the picker (Esc / outside click / post-pick). */
+  onCloseIconPicker?: () => void;
+  /** Handle a tile-pick from the popover (mode + viewport are owned upstream). */
+  onPickIcon?: (name: string) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -578,7 +581,10 @@ export function DemoCanvas({
   onIngestImageUrl,
   onExportSvg,
   onExportPdf,
-  onCreateIconNode,
+  iconPickerOpen,
+  onOpenIconPicker,
+  onCloseIconPicker,
+  onPickIcon,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -804,46 +810,11 @@ export function DemoCanvas({
     /** Source node id for the connector wired into the new node. */
     sourceNodeId: string;
   } | null>(null);
-  // US-013 (icon picker): controlled-open state slice for the toolbar's Insert
-  // icon popover. The `mode` field is populated for future stories (US-015's
-  // "Change icon…" button + US-016's double-click) — only 'insert' is wired
-  // through the toolbar today. `nodeId` is the target of a replace-mode pick;
-  // it is unused in insert mode.
-  const [iconPicker, setIconPicker] = useState<{
-    open: boolean;
-    mode: 'insert' | 'replace';
-    nodeId?: string;
-  }>({ open: false, mode: 'insert' });
-  const openIconPicker = useCallback((mode: 'insert' | 'replace', nodeId?: string) => {
-    setIconPicker({ open: true, mode, nodeId });
-  }, []);
-  const closeIconPicker = useCallback(() => {
-    setIconPicker((prev) => ({ ...prev, open: false }));
-  }, []);
-  // Wire the toolbar's Insert icon click to insert-mode open.
-  const handleOpenIconPickerInsert = useCallback(() => {
-    openIconPicker('insert');
-  }, [openIconPicker]);
-  // On a pick: record the recent, dispatch the create at viewport center for
-  // insert mode (replace mode is wired by US-015/016), and close the picker.
-  // Selection of the new node is handled inside `onCreateIconNode` (demo-view).
-  const handleIconPicked = useCallback(
-    (name: string) => {
-      pushRecent(name);
-      if (iconPicker.mode === 'insert') {
-        const rfInstance = rfInstanceRef.current;
-        if (rfInstance && onCreateIconNode) {
-          const position = computeIconInsertPosition(rfInstance, {
-            width: window.innerWidth,
-            height: window.innerHeight,
-          });
-          onCreateIconNode(name, position);
-        }
-      }
-      closeIconPicker();
-    },
-    [iconPicker.mode, onCreateIconNode, closeIconPicker],
-  );
+  // US-013/015 (icon picker): the state slice + pick handlers live in demo-view
+  // so the detail panel's "Change icon…" button (US-015) and the iconNode
+  // double-click (US-016) can dispatch openIconPicker('replace', nodeId)
+  // without going through this component. demo-canvas is a transparent
+  // pass-through for the toolbar's controlled-open chrome only.
   // Mirror into a ref so cross-handler closures (ESC chain, viewport-change
   // dismissal) read the live value without re-binding.
   const dropPopoverRef = useRef<typeof dropPopover>(null);
@@ -2071,10 +2042,10 @@ export function DemoCanvas({
                   onTidy={onTidy}
                   onExportSvg={onExportSvg}
                   onExportPdf={onExportPdf}
-                  iconPickerOpen={iconPicker.open}
-                  onOpenIconPicker={onCreateIconNode ? handleOpenIconPickerInsert : undefined}
-                  onCloseIconPicker={onCreateIconNode ? closeIconPicker : undefined}
-                  onPickIcon={onCreateIconNode ? handleIconPicked : undefined}
+                  iconPickerOpen={iconPickerOpen ?? false}
+                  onOpenIconPicker={onOpenIconPicker}
+                  onCloseIconPicker={onCloseIconPicker}
+                  onPickIcon={onPickIcon}
                 />
               ) : null}
               {onStyleNode && onStyleConnector ? (

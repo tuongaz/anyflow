@@ -78,6 +78,15 @@ export const NodePatchBodySchema = z
     // iconNode-only: stroke color token. Lands at data.color; DemoSchema's
     // post-merge reparse gates that this is only valid on an iconNode.
     color: ColorTokenSchema.optional(),
+    // iconNode-only: glyph stroke width. Lands at data.strokeWidth; the
+    // post-merge reparse gates the [0.5, 4] bound and arm validity.
+    strokeWidth: z.number().min(0.5).max(4).optional(),
+    // iconNode-only: accessible alt text for the icon. Lands at data.alt.
+    alt: z.string().optional(),
+    // iconNode-only: kebab-case Lucide icon name. Lands at data.icon. The
+    // post-merge reparse enforces the schema's `.min(1)` non-empty rule and
+    // gates that this lands only on an iconNode.
+    icon: z.string().min(1).optional(),
   })
   .strict();
 export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
@@ -99,6 +108,9 @@ const NODE_DATA_PATCH_KEYS = [
   'height',
   'shape',
   'color',
+  'strokeWidth',
+  'alt',
+  'icon',
 ] as const satisfies ReadonlyArray<keyof NodePatchBody>;
 
 export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {

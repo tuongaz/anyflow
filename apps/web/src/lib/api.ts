@@ -264,6 +264,12 @@ export interface UpdateNodeBody {
   shape?: ShapeKind;
   /** iconNode-only: stroke color token. Lands at data.color. */
   color?: ColorToken;
+  /** iconNode-only: glyph stroke width in [0.5, 4]. Lands at data.strokeWidth. */
+  strokeWidth?: number;
+  /** iconNode-only: accessible alt text. Lands at data.alt. */
+  alt?: string;
+  /** iconNode-only: kebab-case Lucide icon name. Lands at data.icon. */
+  icon?: string;
 }
 
 export const updateNode = async (

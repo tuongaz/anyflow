@@ -31,6 +31,10 @@ export interface NodeStylePatch {
   cornerRadius?: number;
   /** iconNode-only: stroke color token. Lands at data.color. */
   color?: ColorToken;
+  /** iconNode-only: glyph stroke width. Lands at data.strokeWidth. */
+  strokeWidth?: number;
+  /** iconNode-only: accessible alt text. Lands at data.alt. */
+  alt?: string;
 }
 
 export interface ConnectorStylePatch {

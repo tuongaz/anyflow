@@ -28,6 +28,8 @@ import {
   updateNodePosition,
 } from '@/lib/api';
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
+import { computeIconInsertPosition } from '@/lib/icon-insert';
+import { pushRecent } from '@/lib/icon-recents';
 import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { toPng, toSvg } from 'html-to-image';
@@ -1227,6 +1229,90 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-015: icon-picker state slice. Lives here (not in demo-canvas) so the
+  // detail panel's "Change icon…" button can dispatch openIconPicker('replace',
+  // nodeId) without going through DemoCanvas. demo-canvas is a transparent
+  // pass-through for the toolbar's controlled-open chrome. `mode='replace'`
+  // pairs with `nodeId` to tell handleIconPicked which existing node to swap.
+  const [iconPicker, setIconPicker] = useState<{
+    open: boolean;
+    mode: 'insert' | 'replace';
+    nodeId?: string;
+  }>({ open: false, mode: 'insert' });
+  const openIconPicker = useCallback((mode: 'insert' | 'replace', nodeId?: string) => {
+    setIconPicker({ open: true, mode, nodeId });
+  }, []);
+  const closeIconPicker = useCallback(() => {
+    setIconPicker((prev) => ({ ...prev, open: false }));
+  }, []);
+  const handleOpenIconPickerInsert = useCallback(() => {
+    openIconPicker('insert');
+  }, [openIconPicker]);
+  const handleChangeIcon = useCallback(
+    (nodeId: string) => openIconPicker('replace', nodeId),
+    [openIconPicker],
+  );
+  // Pick-handler dispatches to either onCreateIconNode (insert) or a
+  // single-field PATCH on the existing node (replace). Replace-mode preserves
+  // position/size/color/strokeWidth/alt — only data.icon mutates. Both paths
+  // call pushRecent and close the picker.
+  const handleIconPicked = useCallback(
+    (name: string) => {
+      pushRecent(name);
+      if (iconPicker.mode === 'replace' && iconPicker.nodeId) {
+        if (demoId) {
+          const targetId = iconPicker.nodeId;
+          const node = demoNodes?.find((n) => n.id === targetId);
+          const prevIcon = node?.type === 'iconNode' ? node.data.icon : undefined;
+          setNodeOverride(targetId, { data: { icon: name } } as Partial<DemoNode>);
+          setEditError(null);
+          markMutation();
+          if (prevIcon !== undefined) {
+            const prev = prevIcon;
+            pushUndo({
+              do: async () => {
+                await updateNode(demoId, targetId, { icon: name });
+              },
+              undo: async () => {
+                await updateNode(demoId, targetId, { icon: prev });
+              },
+              coalesceKey: `node:${targetId}:icon`,
+            });
+          }
+          updateNode(demoId, targetId, { icon: name }).catch((err) => {
+            dropNodeOverride(targetId);
+            if (prevIcon !== undefined) dropUndoTop();
+            setEditError(err instanceof Error ? err.message : String(err));
+            console.error('updateNode (icon replace) failed', err);
+          });
+        }
+      } else {
+        const rfInstance = rfInstanceRef.current;
+        if (rfInstance && demoId) {
+          const position = computeIconInsertPosition(rfInstance, {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          });
+          onCreateIconNode(name, position);
+        }
+      }
+      closeIconPicker();
+    },
+    [
+      iconPicker.mode,
+      iconPicker.nodeId,
+      demoId,
+      demoNodes,
+      setNodeOverride,
+      dropNodeOverride,
+      pushUndo,
+      dropUndoTop,
+      markMutation,
+      onCreateIconNode,
+      closeIconPicker,
+    ],
+  );
+
   // US-012: ingest an http(s) URL dropped on the canvas. The canvas hands us
   // the URL it pulled from text/uri-list or text/plain plus the translated
   // drop position. We fetch the URL, validate it's actually an image (Content-
@@ -2222,7 +2308,10 @@ export function DemoView({
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
           onCreateImageNode={demoId ? onCreateImageNode : undefined}
-          onCreateIconNode={demoId ? onCreateIconNode : undefined}
+          iconPickerOpen={iconPicker.open}
+          onOpenIconPicker={demoId ? handleOpenIconPickerInsert : undefined}
+          onCloseIconPicker={demoId ? closeIconPicker : undefined}
+          onPickIcon={demoId ? handleIconPicked : undefined}
           onIngestImageUrl={demoId ? onIngestImageUrl : undefined}
           onCreateConnector={onCreateConnector}
           onReconnectConnector={onReconnectConnector}
@@ -2280,6 +2369,8 @@ export function DemoView({
         filePath={detail?.filePath}
         run={inspectedRun}
         recentEvents={inspectedEvents}
+        onChangeIcon={demoId ? handleChangeIcon : undefined}
+        onStyleNode={demoId ? onStyleNode : undefined}
         onClose={() => {
           // US-003: panel state is decoupled from selection — closing the
           // panel only clears the open-target. The user's selection ring
