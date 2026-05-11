@@ -15,7 +15,9 @@ break overlaps deterministically — this agent only needs to produce a good
 
 ## INPUT
 
-- `<target>/.anydemo/intermediate/wiring-plan.json` — the wired graph
+`<slug>` is the per-demo folder the orchestrator passes in.
+
+- `<target>/.anydemo/<slug>/intermediate/wiring-plan.json` — the wired graph
 
 ## LAYOUT RULES
 
@@ -61,7 +63,7 @@ y-band, offset by ~150–200px on the y-axis so the boxes don't overlap.
 2. No two nodes share the exact same `(x, y)`.
 3. All x and y values are integers divisible by 24.
 
-## OUTPUT (write to `<target>/.anydemo/intermediate/layout.json`)
+## OUTPUT (write to `<target>/.anydemo/<slug>/intermediate/layout.json`)
 
 ```json
 {

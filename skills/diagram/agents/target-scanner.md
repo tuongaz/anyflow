@@ -13,12 +13,17 @@ in Phase 2.
 
 ## INPUT (read these files exactly; do NOT list directories)
 
-- `<target>/.anydemo/intermediate/scan-result.json` — authoritative file list,
-  detected frameworks, runnability signals, and a README excerpt
-- `<target>/.anydemo/intermediate/boundary-surfaces.json` — extracted HTTP
-  routes, queue names, and event names
-- `<target>/.anydemo/intermediate/entry-candidates.json` — heuristic-ranked
-  entry-point files
+`<slug>` below is the per-demo folder name the orchestrator hands to you in
+the dispatch prompt (each demo lives at `<target>/.anydemo/<slug>/`; one
+target can host many sibling demos). Resolve the literal paths from that
+value — never write to `.anydemo/intermediate/` directly.
+
+- `<target>/.anydemo/<slug>/intermediate/scan-result.json` — authoritative
+  file list, detected frameworks, runnability signals, and a README excerpt
+- `<target>/.anydemo/<slug>/intermediate/boundary-surfaces.json` — extracted
+  HTTP routes, queue names, and event names
+- `<target>/.anydemo/<slug>/intermediate/entry-candidates.json` —
+  heuristic-ranked entry-point files
 
 ## RULES
 
@@ -46,7 +51,7 @@ project DOES, not how it is structured.
 2. Every framework name appears in the scan output.
 3. Summary paragraph is 60–150 words.
 
-## OUTPUT (write to `<target>/.anydemo/intermediate/project-summary.json`)
+## OUTPUT (write to `<target>/.anydemo/<slug>/intermediate/project-summary.json`)
 
 ```json
 {

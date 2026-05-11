@@ -37,8 +37,9 @@ handler bodies.
 When the bridge requires asynchronous activity in the target's own
 language (manually triggering an event, uploading a file via the
 target's SDK, signalling a daemon), the harness is allowed to ship
-**polyglot helper scripts** under `.anydemo/harness/runners/` that the
-Node handler spawns. See [§5 Polyglot helper scripts](#5-polyglot-helper-scripts--when-the-harness-needs-a-hand)
+**polyglot helper scripts** under `.anydemo/<slug>/harness/runners/`
+(each demo has its own folder; `<slug>` is the per-demo subdirectory
+the orchestrator picked at Phase 0) that the Node handler spawns. See [§5 Polyglot helper scripts](#5-polyglot-helper-scripts--when-the-harness-needs-a-hand)
 for the convention and a worked Python example.
 
 ---
@@ -180,12 +181,13 @@ listener — never block the HTTP response on completion.
 
 ### Fixture management
 
-Adopt **`<target>/.anydemo/harness/fixtures/`** as the canonical fixture
-directory. `harness-author` creates it and writes one small realistic
+Adopt **`<target>/.anydemo/<slug>/harness/fixtures/`** as the canonical
+fixture directory — each demo owns its own fixtures, so sibling demos
+never collide. `harness-author` creates it and writes one small realistic
 input per play node:
 
 ```
-<target>/.anydemo/harness/
+<target>/.anydemo/<slug>/harness/
 ├── server.ts
 ├── package.json
 ├── README.md
@@ -202,9 +204,9 @@ Rules:
   CSV/Parquet/Avro/JSON-Lines lives on disk so users can `head` it.
 - **Read-only at runtime.** Handlers `copyFile` fixtures into the trigger
   location with a timestamp suffix; they never mutate `fixtures/`.
-- **Isolated output.** Create `<target>/.anydemo/harness/out/` for any
-  artefact the pipeline produces. Wipe it on harness start so each click
-  is reproducible.
+- **Isolated output.** Create `<target>/.anydemo/<slug>/harness/out/` for
+  any artefact the pipeline produces. Wipe it on harness start so each
+  click is reproducible.
 - **Never write into user source dirs.** If the watched directory lives
   inside the repo (`./inbox/`), still scope it under the project root
   and remind the user to `.gitignore` it in the README.
@@ -379,18 +381,19 @@ Each clickable node is still a `playNode`; only the handler changes.
   calls `compile(src)` (import shim) or pipes it through stdin (spawn),
   returns the AST/IR/diagnostics.
 - **Code generator** — handler creates a scratch dir under
-  `.anydemo/harness/.scratch/<click-id>/`, runs the generator against
-  it, then walks the dir and returns the file tree.
+  `.anydemo/<slug>/harness/.scratch/<click-id>/`, runs the generator
+  against it, then walks the dir and returns the file tree.
 - **LSP** — spin a `vscode-jsonrpc` client over child-process stdio,
   send `initialize` once, route clicks to `textDocument/*` requests
   against a fixture buffer.
 
 ### Fixture / arg management
 
-All curated inputs live under `.anydemo/harness/fixtures/`:
+All curated inputs live under `.anydemo/<slug>/harness/fixtures/`
+(each demo has its own folder under `.anydemo/`):
 
 ```
-.anydemo/harness/
+.anydemo/<slug>/harness/
   server.ts
   fixtures/
     <node-id>.json     # { args: [...], stdin?: "...", env?: {...} }
@@ -421,7 +424,7 @@ completes even when the real work streams asynchronously.
 - **Import vs spawn for TS libs** — prefer import: faster, shares the
   module graph, lets `emit()` hooks land inside the lib. Spawn only when
   the lib mutates `process.cwd`, calls `process.exit`, or pulls native
-  deps that don't resolve from `.anydemo/harness/node_modules/`.
+  deps that don't resolve from `.anydemo/<slug>/harness/node_modules/`.
 - **Module resolution** — the harness `package.json` MUST set
   `"workspaces": [".."]` or list the target as a `file:..` dep, or
   `import '../../src'` fails on transitive deps.
@@ -445,8 +448,8 @@ credentials chain, or speak a Go daemon's private unix-socket
 protocol. When the demo needs **asynchronous activity in the target's
 own language** — manually triggering an event, uploading a file via
 the target's SDK, signalling a daemon — write a small helper script
-in that language under `<target>/.anydemo/harness/runners/` and have
-the Node handler `Bun.spawn` it.
+in that language under `<target>/.anydemo/<slug>/harness/runners/` and
+have the Node handler `Bun.spawn` it.
 
 ### When to write a helper script
 
@@ -467,7 +470,7 @@ Helper scripts are extra surface area to maintain.
 ### Layout
 
 ```
-<target>/.anydemo/harness/
+<target>/.anydemo/<slug>/harness/
 ├── server.ts
 ├── package.json
 ├── fixtures/
@@ -504,7 +507,7 @@ Helper scripts are extra surface area to maintain.
 ### Example — Node handler + Python runner
 
 ```ts
-// .anydemo/harness/server.ts
+// .anydemo/<slug>/harness/server.ts
 app.post('/play/publish-order', async (c) => {
   await emit(DEMO_ID, 'kafka-producer', 'running');
   const proc = Bun.spawn(
@@ -519,7 +522,7 @@ app.post('/play/publish-order', async (c) => {
 ```
 
 ```python
-# .anydemo/harness/runners/publish_event.py
+# .anydemo/<slug>/harness/runners/publish_event.py
 # Requires: python>=3.10, kafka-python>=2.0
 import json, os, sys
 from kafka import KafkaProducer

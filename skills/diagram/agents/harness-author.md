@@ -1,13 +1,13 @@
 ---
 name: harness-author
-description: Phase 5b of the anydemo-diagram pipeline. Use only when the user picks Tier 2 (mock harness). Writes a self-contained Hono+Bun harness under <target>/.anydemo/harness/ that stubs every boundary route the diagram references.
+description: Phase 5b of the anydemo-diagram pipeline. Use only when the user picks Tier 2 (mock harness). Writes a self-contained Hono+Bun harness under <target>/.anydemo/<slug>/harness/ that stubs every boundary route the diagram references.
 tools: [Read, Write, Bash]
 color: orange
 ---
 
 # harness-author — anydemo-diagram Phase 5b (Tier 2 only)
 
-Generate a small server under `<target>/.anydemo/harness/` that exposes
+Generate a small server under `<target>/.anydemo/<slug>/harness/` that exposes
 one HTTP endpoint per `playAction.url` in the diagram. Behind each
 endpoint, the handler runs whatever **bridges the click to the target's
 real trigger** — spawning a CLI, `docker exec`-ing into a container,
@@ -29,13 +29,13 @@ the demo requires asynchronous activity in the target's own language —
 manually triggering an event in a Python worker's process, uploading a
 file via the target's Ruby SDK, signalling a Go daemon over a unix
 socket — write a small helper script in that language under
-`<target>/.anydemo/harness/runners/` and have the Node handler
+`<target>/.anydemo/<slug>/harness/runners/` and have the Node handler
 `Bun.spawn` it.
 
 Layout convention:
 
 ```
-<target>/.anydemo/harness/runners/
+<target>/.anydemo/<slug>/harness/runners/
   publish_event.py        # imports the target's pub-sub client + sends one event
   upload_fixture.rb       # uses the target's S3 wrapper + uploads fixtures/orders.csv
   signal_worker.go        # opens the target's unix socket + writes a trigger byte
@@ -64,8 +64,14 @@ The Node handler invokes a runner like:
 ```ts
 app.post('/play/publish-order', async (c) => {
   await emit(DEMO_ID, 'kafka-producer', 'running');
-  const proc = Bun.spawn(['python3', '../harness/runners/publish_event.py',
-    'orders.created', `${FIX}/orders.json`], { cwd: TARGET });
+  // `cwd: TARGET` is the user repo root; the runner lives at
+  // .anydemo/<slug>/harness/runners/ — use that exact path so re-runs from
+  // a different cwd still resolve correctly.
+  const proc = Bun.spawn(
+    ['python3', `.anydemo/${DEMO_SLUG}/harness/runners/publish_event.py`,
+     'orders.created', `${FIX}/orders.json`],
+    { cwd: TARGET },
+  );
   const out = await new Response(proc.stdout).text();
   const result = JSON.parse(out);
   await emit(DEMO_ID, 'kafka-producer', result.ok ? 'done' : 'error');
@@ -78,8 +84,11 @@ re-run regenerates them deterministically.
 
 ## INPUT
 
-- `<target>/.anydemo/intermediate/wiring-plan.json` — final wiring
-- `<target>/.anydemo/intermediate/tier-evidence.json` — tier choice + harness port
+`<slug>` is the per-demo folder the orchestrator passes in (each demo lives
+at `<target>/.anydemo/<slug>/`; sibling demos are isolated).
+
+- `<target>/.anydemo/<slug>/intermediate/wiring-plan.json` — final wiring
+- `<target>/.anydemo/<slug>/intermediate/tier-evidence.json` — tier choice + harness port
 - `$SKILL_DIR/templates/harness-server.ts.tmpl`
 - `$SKILL_DIR/templates/harness-package.json.tmpl`
 - `$SKILL_DIR/templates/harness-readme.md.tmpl`
@@ -88,9 +97,9 @@ re-run regenerates them deterministically.
 
 ## OUTPUTS
 
-- `<target>/.anydemo/harness/server.ts`
-- `<target>/.anydemo/harness/package.json`
-- `<target>/.anydemo/harness/README.md`
+- `<target>/.anydemo/<slug>/harness/server.ts`
+- `<target>/.anydemo/<slug>/harness/package.json`
+- `<target>/.anydemo/<slug>/harness/README.md`
 
 ## RULES
 
@@ -112,7 +121,7 @@ register CLI sets this) and fall back to the slug.
 NEVER omit the `// TODO: replace with real call` comment per stubbed route.
 The harness must be visibly fake.
 
-ALWAYS use `import { Hono } from 'hono'` and `import { emit } from '../sdk/emit'`. The relative import resolves to `.anydemo/sdk/emit.ts`, which the studio's `/api/demos/register` endpoint writes into the target repo on first run. Do NOT use `@anydemo/sdk` (it's workspace-private and won't resolve outside the monorepo).
+ALWAYS use `import { Hono } from 'hono'` and `import { emit } from '../../sdk/emit'`. The harness lives at `<target>/.anydemo/<slug>/harness/server.ts`, so `../../sdk/emit` resolves to the shared `<target>/.anydemo/sdk/emit.ts` that the studio's `/api/demos/register` endpoint writes into the target repo on first run. Do NOT use `@anydemo/sdk` (it's workspace-private and won't resolve outside the monorepo).
 
 ALWAYS pick the harness port deterministically: read
 `tier-evidence.json.harnessPort` if set; else use 3041; else if 3041 is
@@ -164,10 +173,11 @@ Replace these in the templates:
    `emit()` to its target stateNode in the corresponding handler.
 3. `package.json` runtime deps are minimal: `hono` plus any broker SDK
    the bridge pattern needs (`kafkajs`, `ioredis`, …). The `emit()`
-   function is imported from `../sdk/emit` (a file the studio's
-   `/api/demos/register` endpoint writes into the target on first
-   run) — NOT from `@anydemo/sdk` (workspace-private, won't resolve
-   outside the monorepo).
+   function is imported from `../../sdk/emit` — two levels up from
+   `<target>/.anydemo/<slug>/harness/server.ts` lands on the shared
+   `<target>/.anydemo/sdk/emit.ts` that the studio's
+   `/api/demos/register` endpoint writes on first run. Do NOT use
+   `@anydemo/sdk` (workspace-private, won't resolve outside the monorepo).
 4. Any polyglot helper scripts under `harness/runners/` are recorded in
    `tier-evidence.json.helperScripts[]` and have a `README.md` line
    stating their runtime requirements.
@@ -178,4 +188,4 @@ Replace these in the templates:
 ## OUTPUT
 
 After writing the three files, print to stderr:
-`harness-author: wrote <target>/.anydemo/harness/{server.ts,package.json,README.md}`
+`harness-author: wrote <target>/.anydemo/<slug>/harness/{server.ts,package.json,README.md}`

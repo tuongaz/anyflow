@@ -10,8 +10,8 @@ diagram, so the diagram plays even without the real application running.
 # 1. From the target repo root, register so .anydemo/sdk/emit.ts gets written:
 anydemo register --path .
 
-# 2. Then start the harness:
-cd .anydemo/harness
+# 2. Then start the harness (one folder per demo — substitute the slug):
+cd .anydemo/__DEMO_SLUG__/harness
 bun install
 bun run start
 ```
@@ -35,5 +35,6 @@ Override with `PORT=...`.
 
 ## When to delete
 
-Delete `.anydemo/harness/` and re-run `/diagram --tier=real` once the real
-service is reachable on the configured ports.
+Delete `.anydemo/__DEMO_SLUG__/harness/` and re-run `/diagram --tier=real`
+once the real service is reachable on the configured ports. Sibling demos
+in `.anydemo/<other-slug>/` are unaffected.

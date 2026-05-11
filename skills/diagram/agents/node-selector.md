@@ -12,10 +12,14 @@ will surface this list to the user at Checkpoint 3.
 
 ## INPUT (read these files; do not list directories on disk)
 
-- `<target>/.anydemo/intermediate/scan-result.json` — authoritative file list
-- `<target>/.anydemo/intermediate/scope-proposal.json` — the approved scope
-- `<target>/.anydemo/intermediate/tier-evidence.json` — chosen tier
-- `<target>/.anydemo/intermediate/boundary-surfaces.json` — routes/queues/events
+`<slug>` is the per-demo folder the orchestrator passes in. All
+intermediate JSON for this demo lives under
+`<target>/.anydemo/<slug>/intermediate/`.
+
+- `<target>/.anydemo/<slug>/intermediate/scan-result.json` — authoritative file list
+- `<target>/.anydemo/<slug>/intermediate/scope-proposal.json` — the approved scope
+- `<target>/.anydemo/<slug>/intermediate/tier-evidence.json` — chosen tier
+- `<target>/.anydemo/<slug>/intermediate/boundary-surfaces.json` — routes/queues/events
 
 ## RULES
 
@@ -110,7 +114,7 @@ total — only files in `scope-proposal.candidatePaths[]`.
    test for each candidate (same owner + runtime + network hop as a
    neighbor → fold, do not add).
 
-## OUTPUT (write to `<target>/.anydemo/intermediate/candidate-nodes.json`)
+## OUTPUT (write to `<target>/.anydemo/<slug>/intermediate/candidate-nodes.json`)
 
 ```json
 {

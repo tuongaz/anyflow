@@ -5,7 +5,7 @@
 // emissions drive any stateNode whose stateSource.kind is 'event'.
 //
 // Run:
-//   cd .anydemo/harness && bun install && bun run start
+//   cd .anydemo/__DEMO_SLUG__/harness && bun install && bun run start
 //
 // The harness listens on PORT (default __HARNESS_PORT__) and emits to the
 // AnyDemo Studio at ANYDEMO_STUDIO_URL (default http://localhost:4321).
@@ -13,10 +13,12 @@
 // To regenerate this file, re-run /diagram with --tier=mock.
 
 import { Hono } from 'hono';
-// `anydemo register` writes ../sdk/emit.ts into the target repo whenever the
-// diagram contains any stateNode with stateSource.kind === 'event'. Run
-// `anydemo register --path <target>` once before starting the harness.
-import { emit } from '../sdk/emit';
+// Each demo lives in its own folder under .anydemo/<slug>/; the shared SDK
+// is one level up at .anydemo/sdk/emit.ts. `anydemo register` writes that
+// file into the target repo whenever the diagram contains any stateNode
+// with stateSource.kind === 'event'. Run `anydemo register --path <target>`
+// once before starting the harness.
+import { emit } from '../../sdk/emit';
 
 const PORT = Number(process.env.PORT ?? '__HARNESS_PORT__');
 const DEMO_ID = process.env.ANYDEMO_DEMO_ID ?? '__DEMO_ID__';

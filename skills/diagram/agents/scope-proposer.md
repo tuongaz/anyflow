@@ -12,10 +12,13 @@ orchestrator will surface this proposal to the user at Checkpoint 1.
 
 ## INPUT
 
-- `<target>/.anydemo/intermediate/project-summary.json` — Phase 1 summary
-- `<target>/.anydemo/intermediate/scan-result.json` — file list
-- `<target>/.anydemo/intermediate/entry-candidates.json` — ranked entry points
-- `<target>/.anydemo/intermediate/boundary-surfaces.json` — routes/queues/events
+`<slug>` below is the per-demo folder name the orchestrator passes in.
+Resolve every path under `<target>/.anydemo/<slug>/intermediate/`.
+
+- `<target>/.anydemo/<slug>/intermediate/project-summary.json` — Phase 1 summary
+- `<target>/.anydemo/<slug>/intermediate/scan-result.json` — file list
+- `<target>/.anydemo/<slug>/intermediate/entry-candidates.json` — ranked entry points
+- `<target>/.anydemo/<slug>/intermediate/boundary-surfaces.json` — routes/queues/events
 - The user's free-text request (passed in `$ARGUMENTS` or via the
   orchestrator)
 
@@ -77,7 +80,7 @@ the proposal.
 2. `estimatedNodeCount` is between 6 and 25.
 3. Title is ≤50 chars; framing is one sentence.
 
-## OUTPUT (write to `<target>/.anydemo/intermediate/scope-proposal.json`)
+## OUTPUT (write to `<target>/.anydemo/<slug>/intermediate/scope-proposal.json`)
 
 ```json
 {

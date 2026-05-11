@@ -78,11 +78,15 @@ collapsing them.
 
 ## INPUT
 
-- `<target>/.anydemo/intermediate/candidate-nodes.json` — approved nodes
-- `<target>/.anydemo/intermediate/tier-evidence.json` — chosen tier
-- `<target>/.anydemo/intermediate/scope-proposal.json` — scope context
-- `<target>/.anydemo/intermediate/boundary-surfaces.json` — routes/events/queues
-- `<target>/.anydemo/intermediate/scan-result.json` — file list
+`<slug>` is the per-demo folder the orchestrator passes in. All
+intermediate JSON for this demo lives under
+`<target>/.anydemo/<slug>/intermediate/`.
+
+- `<target>/.anydemo/<slug>/intermediate/candidate-nodes.json` — approved nodes
+- `<target>/.anydemo/<slug>/intermediate/tier-evidence.json` — chosen tier
+- `<target>/.anydemo/<slug>/intermediate/scope-proposal.json` — scope context
+- `<target>/.anydemo/<slug>/intermediate/boundary-surfaces.json` — routes/events/queues
+- `<target>/.anydemo/<slug>/intermediate/scan-result.json` — file list
 
 ## TIER-SPECIFIC RULES
 
@@ -185,7 +189,7 @@ animates from spinner → green tick when the harness emits to it; see
     on `default`. Read `references/visual-clarity.md` ("Node colors")
     for the full convention.
 
-## OUTPUT (write to `<target>/.anydemo/intermediate/wiring-plan.json`)
+## OUTPUT (write to `<target>/.anydemo/<slug>/intermediate/wiring-plan.json`)
 
 ```json
 {

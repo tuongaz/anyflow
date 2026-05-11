@@ -134,8 +134,13 @@ function main() {
 function listFiles(root) {
   const tracked = tryGitLsFiles(root);
   const all = tracked ?? walkFs(root);
+  // The skill writes per-demo working state under .anydemo/<slug>/ (one
+  // subfolder per demo: intermediate/, harness/, demo.json) plus a shared
+  // .anydemo/sdk/ written by the studio. None of that is target source —
+  // exclude the whole .anydemo/ tree so a re-scan doesn't ingest its own
+  // outputs.
   return all
-    .filter((rel) => !rel.startsWith('.anydemo/intermediate/'))
+    .filter((rel) => !rel.startsWith('.anydemo/'))
     .map((rel) => describe(root, rel))
     .filter((f) => f !== null);
 }

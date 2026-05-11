@@ -7,9 +7,35 @@ argument-hint: "[free-text request] [--scope=<name>] [--tier=real|mock|static]"
 
 # AnyDemo Diagram Generator
 
-Generate a single flat playable AnyDemo diagram (`<target>/.anydemo/demo.json`)
-from any codebase. The output is schema-valid, has ≤30 nodes, and registers
-with the running studio so the user can click the result.
+Generate a single flat playable AnyDemo diagram
+(`<target>/.anydemo/<slug>/demo.json`) from any codebase. The output is
+schema-valid, has ≤30 nodes, and registers with the running studio so the
+user can click the result.
+
+## Folder layout — one demo per subfolder
+
+A target repo can host multiple AnyDemo diagrams. Each demo lives in its
+own subfolder under `.anydemo/`, named after the demo's slug, so demos
+never collide:
+
+```
+<target>/.anydemo/
+├── <slug-A>/             # one demo
+│   ├── demo.json
+│   ├── intermediate/     # working files; preserved on failure, cleaned on success
+│   └── harness/          # Tier 2 only — Hono+Bun bridge
+├── <slug-B>/             # another demo, fully isolated
+│   └── ...
+└── sdk/                  # shared across demos; written by the studio
+    └── emit.ts
+```
+
+Every path in this skill (intermediate JSON, harness files, the final
+`demo.json`) lives **inside the per-demo folder**. The only file that
+stays at `.anydemo/` (shared) is `sdk/emit.ts`, which the studio writes
+once for the whole repo. Phase 0 computes `$DEMO_DIR` as
+`$TARGET/.anydemo/$DEMO_SLUG/` and every subsequent phase uses
+`$DEMO_DIR/...` instead of bare `.anydemo/...`.
 
 ## Requirements
 
@@ -276,7 +302,7 @@ trigger surface (one of `http` / `cli` / `file-watch` / `queue` /
 `container` / `library` / `scheduled` / `mixed`). The harness is also
 allowed to ship **polyglot helper scripts** in the target's own
 language — small `*.py` / `*.go` / `*.rb` runners under
-`.anydemo/harness/runners/` that the Node handler spawns when the
+`.anydemo/<slug>/harness/runners/` that the Node handler spawns when the
 demo needs an async kick (manually triggering an event, uploading a
 file, sending a signal) that's awkward to do from Bun alone. The full
 set of bridge patterns and helper-script conventions — for Compose
@@ -452,7 +478,23 @@ fi
 
 [ -n "$SKILL_DIR" ] || { echo "Cannot locate anydemo-diagram skill — looked under \$CLAUDE_PLUGIN_ROOT, ~/.claude/plugins/anydemo-diagram, ~/.claude/skills/anydemo-diagram, and cwd." >&2; exit 1; }
 
-mkdir -p "$TARGET/.anydemo/intermediate"
+# Pick a working slug for the per-demo folder. Refined after CHECKPOINT 1
+# (Phase 2) once the user approves a title, and one more time at Phase 8
+# once the studio returns its canonical slug. Order of preference:
+#   1. --scope=<name>           (explicit; treat as already a slug)
+#   2. $ARGUMENTS free text     (slugify it)
+#   3. demo-<UTC timestamp>     (last-resort fallback)
+slugify() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' \
+    | cut -c1-60
+}
+DEMO_SLUG="${SCOPE_HINT:-}"
+[ -n "$DEMO_SLUG" ] || DEMO_SLUG="$(slugify "${ARGUMENTS:-}")"
+[ -n "$DEMO_SLUG" ] || DEMO_SLUG="demo-$(date -u +%Y%m%d-%H%M%S)"
+DEMO_DIR="$TARGET/.anydemo/$DEMO_SLUG"
+mkdir -p "$DEMO_DIR/intermediate"
 
 # Studio must be reachable — every non-filesystem step is an HTTP call.
 # This is a safety-net re-probe; the user-facing precheck (see "Studio
@@ -472,30 +514,36 @@ EOF
 ## Phase 1 — SCAN
 
 Two filesystem-walking scripts (`node`, no `bun` needed) write deterministic
-JSON for the rest of the pipeline. **Use `$SKILL_DIR` from Phase 0** — never
-hardcode `${CLAUDE_PLUGIN_ROOT}` here:
+JSON for the rest of the pipeline. **Use `$SKILL_DIR` and `$DEMO_DIR` from
+Phase 0** — never hardcode `${CLAUDE_PLUGIN_ROOT}` or bare `.anydemo/` here.
+Pass `--out` explicitly so the scripts write inside the per-demo folder
+instead of their default `.anydemo/intermediate/` fallback:
 
 ```bash
-node "$SKILL_DIR/scripts/scan-target.mjs"   --root "$TARGET"
-node "$SKILL_DIR/scripts/extract-routes.mjs" --root "$TARGET"
+node "$SKILL_DIR/scripts/scan-target.mjs"   --root "$TARGET" \
+  --out "$DEMO_DIR/intermediate/scan-result.json"
+node "$SKILL_DIR/scripts/extract-routes.mjs" --root "$TARGET" \
+  --scan "$DEMO_DIR/intermediate/scan-result.json" \
+  --out  "$DEMO_DIR/intermediate/boundary-surfaces.json"
 ```
 
 These write `scan-result.json` and `boundary-surfaces.json` under
-`$TARGET/.anydemo/intermediate/`.
+`$DEMO_DIR/intermediate/`.
 
 Then POST the scan result to the studio to get ranked entry-point candidates:
 
 ```bash
 curl -fsS -X POST "$STUDIO_URL/api/diagram/propose-scope" \
   -H 'content-type: application/json' \
-  -d "$(jq '{files}' "$TARGET/.anydemo/intermediate/scan-result.json")" \
-  > "$TARGET/.anydemo/intermediate/entry-candidates.json"
+  -d "$(jq '{files}' "$DEMO_DIR/intermediate/scan-result.json")" \
+  > "$DEMO_DIR/intermediate/entry-candidates.json"
 ```
 
 Then dispatch the **target-scanner** subagent (see
 `$SKILL_DIR/agents/target-scanner.md`). It reads the JSON outputs,
 produces a one-paragraph project summary, and lists detected diagrammable
-subsystems. Output: `intermediate/project-summary.json`.
+subsystems. Pass the resolved `$DEMO_DIR` in the dispatch prompt so the
+agent writes its output to `$DEMO_DIR/intermediate/project-summary.json`.
 
 The agent is FORBIDDEN from re-reading source files; it summarizes the
 deterministic output only.
@@ -544,6 +592,23 @@ four right-sizing options and show only Approve / Expand / Contract /
 Redirect.
 
 If `--scope=<name>` was passed, skip the checkpoint entirely.
+
+### Refresh the slug from the approved title
+
+Once the user approves (or refines) the scope, recompute `$DEMO_SLUG` from
+the approved `title`. If it differs from the working slug used in Phase 0,
+rename the per-demo folder so subsequent phases write to the new path.
+Do NOT touch the shared `.anydemo/sdk/` folder.
+
+```bash
+APPROVED_TITLE="$(jq -r .title "$DEMO_DIR/intermediate/scope-proposal.json")"
+NEW_SLUG="$(slugify "$APPROVED_TITLE")"
+if [ -n "$NEW_SLUG" ] && [ "$NEW_SLUG" != "$DEMO_SLUG" ]; then
+  mv "$TARGET/.anydemo/$DEMO_SLUG" "$TARGET/.anydemo/$NEW_SLUG"
+  DEMO_SLUG="$NEW_SLUG"
+  DEMO_DIR="$TARGET/.anydemo/$DEMO_SLUG"
+fi
+```
 
 ## Phase 3 — TIER DETECTION
 
@@ -634,11 +699,12 @@ Output: `intermediate/wiring-plan.json`.
 ### Phase 5b (Tier 2 only) — HARNESS
 
 If the chosen tier is `mock`, also dispatch **harness-author** (see
-`agents/harness-author.md`). It writes:
+`agents/harness-author.md`). Pass `$DEMO_DIR` in the dispatch prompt so
+the harness lands inside the per-demo folder. It writes:
 
-- `$TARGET/.anydemo/harness/server.ts`
-- `$TARGET/.anydemo/harness/package.json`
-- `$TARGET/.anydemo/harness/README.md`
+- `$DEMO_DIR/harness/server.ts`
+- `$DEMO_DIR/harness/package.json`
+- `$DEMO_DIR/harness/README.md`
 
 Templates live in `templates/`:
 - `harness-server.ts.tmpl`
@@ -684,13 +750,13 @@ The skill writes the result to disk:
 
 ```bash
 ASSEMBLE_BODY="$(jq -nc \
-  --slurpfile w "$TARGET/.anydemo/intermediate/wiring-plan.json" \
-  --slurpfile l "$TARGET/.anydemo/intermediate/layout.json" \
+  --slurpfile w "$DEMO_DIR/intermediate/wiring-plan.json" \
+  --slurpfile l "$DEMO_DIR/intermediate/layout.json" \
   '{wiring: $w[0], layout: $l[0]}')"
 curl -fsS -X POST "$STUDIO_URL/api/diagram/assemble" \
   -H 'content-type: application/json' \
   -d "$ASSEMBLE_BODY" \
-  | jq '.demo' > "$TARGET/.anydemo/demo.json"
+  | jq '.demo' > "$DEMO_DIR/demo.json"
 ```
 
 Then validate via the studio. The endpoint runs schema, the ≤30-node cap,
@@ -699,15 +765,15 @@ with non-empty `warnings` is still a pass.
 
 ```bash
 TIER="$(jq -r '.chosenTier // .recommendation // "static"' \
-  "$TARGET/.anydemo/intermediate/tier-evidence.json")"
+  "$DEMO_DIR/intermediate/tier-evidence.json")"
 VALIDATE_BODY="$(jq -nc \
-  --slurpfile d "$TARGET/.anydemo/demo.json" \
+  --slurpfile d "$DEMO_DIR/demo.json" \
   --arg tier "$TIER" \
   '{demo: $d[0], tier: $tier}')"
 VALIDATE_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/validate" \
   -H 'content-type: application/json' \
   -d "$VALIDATE_BODY")"
-echo "$VALIDATE_RESPONSE" > "$TARGET/.anydemo/intermediate/validation-report.json"
+echo "$VALIDATE_RESPONSE" > "$DEMO_DIR/intermediate/validation-report.json"
 test "$(printf '%s' "$VALIDATE_RESPONSE" | jq -r .ok)" = "true"
 ```
 
@@ -716,7 +782,7 @@ tier=mock, confirm every `playAction.url` in the demo is handled by the
 generated harness:
 
 ```bash
-if [ "$TIER" = "mock" ] && [ ! -f "$TARGET/.anydemo/harness/server.ts" ]; then
+if [ "$TIER" = "mock" ] && [ ! -f "$DEMO_DIR/harness/server.ts" ]; then
   echo "Tier=mock but harness server.ts missing." >&2; exit 1
 fi
 ```
@@ -726,18 +792,43 @@ If validation fails, return to Phase 5 with the validation report in context.
 
 ## Phase 8 — REGISTER
 
-Register the demo with the running studio:
+Register the demo with the running studio. The `demoPath` is the per-demo
+folder path relative to `$TARGET` — never bare `.anydemo/demo.json`. The
+studio's returned `slug` is the canonical one; if it differs from the
+folder name we used on disk, rename the folder so the registry entry and
+the filesystem agree.
 
 ```bash
-DEMO_NAME="$(jq -r .name "$TARGET/.anydemo/demo.json")"
+DEMO_NAME="$(jq -r .name "$DEMO_DIR/demo.json")"
+DEMO_PATH_REL=".anydemo/$DEMO_SLUG/demo.json"
 REGISTER_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/register" \
   -H 'content-type: application/json' \
   -d "$(jq -nc \
     --arg name "$DEMO_NAME" \
     --arg repoPath "$TARGET" \
-    --arg demoPath ".anydemo/demo.json" \
+    --arg demoPath "$DEMO_PATH_REL" \
     '{name: $name, repoPath: $repoPath, demoPath: $demoPath}')")"
 SLUG="$(printf '%s' "$REGISTER_RESPONSE" | jq -r .slug)"
+
+# Reconcile the on-disk folder name with the studio's canonical slug. The
+# registry's demoPath stays authoritative — we only rename if the studio
+# picked a different slug than the working one (e.g. dedupe collision).
+if [ -n "$SLUG" ] && [ "$SLUG" != "$DEMO_SLUG" ]; then
+  mv "$TARGET/.anydemo/$DEMO_SLUG" "$TARGET/.anydemo/$SLUG"
+  DEMO_SLUG="$SLUG"
+  DEMO_DIR="$TARGET/.anydemo/$DEMO_SLUG"
+  # Re-register with the corrected demoPath so the registry points at the
+  # new location on disk.
+  curl -fsS -X POST "$STUDIO_URL/api/demos/register" \
+    -H 'content-type: application/json' \
+    -d "$(jq -nc \
+      --arg name "$DEMO_NAME" \
+      --arg repoPath "$TARGET" \
+      --arg demoPath ".anydemo/$SLUG/demo.json" \
+      '{name: $name, repoPath: $repoPath, demoPath: $demoPath}')" \
+    >/dev/null
+fi
+
 DEMO_URL="$STUDIO_URL/d/$SLUG"
 echo "Registered \"$DEMO_NAME\" → $DEMO_URL"
 ```
@@ -760,10 +851,12 @@ The studio re-validates the demo, upserts the registry entry, and writes
 `.anydemo/sdk/emit.ts` if the demo declares any event-bound state node.
 The user lands on the canvas at `<STUDIO_URL>/d/<slug>`.
 
-If the chosen tier is `mock`, also print the harness run command:
+If the chosen tier is `mock`, also print the harness run command. The
+path is the per-demo harness folder under the final slug:
 
-> Mock harness ready. Run `cd .anydemo/harness && bun install && bun run start`
-> to play the diagram.
+> Mock harness ready. Run
+> `cd .anydemo/<slug>/harness && bun install && bun run start`
+> (substituting the actual `$DEMO_SLUG`) to play the diagram.
 
 ### If the canvas appears blank
 
@@ -787,8 +880,9 @@ exact four-step user instruction to relay.
 
 ## Failure & recovery
 
-- `.anydemo/intermediate/` is **preserved on failure** so the next run can
-  resume. Cleaned only on successful completion.
+- `$DEMO_DIR/intermediate/` (i.e. `.anydemo/<slug>/intermediate/`) is
+  **preserved on failure** so the next run can resume. Cleaned only on
+  successful completion. Sibling demos' folders are never touched.
 - Validation failure (`/api/demos/validate` returns `ok: false`) → return to
   Phase 5 (re-wire) with the report.
 - Schema drift is impossible: the validator runs inside the studio, so it
@@ -864,12 +958,14 @@ auto-dispatchable subagents.
 
 Before reporting success, verify:
 
-- [ ] `$TARGET/.anydemo/demo.json` exists
+- [ ] `$DEMO_DIR/demo.json` exists (i.e. `$TARGET/.anydemo/$DEMO_SLUG/demo.json`)
+- [ ] `$DEMO_SLUG` matches the studio's returned canonical slug (folder
+      renamed if not)
 - [ ] `/api/demos/validate` returned `ok: true`
 - [ ] `/api/demos/register` returned a slug
 - [ ] `open $DEMO_URL` (or `xdg-open` on Linux) was invoked so the user's
       browser landed on the canvas without manual copy/paste
-- [ ] On Tier 2: `$TARGET/.anydemo/harness/server.ts` exists with handlers
-      for every URL referenced in the diagram
+- [ ] On Tier 2: `$DEMO_DIR/harness/server.ts` exists with handlers for
+      every URL referenced in the diagram
 - [ ] On Tier 1: warned the user about any `playAction.url` that may be
       unreachable

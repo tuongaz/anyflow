@@ -15,7 +15,7 @@ Checkpoint 2.
 - **Tier 1 — Real**: `playAction.url` values point at the user's running dev
   server. Requires a runnable dev command and a known port AND the diagram's
   clickable surface is HTTP-native.
-- **Tier 2 — Mock harness**: skill scaffolds `.anydemo/harness/` (Hono+Bun)
+- **Tier 2 — Mock harness**: skill scaffolds `.anydemo/<slug>/harness/` (Hono+Bun)
   bridging the project's trigger surface from HTTP. Requires *any*
   identifiable trigger — HTTP route, CLI entry, library export, file
   watcher, queue/event consumer, container entrypoint, scheduled job, or
@@ -30,10 +30,14 @@ Checkpoint 2.
 
 ## INPUT
 
-- `<target>/.anydemo/intermediate/scope-proposal.json` — approved scope
-- `<target>/.anydemo/intermediate/scan-result.json` — runnability signals
-  (`runnability[]`), frameworks, manifests
-- `<target>/.anydemo/intermediate/boundary-surfaces.json` — routes/queues/events
+`<slug>` below is the per-demo folder the orchestrator passes in. All
+intermediate JSON for this demo lives under
+`<target>/.anydemo/<slug>/intermediate/`.
+
+- `<target>/.anydemo/<slug>/intermediate/scope-proposal.json` — approved scope
+- `<target>/.anydemo/<slug>/intermediate/scan-result.json` — runnability
+  signals (`runnability[]`), frameworks, manifests
+- `<target>/.anydemo/<slug>/intermediate/boundary-surfaces.json` — routes/queues/events
 
 ## RULES
 
@@ -92,7 +96,7 @@ To verify port and command, read up to **3 source files** total
 2. `recommendation` is one of `tier1` / `tier2` / `tier3`.
 3. Rationales are concrete, not generic.
 
-## OUTPUT (write to `<target>/.anydemo/intermediate/tier-evidence.json`)
+## OUTPUT (write to `<target>/.anydemo/<slug>/intermediate/tier-evidence.json`)
 
 ```json
 {
@@ -125,4 +129,4 @@ per-route surface (same enum) — `mixed` means values vary across targets.
 `helperScripts[]` is an optional list of polyglot helper scripts the
 harness should ship in the target's own language; see
 `references/trigger-bridges.md` for when to use them. Schema:
-`{ language: "python"|"go"|"ruby"|"shell"|...; path: ".anydemo/harness/runners/<name>"; purpose: string }`.
+`{ language: "python"|"go"|"ruby"|"shell"|...; path: ".anydemo/<slug>/harness/runners/<name>"; purpose: string }`.
