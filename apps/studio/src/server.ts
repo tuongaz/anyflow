@@ -1,7 +1,9 @@
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { createApi } from './api.ts';
 import { type EventBus, createEventBus } from './events.ts';
+import { createMcpServer } from './mcp.ts';
 import { type Registry, createRegistry } from './registry.ts';
 import { type DemoWatcher, createWatcher } from './watcher.ts';
 
@@ -49,10 +51,31 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   app.get('/health', (c) => c.json({ ok: true }));
   app.route('/api', createApi({ registry, events, watcher }));
 
+  // Per-request stateless MCP transport: every /mcp call builds a fresh
+  // Server + Streamable HTTP transport pair. The transport's stateless mode
+  // forbids reuse across requests (it would collide JSON-RPC ids between
+  // clients), and a per-request server is cheap since registry/watcher are
+  // injected references. `enableJsonResponse: true` keeps responses as plain
+  // JSON instead of SSE — simpler for non-streaming clients and what the
+  // stdio shim forwards from the MCP Client.
+  app.all('/mcp', async (c) => {
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    const mcpServer = createMcpServer({ registry, watcher });
+    await mcpServer.connect(transport);
+    try {
+      return await transport.handleRequest(c.req.raw);
+    } finally {
+      await mcpServer.close().catch(() => undefined);
+    }
+  });
+
   if (mode === 'dev') {
     app.all('*', async (c) => {
       const url = new URL(c.req.url);
-      if (url.pathname.startsWith('/api/')) return c.notFound();
+      if (url.pathname.startsWith('/api/') || url.pathname === '/mcp') return c.notFound();
 
       const target = `${viteDevUrl}${url.pathname}${url.search}`;
       try {
