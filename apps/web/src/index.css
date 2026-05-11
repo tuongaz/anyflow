@@ -467,6 +467,15 @@ button:disabled {
 .react-flow__node-group.selected {
   border: 2px solid hsl(var(--primary));
 }
+/* US-009: bump the selected-group outline (inherited from
+ * `.react-flow__node.selected > div`) from 4px out to 8px so the group's
+ * selection ring sits clearly outside the chrome of any child node that
+ * happens to be selected at the same time (children keep the default 4px
+ * offset). Same specificity as the base rule (0,2,1), so source order is
+ * what wins — keep this rule below the base in this file. */
+.react-flow__node-group.selected > div {
+  outline-offset: 8px;
+}
 /* Active (entered) group — set on the inner [data-testid="group-node"] div by
    GroupNode when data.isActive is true. Distinguish "entered" from "selected"
    so the user can tell at a glance which group is currently editable; the
