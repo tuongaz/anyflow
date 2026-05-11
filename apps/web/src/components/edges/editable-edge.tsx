@@ -13,7 +13,7 @@ import {
   getSmoothStepPath,
   useInternalNode,
 } from '@xyflow/react';
-import { useEffect, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useState } from 'react';
 
 // Smoothstep corner rounding — matches typical "zigzag" diagrams without
 // looking jagged. (US-017)
@@ -27,6 +27,44 @@ const SMOOTHSTEP_BORDER_RADIUS = 8;
 // Keep this in lock-step with `reconnectRadius` so the reconnect drag and
 // the visible dot share the same anchor position outside the node corner.
 const RECONNECT_ANCHOR_SHIFT = 10;
+
+/**
+ * US-024: synthesise a `mousedown` MouseEvent on the SVG anchor circle that
+ * xyflow's `EdgeUpdateAnchors` rendered for the given edge id and endpoint
+ * kind. Returns true iff an anchor was found and the event was dispatched.
+ *
+ * Exported so unit tests can drive the forwarding logic without standing up
+ * a full xyflow mount — the test stubs `document` / `MouseEvent` / `CSS` on
+ * globalThis and asserts that `dispatchEvent` is invoked with the right
+ * coordinates. The dispatched event bubbles to React's root listener, which
+ * fires the SVG circle's React `onMouseDown` handler set up by xyflow.
+ */
+export function dispatchReconnectMouseDownOnAnchor(
+  id: string,
+  kind: 'source' | 'target',
+  clientX: number,
+  clientY: number,
+): boolean {
+  const wrapper = document.querySelector(
+    `.react-flow__edge[data-id="${CSS.escape(id)}"]`,
+  ) as SVGGElement | null;
+  if (!wrapper) return false;
+  const anchor = wrapper.querySelector<SVGCircleElement>(`.react-flow__edgeupdater-${kind}`);
+  if (!anchor) return false;
+  anchor.dispatchEvent(
+    new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      buttons: 1,
+      clientX,
+      clientY,
+      view: typeof window !== 'undefined' ? window : undefined,
+    }),
+  );
+  return true;
+}
+
 const shiftAnchorForSide = (
   baseX: number,
   baseY: number,
@@ -247,6 +285,33 @@ export function EditableEdge({
   const sourceDot = showEndpointDots ? shiftAnchorForSide(sX, sY, sourceSide) : null;
   const targetDot = showEndpointDots ? shiftAnchorForSide(tX, tY, targetSide) : null;
 
+  // US-024: forward a mousedown on the visible portal dot to the matching SVG
+  // anchor circle so xyflow's reconnect-drag machinery picks it up. Without
+  // this, when the user reconnects to a precise handle the endpoint pins to
+  // that handle's position — and on the NEXT drag attempt either the node's
+  // own Handle div (HTML, later in DOM than the SVG anchor) or the edge's
+  // wide `.react-flow__edge-interaction` path (which sits at the same SVG g
+  // level as the anchor but draws later) wins the hit test instead of the
+  // SVG anchor. The portal dot lives in `.react-flow__viewport-portal` (last
+  // in DOM order) and always wins the hit test, so making it the
+  // authoritative click target — and forwarding mousedowns to the underlying
+  // SVG circle — restores the reconnect gesture across repeated drags. The
+  // forwarded mousedown bubbles to React's root listener, which dispatches
+  // the SVG circle's React `onMouseDown` handler set up by xyflow's
+  // `EdgeUpdateAnchors` — so we never touch xyflow internals.
+  const forwardMouseDownToAnchor = useCallback(
+    (kind: 'source' | 'target') => (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      // Stop propagation so the canvas / edge body doesn't also react to this
+      // mousedown (e.g. as a pane-pan start). Don't preventDefault — xyflow's
+      // own handler is what should run, and it may call preventDefault.
+      if (dispatchReconnectMouseDownOnAnchor(id, kind, e.clientX, e.clientY)) {
+        e.stopPropagation();
+      }
+    },
+    [id],
+  );
+
   return (
     <>
       <BaseEdge
@@ -260,16 +325,20 @@ export function EditableEdge({
       {showEndpointDots && sourceDot && targetDot ? (
         <ViewportPortal>
           <div
+            data-testid={`edge-endpoint-source-${id}`}
             className="anydemo-connector-endpoint-dot"
             style={{
               transform: `translate(-50%, -50%) translate(${sourceDot.cx}px, ${sourceDot.cy}px)`,
             }}
+            onMouseDown={forwardMouseDownToAnchor('source')}
           />
           <div
+            data-testid={`edge-endpoint-target-${id}`}
             className="anydemo-connector-endpoint-dot"
             style={{
               transform: `translate(-50%, -50%) translate(${targetDot.cx}px, ${targetDot.cy}px)`,
             }}
+            onMouseDown={forwardMouseDownToAnchor('target')}
           />
         </ViewportPortal>
       ) : null}

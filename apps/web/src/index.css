@@ -331,10 +331,17 @@ button:disabled {
  * keeps the dot visible even when a sibling node overlaps the endpoint.
  *
  * Uses the shared --anydemo-handle-* tokens so visuals stay identical to
- * the node outlet dots — same diameter, fill, and border. Pointer events
- * are disabled so clicks pass through to the underlying SVG anchor circle
- * (`.react-flow__edgeupdater`) which xyflow uses for the reconnect-drag
- * gesture. The dot itself is purely visual. */
+ * the node outlet dots — same diameter, fill, and border.
+ *
+ * US-024 (round 2): `pointer-events: auto` makes the dot the authoritative
+ * click target for reconnect-drag initiation. Without this, after a
+ * precise-handle reconnect the endpoint pins to that handle position and
+ * the underlying SVG anchor (`.react-flow__edgeupdater`) loses the hit
+ * test to the node's Handle div or to the edge's wide interaction path
+ * that sit closer to the user. editable-edge.tsx forwards the mousedown
+ * to the SVG anchor so xyflow's reconnect machinery still runs unchanged.
+ * The cursor stays default so the affordance reads as "draggable endpoint"
+ * (same as the SVG anchor's cursor override above). */
 .anydemo-connector-endpoint-dot {
   position: absolute;
   width: var(--anydemo-handle-size);
@@ -342,7 +349,8 @@ button:disabled {
   background: var(--anydemo-handle-fill);
   border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color);
   border-radius: 50%;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: default;
   z-index: 2000;
 }
 
