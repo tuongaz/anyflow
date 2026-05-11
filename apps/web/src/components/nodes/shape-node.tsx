@@ -1,4 +1,5 @@
 import { InlineEdit } from '@/components/inline-edit';
+import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
@@ -173,13 +174,14 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
       onDoubleClick={handleWrapperDoubleClick}
     >
       <ResizeControls
-        visible={!!selected && !!data.onResize && !isEditing}
+        visible={!!selected && !!data.onResize && !isEditing && !data.locked}
         cornerVariant="visible"
         minWidth={80}
         minHeight={40}
         onResizeStart={onResizeStart}
         onResizeEnd={onResizeEnd}
       />
+      {data.locked ? <LockBadge /> : null}
       <Handle
         type="target"
         position={Position.Top}

@@ -276,6 +276,74 @@ describe('DemoSchema', () => {
     expect(result.data.nodes).toHaveLength(3);
   });
 
+  it('round-trips locked on every node kind (US-019)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'lockable',
+      nodes: [
+        {
+          id: 'p',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'P',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            locked: true,
+          },
+        },
+        {
+          id: 's',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 100 },
+          data: {
+            label: 'S',
+            kind: 'worker',
+            stateSource: { kind: 'event' as const },
+            locked: false,
+          },
+        },
+        {
+          id: 'shape',
+          type: 'shapeNode' as const,
+          position: { x: 0, y: 200 },
+          data: { shape: 'rectangle' as const, locked: true },
+        },
+        {
+          id: 'img',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 300 },
+          data: { image: 'data:image/png;base64,iVBORw0KGgo=', locked: true },
+        },
+        {
+          id: 'icon',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 400 },
+          data: { icon: 'lock', locked: true },
+        },
+        {
+          id: 'g',
+          type: 'group' as const,
+          position: { x: 0, y: 500 },
+          data: { label: 'G', locked: true },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const byId = new Map(result.data.nodes.map((n) => [n.id, n]));
+    expect((byId.get('p')?.data as { locked?: boolean }).locked).toBe(true);
+    expect((byId.get('s')?.data as { locked?: boolean }).locked).toBe(false);
+    expect((byId.get('shape')?.data as { locked?: boolean }).locked).toBe(true);
+    expect((byId.get('img')?.data as { locked?: boolean }).locked).toBe(true);
+    expect((byId.get('icon')?.data as { locked?: boolean }).locked).toBe(true);
+    expect((byId.get('g')?.data as { locked?: boolean }).locked).toBe(true);
+  });
+
   it('accepts nodes that omit the new visual fields entirely (backwards compatible)', () => {
     const demo = {
       version: 1 as const,

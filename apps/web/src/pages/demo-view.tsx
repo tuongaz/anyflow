@@ -608,6 +608,64 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-019: toggle the lock state of one or more nodes as a single undo
+  // entry. Locking flips data.locked → true (which disables drag/resize/
+  // delete and shows the lock badge); unlocking flips it back to false.
+  // Mixed selections: if ANY node is unlocked, lock all; if ALL are locked,
+  // unlock all. Mirrors onStyleNodes' batch pattern so one Cmd+Z reverts the
+  // whole batch.
+  const onToggleNodeLock = useCallback(
+    (nodeIds: string[]) => {
+      if (!demoId) return;
+      if (nodeIds.length === 0) return;
+      const targets = nodeIds
+        .map((id) => {
+          const node = demoNodes?.find((n) => n.id === id);
+          if (!node) return null;
+          const data = node.data as { locked?: boolean };
+          return { id, prev: data.locked === true };
+        })
+        .filter((t): t is { id: string; prev: boolean } => t !== null);
+      if (targets.length === 0) return;
+      // Mixed-selection convention: lock-if-any-unlocked, otherwise unlock-all.
+      const nextLocked = targets.some((t) => !t.prev);
+      const changed = targets.filter((t) => t.prev !== nextLocked);
+      if (changed.length === 0) return;
+      for (const t of changed) {
+        setNodeOverride(t.id, { data: { locked: nextLocked } } as Partial<DemoNode>);
+      }
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await Promise.allSettled(
+            changed.map((t) => updateNode(demoId, t.id, { locked: nextLocked })),
+          );
+        },
+        undo: async () => {
+          await Promise.allSettled(
+            changed.map((t) => updateNode(demoId, t.id, { locked: t.prev })),
+          );
+        },
+      });
+      Promise.all(
+        changed.map(async (t) => {
+          try {
+            await updateNode(demoId, t.id, { locked: nextLocked });
+            return null;
+          } catch (err) {
+            dropNodeOverride(t.id);
+            return err instanceof Error ? err.message : String(err);
+          }
+        }),
+      ).then((errs) => {
+        const first = errs.find((e): e is string => e !== null);
+        if (first) setEditError(first);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   // Style-tab edit on a connector: color, edge style, direction. Cast through
   // Partial<Connector> because the discriminated union over `kind` rejects
   // bare partials at the type level (we never change kind here, so the cast
@@ -677,6 +735,10 @@ export function DemoView({
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
       if (!node) return;
+      // US-019: locked nodes opt out of every delete path. Silent no-op —
+      // the right-click menu also disables the Delete item for a locked
+      // node so this branch only fires from a stale callback.
+      if ((node.data as { locked?: boolean }).locked === true) return;
       // US-014: when the to-delete node is a group, the operation must expand
       // to include every node whose `parentId` references it so the group +
       // its children leave together. The schema's `superRefine` rejects
@@ -857,8 +919,19 @@ export function DemoView({
       if (!demoId) return;
       if (nodeIds.length === 0 && connectorIds.length === 0) return;
       const expandedNodeIds = expandGroupNodeIds(nodeIds, (demoNodes ?? []) as GroupableNode[]);
-      const cascadingNodeIdSet = new Set(expandedNodeIds);
-      const nodeSnapshots = expandedNodeIds
+      // US-019: skip locked nodes silently. Locked nodes opt out of every
+      // delete path (right-click, Delete key, batch). Their cascaded
+      // connectors are still pruned only if the OTHER endpoint is also
+      // going away, so a connector between an unlocked doomed node and a
+      // locked survivor disappears with the unlocked node as usual.
+      const lockedNodeIdSet = new Set(
+        (demoNodes ?? [])
+          .filter((n) => (n.data as { locked?: boolean }).locked === true)
+          .map((n) => n.id),
+      );
+      const filteredNodeIds = expandedNodeIds.filter((id) => !lockedNodeIdSet.has(id));
+      const cascadingNodeIdSet = new Set(filteredNodeIds);
+      const nodeSnapshots = filteredNodeIds
         .map((id) => demoNodes?.find((n) => n.id === id))
         .filter((n): n is DemoNode => !!n);
       // Cascaded connectors: any connector whose source/target is in the
@@ -869,12 +942,15 @@ export function DemoView({
       );
       // Explicit connector deletes: only ids NOT covered by a node cascade.
       // Otherwise the duplicate delete produces a server-side 404 for the
-      // connector that's already gone.
+      // connector that's already gone. US-019: also skip connectors whose
+      // BOTH endpoints are locked nodes — same "silent skip" policy as the
+      // node filter above.
       const cascadedConnIdSet = new Set(cascadedConnectors.map((c) => c.id));
       const explicitConnSnapshots = connectorIds
         .map((id) => demoConnectors?.find((c) => c.id === id))
         .filter((c): c is Connector => !!c)
-        .filter((c) => !cascadedConnIdSet.has(c.id));
+        .filter((c) => !cascadedConnIdSet.has(c.id))
+        .filter((c) => !(lockedNodeIdSet.has(c.source) && lockedNodeIdSet.has(c.target)));
       if (
         nodeSnapshots.length === 0 &&
         cascadedConnectors.length === 0 &&
@@ -1060,6 +1136,26 @@ export function DemoView({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onDeleteSelection]);
+
+  // US-019: Cmd/Ctrl+Shift+L toggles the lock state of every selected node.
+  // Mirrors the Delete-shortcut guards (skip in any editable element, skip
+  // when any inline editor is mounted) so a stray Shift+L mid-typing never
+  // hijacks the gesture.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!e.shiftKey) return;
+      if (e.key.toLowerCase() !== 'l') return;
+      if (isEditableElement(document.activeElement)) return;
+      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
+      const nodeIds = selectedIdsRef.current;
+      if (nodeIds.length === 0) return;
+      e.preventDefault();
+      onToggleNodeLock(nodeIds);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onToggleNodeLock]);
 
   // Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z (redo). Skipped while focus is in
   // any editable element so native browser undo handles input/textarea/
@@ -2859,6 +2955,7 @@ export function DemoView({
           onUnpinEndpoint={demoId ? onUnpinEndpoint : undefined}
           onReorderNode={onReorderNode}
           onDeleteNode={onDeleteNode}
+          onToggleNodeLock={demoId ? onToggleNodeLock : undefined}
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
           onGroupNodes={demoId ? groupNodes : undefined}

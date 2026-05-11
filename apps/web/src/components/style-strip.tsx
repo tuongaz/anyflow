@@ -19,7 +19,17 @@ import type {
 } from '@/lib/api';
 import { COLOR_TOKENS } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
-import { ArrowLeftRight, ArrowRight, Check, MoveLeft, Squircle, Sticker, Type } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  Check,
+  Lock,
+  MoveLeft,
+  Squircle,
+  Sticker,
+  Type,
+  Unlock,
+} from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 
 export interface NodeStylePatch {
@@ -72,6 +82,13 @@ export interface StyleStripProps {
    * Change-icon button hides.
    */
   onRequestIconReplace?: (nodeId: string) => void;
+  /**
+   * US-019: toggle the lock state of every selected node. Same callback the
+   * right-click "Lock"/"Unlock" item invokes. The active (pressed) state
+   * follows the selection: pressed when ALL selected are locked. Absent →
+   * the Lock button hides.
+   */
+  onToggleNodeLock?: (nodeIds: string[]) => void;
 }
 
 // Mirror detail-panel.tsx defaults so slider start positions stay consistent.
@@ -149,6 +166,7 @@ export function StyleStrip({
   onStyleConnector,
   onStyleConnectorPreview,
   onRequestIconReplace,
+  onToggleNodeLock,
 }: StyleStripProps) {
   const hasNodes = nodes.length > 0;
   const hasConnectors = connectors.length > 0;
@@ -289,6 +307,20 @@ export function StyleStrip({
   };
   const iconColorActive: ColorToken = firstIconNode?.data.color ?? 'default';
 
+  // US-019: Lock toggle state. Pressed when every selected node is locked
+  // (mirrors the parent's lock-if-any-unlocked vs unlock-all policy on
+  // click). Hidden when the strip has no node selection or no toggle
+  // callback wired.
+  const allNodesLocked =
+    hasNodes && nodes.every((n) => (n.data as { locked?: boolean }).locked === true);
+  const showLockToggle = hasNodes && !!onToggleNodeLock;
+  const handleLockToggle = () => {
+    if (!onToggleNodeLock) return;
+    onToggleNodeLock(nodes.map((n) => n.id));
+  };
+  const lockTooltip = allNodesLocked ? 'Unlock' : 'Lock';
+  const LockIcon = allNodesLocked ? Unlock : Lock;
+
   // Width slider source value: connector borderSize for pure-connector,
   // node borderSize otherwise (mixed selections fall back to the node's
   // value since "border width" applies to both).
@@ -354,6 +386,14 @@ export function StyleStrip({
                 Change icon
               </TooltipContent>
             </Tooltip>
+          ) : null}
+          {showLockToggle ? (
+            <LockToggleButton
+              locked={allNodesLocked}
+              tooltip={lockTooltip}
+              Icon={LockIcon}
+              onClick={handleLockToggle}
+            />
           ) : null}
         </div>
       </TooltipProvider>
@@ -547,8 +587,59 @@ export function StyleStrip({
             />
           </PopoverButton>
         ) : null}
+
+        {showLockToggle ? (
+          <LockToggleButton
+            locked={allNodesLocked}
+            tooltip={lockTooltip}
+            Icon={LockIcon}
+            onClick={handleLockToggle}
+          />
+        ) : null}
       </div>
     </TooltipProvider>
+  );
+}
+
+// US-019: small Lock toggle button rendered in the node side of the strip.
+// `aria-pressed` reflects the locked-state so screen readers announce the
+// transition; clicking dispatches the parent's onToggleNodeLock with every
+// selected node.
+function LockToggleButton({
+  locked,
+  tooltip,
+  Icon,
+  onClick,
+}: {
+  locked: boolean;
+  tooltip: string;
+  Icon: typeof Lock;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-testid="style-strip-lock"
+          data-locked={locked ? 'true' : 'false'}
+          aria-label={tooltip.toLowerCase()}
+          aria-pressed={locked}
+          title={tooltip}
+          onClick={onClick}
+          className={cn(
+            'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+            locked && 'bg-accent text-accent-foreground',
+          )}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="px-2 py-1 text-xs">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -52,6 +52,13 @@ export interface NodeVisual {
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
   cornerRadius?: number;
+  /**
+   * US-019: when true the node is frozen — cannot be dragged, resized, or
+   * deleted by accident — and renders a lock badge in its top-right corner.
+   * Absent → unlocked default. Mirrored explicitly into IconNodeData /
+   * GroupNodeData (those variants don't extend NodeVisual).
+   */
+  locked?: boolean;
 }
 
 export interface NodeData extends NodeVisual {
@@ -91,6 +98,8 @@ export interface IconNodeData {
   // US-002: optional visible caption rendered below the icon. Distinct from
   // `alt` (screen-reader text). Empty/absent → no caption rendered.
   label?: string;
+  /** US-019: lock state mirror — see NodeVisual.locked. */
+  locked?: boolean;
 }
 
 // US-011: container node grouping other nodes via their `parentId`. No
@@ -100,6 +109,8 @@ export interface GroupNodeData {
   label?: string;
   width?: number;
   height?: number;
+  /** US-019: lock state mirror — see NodeVisual.locked. */
+  locked?: boolean;
 }
 
 interface NodeBase {
@@ -321,6 +332,8 @@ export interface UpdateNodeBody {
   alt?: string;
   /** iconNode-only: kebab-case Lucide icon name. Lands at data.icon. */
   icon?: string;
+  /** US-019: lock state. true freezes the node; false unlocks. */
+  locked?: boolean;
 }
 
 export const updateNode = async (

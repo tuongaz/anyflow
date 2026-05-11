@@ -185,6 +185,16 @@ export interface DemoCanvasProps {
    */
   onDeleteNode?: (nodeId: string) => void;
   /**
+   * US-019: toggle the lock state of one or more nodes. Wiring this enables
+   * the right-click context menu's Lock / Unlock entry and the style-strip's
+   * Lock toggle. Single-node right-clicks pass `[nodeId]`; multi-selection
+   * right-clicks pass every selected node id; the style-strip passes every
+   * selected node. The parent owns the optimistic override, PATCH fan-out,
+   * and single-undo-entry push. Mixed selections follow a lock-if-any-
+   * unlocked, otherwise unlock-all policy.
+   */
+  onToggleNodeLock?: (nodeIds: string[]) => void;
+  /**
    * Copy a node into the in-app clipboard. Wiring this enables the
    * right-click context menu's Copy entry. The canvas hands the right-clicked
    * node id directly; multi-select copy is up to the parent (today's parent
@@ -634,6 +644,7 @@ export function DemoCanvas({
   onReconnectConnector,
   onReorderNode,
   onDeleteNode,
+  onToggleNodeLock,
   onCopyNode,
   onPasteAt,
   hasClipboard,
@@ -1128,7 +1139,8 @@ export function DemoCanvas({
     !!onCopyNode ||
     !!onPasteAt ||
     !!onUnpinEndpoint ||
-    !!onGroupNodes;
+    !!onGroupNodes ||
+    !!onToggleNodeLock;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Whether the most recent right-click landed on a node (true) vs. the empty
   // pane (false). Used to gate per-node items (Copy / reorder / Delete) which
@@ -1184,6 +1196,22 @@ export function DemoCanvas({
     if (!id || !onDeleteNode) return;
     onDeleteNode(id);
   }, [onDeleteNode]);
+
+  // US-019: dispatch the toggle-lock op for either the right-clicked node
+  // (single) or every selected node when the right-click landed on a
+  // multi-selection (mirrors the Group / Ungroup pick handlers above).
+  // The parent owns the lock-if-any-unlocked vs unlock-all policy.
+  const handleToggleLockPick = useCallback(() => {
+    if (!onToggleNodeLock) return;
+    const ids = selectedNodeIds.length >= 2 ? [...selectedNodeIds] : [];
+    if (ids.length > 0) {
+      onToggleNodeLock(ids);
+      return;
+    }
+    const id = contextNodeIdRef.current;
+    if (!id) return;
+    onToggleNodeLock([id]);
+  }, [onToggleNodeLock, selectedNodeIds]);
 
   const handleCopyPick = useCallback(() => {
     const id = contextNodeIdRef.current;
@@ -1290,6 +1318,17 @@ export function DemoCanvas({
     () => selectUngroupableSet(selectedNodeIds, nodes as GroupableNode[]).length,
     [selectedNodeIds, nodes],
   );
+  // US-019: lock-aware predicates the right-click menu consumes. A single
+  // node right-click checks the right-clicked id; a multi-selection
+  // right-click checks every selected id and switches the menu label:
+  // "Lock" when ANY is unlocked, "Unlock" only when ALL are locked.
+  const lockedNodeIdSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const n of nodes) {
+      if ((n.data as { locked?: boolean }).locked === true) s.add(n.id);
+    }
+    return s;
+  }, [nodes]);
   const selectedConnectorIdSet = useMemo(
     () => new Set(selectedConnectorIds),
     [selectedConnectorIds],
@@ -1339,6 +1378,12 @@ export function DemoCanvas({
       // xyflow's reconnect path snaps via the always-present `.source`/
       // `.target` DOM classes, not the Handle's `isConnectable` prop.
       if (!selectedNodeIdSet.has(merged.id)) node.connectable = false;
+      // US-019: locked nodes cannot be dragged. xyflow's per-node
+      // `draggable: false` overrides the global `nodesDraggable` so the
+      // node body (and any group children) ignore pointer-down → drag
+      // gestures. Selection, right-click, and hover affordances keep
+      // working — only the drag is gated.
+      if ((merged.data as { locked?: boolean }).locked === true) node.draggable = false;
       return node;
     };
     const fromServer = nodes.map((n) => buildNode(mergeNodeOverride(n, nodeOverrides?.[n.id])));
@@ -2452,6 +2497,7 @@ export function DemoCanvas({
                   onStyleConnector={onStyleConnector}
                   onStyleConnectorPreview={onStyleConnectorPreview}
                   onRequestIconReplace={onRequestIconReplace}
+                  onToggleNodeLock={onToggleNodeLock}
                 />
               ) : null}
             </div>
@@ -2529,14 +2575,15 @@ export function DemoCanvas({
             ) : null}
             {contextOnNode &&
             (onCopyNode || onPasteAt) &&
-            // US-003 / US-012 / US-013: include 'Change icon', multi-selection
-            // 'Group', and any-group 'Ungroup' in the "has-following-section"
-            // check so the Copy/Paste → following-section separator renders
-            // for any of them.
+            // US-003 / US-012 / US-013 / US-019: include 'Change icon',
+            // multi-selection 'Group', any-group 'Ungroup', and Lock/Unlock
+            // in the "has-following-section" check so the Copy/Paste →
+            // following-section separator renders for any of them.
             ((groupableCount >= 2 && ungroupableCount === 0 && !!onGroupNodes) ||
               (ungroupableCount >= 1 && !!onUngroupSelection) ||
               (contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
+              onToggleNodeLock ||
               onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
@@ -2567,6 +2614,7 @@ export function DemoCanvas({
               (ungroupableCount >= 1 && onUngroupSelection)) &&
             ((contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
+              onToggleNodeLock ||
               onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
@@ -2581,7 +2629,7 @@ export function DemoCanvas({
             {contextOnNode &&
             contextNodeType === 'iconNode' &&
             onRequestIconReplace &&
-            (onReorderNode || onDeleteNode) ? (
+            (onReorderNode || onToggleNodeLock || onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
             {contextOnNode && onReorderNode ? (
@@ -2612,9 +2660,46 @@ export function DemoCanvas({
                 </ContextMenuItem>
               </>
             ) : null}
-            {contextOnNode && onReorderNode && onDeleteNode ? <ContextMenuSeparator /> : null}
+            {/* US-019: Lock / Unlock the right-clicked node (or every selected
+                node when the right-click landed on a multi-selection). Label
+                switches based on the current state of the target set: "Lock"
+                if any are unlocked, "Unlock" only when every target is
+                already locked. The data-testid stays stable across labels
+                so tests don't churn. */}
+            {contextOnNode && onToggleNodeLock
+              ? (() => {
+                  const isMulti = selectedNodeIds.length >= 2;
+                  const targetIds: readonly string[] = isMulti
+                    ? selectedNodeIds
+                    : contextNodeIdRef.current
+                      ? [contextNodeIdRef.current]
+                      : [];
+                  if (targetIds.length === 0) return null;
+                  const allLocked = targetIds.every((id) => lockedNodeIdSet.has(id));
+                  return (
+                    <>
+                      {onReorderNode ? <ContextMenuSeparator /> : null}
+                      <ContextMenuItem
+                        data-testid="node-context-menu-lock"
+                        onSelect={handleToggleLockPick}
+                      >
+                        {allLocked ? 'Unlock' : 'Lock'}
+                      </ContextMenuItem>
+                    </>
+                  );
+                })()
+              : null}
+            {contextOnNode && (onReorderNode || onToggleNodeLock) && onDeleteNode ? (
+              <ContextMenuSeparator />
+            ) : null}
             {contextOnNode && onDeleteNode ? (
-              <ContextMenuItem data-testid="node-context-menu-delete" onSelect={handleDeletePick}>
+              <ContextMenuItem
+                data-testid="node-context-menu-delete"
+                onSelect={handleDeletePick}
+                disabled={
+                  contextNodeIdRef.current ? lockedNodeIdSet.has(contextNodeIdRef.current) : false
+                }
+              >
                 Delete
               </ContextMenuItem>
             ) : null}

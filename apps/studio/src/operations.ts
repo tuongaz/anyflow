@@ -94,6 +94,9 @@ export const NodePatchBodySchema = z
     // post-merge reparse enforces the schema's `.min(1)` non-empty rule and
     // gates that this lands only on an iconNode.
     icon: z.string().min(1).optional(),
+    // US-019: lock state. Lands at data.locked; persists across save/reload.
+    // Absent → unlocked default (no badge, all gestures work).
+    locked: z.boolean().optional(),
   })
   .strict();
 export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
@@ -118,6 +121,7 @@ const NODE_DATA_PATCH_KEYS = [
   'strokeWidth',
   'alt',
   'icon',
+  'locked',
 ] as const satisfies ReadonlyArray<keyof NodePatchBody>;
 
 export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {

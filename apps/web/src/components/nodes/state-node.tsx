@@ -1,4 +1,5 @@
 import { InlineEdit } from '@/components/inline-edit';
+import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
@@ -110,13 +111,14 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
       onDoubleClick={handleWrapperDoubleClick}
     >
       <ResizeControls
-        visible={!!selected && !!data.onResize}
+        visible={!!selected && !!data.onResize && !data.locked}
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
         onResizeEnd={onResizeEnd}
       />
+      {data.locked ? <LockBadge /> : null}
       <Handle
         type="target"
         position={Position.Top}

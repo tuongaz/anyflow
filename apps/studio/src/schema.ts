@@ -22,6 +22,10 @@ export const ColorTokenSchema = z.enum([
 
 // Visual fields shared by every node type (functional + decorative). All
 // optional — existing demo files predate them and must continue to parse.
+// US-019: `locked` freezes a node in place (no drag / resize / delete) and
+// renders a lock badge on its top-right corner. Absent → unlocked default.
+// Mirrored explicitly into IconNodeDataSchema + GroupNodeDataSchema below
+// since those variants don't spread this base shape.
 const NodeVisualBaseShape = {
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
@@ -31,6 +35,7 @@ const NodeVisualBaseShape = {
   borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
   fontSize: z.number().positive().optional(),
   cornerRadius: z.number().min(0).optional(),
+  locked: z.boolean().optional(),
 };
 
 const HttpActionSchema = z.object({
@@ -159,6 +164,9 @@ const IconNodeDataSchema = z.object({
   // `alt` (screen-reader text). Absent / empty → no caption rendered and the
   // node's bounding box is byte-identical to the unlabeled layout.
   label: z.string().optional(),
+  // US-019: lock state mirror of NodeVisualBaseShape.locked. IconNode does
+  // not spread the visual base so we declare it here explicitly.
+  locked: z.boolean().optional(),
 });
 
 const IconNodeSchema = z.object({
@@ -176,6 +184,9 @@ const GroupNodeDataSchema = z.object({
   label: z.string().optional(),
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
+  // US-019: lock state mirror of NodeVisualBaseShape.locked. GroupNode does
+  // not spread the visual base so we declare it here explicitly.
+  locked: z.boolean().optional(),
 });
 
 const GroupNodeSchema = z.object({

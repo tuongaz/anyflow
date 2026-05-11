@@ -1,4 +1,5 @@
 import { InlineEdit } from '@/components/inline-edit';
+import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { GroupNodeData } from '@/lib/api';
@@ -82,13 +83,14 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
       }
     >
       <ResizeControls
-        visible={!!selected && !!data.onResize && !isEditing}
+        visible={!!selected && !!data.onResize && !isEditing && !data.locked}
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
         onResizeEnd={onResizeEnd}
       />
+      {data.locked ? <LockBadge /> : null}
       <div
         className={cn(
           'react-flow__node-group-label',

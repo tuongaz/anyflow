@@ -1,3 +1,4 @@
+import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ImageNodeData } from '@/lib/api';
@@ -48,13 +49,14 @@ function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNod
       data-testid="image-node"
     >
       <ResizeControls
-        visible={!!selected && !!data.onResize}
+        visible={!!selected && !!data.onResize && !data.locked}
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
         onResizeEnd={onResizeEnd}
       />
+      {data.locked ? <LockBadge /> : null}
       <Handle
         type="target"
         position={Position.Top}
