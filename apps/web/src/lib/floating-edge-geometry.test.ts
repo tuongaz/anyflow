@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
   type Endpoint,
+  type Pin,
+  endpointFromPin,
   getNodeIntersection,
   resolveEdgeEndpoints,
 } from '@/lib/floating-edge-geometry';
@@ -163,5 +165,180 @@ describe('resolveEdgeEndpoints', () => {
     const out = resolveEdgeEndpoints({ box: aBox, autoPicked: true, fallback: aFallback }, null);
     expect(out.source).toEqual(aFallback);
     expect(out.target.side).toBe('left');
+  });
+
+  // US-006: pinned endpoints. A pin parameterizes the endpoint to `(side, t)`
+  // against the live node bbox, so the endpoint tracks the node through
+  // translation and resize. Pins take precedence over both floating
+  // (autoPicked !== false) and handle-pinned (autoPicked === false).
+  describe('US-006 pinned endpoints', () => {
+    it('uses the pin when sourcePin is set, overriding floating behavior', () => {
+      // Pin source at top-side, midpoint. Without the pin, A is left of B and
+      // would float out the right edge at (100, 30). With the pin, it must
+      // sit at (50, 0) on the top edge.
+      const out = resolveEdgeEndpoints(
+        {
+          box: aBox,
+          autoPicked: true,
+          fallback: aFallback,
+          pin: { side: 'top', t: 0.5 },
+        },
+        { box: bBox, autoPicked: true, fallback: bFallback },
+      );
+      expect(out.source).toEqual({ x: 50, y: 0, side: 'top' });
+      // Target stays floating; geometry-wise the line through the centers
+      // now exits B somewhere different, but it's still on B's perimeter.
+      expect(out.target.side).toBe('left');
+    });
+
+    it('uses the pin when targetPin is set, overriding floating behavior', () => {
+      const out = resolveEdgeEndpoints(
+        { box: aBox, autoPicked: true, fallback: aFallback },
+        {
+          box: bBox,
+          autoPicked: true,
+          fallback: bFallback,
+          pin: { side: 'right', t: 0.25 },
+        },
+      );
+      // Target pinned: right edge of B at t=0.25 along the side (top→bottom).
+      // B spans y in [0, 60], so t=0.25 → y=15. Right edge x = 300 + 100 = 400.
+      expect(out.target).toEqual({ x: 400, y: 15, side: 'right' });
+    });
+
+    it('overrides autoPicked === false when a pin is set', () => {
+      // autoPicked === false would normally return the React-Flow fallback,
+      // but the pin takes precedence and computes from the bbox.
+      const out = resolveEdgeEndpoints(
+        {
+          box: aBox,
+          autoPicked: false,
+          fallback: aFallback,
+          pin: { side: 'bottom', t: 1 },
+        },
+        { box: bBox, autoPicked: true, fallback: bFallback },
+      );
+      // Bottom-right corner of A: (100, 60).
+      expect(out.source).toEqual({ x: 100, y: 60, side: 'bottom' });
+    });
+
+    it('keeps a pinned endpoint at its parameterized perimeter position across node translation', () => {
+      const pin: Pin = { side: 'right', t: 0.75 };
+      const before = resolveEdgeEndpoints(
+        { box: aBox, autoPicked: true, fallback: aFallback, pin },
+        { box: bBox, autoPicked: true, fallback: bFallback },
+      );
+      // Translate A by (+200, +400). Pin must follow.
+      const translated = { x: 200, y: 400, w: 100, h: 60 };
+      const after = resolveEdgeEndpoints(
+        { box: translated, autoPicked: true, fallback: aFallback, pin },
+        { box: bBox, autoPicked: true, fallback: bFallback },
+      );
+      // Before: right edge x=100, t=0.75 of h=60 → y=45.
+      expect(before.source).toEqual({ x: 100, y: 45, side: 'right' });
+      // After: right edge x=300, y=400 + 45 = 445.
+      expect(after.source).toEqual({ x: 300, y: 445, side: 'right' });
+      // Both sit on the right edge — confirms no drift toward the other
+      // endpoint's center (which is what an unpinned floating endpoint
+      // would do after a large translation).
+      expect(after.source.side).toBe('right');
+    });
+
+    it('scales a pinned endpoint with node resize (t is parameterized along the side)', () => {
+      const pin: Pin = { side: 'bottom', t: 0.5 };
+      // A starts as 100×60; widen to 400×120 and the pin should re-anchor to
+      // the midpoint of the new bottom edge.
+      const small = { x: 0, y: 0, w: 100, h: 60 };
+      const large = { x: 0, y: 0, w: 400, h: 120 };
+      const before = resolveEdgeEndpoints(
+        { box: small, autoPicked: true, fallback: aFallback, pin },
+        { box: bBox, autoPicked: true, fallback: bFallback },
+      );
+      const after = resolveEdgeEndpoints(
+        { box: large, autoPicked: true, fallback: aFallback, pin },
+        { box: bBox, autoPicked: true, fallback: bFallback },
+      );
+      // Bottom-edge midpoint of 100×60 → (50, 60); of 400×120 → (200, 120).
+      expect(before.source).toEqual({ x: 50, y: 60, side: 'bottom' });
+      expect(after.source).toEqual({ x: 200, y: 120, side: 'bottom' });
+    });
+
+    it('clamps an out-of-range t to [0, 1] so callers cannot produce off-perimeter coords', () => {
+      // t below 0 → clamps to 0 (start of side).
+      const below = endpointFromPin(aBox, { side: 'left', t: -1 });
+      expect(below).toEqual({ x: 0, y: 0, side: 'left' });
+      // t above 1 → clamps to 1 (end of side).
+      const above = endpointFromPin(aBox, { side: 'left', t: 5 });
+      expect(above).toEqual({ x: 0, y: 60, side: 'left' });
+    });
+
+    it('honors no-pin case (geometry byte-identical to today)', () => {
+      // Explicitly omit the pin field and confirm both endpoints still
+      // float — this is the back-compat invariant for existing demo files.
+      const out = resolveEdgeEndpoints(
+        { box: aBox, autoPicked: undefined, fallback: aFallback },
+        { box: bBox, autoPicked: undefined, fallback: bFallback },
+      );
+      expect(out.source).toEqual({ x: 100, y: 30, side: 'right' });
+      expect(out.target).toEqual({ x: 300, y: 30, side: 'left' });
+    });
+  });
+});
+
+// US-006: direct unit coverage of the pin → coordinate transform. Tested
+// independently of resolveEdgeEndpoints because the function is exported and
+// used by US-007's pin-drag UI to drive the drag preview.
+describe('endpointFromPin', () => {
+  const rect = { x: 10, y: 20, w: 100, h: 60 };
+
+  it('top side: t=0 → top-left corner, t=1 → top-right corner', () => {
+    expect(endpointFromPin(rect, { side: 'top', t: 0 })).toEqual({ x: 10, y: 20, side: 'top' });
+    expect(endpointFromPin(rect, { side: 'top', t: 1 })).toEqual({ x: 110, y: 20, side: 'top' });
+  });
+
+  it('bottom side: t=0 → bottom-left corner, t=1 → bottom-right corner', () => {
+    expect(endpointFromPin(rect, { side: 'bottom', t: 0 })).toEqual({
+      x: 10,
+      y: 80,
+      side: 'bottom',
+    });
+    expect(endpointFromPin(rect, { side: 'bottom', t: 1 })).toEqual({
+      x: 110,
+      y: 80,
+      side: 'bottom',
+    });
+  });
+
+  it('left side: t=0 → top-left corner, t=1 → bottom-left corner', () => {
+    expect(endpointFromPin(rect, { side: 'left', t: 0 })).toEqual({ x: 10, y: 20, side: 'left' });
+    expect(endpointFromPin(rect, { side: 'left', t: 1 })).toEqual({ x: 10, y: 80, side: 'left' });
+  });
+
+  it('right side: t=0 → top-right corner, t=1 → bottom-right corner', () => {
+    expect(endpointFromPin(rect, { side: 'right', t: 0 })).toEqual({
+      x: 110,
+      y: 20,
+      side: 'right',
+    });
+    expect(endpointFromPin(rect, { side: 'right', t: 1 })).toEqual({
+      x: 110,
+      y: 80,
+      side: 'right',
+    });
+  });
+
+  it('returns t=0.5 at the midpoint of every side', () => {
+    expect(endpointFromPin(rect, { side: 'top', t: 0.5 })).toEqual({ x: 60, y: 20, side: 'top' });
+    expect(endpointFromPin(rect, { side: 'bottom', t: 0.5 })).toEqual({
+      x: 60,
+      y: 80,
+      side: 'bottom',
+    });
+    expect(endpointFromPin(rect, { side: 'left', t: 0.5 })).toEqual({ x: 10, y: 50, side: 'left' });
+    expect(endpointFromPin(rect, { side: 'right', t: 0.5 })).toEqual({
+      x: 110,
+      y: 50,
+      side: 'right',
+    });
   });
 });

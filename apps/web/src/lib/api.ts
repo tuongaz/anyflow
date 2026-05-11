@@ -110,6 +110,19 @@ export type ConnectorDirection = 'forward' | 'backward' | 'both';
 /** Path geometry — 'curve' (default bezier) vs 'step' (smoothstep / zigzag). */
 export type ConnectorPath = 'curve' | 'step';
 
+/**
+ * US-006: pinned endpoint position on an edge. Mirrors `EdgePinSchema` in
+ * apps/studio/src/schema.ts. `side` names which of the four perimeter sides
+ * of the connected node the endpoint sits on; `t` is the parameterized
+ * position along that side, in [0, 1]. Top/bottom: 0 = left, 1 = right.
+ * Left/right: 0 = top, 1 = bottom.
+ */
+export type EdgePinSide = 'top' | 'right' | 'bottom' | 'left';
+export interface EdgePin {
+  side: EdgePinSide;
+  t: number;
+}
+
 export interface ConnectorBase {
   id: string;
   source: string;
@@ -127,6 +140,15 @@ export interface ConnectorBase {
   sourceHandleAutoPicked?: boolean;
   /** US-021: same as sourceHandleAutoPicked but for the target endpoint. */
   targetHandleAutoPicked?: boolean;
+  /**
+   * US-006: explicit perimeter pin for the source endpoint. When set, the
+   * endpoint is anchored to `(side, t)` against the live source-node bbox
+   * and does not drift as either node moves or resizes. Absent → floating /
+   * handle-based endpoint behavior (back-compat).
+   */
+  sourcePin?: EdgePin;
+  /** US-006: same as sourcePin but for the target endpoint. */
+  targetPin?: EdgePin;
   label?: string;
   style?: ConnectorStyle;
   color?: ColorToken;

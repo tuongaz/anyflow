@@ -207,6 +207,18 @@ const ConnectorVisualBaseShape = {
 export const SourceHandleIdSchema = z.enum(['r', 'b']);
 export const TargetHandleIdSchema = z.enum(['t', 'l']);
 
+// US-006: pinned endpoint position. `side` names one of the four perimeter
+// sides of the connected node; `t` is the parameterized position along that
+// side, [0, 1], measured from the top-left corner of the side (top/bottom →
+// left-to-right; left/right → top-to-bottom). Pins are persisted so they
+// survive node moves and resizes without drifting toward the other endpoint's
+// center the way floating endpoints do.
+const EdgePinSideSchema = z.enum(['top', 'right', 'bottom', 'left']);
+export const EdgePinSchema = z.object({
+  side: EdgePinSideSchema,
+  t: z.number().min(0).max(1),
+});
+
 const ConnectorBaseShape = {
   id: z.string().min(1),
   source: z.string().min(1),
@@ -221,6 +233,13 @@ const ConnectorBaseShape = {
   // the connector keeps facing the other end; user-pinned ones never do.
   sourceHandleAutoPicked: z.boolean().optional(),
   targetHandleAutoPicked: z.boolean().optional(),
+  // US-006: optional explicit perimeter positions for each endpoint. When
+  // set, the endpoint is computed from `(side, t)` against the connected
+  // node's current bbox at render time — the position parameterizes with the
+  // node so the pin survives moves and resizes. Absent → floating /
+  // handle-based endpoint behavior (back-compat).
+  sourcePin: EdgePinSchema.optional(),
+  targetPin: EdgePinSchema.optional(),
   label: z.string().optional(),
   ...ConnectorVisualBaseShape,
 };
@@ -302,6 +321,8 @@ export type DefaultConnector = z.infer<typeof DefaultConnectorSchema>;
 export type ConnectorStyle = z.infer<typeof ConnectorStyleSchema>;
 export type ConnectorDirection = z.infer<typeof ConnectorDirectionSchema>;
 export type ConnectorPath = z.infer<typeof ConnectorPathSchema>;
+export type EdgePin = z.infer<typeof EdgePinSchema>;
+export type EdgePinSide = z.infer<typeof EdgePinSideSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
 export type ResetAction = z.infer<typeof HttpActionSchema>;

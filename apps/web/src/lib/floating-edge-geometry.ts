@@ -84,28 +84,84 @@ export const getNodeIntersection = (rect: FloatingRect, otherCenter: XY): Endpoi
 };
 
 /**
+ * US-006: a pinned perimeter position. `t` is parameterized along `side`,
+ * clamped to [0, 1]. Mirrors `EdgePinSchema` (apps/studio/src/schema.ts) and
+ * `EdgePin` (apps/web/src/lib/api.ts).
+ */
+export interface Pin {
+  side: Side;
+  t: number;
+}
+
+/**
  * Per-endpoint resolution input: the node's bounding box plus the
- * `autoPicked` flag for that side. `null` means the live node geometry
- * isn't available yet (e.g. the node hasn't been measured) — the caller
- * should hand back the React-Flow-supplied fallback in that case.
+ * `autoPicked` flag and (optionally) an explicit `pin` for that side. `null`
+ * means the live node geometry isn't available yet (e.g. the node hasn't
+ * been measured) — the caller should hand back the React-Flow-supplied
+ * fallback in that case.
  */
 export interface EndpointInput {
   box: FloatingRect;
   autoPicked: boolean | undefined;
+  /**
+   * US-006: when set, the endpoint is computed from `(side, t)` against
+   * `box` and overrides both floating and `autoPicked === false`. Survives
+   * node translation and resize because the position is parameterized.
+   */
+  pin?: Pin;
   /** React-Flow-supplied coords/side, used when the endpoint is pinned. */
   fallback: Endpoint;
 }
 
 /**
- * Resolve a single edge endpoint per the US-025 floating-vs-pinned rule:
+ * Compute a perimeter point from a pin against a node's bbox. `t` is
+ * clamped into [0, 1] so out-of-range values (e.g. from a future schema
+ * widening) never produce off-perimeter coordinates.
  *
- * - When `autoPicked !== false` (floating; the default for new connectors):
- *   compute the perimeter intersection of the line through the two node
- *   centers via `getNodeIntersection`. Endpoint slides along the node's
- *   perimeter as either node moves.
- * - When `autoPicked === false` (user-pinned by an explicit handle drop):
- *   return the React-Flow-supplied fallback unchanged so a pinned handle
- *   stays put even if it points the "wrong" way after the other node moves.
+ * Top/bottom sides: `t` goes left → right.
+ * Left/right sides: `t` goes top → bottom.
+ *
+ * Pure — depends only on the rect's current geometry. The same `(side, t)`
+ * against a translated or resized rect produces a coordinate that tracks
+ * the rect, which is the whole point of pinning.
+ */
+export const endpointFromPin = (rect: FloatingRect, pin: Pin): Endpoint => {
+  const t = Math.min(1, Math.max(0, pin.t));
+  let x: number;
+  let y: number;
+  switch (pin.side) {
+    case 'top':
+      x = rect.x + t * rect.w;
+      y = rect.y;
+      break;
+    case 'bottom':
+      x = rect.x + t * rect.w;
+      y = rect.y + rect.h;
+      break;
+    case 'left':
+      x = rect.x;
+      y = rect.y + t * rect.h;
+      break;
+    case 'right':
+      x = rect.x + rect.w;
+      y = rect.y + t * rect.h;
+      break;
+  }
+  return { x, y, side: pin.side };
+};
+
+/**
+ * Resolve a single edge endpoint. Precedence (highest first):
+ *
+ * 1. `pin` set (US-006) → compute from `(side, t)` against the node's bbox.
+ *    The endpoint parameterizes with the node so it survives moves/resizes.
+ * 2. `autoPicked === false` (US-025, user-pinned by an explicit handle drop)
+ *    → return the React-Flow-supplied fallback unchanged so a pinned handle
+ *    stays put even if it points the "wrong" way after the other node moves.
+ * 3. Otherwise (floating; the default for new connectors): compute the
+ *    perimeter intersection of the line through the two node centers via
+ *    `getNodeIntersection`. Endpoint slides along the node's perimeter as
+ *    either node moves.
  *
  * Pure function — extracted from `editable-edge.tsx` so the branch can be
  * unit-tested without mounting the component.
@@ -121,9 +177,15 @@ export const resolveEdgeEndpoints = (
   }
   const sCenter = { x: source.box.x + source.box.w / 2, y: source.box.y + source.box.h / 2 };
   const tCenter = { x: target.box.x + target.box.w / 2, y: target.box.y + target.box.h / 2 };
-  const resolvedSource =
-    source.autoPicked === false ? source.fallback : getNodeIntersection(source.box, tCenter);
-  const resolvedTarget =
-    target.autoPicked === false ? target.fallback : getNodeIntersection(target.box, sCenter);
+  const resolvedSource = source.pin
+    ? endpointFromPin(source.box, source.pin)
+    : source.autoPicked === false
+      ? source.fallback
+      : getNodeIntersection(source.box, tCenter);
+  const resolvedTarget = target.pin
+    ? endpointFromPin(target.box, target.pin)
+    : target.autoPicked === false
+      ? target.fallback
+      : getNodeIntersection(target.box, sCenter);
   return { source: resolvedSource, target: resolvedTarget };
 };

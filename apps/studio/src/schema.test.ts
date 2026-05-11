@@ -502,6 +502,140 @@ describe('DemoSchema', () => {
     expect(conn.targetHandle).toBeUndefined();
   });
 
+  it('round-trips optional sourcePin/targetPin on connectors (US-006)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'connector-pins',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          kind: 'default' as const,
+          sourcePin: { side: 'right' as const, t: 0.25 },
+          targetPin: { side: 'left' as const, t: 0.75 },
+        },
+      ],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const conn = result.data.connectors[0];
+    if (conn?.kind !== 'default') throw new Error('expected default connector');
+    expect(conn.sourcePin).toEqual({ side: 'right', t: 0.25 });
+    expect(conn.targetPin).toEqual({ side: 'left', t: 0.75 });
+  });
+
+  it('parses connectors authored without sourcePin/targetPin (back-compat for US-006)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'no-pins',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default' as const }],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const conn = result.data.connectors[0];
+    if (conn?.kind !== 'default') throw new Error('expected default connector');
+    expect(conn.sourcePin).toBeUndefined();
+    expect(conn.targetPin).toBeUndefined();
+  });
+
+  it('rejects a pin with an unknown side (US-006)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-pin-side',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          kind: 'default' as const,
+          sourcePin: { side: 'diagonal', t: 0.5 },
+        },
+      ],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('rejects a pin with t outside [0, 1] (US-006)', () => {
+    const make = (t: unknown) => ({
+      version: 1 as const,
+      name: 'bad-pin-t',
+      nodes: [
+        {
+          id: 'a',
+          type: 'stateNode' as const,
+          position: { x: 0, y: 0 },
+          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+        {
+          id: 'b',
+          type: 'stateNode' as const,
+          position: { x: 100, y: 0 },
+          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+        },
+      ],
+      connectors: [
+        {
+          id: 'c1',
+          source: 'a',
+          target: 'b',
+          kind: 'default' as const,
+          sourcePin: { side: 'top' as const, t },
+        },
+      ],
+    });
+    expect(DemoSchema.safeParse(make(-0.1)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(1.1)).success).toBe(false);
+    expect(DemoSchema.safeParse(make(0)).success).toBe(true);
+    expect(DemoSchema.safeParse(make(1)).success).toBe(true);
+  });
+
   it('rejects an invalid connector style value', () => {
     const demo = {
       version: 1 as const,
