@@ -382,7 +382,22 @@ REGISTER_RESPONSE="$(curl -fsS -X POST "$STUDIO_URL/api/demos/register" \
     --arg demoPath ".anydemo/demo.json" \
     '{name: $name, repoPath: $repoPath, demoPath: $demoPath}')")"
 SLUG="$(printf '%s' "$REGISTER_RESPONSE" | jq -r .slug)"
-echo "Registered \"$DEMO_NAME\" → $STUDIO_URL/d/$SLUG"
+DEMO_URL="$STUDIO_URL/d/$SLUG"
+echo "Registered \"$DEMO_NAME\" → $DEMO_URL"
+```
+
+Then open the canvas in the user's browser. Prefer the platform-native opener
+so the user lands on the deep-link slug page directly (the studio root has
+known stale-bundle issues — see troubleshooting):
+
+```bash
+if command -v open >/dev/null 2>&1; then
+  open "$DEMO_URL"
+elif command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$DEMO_URL" >/dev/null 2>&1 &
+else
+  echo "Open $DEMO_URL in your browser to view the diagram."
+fi
 ```
 
 The studio re-validates the demo, upserts the registry entry, and writes
@@ -470,6 +485,8 @@ Before reporting success, verify:
 - [ ] `$TARGET/.anydemo/demo.json` exists
 - [ ] `/api/demos/validate` returned `ok: true`
 - [ ] `/api/demos/register` returned a slug
+- [ ] `open $DEMO_URL` (or `xdg-open` on Linux) was invoked so the user's
+      browser landed on the canvas without manual copy/paste
 - [ ] On Tier 2: `$TARGET/.anydemo/harness/server.ts` exists with handlers
       for every URL referenced in the diagram
 - [ ] On Tier 1: warned the user about any `playAction.url` that may be

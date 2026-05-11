@@ -31,10 +31,12 @@ Run the full pipeline:
 8. **Phase 7** — `POST $STUDIO_URL/api/diagram/assemble` and
    `POST $STUDIO_URL/api/demos/validate`. On validation failure, return to
    Phase 5 (max 2 retries).
-9. **Phase 8** — `POST $STUDIO_URL/api/demos/register` and report
-   `$STUDIO_URL/d/<slug>`. If the canvas appears blank, walk the user through
-   the four-step recovery in `skills/diagram/references/troubleshooting.md`
-   (hard-refresh, direct slug URL, confirm registration, tail studio logs).
+9. **Phase 8** — `POST $STUDIO_URL/api/demos/register`, report
+   `$STUDIO_URL/d/<slug>`, and run `open <url>` (or `xdg-open` on Linux) so
+   the browser opens the canvas automatically. If the canvas appears blank,
+   walk the user through the four-step recovery in
+   `skills/diagram/references/troubleshooting.md` (hard-refresh, direct slug
+   URL, confirm registration, tail studio logs).
 
 Use `AskUserQuestion` for the three checkpoints. Preserve `.anydemo/intermediate/`
 on failure for resumability.
