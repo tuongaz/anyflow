@@ -169,6 +169,63 @@ describe('IconNode', () => {
     expect(onResize).toHaveBeenCalledWith('n1', { width: 100, height: 80, x: 10, y: 20 });
   });
 
+  it('does NOT call data.onResize when start and end dimensions are identical (US-021 click without drag)', () => {
+    // React Flow fires onResizeStart + onResizeEnd unconditionally — even
+    // for a mousedown+mouseup with no movement. Without the click-vs-drag
+    // guard, the node visibly expands on a stray click of the handle.
+    const onResize = mock(() => {});
+    const setResizing = mock(() => {});
+    const tree = callIconNode({ icon: 'shopping-cart', onResize, setResizing }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findElement(tree, (type) => type === ResizeControls);
+    if (!controls) throw new Error('ResizeControls not found in IconNode tree');
+    const props = controls.props as {
+      onResizeStart: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+      onResizeEnd: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+    };
+    const start = { x: 10, y: 20, width: 100, height: 80 };
+    props.onResizeStart(undefined, start);
+    props.onResizeEnd(undefined, start);
+    expect(onResize).not.toHaveBeenCalled();
+    // The resizing flag still flips back so the visual state cleans up —
+    // only the persistence call is skipped.
+    expect(setResizing).toHaveBeenCalledWith(true);
+    expect(setResizing).toHaveBeenCalledWith(false);
+  });
+
+  it('calls data.onResize with new dims when width changes (US-021 paired test)', () => {
+    const onResize = mock(() => {});
+    const setResizing = mock(() => {});
+    const tree = callIconNode({ icon: 'shopping-cart', onResize, setResizing }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findElement(tree, (type) => type === ResizeControls);
+    if (!controls) throw new Error('ResizeControls not found in IconNode tree');
+    const props = controls.props as {
+      onResizeStart: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+      onResizeEnd: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+    };
+    const start = { x: 10, y: 20, width: 100, height: 80 };
+    const end = { x: 10, y: 20, width: 200, height: 120 };
+    props.onResizeStart(undefined, start);
+    props.onResizeEnd(undefined, end);
+    expect(onResize).toHaveBeenCalledTimes(1);
+    expect(onResize).toHaveBeenCalledWith('n1', { width: 200, height: 120, x: 10, y: 20 });
+  });
+
   it('dblclick dispatches onRequestIconReplace with the node id and stops propagation', () => {
     // US-016: double-click an iconNode → open the picker in replace mode.
     const onRequestIconReplace = mock(() => {});

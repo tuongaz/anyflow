@@ -1,10 +1,11 @@
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { IconNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { ICON_REGISTRY } from '@/lib/icon-registry';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, useState } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 
 export type IconNodeRuntimeData = IconNodeData & {
   onResize?: (
@@ -43,7 +44,10 @@ function resolveIconColor(token: IconNodeData['color']): string {
 const WARNED_NAMES = new Set<string>();
 
 export function IconNode({ id, data, selected }: NodeProps<IconNodeType>) {
-  const [isResizing, setIsResizing] = useState(false);
+  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+    onResize: (dims) => data.onResize?.(id, dims),
+    setResizing: data.setResizing,
+  });
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
 
   const requested = ICON_REGISTRY[data.icon];
@@ -92,20 +96,8 @@ export function IconNode({ id, data, selected }: NodeProps<IconNodeType>) {
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
-        onResizeStart={() => {
-          setIsResizing(true);
-          data.setResizing?.(true);
-        }}
-        onResizeEnd={(_e, params) => {
-          setIsResizing(false);
-          data.setResizing?.(false);
-          data.onResize?.(id, {
-            width: params.width,
-            height: params.height,
-            x: params.x,
-            y: params.y,
-          });
-        }}
+        onResizeStart={onResizeStart}
+        onResizeEnd={onResizeEnd}
       />
       <Handle
         type="target"

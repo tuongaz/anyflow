@@ -1,6 +1,7 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import type { NodeStatus } from '@/components/nodes/status-pill';
+import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
@@ -53,7 +54,10 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         ? `Failed: ${data.errorMessage}`
         : 'Failed'
       : 'Play';
-  const [isResizing, setIsResizing] = useState(false);
+  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+    onResize: (dims) => data.onResize?.(id, dims),
+    setResizing: data.setResizing,
+  });
   const [editing, setEditing] = useState<EditField>(null);
   const labelEditable = !!data.onLabelChange;
   const descEditable = !!data.onDescriptionChange;
@@ -141,21 +145,8 @@ export function PlayNode({ id, data, selected }: NodeProps<PlayNodeType>) {
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
-        onResizeStart={() => {
-          setIsResizing(true);
-          data.setResizing?.(true);
-        }}
-        onResizeEnd={(_e, params) => {
-          setIsResizing(false);
-          data.setResizing?.(false);
-          // US-012: include x/y so top/left resizes anchor the opposite corner.
-          data.onResize?.(id, {
-            width: params.width,
-            height: params.height,
-            x: params.x,
-            y: params.y,
-          });
-        }}
+        onResizeStart={onResizeStart}
+        onResizeEnd={onResizeEnd}
       />
       <Handle
         type="target"

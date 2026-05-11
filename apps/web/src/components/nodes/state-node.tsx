@@ -1,6 +1,7 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
+import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { NodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
@@ -35,7 +36,10 @@ const DEFAULT_W = 200;
 export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
   const status = data.status ?? 'idle';
   const description = data.detail?.summary ?? data.kind;
-  const [isResizing, setIsResizing] = useState(false);
+  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+    onResize: (dims) => data.onResize?.(id, dims),
+    setResizing: data.setResizing,
+  });
   const [editing, setEditing] = useState<EditField>(null);
   const labelEditable = !!data.onLabelChange;
   const descEditable = !!data.onDescriptionChange;
@@ -122,24 +126,8 @@ export function StateNode({ id, data, selected }: NodeProps<StateNodeType>) {
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
-        onResizeStart={() => {
-          setIsResizing(true);
-          data.setResizing?.(true);
-        }}
-        onResizeEnd={(_e, params) => {
-          setIsResizing(false);
-          data.setResizing?.(false);
-          // US-012: top/left handles change x/y as well as width/height —
-          // pass the full ResizeParams so the persistence layer can pin the
-          // opposite corner. Bottom-right resizes still come through with
-          // x/y unchanged from start.
-          data.onResize?.(id, {
-            width: params.width,
-            height: params.height,
-            x: params.x,
-            y: params.y,
-          });
-        }}
+        onResizeStart={onResizeStart}
+        onResizeEnd={onResizeEnd}
       />
       <Handle
         type="target"

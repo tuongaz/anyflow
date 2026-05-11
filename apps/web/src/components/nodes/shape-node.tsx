@@ -1,5 +1,6 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
@@ -52,7 +53,10 @@ const HANDLE_CLASS = 'opacity-0 transition-opacity';
 export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = SHAPE_DEFAULT_SIZE[shape];
-  const [isResizing, setIsResizing] = useState(false);
+  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+    onResize: (dims) => data.onResize?.(id, dims),
+    setResizing: data.setResizing,
+  });
   // US-015: a freshly drop-popover-created node opens directly in label-edit
   // mode so the user can type a label without an extra dblclick. The flag is
   // read ONCE at mount via the lazy initializer; subsequent renders keep the
@@ -156,21 +160,8 @@ export function ShapeNode({ id, data, selected }: NodeProps<ShapeNodeType>) {
         cornerVariant="visible"
         minWidth={80}
         minHeight={40}
-        onResizeStart={() => {
-          setIsResizing(true);
-          data.setResizing?.(true);
-        }}
-        onResizeEnd={(_e, params) => {
-          setIsResizing(false);
-          data.setResizing?.(false);
-          // US-012: include x/y so top/left resizes anchor the opposite corner.
-          data.onResize?.(id, {
-            width: params.width,
-            height: params.height,
-            x: params.x,
-            y: params.y,
-          });
-        }}
+        onResizeStart={onResizeStart}
+        onResizeEnd={onResizeEnd}
       />
       <Handle
         type="target"

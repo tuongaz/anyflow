@@ -1,9 +1,10 @@
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ImageNodeData } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, useState } from 'react';
+import type { CSSProperties } from 'react';
 
 export type ImageNodeRuntimeData = ImageNodeData & {
   onResize?: (
@@ -22,7 +23,10 @@ const MIN_H = 40;
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
 export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
-  const [isResizing, setIsResizing] = useState(false);
+  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+    onResize: (dims) => data.onResize?.(id, dims),
+    setResizing: data.setResizing,
+  });
   // Once user-resized (or pre-sized via authoring), the React Flow wrapper
   // owns dimensions and the inner fills via h-full w-full. Before any resize,
   // we pin a default 200x150 so the wrapper auto-sizes to it.
@@ -55,20 +59,8 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         cornerVariant="visible"
         minWidth={MIN_W}
         minHeight={MIN_H}
-        onResizeStart={() => {
-          setIsResizing(true);
-          data.setResizing?.(true);
-        }}
-        onResizeEnd={(_e, params) => {
-          setIsResizing(false);
-          data.setResizing?.(false);
-          data.onResize?.(id, {
-            width: params.width,
-            height: params.height,
-            x: params.x,
-            y: params.y,
-          });
-        }}
+        onResizeStart={onResizeStart}
+        onResizeEnd={onResizeEnd}
       />
       <Handle
         type="target"
