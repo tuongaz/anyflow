@@ -182,20 +182,25 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="t"
-        isConnectable={isConnectable}
-        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="l"
-        isConnectable={isConnectable}
-        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
-      />
+      {/* US-003: text shapes are pure annotations — no connect handles. */}
+      {!isText && (
+        <Handle
+          type="target"
+          position={Position.Top}
+          id="t"
+          isConnectable={isConnectable}
+          className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+        />
+      )}
+      {!isText && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="l"
+          isConnectable={isConnectable}
+          className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+        />
+      )}
       {isEditing && labelEditable ? (
         <InlineEdit
           initialValue={data.label ?? ''}
@@ -219,20 +224,24 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           {data.label ?? (labelEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
         </button>
       )}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="r"
-        isConnectable={isConnectable}
-        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="b"
-        isConnectable={isConnectable}
-        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
-      />
+      {!isText && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="r"
+          isConnectable={isConnectable}
+          className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+        />
+      )}
+      {!isText && (
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          id="b"
+          isConnectable={isConnectable}
+          className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+        />
+      )}
     </div>
   );
 }
