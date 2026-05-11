@@ -1915,6 +1915,7 @@ export function DemoCanvas({
         }}
         onReconnectEnd={onReconnectEndCb}
         connectionLineComponent={connectionLineComponent}
+        connectionLineStyle={{ strokeWidth: 2 }}
         // Generous connection radius so the user can release a connect or
         // reconnect drag near a handle without pixel-perfect aim. React Flow
         // snaps to the closest handle within this radius.
