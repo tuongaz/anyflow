@@ -1,5 +1,27 @@
 import { useCallback, useReducer, useRef } from 'react';
 
+// US-008 mutation-coverage audit (every user-visible canvas mutation produces
+// exactly one undo entry per gesture; coalesced gestures reuse the 500ms window
+// keyed on the gesture id):
+//   • node add — onCreateShapeNode / onCreateImageNode / onCreateIconNode (no key)
+//   • node delete — onDeleteNode / onDeleteSelection (no key, batched)
+//   • node drag — onNodePositionChange (key: node:<id>:position) / onNodePositionsChange (batched)
+//   • node resize — onNodeResize (key: node:<id>:resize)
+//   • node label edit — onNodeLabelChange (key: node:<id>:label)
+//   • node description edit — onNodeDescriptionChange (key: node:<id>:description), onDetailDescriptionChange (key: node:<id>:detail-description)
+//   • node color/style change — onStyleNode (key: node:<id>:style) / onStyleNodes (batched)
+//   • icon change — handleIconPicked replace mode (key: node:<id>:icon)
+//   • edge create — onCreateConnector / onCreateAndConnectFromPane (no key)
+//   • edge delete — onDeleteConnector / onDeleteSelection (no key)
+//   • edge label edit — onConnectorLabelChange (key: connector:<id>:label)
+//   • edge style change — onStyleConnector (key: connector:<id>:style)
+//   • edge reconnect — onReconnectConnector (key: connector:<id>:reconnect)
+//   • edge endpoint pin — onPinEndpoint (key: connector:<id>:<sourcePin|targetPin>)
+//   • edge endpoint unpin — onUnpinEndpoint (no key, single-shot)
+//   • reorder z-index — onReorderNode (no key)
+//   • tidy layout — onTidy (no key, batched)
+//   • paste — onPasteNodes (no key, batched)
+
 export interface UndoEntry {
   do: () => Promise<void>;
   undo: () => Promise<void>;
@@ -12,7 +34,10 @@ export interface UndoStackState {
   cursor: number;
 }
 
-export const MAX_HISTORY = 100;
+// US-008: 500 entries cover ~an hour of varied editing on the canvas without
+// dropping early state. Each entry is a closure pair (~hundreds of bytes), so
+// retained memory at the cap is on the order of low hundreds of KB.
+export const MAX_HISTORY = 500;
 export const COALESCE_WINDOW_MS = 500;
 /**
  * Idle window after the most recent UI mutation. If a demo:reload echo arrives
@@ -173,6 +198,11 @@ export const useUndoStack = (): UseUndoStackResult => {
   );
 
   const undo = useCallback((): Promise<{ entry?: UndoEntry } | undefined> => {
+    // US-008: an undo IS a fresh UI mutation — keep the stale-clear timer
+    // refreshed so the SSE echo of the undo's own PATCH doesn't cross the
+    // STALE_MUTATION_WINDOW_MS threshold and wipe the rest of the stack mid-
+    // chain. Without this, a chain of >3-4 undos with API roundtrips dies.
+    lastMutationAtRef.current = Date.now();
     const next = chainRef.current.then(() => {
       const result = applyUndo(stateRef.current);
       if (!result.entry) return undefined;
@@ -187,6 +217,8 @@ export const useUndoStack = (): UseUndoStackResult => {
   }, [replace]);
 
   const redo = useCallback((): Promise<{ entry?: UndoEntry } | undefined> => {
+    // Same reasoning as `undo` — see comment above.
+    lastMutationAtRef.current = Date.now();
     const next = chainRef.current.then(() => {
       const result = applyRedo(stateRef.current);
       if (!result.entry) return undefined;

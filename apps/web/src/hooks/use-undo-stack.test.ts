@@ -25,8 +25,8 @@ const entry = (overrides: Partial<UndoEntry> = {}): UndoEntry => ({
 const initial: UndoStackState = { stack: [], cursor: 0 };
 
 describe('constants', () => {
-  it('MAX_HISTORY = 100', () => {
-    expect(MAX_HISTORY).toBe(100);
+  it('MAX_HISTORY = 500', () => {
+    expect(MAX_HISTORY).toBe(500);
   });
 
   it('COALESCE_WINDOW_MS = 500', () => {
