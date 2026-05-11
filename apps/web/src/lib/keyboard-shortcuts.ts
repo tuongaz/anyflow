@@ -95,3 +95,55 @@ export const applyNudge = (
   }
   return out;
 };
+
+// US-020: clipboard-chord resolver. Pure inputs → action so the wiring in
+// demo-view.tsx is a thin dispatcher and the chord rules stay unit-testable.
+// Modifier rule: requires Cmd OR Ctrl; rejects Shift/Alt so the chord doesn't
+// shadow browser-native chords like Cmd+Shift+C (devtools) or Cmd+Alt+V.
+// `isEditableActive` short-circuits to noop so native browser copy/paste keeps
+// working inside InlineEdit / inputs / textareas / contentEditable surfaces.
+export type ClipboardChord =
+  | { type: 'noop' }
+  | { type: 'selectAll' }
+  | { type: 'copy'; ids: readonly string[] }
+  | { type: 'duplicate'; ids: readonly string[] }
+  | { type: 'paste' };
+
+export type ClipboardChordInput = {
+  event: ModifierEvent;
+  isEditableActive: boolean;
+  hasNodes: boolean;
+  hasConnectors: boolean;
+  selectedIds: readonly string[];
+  hasClipboard: boolean;
+};
+
+export const resolveClipboardChord = ({
+  event,
+  isEditableActive,
+  hasNodes,
+  hasConnectors,
+  selectedIds,
+  hasClipboard,
+}: ClipboardChordInput): ClipboardChord => {
+  if (!(event.metaKey || event.ctrlKey)) return { type: 'noop' };
+  if (event.shiftKey || event.altKey) return { type: 'noop' };
+  const key = event.key.toLowerCase();
+  if (key !== 'a' && key !== 'c' && key !== 'v' && key !== 'd') return { type: 'noop' };
+  if (isEditableActive) return { type: 'noop' };
+  if (key === 'a') {
+    if (!hasNodes && !hasConnectors) return { type: 'noop' };
+    return { type: 'selectAll' };
+  }
+  if (key === 'c') {
+    if (selectedIds.length === 0) return { type: 'noop' };
+    return { type: 'copy', ids: selectedIds };
+  }
+  if (key === 'd') {
+    if (selectedIds.length === 0) return { type: 'noop' };
+    return { type: 'duplicate', ids: selectedIds };
+  }
+  // 'v'
+  if (!hasClipboard) return { type: 'noop' };
+  return { type: 'paste' };
+};

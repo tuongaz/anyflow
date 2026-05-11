@@ -30,7 +30,12 @@ import {
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { computeIconInsertPosition } from '@/lib/icon-insert';
 import { pushRecent } from '@/lib/icon-recents';
-import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
+import {
+  applyNudge,
+  getNudgeDelta,
+  getZoomChord,
+  resolveClipboardChord,
+} from '@/lib/keyboard-shortcuts';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { toPng, toSvg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -1742,43 +1747,39 @@ export function DemoView({
   // All four are skipped while focus is in any editable element so the
   // browser's native chords keep working inside form controls / InlineEdit.
   useEffect(() => {
+    // US-020: the chord rules live in `resolveClipboardChord` (pure resolver in
+    // lib/keyboard-shortcuts.ts) so the dispatcher here stays trivial and the
+    // rules are unit-testable without rendering DemoView. Selection ids and
+    // clipboard state are read from refs so the listener doesn't re-bind on
+    // every selection change (US-010 deferred the parent's onSelectionChange
+    // to onSelectionEnd for marquee perf; the refs are still synchronously
+    // updated by the parent state's useEffect on every render).
     const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.shiftKey || e.altKey) return;
-      const key = e.key.toLowerCase();
-      if (key !== 'a' && key !== 'c' && key !== 'v' && key !== 'd') return;
-      if (isEditableElement(document.activeElement)) return;
-      if (key === 'a') {
-        // Suppress when there's nothing on the canvas — let the browser do its
-        // default (which is a no-op outside an input). Otherwise pin all
-        // node/connector ids and prevent the browser from selecting page text.
-        if (!demoNodes && !demoConnectors) return;
-        e.preventDefault();
+      const action = resolveClipboardChord({
+        event: e,
+        isEditableActive: isEditableElement(document.activeElement),
+        hasNodes: !!demoNodes && demoNodes.length > 0,
+        hasConnectors: !!demoConnectors && demoConnectors.length > 0,
+        selectedIds: selectedIdsRef.current,
+        hasClipboard: !!clipboardRef.current,
+      });
+      if (action.type === 'noop') return;
+      e.preventDefault();
+      if (action.type === 'selectAll') {
         setSelectedIds((demoNodes ?? []).map((n) => n.id));
         setSelectedConnectorIds((demoConnectors ?? []).map((c) => c.id));
         return;
       }
-      if (key === 'c') {
-        const ids = selectedIdsRef.current;
-        if (ids.length === 0) return;
-        e.preventDefault();
-        onCopyNodes(ids);
+      if (action.type === 'copy') {
+        onCopyNodes([...action.ids]);
         return;
       }
-      if (key === 'd') {
-        // Duplicate = copy current selection then paste at +24,+24. Goes
-        // through onCopyNodes/onPasteNodes so the in-app clipboard reflects
-        // the duplicated payload (matches a manual Cmd+C → Cmd+V).
-        const ids = selectedIdsRef.current;
-        if (ids.length === 0) return;
-        e.preventDefault();
-        onCopyNodes(ids);
+      if (action.type === 'duplicate') {
+        onCopyNodes([...action.ids]);
         onPasteNodes(null);
         return;
       }
-      // 'v'
-      if (!clipboardRef.current) return;
-      e.preventDefault();
+      // paste
       onPasteNodes(null);
     };
     window.addEventListener('keydown', handler);

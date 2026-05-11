@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { applyNudge, getNudgeDelta, getZoomChord } from '@/lib/keyboard-shortcuts';
+import {
+  type ClipboardChordInput,
+  applyNudge,
+  getNudgeDelta,
+  getZoomChord,
+  resolveClipboardChord,
+} from '@/lib/keyboard-shortcuts';
 
 const ev = (
   overrides: Partial<{
@@ -114,5 +120,200 @@ describe('applyNudge', () => {
 
   it('returns [] when the selection is empty', () => {
     expect(applyNudge({ dx: 1, dy: 0 }, [], nodes)).toEqual([]);
+  });
+});
+
+describe('resolveClipboardChord (US-020)', () => {
+  // The handler in demo-view.tsx defers to this resolver for every Cmd/Ctrl
+  // chord. These tests pin the contract so a future refactor of the chord
+  // wiring (e.g. another marquee-perf change like US-010 deferring selection
+  // propagation) can't silently break Cmd+C/V from a click selection.
+  const input = (overrides: Partial<ClipboardChordInput> = {}): ClipboardChordInput => ({
+    event: ev(),
+    isEditableActive: false,
+    hasNodes: true,
+    hasConnectors: true,
+    selectedIds: [],
+    hasClipboard: false,
+    ...overrides,
+  });
+
+  describe('Cmd/Ctrl+C', () => {
+    it('returns copy with selected ids when at least one node is selected', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'c', metaKey: true }),
+          selectedIds: ['n-1', 'n-2'],
+        }),
+      );
+      expect(action).toEqual({ type: 'copy', ids: ['n-1', 'n-2'] });
+    });
+
+    it('Ctrl+C also resolves to copy (non-Mac)', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'c', ctrlKey: true }),
+          selectedIds: ['n-1'],
+        }),
+      );
+      expect(action).toEqual({ type: 'copy', ids: ['n-1'] });
+    });
+
+    it('noop when selection is empty', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'c', metaKey: true }),
+          selectedIds: [],
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+
+    it('noop when an editable element is focused (so native browser copy works)', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'c', metaKey: true }),
+          selectedIds: ['n-1'],
+          isEditableActive: true,
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+
+    it('noop when Shift or Alt are also held (Cmd+Shift+C is devtools, etc.)', () => {
+      const shift = resolveClipboardChord(
+        input({
+          event: ev({ key: 'c', metaKey: true, shiftKey: true }),
+          selectedIds: ['n-1'],
+        }),
+      );
+      const alt = resolveClipboardChord(
+        input({
+          event: ev({ key: 'c', metaKey: true, altKey: true }),
+          selectedIds: ['n-1'],
+        }),
+      );
+      expect(shift).toEqual({ type: 'noop' });
+      expect(alt).toEqual({ type: 'noop' });
+    });
+  });
+
+  describe('Cmd/Ctrl+V', () => {
+    it('returns paste when the in-app clipboard is populated', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'v', metaKey: true }),
+          hasClipboard: true,
+        }),
+      );
+      expect(action).toEqual({ type: 'paste' });
+    });
+
+    it('noop when the clipboard is empty (no prior Cmd+C)', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'v', metaKey: true }),
+          hasClipboard: false,
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+
+    it('noop in an editable element (so native paste works inside textareas)', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'v', metaKey: true }),
+          hasClipboard: true,
+          isEditableActive: true,
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+  });
+
+  describe('Cmd/Ctrl+A', () => {
+    it('returns selectAll when at least one node or connector exists', () => {
+      const onlyNodes = resolveClipboardChord(
+        input({
+          event: ev({ key: 'a', metaKey: true }),
+          hasNodes: true,
+          hasConnectors: false,
+        }),
+      );
+      const onlyConnectors = resolveClipboardChord(
+        input({
+          event: ev({ key: 'a', metaKey: true }),
+          hasNodes: false,
+          hasConnectors: true,
+        }),
+      );
+      expect(onlyNodes).toEqual({ type: 'selectAll' });
+      expect(onlyConnectors).toEqual({ type: 'selectAll' });
+    });
+
+    it('noop on an empty canvas (lets the browser do its default — no-op outside an input)', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'a', metaKey: true }),
+          hasNodes: false,
+          hasConnectors: false,
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+
+    it('noop inside an editable element (so native text-select-all keeps working)', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'a', metaKey: true }),
+          isEditableActive: true,
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+  });
+
+  describe('Cmd/Ctrl+D', () => {
+    it('returns duplicate with selected ids', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'd', metaKey: true }),
+          selectedIds: ['n-1'],
+        }),
+      );
+      expect(action).toEqual({ type: 'duplicate', ids: ['n-1'] });
+    });
+
+    it('noop when selection is empty', () => {
+      const action = resolveClipboardChord(
+        input({
+          event: ev({ key: 'd', metaKey: true }),
+          selectedIds: [],
+        }),
+      );
+      expect(action).toEqual({ type: 'noop' });
+    });
+  });
+
+  it('noop without Cmd/Ctrl (bare letters are typing)', () => {
+    expect(
+      resolveClipboardChord(
+        input({
+          event: ev({ key: 'c' }),
+          selectedIds: ['n-1'],
+        }),
+      ),
+    ).toEqual({ type: 'noop' });
+  });
+
+  it('noop for unrelated chords (Cmd+B, Cmd+S, etc.)', () => {
+    expect(
+      resolveClipboardChord(
+        input({
+          event: ev({ key: 'b', metaKey: true }),
+          selectedIds: ['n-1'],
+        }),
+      ),
+    ).toEqual({ type: 'noop' });
   });
 });
