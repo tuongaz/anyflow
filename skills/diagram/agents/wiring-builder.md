@@ -150,6 +150,11 @@ ALWAYS set `direction: 'forward'` (or omit; that's the default).
 10. `data.detail.summary` is ≤ 60 chars and reads as one short clause.
 11. `data.detail.description` is set on every dynamic (`playNode` /
     `stateNode`) node — full prose, not a copy of `summary`.
+12. Every node touching PII, secrets, payment data, health records, or
+    irreversible side effects has `borderColor: 'red'`. Every external
+    third-party service has `borderColor: 'pink'`. Most other nodes stay
+    on `default`. Read `references/visual-clarity.md` ("Node colors")
+    for the full convention.
 
 ## OUTPUT (write to `<target>/.anydemo/intermediate/wiring-plan.json`)
 

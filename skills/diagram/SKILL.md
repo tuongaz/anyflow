@@ -126,6 +126,38 @@ Rule of thumb: if a reader can absorb the box's purpose without selecting
 it, `summary` is doing its job. If they have to click to know what's going
 on, `summary` was too long or too vague.
 
+### Node colors — encode risk and trust, not decoration
+
+The schema accepts a small palette on every node's `borderColor` (and
+`backgroundColor`): `default`, `slate`, `blue`, `green`, `amber`, `red`,
+`purple`, `pink`. **Most nodes should stay `default`.** Apply color only
+when it carries semantic meaning a reader can act on at a glance:
+
+- **`borderColor: 'red'`** → sensitive data or high-risk operations.
+  Apply to any node that handles PII, secrets, credentials, payment data,
+  health records, raw access tokens, or irreversible side effects
+  (account deletion, mass payouts, prod migrations). The example to
+  internalize: a `stateNode` labeled "Patients" or a `playNode` posting
+  raw credit-card numbers MUST be red.
+- **`borderColor: 'amber'`** → caution. Deprecated routes, rate-limited
+  endpoints, flaky upstream services, beta features, anything the reader
+  should think twice before exercising.
+- **`borderColor: 'purple'`** → privileged / admin surface. Internal-only
+  routes, super-user endpoints, ops dashboards.
+- **`borderColor: 'pink'`** → external third-party services (Stripe,
+  Twilio, Auth0, OpenAI). Visually separates "we own this" from "they
+  own this".
+- **`borderColor: 'green'`** → public, customer-facing happy path. Use
+  sparingly — typically the one or two main entry points.
+- **`default` / `slate` / `blue`** → everything else.
+
+Leave `backgroundColor` unset on functional nodes (`playNode` /
+`stateNode`); reserve background tinting for `shapeNode` annotations
+(sticky callouts, banner headers). **Read
+`references/visual-clarity.md` ("Node colors" section) for the full
+table, examples per node kind, and connector-color rules** before
+emitting wiring.
+
 ### Prefer Playable tiers
 
 A playable diagram (Tier 1 real, Tier 2 mock) is dramatically more useful
