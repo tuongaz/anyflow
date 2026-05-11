@@ -149,6 +149,10 @@ const IconNodeDataSchema = z.object({
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
   alt: z.string().optional(),
+  // US-002: optional visible caption rendered below the icon. Distinct from
+  // `alt` (screen-reader text). Absent / empty → no caption rendered and the
+  // node's bounding box is byte-identical to the unlabeled layout.
+  label: z.string().optional(),
 });
 
 const IconNodeSchema = z.object({

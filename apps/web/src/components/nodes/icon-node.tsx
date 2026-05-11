@@ -122,6 +122,18 @@ export function IconNode({ id, data, selected, isConnectable }: NodeProps<IconNo
           className="block h-full w-full pointer-events-none select-none"
         />
       ) : null}
+      {data.label ? (
+        // US-002: caption below the icon. Absolutely positioned so the icon's
+        // bounding box (read by React Flow for layout + edge geometry) is
+        // identical whether or not a label is set. Width matches the node so
+        // `truncate` clips overflow to an ellipsis at the node's edges.
+        <span
+          data-testid="icon-node-label"
+          className="pointer-events-none absolute left-0 right-0 top-full mt-1 truncate text-center text-xs text-muted-foreground select-none"
+        >
+          {data.label}
+        </span>
+      ) : null}
       <Handle
         type="source"
         position={Position.Right}

@@ -867,6 +867,7 @@ describe('DemoSchema', () => {
             width: 64,
             height: 64,
             alt: 'help indicator',
+            label: 'Help',
           },
         },
       ],
@@ -884,6 +885,33 @@ describe('DemoSchema', () => {
     expect(node.data.width).toBe(64);
     expect(node.data.height).toBe(64);
     expect(node.data.alt).toBe('help indicator');
+    expect(node.data.label).toBe('Help');
+  });
+
+  it('parses an iconNode with an empty label (US-002 backwards compat sentinel)', () => {
+    // Empty string is the documented "no label" sentinel and must round-trip
+    // through the schema (consumers can treat empty + absent the same way at
+    // render time without needing a coercion step).
+    const demo = {
+      version: 1 as const,
+      name: 'icon-empty-label',
+      nodes: [
+        {
+          id: 'icon-1',
+          type: 'iconNode' as const,
+          position: { x: 0, y: 0 },
+          data: { icon: 'shopping-cart', label: '' },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'iconNode') throw new Error('expected iconNode');
+    expect(node.data.label).toBe('');
   });
 
   it('rejects an iconNode with an empty icon string (US-008)', () => {

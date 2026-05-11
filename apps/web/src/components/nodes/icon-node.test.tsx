@@ -122,6 +122,38 @@ describe('IconNode', () => {
     expect(lucide).not.toBeNull();
   });
 
+  it('renders no caption element when data.label is absent or empty (US-002)', () => {
+    const hasLabel = (tree: unknown) =>
+      findAll(
+        tree,
+        (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'icon-node-label',
+      );
+    expect(hasLabel(callIconNode({ icon: 'shopping-cart' }))).toHaveLength(0);
+    expect(hasLabel(callIconNode({ icon: 'shopping-cart', label: '' }))).toHaveLength(0);
+  });
+
+  it('renders the caption text below the icon when data.label is set (US-002)', () => {
+    const tree = callIconNode({ icon: 'shopping-cart', label: 'Cart' });
+    const labels = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'icon-node-label',
+    );
+    expect(labels).toHaveLength(1);
+    const caption = labels[0];
+    if (!caption) throw new Error('caption not found');
+    expect(caption.props.children).toBe('Cart');
+    // Centered, truncating, absolutely positioned below the icon — the
+    // classes encode the bounding-box-preserving layout, so pin them here
+    // to catch a future refactor that drops absolute positioning and
+    // accidentally enlarges the React Flow node measurement.
+    const className = String(caption.props.className ?? '');
+    expect(className).toContain('absolute');
+    expect(className).toContain('top-full');
+    expect(className).toContain('truncate');
+    expect(className).toContain('text-center');
+    expect(className).toContain('text-xs');
+  });
+
   it('falls back to help-circle on an unknown name and warns once', () => {
     const warnSpy = mock(() => {});
     const originalWarn = console.warn;

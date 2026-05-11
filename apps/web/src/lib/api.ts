@@ -88,6 +88,9 @@ export interface IconNodeData {
   width?: number;
   height?: number;
   alt?: string;
+  // US-002: optional visible caption rendered below the icon. Distinct from
+  // `alt` (screen-reader text). Empty/absent → no caption rendered.
+  label?: string;
 }
 
 interface NodeBase {
