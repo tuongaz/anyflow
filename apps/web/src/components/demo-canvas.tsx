@@ -510,6 +510,28 @@ const edgeTypes = { editableEdge: EditableEdge };
 // edge merging to recompute.
 const DEFAULT_EDGE_OPTIONS = { zIndex: 1 };
 
+// US-010: walk up from `target` and return true when the closest
+// `.react-flow__node` ancestor's `data-id` is set AND not equal to `nodeId`.
+// In xyflow 12 each node renders as its own `.react-flow__node` wrapper at the
+// `.react-flow__nodes` flat container — children of a group are siblings of
+// their parent in the DOM, NOT nested. So when a user double-clicks (or
+// mouse-downs) a child node inside a group's bounding rect, xyflow's
+// per-wrapper event handlers dispatch to that child's wrapper only — never to
+// the group's wrapper. This helper is the defensive guard the activate-group
+// dblclick handler uses to make that invariant explicit in our code: even if
+// the event somehow reaches the group's handler with a target inside a
+// different node's wrapper (custom portal / future DOM nesting), we still
+// refuse to activate the group. Returns false when target is missing, not an
+// Element, or the closest `.react-flow__node` carries the same `data-id` as
+// the group (i.e. the event truly originated on the group's own chrome).
+export function eventTargetIsOtherNode(target: EventTarget | null, nodeId: string): boolean {
+  if (!target || typeof (target as Element).closest !== 'function') return false;
+  const closestNode = (target as Element).closest('.react-flow__node');
+  if (!closestNode) return false;
+  const dataId = closestNode.getAttribute('data-id');
+  return dataId !== null && dataId !== nodeId;
+}
+
 // US-009: smoothstep corner radius — kept in sync with EditableEdge so the
 // reconnect-time connection line traces the same zigzag profile as the
 // committed edge.
@@ -2550,13 +2572,17 @@ export function DemoCanvas({
     },
     [onNodeClick],
   );
-  const handleNodeDoubleClick = useCallback((_e: ReactMouseEvent, node: Node) => {
+  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, node: Node) => {
     // Double-click on a group enters it (children become directly addressable).
     // No-op on other node types; React Flow's `zoomOnDoubleClick` is already
     // false so we don't have to preventDefault to suppress zoom.
-    if (node.type === 'group') {
-      setActiveGroupId(node.id);
-    }
+    if (node.type !== 'group') return;
+    // US-010: bail if the dblclick originated on a child node inside this
+    // group's bounding rect. xyflow's flat-DOM rendering makes this almost
+    // never trigger, but the guard makes the "only the group's own chrome
+    // activates" invariant explicit and resilient to any future DOM nesting.
+    if (eventTargetIsOtherNode(e.target, node.id)) return;
+    setActiveGroupId(node.id);
   }, []);
   const handlePaneClickWithGroupExit = useCallback(
     (e: ReactMouseEvent) => {

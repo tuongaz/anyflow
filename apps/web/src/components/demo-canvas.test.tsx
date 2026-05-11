@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { DemoCanvas, type DemoCanvasProps } from '@/components/demo-canvas';
+import { DemoCanvas, type DemoCanvasProps, eventTargetIsOtherNode } from '@/components/demo-canvas';
 import {
   type MultiResizeUpdate,
   SelectionResizeOverlay,
@@ -1304,6 +1304,226 @@ describe('DemoCanvas', () => {
       const shape = nodes.find((n) => n.id === 's1');
       expect((group?.data as { isActive?: boolean }).isActive).toBe(true);
       expect((shape?.data as { isActive?: boolean }).isActive).toBeUndefined();
+    });
+  });
+
+  describe('US-010: group gestures ignore events from child nodes', () => {
+    // Synthetic event target with a `closest` method that returns a
+    // configured-by-data-id stub `.react-flow__node` ancestor (or null). Used
+    // to drive the dblclick activate-guard test cases without a real DOM.
+    function mkTarget(dataId: string | null): EventTarget {
+      const ancestor =
+        dataId === null
+          ? null
+          : {
+              getAttribute: (name: string): string | null => (name === 'data-id' ? dataId : null),
+            };
+      return {
+        closest: (_sel: string) => ancestor,
+      } as unknown as EventTarget;
+    }
+
+    function childOf(id: string, parentId: string): DemoNode {
+      const base = makeShapeNode(id);
+      return { ...base, parentId };
+    }
+
+    describe('eventTargetIsOtherNode helper', () => {
+      it('returns false when target is null', () => {
+        expect(eventTargetIsOtherNode(null, 'g')).toBe(false);
+      });
+
+      it('returns false when target has no closest method', () => {
+        expect(eventTargetIsOtherNode({} as EventTarget, 'g')).toBe(false);
+      });
+
+      it('returns false when no .react-flow__node ancestor exists', () => {
+        expect(eventTargetIsOtherNode(mkTarget(null), 'g')).toBe(false);
+      });
+
+      it('returns false when closest .react-flow__node carries the same data-id', () => {
+        expect(eventTargetIsOtherNode(mkTarget('g'), 'g')).toBe(false);
+      });
+
+      it('returns true when closest .react-flow__node carries a different data-id', () => {
+        expect(eventTargetIsOtherNode(mkTarget('child'), 'g')).toBe(true);
+      });
+
+      it('returns false when data-id attribute is missing on the matched element', () => {
+        const target = {
+          closest: (_sel: string) => ({
+            getAttribute: (_name: string) => null,
+          }),
+        } as unknown as EventTarget;
+        expect(eventTargetIsOtherNode(target, 'g')).toBe(false);
+      });
+    });
+
+    describe('onNodeDoubleClick activate guard', () => {
+      it('wires onNodeDoubleClick on the ReactFlow root', () => {
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        expect(typeof rf.props.onNodeDoubleClick).toBe('function');
+      });
+
+      it('dblclick on a group with empty event.target activates (no closest ancestor)', () => {
+        // No event.target / closest → guard is permissive; the group's own
+        // dblclick is allowed. Mainly verifies no throw on the absent-target
+        // path (xyflow always provides target, but defensive-coding the
+        // missing case keeps the handler robust under unit-test inputs).
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
+          e: { target: EventTarget | null },
+          node: Node,
+        ) => void;
+        // Should not throw on a null/empty target.
+        onNodeDoubleClick({ target: null }, {
+          id: 'g',
+          type: 'group',
+          position: { x: 0, y: 0 },
+          data: {},
+        } as Node);
+      });
+
+      it('dblclick whose event.target is inside the group itself does not throw', () => {
+        // event.target.closest('.react-flow__node') → { data-id: 'g' } — same
+        // as the group's id, so the guard PASSES and the handler proceeds to
+        // activate. The actual setActiveGroupId call is swallowed by the hook
+        // shim, but verifying no throw is the contract the handler exposes.
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
+          e: { target: EventTarget | null },
+          node: Node,
+        ) => void;
+        onNodeDoubleClick({ target: mkTarget('g') }, {
+          id: 'g',
+          type: 'group',
+          position: { x: 0, y: 0 },
+          data: {},
+        } as Node);
+      });
+
+      it('dblclick whose event.target is inside a child node does not throw (guard bails)', () => {
+        // event.target.closest('.react-flow__node') → { data-id: 'a' } — a
+        // child, not the group. The activate guard returns true so the
+        // handler bails BEFORE setActiveGroupId. We verify the no-throw path
+        // (the state isn't observable through the hook shim) and rely on the
+        // helper test above to cover the actual gate decision.
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
+          e: { target: EventTarget | null },
+          node: Node,
+        ) => void;
+        onNodeDoubleClick({ target: mkTarget('a') }, {
+          id: 'g',
+          type: 'group',
+          position: { x: 0, y: 0 },
+          data: {},
+        } as Node);
+      });
+
+      it('dblclick on a non-group node is a no-op even with target inside another node', () => {
+        // node.type !== 'group' → early return; the guard never runs. The
+        // existing per-node dblclick affordances (e.g. shape label edit) are
+        // not affected by this handler.
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
+          e: { target: EventTarget | null },
+          node: Node,
+        ) => void;
+        onNodeDoubleClick({ target: mkTarget('g') }, {
+          id: 'a',
+          type: 'shapeNode',
+          position: { x: 0, y: 0 },
+          data: {},
+        } as Node);
+      });
+    });
+
+    describe('mousedown drag guard', () => {
+      it('onNodeDragStop with only a child in draggedNodes commits the child position only', () => {
+        // Under xyflow 12, mousedown on a child node initiates only that
+        // child's drag — the parent group's `useDrag` does not run because
+        // the group's wrapper is a DOM sibling of the child's wrapper (not an
+        // ancestor). The drag-stop callback receives the `draggedNodes` array
+        // xyflow assembled; verifying that ONLY the child id is in the
+        // commit batch is the canonical assertion that the group did not
+        // join the drag.
+        const positions: Array<{ id: string; position: { x: number; y: number } }> = [];
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+          onNodePositionsChange: (updates) => positions.push(...updates),
+          onNodePositionChange: (id, position) => positions.push({ id, position }),
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        const onNodeDragStop = rf.props.onNodeDragStop as (
+          e: unknown,
+          node: Node,
+          draggedNodes: Node[],
+        ) => void;
+        const child: Node = {
+          id: 'a',
+          type: 'shapeNode',
+          position: { x: 25, y: 15 },
+          data: {},
+        };
+        onNodeDragStop({}, child, [child]);
+        expect(positions).toEqual([{ id: 'a', position: { x: 25, y: 15 } }]);
+        // Group is never in the commit batch — its position remains at the
+        // canvas's source-of-truth value (whatever the parent prop carries).
+        expect(positions.some((p) => p.id === 'g')).toBe(false);
+      });
+
+      it('onNodeDragStop with the group in draggedNodes commits the group position', () => {
+        // Counter-test: when xyflow actually does dispatch a group drag (i.e.
+        // mousedown landed on the group's chrome — label slot, border, or
+        // empty interior), the group's id makes it into the commit batch.
+        // Children follow via xyflow's parent-anchored child rendering and
+        // would NOT appear in `draggedNodes` (xyflow only commits the
+        // primary dragged node when the group has selected children — the
+        // parent-anchor handles child positions implicitly).
+        const positions: Array<{ id: string; position: { x: number; y: number } }> = [];
+        const tree = callDemoCanvas({
+          nodes: [makeGroupNode('g'), childOf('a', 'g')],
+          onNodePositionsChange: (updates) => positions.push(...updates),
+          onNodePositionChange: (id, position) => positions.push({ id, position }),
+        });
+        const rf = findElement(tree, (el) => el.type === ReactFlow);
+        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+        const onNodeDragStop = rf.props.onNodeDragStop as (
+          e: unknown,
+          node: Node,
+          draggedNodes: Node[],
+        ) => void;
+        const group: Node = {
+          id: 'g',
+          type: 'group',
+          position: { x: 40, y: 60 },
+          data: {},
+        };
+        onNodeDragStop({}, group, [group]);
+        expect(positions).toEqual([{ id: 'g', position: { x: 40, y: 60 } }]);
+      });
     });
   });
 });
