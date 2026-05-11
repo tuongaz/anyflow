@@ -31,6 +31,7 @@ import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
 import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
+import { type GroupableNode, selectGroupableSet } from '@/lib/group-ops';
 import { cn } from '@/lib/utils';
 import {
   Background,
@@ -355,6 +356,15 @@ export interface DemoCanvasProps {
    * undo entry. Absent → the menu item is hidden.
    */
   onUnpinEndpoint?: (connectorId: string, kind: 'source' | 'target') => void;
+  /**
+   * US-012: wrap a multi-selection into a new group node. Wired enables the
+   * "Group" item in the multi-selection right-click menu (visible when ≥ 2
+   * of the selected nodes are groupable — i.e. not already parented and not
+   * group nodes themselves). The parent owns id generation, optimistic
+   * overrides, persistence, and the single undo entry; the canvas just
+   * forwards the current selection at click time.
+   */
+  onGroupNodes?: (selectedNodeIds: string[]) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -644,6 +654,7 @@ export function DemoCanvas({
   onRequestIconReplace,
   onPinEndpoint,
   onUnpinEndpoint,
+  onGroupNodes,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1102,7 +1113,12 @@ export function DemoCanvas({
   // every node. The menu items read `contextNodeIdRef` so callbacks dispatch
   // to the right node even if state hasn't re-rendered yet.
   const contextEnabled =
-    !!onReorderNode || !!onDeleteNode || !!onCopyNode || !!onPasteAt || !!onUnpinEndpoint;
+    !!onReorderNode ||
+    !!onDeleteNode ||
+    !!onCopyNode ||
+    !!onPasteAt ||
+    !!onUnpinEndpoint ||
+    !!onGroupNodes;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Whether the most recent right-click landed on a node (true) vs. the empty
   // pane (false). Used to gate per-node items (Copy / reorder / Delete) which
@@ -1174,6 +1190,17 @@ export function DemoCanvas({
     onRequestIconReplace(id);
   }, [onRequestIconReplace]);
 
+  // US-012: forward the current selection to the parent's groupNodes op.
+  // The parent re-filters via selectGroupableSet so the menu's eligibility
+  // check (also via selectGroupableSet, below) and the actual op see the
+  // same set even if state shifted between menu-open and click. Reads from
+  // the props array (controlled selection) — it's the same set xyflow
+  // sees and what's already gated the menu's visibility.
+  const handleGroupPick = useCallback(() => {
+    if (!onGroupNodes) return;
+    onGroupNodes([...selectedNodeIds]);
+  }, [onGroupNodes, selectedNodeIds]);
+
   // US-007: right-click on a visible endpoint dot opens the canvas's
   // context menu in "endpoint mode". The dot calls into this from its own
   // onContextMenu, which we route through edge.data so editable-edge can
@@ -1229,6 +1256,14 @@ export function DemoCanvas({
   // is mirrored back via onSelectionChange so the parent's arrays remain the
   // source of truth — sourceNodes/rfEdges are recomputed off these sets.
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+  // US-012: how many of the currently-selected nodes are eligible to be
+  // wrapped in a new group (i.e. not already parented, not a group node).
+  // Drives the right-click menu's "Group" item visibility. Recomputed when
+  // either the selection or the underlying nodes array changes; cheap (≤ N).
+  const groupableCount = useMemo(
+    () => selectGroupableSet(selectedNodeIds, nodes as GroupableNode[]).length,
+    [selectedNodeIds, nodes],
+  );
   const selectedConnectorIdSet = useMemo(
     () => new Set(selectedConnectorIds),
     [selectedConnectorIds],
@@ -1297,7 +1332,35 @@ export function DemoCanvas({
         fromOverrides.push(buildNode({ ...cand, id } as DemoNode));
       }
     }
-    return [...fromServer, ...fromOverrides];
+    // US-012: enforce React Flow's parent-before-children array invariant. The
+    // server's PATCH path appends new nodes to the end of `nodes[]`, so a
+    // freshly-created group lands AFTER its children even though their
+    // `parentId` already points at it — React Flow then renders children as
+    // floating (position treated as absolute, not parent-relative) until the
+    // next reorder. Hoist every referenced parent just ahead of its earliest
+    // child here so the canvas stays correct between the create-group POST
+    // and the reorder PATCH (and irrespective of whether the on-disk array
+    // ever gets sorted). Cheap for our node counts and idempotent for arrays
+    // that are already correctly ordered.
+    let merged: Node[] = [...fromServer, ...fromOverrides];
+    const referencedParentIds = new Set<string>();
+    for (const n of merged) {
+      if (n.parentId) referencedParentIds.add(n.parentId);
+    }
+    for (const parentId of referencedParentIds) {
+      const parentIdx = merged.findIndex((n) => n.id === parentId);
+      if (parentIdx < 0) continue;
+      const earliestChildIdx = merged.findIndex((n) => n.parentId === parentId);
+      if (earliestChildIdx >= 0 && parentIdx > earliestChildIdx) {
+        const parentNode = merged[parentIdx];
+        if (!parentNode) continue;
+        merged = merged.filter((_, i) => i !== parentIdx);
+        // After splicing the parent out, the earliest child's index has not
+        // shifted (the parent was AFTER the child). Insert directly there.
+        merged.splice(earliestChildIdx, 0, parentNode);
+      }
+    }
+    return merged;
   }, [
     nodes,
     selectedNodeIdSet,
@@ -2440,8 +2503,27 @@ export function DemoCanvas({
             ) : null}
             {contextOnNode &&
             (onCopyNode || onPasteAt) &&
-            // US-003: include 'Change icon' in the "has-following-section"
-            // check so the Copy/Paste → icon-node section separator renders.
+            // US-003 / US-012: include 'Change icon' AND multi-selection
+            // 'Group' in the "has-following-section" check so the Copy/Paste
+            // → group/icon-node separator renders for either.
+            ((groupableCount >= 2 && !!onGroupNodes) ||
+              (contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
+              onReorderNode ||
+              onDeleteNode) ? (
+              <ContextMenuSeparator />
+            ) : null}
+            {/* US-012: multi-selection Group action. Visible whenever ≥ 2 of
+                the selected nodes are groupable (filtered by
+                `selectGroupableSet`) — independent of which node the
+                right-click landed on, so it works for the wrapper-level
+                multi-selection capture path from US-010 too. */}
+            {groupableCount >= 2 && onGroupNodes ? (
+              <ContextMenuItem data-testid="node-context-menu-group" onSelect={handleGroupPick}>
+                Group
+              </ContextMenuItem>
+            ) : null}
+            {groupableCount >= 2 &&
+            onGroupNodes &&
             ((contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
               onDeleteNode) ? (

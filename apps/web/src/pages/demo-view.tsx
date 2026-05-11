@@ -28,6 +28,12 @@ import {
   updateNodePosition,
 } from '@/lib/api';
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
+import {
+  type GroupableNode,
+  computeGroupBbox,
+  selectGroupableSet,
+  toRelativePosition,
+} from '@/lib/group-ops';
 import { computeIconInsertPosition } from '@/lib/icon-insert';
 import { pushRecent } from '@/lib/icon-recents';
 import {
@@ -1411,6 +1417,143 @@ export function DemoView({
     [demoId, onCreateImageNode],
   );
 
+  // US-012: wrap a multi-selection into a new group node. Children's
+  // `parentId` is set to the new group's id and their positions are rebased
+  // into the group's local coordinate system so React Flow keeps them
+  // visually pinned during the transition. The whole batch (one group POST +
+  // one PATCH per child) lands as ONE undo entry — Cmd+Z dissolves the group
+  // and restores absolute child positions, Cmd+Shift+Z re-applies. Children
+  // already inside a group are filtered out via `selectGroupableSet` so a
+  // marquee that crosses pre-grouped + free nodes only wraps the free ones.
+  // Padding matches US-012 AC: 24px on each side, +28px at top for the label
+  // slot (matches `LABEL_SLOT_HEIGHT` in `group-node.tsx`).
+  const groupNodes = useCallback(
+    (rawSelectedIds: string[]) => {
+      if (!demoId || !demoNodes) return;
+      const childIds = selectGroupableSet(rawSelectedIds, demoNodes as GroupableNode[]);
+      if (childIds.length < 2) return;
+      const childIdSet = new Set(childIds);
+      const children = demoNodes.filter((n) => childIdSet.has(n.id));
+      // Use the live displayed position (override > server) + the measured
+      // dimensions from React Flow's internal store so the group hugs what
+      // the user actually sees. Falls back to data.width/data.height for the
+      // bbox math when measurements aren't ready yet (e.g. a node added in
+      // the same tick the user pressed Group).
+      const overrides = nodeOverridesRef.current;
+      const rfInstance = rfInstanceRef.current;
+      const sized: GroupableNode[] = children.map((n) => {
+        const livePos = overrides[n.id]?.position ?? n.position;
+        const measured = rfInstance?.getInternalNode(n.id)?.measured;
+        const dataAny = n.data as { width?: number; height?: number };
+        const width = measured?.width ?? dataAny.width ?? 200;
+        const height = measured?.height ?? dataAny.height ?? 120;
+        return {
+          id: n.id,
+          position: livePos,
+          type: n.type,
+          parentId: n.parentId,
+          width,
+          height,
+        };
+      });
+      const rawBbox = computeGroupBbox(sized, 0);
+      // 24px padding + 28px label slot at the top.
+      const groupPosition: Position = { x: rawBbox.x - 24, y: rawBbox.y - 52 };
+      const groupWidth = rawBbox.width + 48;
+      const groupHeight = rawBbox.height + 76;
+      const groupId = `node-${crypto.randomUUID()}`;
+      const groupNode: DemoNode = {
+        id: groupId,
+        type: 'group',
+        position: groupPosition,
+        data: { width: groupWidth, height: groupHeight },
+      };
+      // Snapshot pre-state for the undo entry (absolute position + parentId
+      // for each child — most children have parentId === undefined here
+      // because selectGroupableSet filtered out already-parented ids).
+      const childPrevState = sized.map((c) => ({
+        id: c.id,
+        position: { x: c.position.x, y: c.position.y },
+        parentId: c.parentId,
+      }));
+      // Relative child positions in the group's local frame.
+      const childRelative = sized.map((c) => ({
+        id: c.id,
+        position: toRelativePosition(c.position, groupPosition),
+      }));
+
+      setEditError(null);
+      // Optimistic: insert the group + reparent every child in the same
+      // React tick so the dashed border appears immediately without waiting
+      // for the SSE echo.
+      setNodeOverride(groupId, groupNode as Partial<DemoNode>);
+      for (const c of childRelative) {
+        setNodeOverride(c.id, {
+          position: c.position,
+          parentId: groupId,
+        } as Partial<DemoNode>);
+      }
+      // The group becomes the selection so the user can immediately rename
+      // it (US-014) or right-click to Ungroup (US-013).
+      setSelectedIds([groupId]);
+      markMutation();
+
+      // Persist: create the group first (so children's `parentId` references
+      // an existing node) and then PATCH each child. ONE undo entry covers
+      // the whole batch; on Cmd+Z it reverts every child's position +
+      // parentId and deletes the group node.
+      const persistGroup = async (forcedGroupId: string) => {
+        await createNode(demoId, {
+          id: forcedGroupId,
+          type: 'group',
+          position: groupPosition,
+          data: { width: groupWidth, height: groupHeight },
+        });
+        await Promise.all(
+          childRelative.map((c) =>
+            updateNode(demoId, c.id, { position: c.position, parentId: forcedGroupId }),
+          ),
+        );
+      };
+      const revertGroup = async (forcedGroupId: string) => {
+        await Promise.all(
+          childPrevState.map((c) =>
+            updateNode(demoId, c.id, {
+              position: c.position,
+              parentId: c.parentId ?? null,
+            }),
+          ),
+        );
+        await deleteNode(demoId, forcedGroupId);
+      };
+
+      persistGroup(groupId)
+        .then(() => {
+          // Refresh the stale-mutation timer (use-undo-stack) so the SSE
+          // echoes of THIS batch's writes can't cross the
+          // STALE_MUTATION_WINDOW_MS threshold and wipe the just-pushed
+          // entry. Mirrors the per-call markMutation in single-shot edits.
+          markMutation();
+          pushUndo({
+            do: async () => {
+              await persistGroup(groupId);
+            },
+            undo: async () => {
+              await revertGroup(groupId);
+            },
+          });
+        })
+        .catch((err) => {
+          // Roll back the optimistic overrides so the canvas reverts.
+          dropNodeOverride(groupId);
+          for (const c of childIds) dropNodeOverride(c);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('groupNodes failed', err);
+        });
+    },
+    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
@@ -2448,6 +2591,7 @@ export function DemoView({
           onDeleteNode={onDeleteNode}
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
+          onGroupNodes={demoId ? groupNodes : undefined}
           hasClipboard={hasClipboard}
           selectedNodes={selectedNodes}
           selectedConnectors={selectedConnectorsList}

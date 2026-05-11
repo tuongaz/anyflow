@@ -295,6 +295,13 @@ export const updateNodePosition = async (
 
 export interface UpdateNodeBody {
   position?: { x: number; y: number };
+  /**
+   * US-012: set or clear the node's parent (group). `null` is the wire-format
+   * signal to clear the field on disk (mirrors sourcePin/targetPin); a string
+   * sets it; `undefined` leaves it untouched. Final validity (reference + no
+   * self-parent) is gated by DemoSchema's superRefine on the studio side.
+   */
+  parentId?: string | null;
   label?: string;
   detail?: NodeDetail;
   borderColor?: ColorToken;

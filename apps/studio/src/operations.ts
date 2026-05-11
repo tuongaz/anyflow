@@ -65,6 +65,12 @@ export type ReorderBody = z.infer<typeof ReorderBodySchema>;
 export const NodePatchBodySchema = z
   .object({
     position: PositionBodySchema.optional(),
+    // US-012: set or clear a node's parent (group). `null` is the wire-format
+    // signal to remove the field on disk (mirrors sourcePin/targetPin in the
+    // connector PATCH path); `undefined` leaves the field untouched. Final
+    // validity (reference resolves, no self-parent) is gated by DemoSchema's
+    // superRefine on the post-merge reparse.
+    parentId: z.string().min(1).nullable().optional(),
     label: z.string().optional(),
     detail: z.unknown().optional(),
     borderColor: ColorTokenSchema.optional(),
@@ -117,6 +123,15 @@ const NODE_DATA_PATCH_KEYS = [
 export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {
   if (updates.position !== undefined) {
     node.position = updates.position;
+  }
+  // US-012: `null` clears the parentId on disk; a string sets it; undefined
+  // leaves it alone. Final reference + non-self validity is gated by the
+  // post-merge DemoSchema reparse.
+  if (updates.parentId === null) {
+    // biome-ignore lint/performance/noDelete: matches `mergeConnectorUpdates`'s clear-on-null contract — actually remove the key so the JSON-stringified output omits the field instead of writing `"parentId": null`.
+    delete node.parentId;
+  } else if (updates.parentId !== undefined) {
+    node.parentId = updates.parentId;
   }
   const dataAny = node.data;
   const data: Record<string, unknown> =

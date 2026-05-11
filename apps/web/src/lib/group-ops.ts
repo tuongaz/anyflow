@@ -1,0 +1,153 @@
+/**
+ * US-012/US-013: pure helpers for the group create/ungroup operations on the
+ * canvas. Kept outside demo-view.tsx so the geometry + filtering invariants
+ * can be unit-tested without mounting React Flow.
+ *
+ * The functions here operate on a minimal Node shape (`GroupableNode`) so the
+ * tests do not need to construct full DemoNode unions and the production
+ * caller can adapt its own shape into the call site with one helper. Width /
+ * height fall back to 0 when omitted — for the bbox math that's a safe
+ * default because an unknown-dim node still anchors at its `position`.
+ */
+
+export interface Position {
+  x: number;
+  y: number;
+}
+
+export interface GroupableNode {
+  id: string;
+  position: Position;
+  /** Top-level parentId mirrors DemoNode (US-011). */
+  parentId?: string;
+  /** Discriminator — `'group'` is what `selectUngroupableSet` looks for. */
+  type: string;
+  /** Rendered width on the canvas (falls back to 0 for the bbox math). */
+  width?: number;
+  /** Rendered height on the canvas. */
+  height?: number;
+}
+
+export interface GroupBbox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Tight bounding box (in absolute canvas-space coords) over the supplied
+ * children, optionally inset by `padding` on every side. Returns a zero-size
+ * bbox at (0, 0) when the input is empty so callers don't have to special-case
+ * the degenerate path.
+ */
+export function computeGroupBbox(children: readonly GroupableNode[], padding: number): GroupBbox {
+  if (children.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const child of children) {
+    const w = child.width ?? 0;
+    const h = child.height ?? 0;
+    if (child.position.x < minX) minX = child.position.x;
+    if (child.position.y < minY) minY = child.position.y;
+    if (child.position.x + w > maxX) maxX = child.position.x + w;
+    if (child.position.y + h > maxY) maxY = child.position.y + h;
+  }
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: maxX - minX + 2 * padding,
+    height: maxY - minY + 2 * padding,
+  };
+}
+
+/**
+ * Convert a child's absolute canvas position into its position relative to
+ * the supplied parent's top-left. React Flow's per-child `position` field is
+ * always relative to the parent (when `parentId` is set) so this is what we
+ * persist when wrapping free nodes into a new group.
+ */
+export function toRelativePosition(child: Position, parent: Position): Position {
+  return { x: child.x - parent.x, y: child.y - parent.y };
+}
+
+/**
+ * Inverse of `toRelativePosition` — recover the child's absolute canvas
+ * position from its parent-relative position. Used when ungrouping (US-013)
+ * so the child stays put visually after `parentId` is cleared.
+ */
+export function toAbsolutePosition(child: Position, parent: Position): Position {
+  return { x: child.x + parent.x, y: child.y + parent.y };
+}
+
+/**
+ * Filter a selection of ids down to the nodes that are eligible to be wrapped
+ * in a NEW group: must exist, must NOT already have a `parentId` (single-level
+ * groups per design — no nested groups), and must NOT be a group themselves
+ * (groups don't get grouped into other groups in v1). Order of the input
+ * `selectedIds` is preserved in the output so the caller's subsequent batch
+ * has a stable ordering.
+ */
+export function selectGroupableSet(
+  selectedIds: readonly string[],
+  nodes: readonly GroupableNode[],
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const out: string[] = [];
+  for (const id of selectedIds) {
+    const node = byId.get(id);
+    if (!node) continue;
+    if (node.parentId !== undefined) continue;
+    if (node.type === 'group') continue;
+    out.push(id);
+  }
+  return out;
+}
+
+/**
+ * Filter a selection of ids down to the group nodes in it (the candidates for
+ * the right-click Ungroup item in US-013). Order of the input `selectedIds`
+ * is preserved.
+ */
+export function selectUngroupableSet(
+  selectedIds: readonly string[],
+  nodes: readonly GroupableNode[],
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const out: string[] = [];
+  for (const id of selectedIds) {
+    const node = byId.get(id);
+    if (!node) continue;
+    if (node.type === 'group') out.push(id);
+  }
+  return out;
+}
+
+/**
+ * React Flow invariant: a parent node must appear BEFORE all of its children
+ * in the `nodes` array, otherwise the child renders without a parent context
+ * for one frame and its position is mis-anchored. Use this to insert a freshly
+ * created group ahead of its children in a single splice — the function
+ * returns a new array (does not mutate the input) so callers can pass it
+ * straight to a setter.
+ */
+export function insertGroupBeforeChildren<T extends { id: string }>(
+  nodes: readonly T[],
+  group: T,
+  childIds: readonly string[],
+): T[] {
+  const childSet = new Set(childIds);
+  // Find the earliest index occupied by any of the children. Insert the group
+  // immediately before it. If no child is found (shouldn't happen in
+  // production — caller filters first), append the group at the end.
+  let earliest = nodes.length;
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node && childSet.has(node.id) && i < earliest) earliest = i;
+  }
+  const out = nodes.slice();
+  out.splice(earliest, 0, group);
+  return out;
+}
