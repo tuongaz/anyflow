@@ -31,7 +31,7 @@ import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
 import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
-import { type GroupableNode, selectGroupableSet } from '@/lib/group-ops';
+import { type GroupableNode, selectGroupableSet, selectUngroupableSet } from '@/lib/group-ops';
 import { cn } from '@/lib/utils';
 import {
   Background,
@@ -365,6 +365,15 @@ export interface DemoCanvasProps {
    * forwards the current selection at click time.
    */
   onGroupNodes?: (selectedNodeIds: string[]) => void;
+  /**
+   * US-013: dissolve every group node in the current selection. Wired enables
+   * the "Ungroup" item in the right-click menu (visible when ≥ 1 of the
+   * selected nodes is a group — mutually exclusive with the "Group" item
+   * above). Parent owns persistence + the single undo entry covering the
+   * whole batch (children's parentId cleared, absolute positions restored,
+   * group nodes removed).
+   */
+  onUngroupSelection?: (selectedNodeIds: string[]) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -655,6 +664,7 @@ export function DemoCanvas({
   onPinEndpoint,
   onUnpinEndpoint,
   onGroupNodes,
+  onUngroupSelection,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1201,6 +1211,15 @@ export function DemoCanvas({
     onGroupNodes([...selectedNodeIds]);
   }, [onGroupNodes, selectedNodeIds]);
 
+  // US-013: forward the current selection to the parent's ungroup op. The
+  // parent re-filters via `selectUngroupableSet` (same filter the menu's
+  // eligibility check uses, below), so a selection that mixes groups with
+  // free nodes still produces a clean batch of just the groups.
+  const handleUngroupPick = useCallback(() => {
+    if (!onUngroupSelection) return;
+    onUngroupSelection([...selectedNodeIds]);
+  }, [onUngroupSelection, selectedNodeIds]);
+
   // US-007: right-click on a visible endpoint dot opens the canvas's
   // context menu in "endpoint mode". The dot calls into this from its own
   // onContextMenu, which we route through edge.data so editable-edge can
@@ -1262,6 +1281,13 @@ export function DemoCanvas({
   // either the selection or the underlying nodes array changes; cheap (≤ N).
   const groupableCount = useMemo(
     () => selectGroupableSet(selectedNodeIds, nodes as GroupableNode[]).length,
+    [selectedNodeIds, nodes],
+  );
+  // US-013: how many of the currently-selected nodes are groups (eligible
+  // for the right-click "Ungroup" item). When ≥ 1, the menu hides "Group"
+  // and shows "Ungroup" instead — the two items are mutually exclusive.
+  const ungroupableCount = useMemo(
+    () => selectUngroupableSet(selectedNodeIds, nodes as GroupableNode[]).length,
     [selectedNodeIds, nodes],
   );
   const selectedConnectorIdSet = useMemo(
@@ -2503,10 +2529,12 @@ export function DemoCanvas({
             ) : null}
             {contextOnNode &&
             (onCopyNode || onPasteAt) &&
-            // US-003 / US-012: include 'Change icon' AND multi-selection
-            // 'Group' in the "has-following-section" check so the Copy/Paste
-            // → group/icon-node separator renders for either.
-            ((groupableCount >= 2 && !!onGroupNodes) ||
+            // US-003 / US-012 / US-013: include 'Change icon', multi-selection
+            // 'Group', and any-group 'Ungroup' in the "has-following-section"
+            // check so the Copy/Paste → following-section separator renders
+            // for any of them.
+            ((groupableCount >= 2 && ungroupableCount === 0 && !!onGroupNodes) ||
+              (ungroupableCount >= 1 && !!onUngroupSelection) ||
               (contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
               onDeleteNode) ? (
@@ -2514,16 +2542,29 @@ export function DemoCanvas({
             ) : null}
             {/* US-012: multi-selection Group action. Visible whenever ≥ 2 of
                 the selected nodes are groupable (filtered by
-                `selectGroupableSet`) — independent of which node the
-                right-click landed on, so it works for the wrapper-level
-                multi-selection capture path from US-010 too. */}
-            {groupableCount >= 2 && onGroupNodes ? (
+                `selectGroupableSet`) AND no group is in the current
+                selection — mutually exclusive with the US-013 "Ungroup" item
+                below, per the AC's "a selection that includes at least one
+                group shows Ungroup (and not Group)" rule. Independent of
+                which node the right-click landed on, so it works for the
+                wrapper-level multi-selection capture path from US-010 too. */}
+            {groupableCount >= 2 && ungroupableCount === 0 && onGroupNodes ? (
               <ContextMenuItem data-testid="node-context-menu-group" onSelect={handleGroupPick}>
                 Group
               </ContextMenuItem>
             ) : null}
-            {groupableCount >= 2 &&
-            onGroupNodes &&
+            {/* US-013: dissolve every group in the selection back into free
+                nodes. Visible when ≥ 1 selected node is a group (filtered by
+                `selectUngroupableSet`); mutually exclusive with the US-012
+                Group item above. Single-group right-clicks land here too —
+                the menu item shows even when only one group is selected. */}
+            {ungroupableCount >= 1 && onUngroupSelection ? (
+              <ContextMenuItem data-testid="node-context-menu-ungroup" onSelect={handleUngroupPick}>
+                Ungroup
+              </ContextMenuItem>
+            ) : null}
+            {((groupableCount >= 2 && ungroupableCount === 0 && onGroupNodes) ||
+              (ungroupableCount >= 1 && onUngroupSelection)) &&
             ((contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
               onDeleteNode) ? (

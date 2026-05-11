@@ -32,6 +32,8 @@ import {
   type GroupableNode,
   computeGroupBbox,
   selectGroupableSet,
+  selectUngroupableSet,
+  toAbsolutePosition,
   toRelativePosition,
 } from '@/lib/group-ops';
 import { computeIconInsertPosition } from '@/lib/icon-insert';
@@ -1554,6 +1556,194 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-013: dissolve N group nodes back into free nodes. Children's positions
+  // are rebased into absolute canvas-space so they keep their visible position
+  // even when their parent group is removed; `parentId` is cleared via the
+  // PATCH null-protocol from US-012. Persists as ONE undo entry covering the
+  // whole batch (any N ≥ 1) — Cmd+Z re-creates every dissolved group and
+  // restores every child's relative position + parentId. Children that are
+  // already free (no `parentId === groupId`) are skipped silently. The Zod
+  // superRefine in apps/studio/src/schema.ts rejects a node whose `parentId`
+  // references a missing group, so children are unparented BEFORE the group
+  // is deleted on disk (and on undo the group is re-created BEFORE children
+  // are re-parented).
+  const ungroupGroupIds = useCallback(
+    (groupIds: string[]) => {
+      if (!demoId || !demoNodes || groupIds.length === 0) return;
+      const overrides = nodeOverridesRef.current;
+      const liveParentId = (n: DemoNode): string | undefined => {
+        const override = overrides[n.id] as { parentId?: string | null } | undefined;
+        if (override && 'parentId' in override) {
+          return override.parentId ?? undefined;
+        }
+        return n.parentId;
+      };
+      const livePosition = (n: DemoNode): Position => {
+        const override = overrides[n.id] as { position?: Position } | undefined;
+        return override?.position ?? n.position;
+      };
+
+      type GroupPlan = {
+        groupSnapshot: DemoNode;
+        groupPosition: Position;
+        children: { id: string; absolute: Position; relative: Position; prevParentId?: string }[];
+      };
+      const plans: GroupPlan[] = [];
+      for (const groupId of groupIds) {
+        const group = demoNodes.find((n) => n.id === groupId);
+        if (!group || group.type !== 'group') continue;
+        const groupPosition = livePosition(group);
+        const children = demoNodes
+          .filter((c) => liveParentId(c) === groupId)
+          .map((c) => {
+            const relative = livePosition(c);
+            return {
+              id: c.id,
+              relative: { x: relative.x, y: relative.y },
+              absolute: toAbsolutePosition(relative, groupPosition),
+              prevParentId: groupId,
+            };
+          });
+        plans.push({
+          groupSnapshot: { ...group, position: groupPosition } as DemoNode,
+          groupPosition,
+          children,
+        });
+      }
+      if (plans.length === 0) return;
+
+      const allGroupIds = plans.map((p) => p.groupSnapshot.id);
+      const allChildIds = plans.flatMap((p) => p.children.map((c) => c.id));
+
+      setEditError(null);
+      // Optimistic: hide every dissolved group and rebase every child into
+      // absolute canvas space within the same React tick.
+      markNodesDeleted(allGroupIds);
+      for (const plan of plans) {
+        for (const c of plan.children) {
+          // Optimistic clear: `parentId: undefined` removes the per-node
+          // parent link in the merged override (mergeNodeOverride's spread
+          // overwrites the prior `parentId: groupId`). The wire-format PATCH
+          // below uses `parentId: null` per the US-012 clear-on-null contract.
+          setNodeOverride(c.id, {
+            position: c.absolute,
+            parentId: undefined,
+          });
+        }
+      }
+      // The previously-grouped children remain selected as a multi-selection
+      // (so the user can immediately re-group, drag, or delete them). The
+      // dissolved groups themselves drop out of the selection naturally as
+      // they're removed from the canvas.
+      setSelectedIds(allChildIds);
+      markMutation();
+
+      const persistUngroup = async () => {
+        // Unparent every child FIRST so the schema doesn't reject the file
+        // mid-write when the group disappears beneath a still-parented child.
+        for (const plan of plans) {
+          for (const c of plan.children) {
+            await updateNode(demoId, c.id, {
+              position: c.absolute,
+              parentId: null,
+            });
+          }
+        }
+        // Then drop the now-childless groups.
+        for (const groupId of allGroupIds) {
+          await deleteNode(demoId, groupId);
+        }
+      };
+      const revertUngroup = async () => {
+        // Inverse order: re-create every group first so children's restored
+        // `parentId` references resolve, then re-parent + rebase every child.
+        for (const plan of plans) {
+          const snap = plan.groupSnapshot;
+          await createNode(demoId, {
+            id: snap.id,
+            type: snap.type,
+            position: snap.position,
+            data: snap.data as unknown as Record<string, unknown>,
+          });
+        }
+        for (const plan of plans) {
+          for (const c of plan.children) {
+            await updateNode(demoId, c.id, {
+              position: c.relative,
+              parentId: c.prevParentId ?? null,
+            });
+          }
+        }
+      };
+
+      persistUngroup()
+        .then(() => {
+          markMutation();
+          pushUndo({
+            do: async () => {
+              markNodesDeleted(allGroupIds);
+              await persistUngroup();
+            },
+            undo: async () => {
+              unmarkNodesDeleted(allGroupIds);
+              await revertUngroup();
+            },
+          });
+        })
+        .catch((err) => {
+          // Roll back optimistic state on failure: un-hide groups and drop
+          // the child overrides so absolute/relative positions revert.
+          unmarkNodesDeleted(allGroupIds);
+          for (const childId of allChildIds) dropNodeOverride(childId);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('ungroup failed', err);
+        });
+    },
+    [
+      demoId,
+      demoNodes,
+      setNodeOverride,
+      dropNodeOverride,
+      markNodesDeleted,
+      unmarkNodesDeleted,
+      pushUndo,
+      markMutation,
+    ],
+  );
+
+  // US-013: single-group entry point. Programmatic callers (or any future
+  // story that needs to dissolve one specific group by id) route through
+  // here; menu paths call `ungroupSelectedGroups` instead. Shares the do/undo
+  // closures with the batch path so behaviour is identical.
+  const ungroupNode = useCallback(
+    (groupId: string) => {
+      ungroupGroupIds([groupId]);
+    },
+    [ungroupGroupIds],
+  );
+
+  // US-013: dissolve every group node in the supplied selection. The Group
+  // and Ungroup right-click items are mutually exclusive in the menu, so a
+  // selection that already contains at least one group renders Ungroup and
+  // not Group (eligibility computed via `selectUngroupableSet`). Single-group
+  // selections delegate to `ungroupNode` so both APIs share the same code
+  // path; multi-group selections batch through the shared internal helper
+  // with a single undo entry covering all of them.
+  const ungroupSelectedGroups = useCallback(
+    (selectedIds: string[]) => {
+      if (!demoNodes) return;
+      const groupIds = selectUngroupableSet(selectedIds, demoNodes as GroupableNode[]);
+      if (groupIds.length === 0) return;
+      if (groupIds.length === 1) {
+        const onlyId = groupIds[0];
+        if (onlyId !== undefined) ungroupNode(onlyId);
+        return;
+      }
+      ungroupGroupIds(groupIds);
+    },
+    [demoNodes, ungroupNode, ungroupGroupIds],
+  );
+
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
@@ -2592,6 +2782,7 @@ export function DemoView({
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
           onGroupNodes={demoId ? groupNodes : undefined}
+          onUngroupSelection={demoId ? ungroupSelectedGroups : undefined}
           hasClipboard={hasClipboard}
           selectedNodes={selectedNodes}
           selectedConnectors={selectedConnectorsList}
