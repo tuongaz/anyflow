@@ -3246,6 +3246,11 @@ export function DemoView({
         onDescriptionChange={onDetailDescriptionChange}
         onShortDescriptionChange={onNodeShortDescriptionChange}
         onMetaDescriptionChange={onNodeMetaDescriptionChange}
+        // US-013: side-panel Label input routes through the same dispatcher as
+        // the inline group-label editor (group-node.tsx), so the existing
+        // `node:<id>:label` coalesce key collapses panel + inline edits within
+        // a typing session into a single undo entry.
+        onLabelChange={onNodeLabelChange}
         onClose={() => {
           // US-003: panel state is decoupled from selection — closing the
           // panel only clears the open-target. The user's selection ring

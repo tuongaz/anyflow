@@ -862,3 +862,236 @@ describe('DetailPanel — metadata editor renders for every node variant (US-011
     expect(findElement(tree, testIdEquals('detail-panel-description'))).toBeNull();
   });
 });
+
+// US-013 (text-and-group-resize): the side panel exposes a Label input for
+// group nodes only. Typing in the input dispatches the same callback the
+// inline label editor uses (group-node.tsx → onCommit → onNodeLabelChange in
+// demo-view.tsx), so panel + inline edits share the existing
+// `node:<id>:label` coalesce key.
+describe('NodeMetadataEditor — Label row (US-013)', () => {
+  type Props = Parameters<typeof NodeMetadataEditor>[0];
+  const callEditor = (overrides: Partial<Props> = {}) => {
+    const props: Props = {
+      nodeId: 'g1',
+      shortDescription: '',
+      description: '',
+      ...overrides,
+    } as Props;
+    return renderWithHooks(() => (NodeMetadataEditor as unknown as (p: Props) => unknown)(props));
+  };
+
+  it('omits the Label input entirely when label prop is undefined (non-group nodes)', () => {
+    const tree = callEditor({ shortDescription: '', description: '' });
+    expect(findElement(tree, testIdEquals('detail-panel-label'))).toBeNull();
+  });
+
+  it('renders the Label input when label prop is a defined string (even empty)', () => {
+    const tree = callEditor({ label: '' });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    expect(labelInput.props.type).toBe('text');
+    expect(labelInput.props['aria-label']).toBe('Label');
+    expect(labelInput.props.placeholder).toBe('Group label');
+    expect(labelInput.props.value).toBe('');
+  });
+
+  it('seeds the Label input from the label prop', () => {
+    const tree = callEditor({ label: 'Stage 1' });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    expect(labelInput.props.value).toBe('Stage 1');
+  });
+
+  it('is read-only when onLabelChange is not wired', () => {
+    const tree = callEditor({ label: 'Stage 1' });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    expect(labelInput.props.readOnly).toBe(true);
+  });
+
+  it('is editable (readOnly=false) when onLabelChange is wired', () => {
+    const tree = callEditor({ label: '', onLabelChange: () => {} });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    expect(labelInput.props.readOnly).toBe(false);
+  });
+
+  it('blur dispatches onLabelChange(nodeId, value) when the value changed', () => {
+    const calls: Array<{ id: string; value: string }> = [];
+    const onLabelChange = (id: string, value: string) => calls.push({ id, value });
+    const tree = callEditor({ label: 'Old', onLabelChange });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    (labelInput.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: 'New label' },
+    });
+    expect(calls).toEqual([{ id: 'g1', value: 'New label' }]);
+  });
+
+  it('does not redispatch when the blur value equals the seeded label', () => {
+    // Focusing then blurring the input without typing must not create an undo
+    // entry — otherwise every selection change would push an identical entry
+    // onto the stack.
+    const calls: Array<{ id: string; value: string }> = [];
+    const onLabelChange = (id: string, value: string) => calls.push({ id, value });
+    const tree = callEditor({ label: 'Stable', onLabelChange });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    (labelInput.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: 'Stable' },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('empty-string blur (cleared label) dispatches as "" (parity with inline editor clear)', () => {
+    // The inline editor in group-node.tsx commits an empty string when the
+    // user clears the field; demo-view's onNodeLabelChange treats `""` as the
+    // canonical "no label" sentinel (the disk PATCH path strips it on merge).
+    // The panel must mirror that — clearing the input + blur should dispatch
+    // ('', not undefined) so the two paths share semantics.
+    const calls: Array<{ id: string; value: string }> = [];
+    const onLabelChange = (id: string, value: string) => calls.push({ id, value });
+    const tree = callEditor({ label: 'Old', onLabelChange });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    (labelInput.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: '' },
+    });
+    expect(calls).toEqual([{ id: 'g1', value: '' }]);
+  });
+
+  it('stops keystrokes from bubbling to the canvas (Backspace would otherwise delete the node)', () => {
+    const tree = callEditor({ label: 'Stage 1', onLabelChange: () => {} });
+    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
+    if (!labelInput) throw new Error('label input not found');
+    let stoppedReact = false;
+    let stoppedNative = false;
+    const e = {
+      key: 'Backspace',
+      stopPropagation: () => {
+        stoppedReact = true;
+      },
+      nativeEvent: {
+        stopPropagation: () => {
+          stoppedNative = true;
+        },
+      },
+    };
+    (labelInput.props.onKeyDown as (e: unknown) => void)(e);
+    expect(stoppedReact).toBe(true);
+    expect(stoppedNative).toBe(true);
+  });
+});
+
+// US-013: DetailPanel-level wiring — for a selected group, the Label row
+// is forwarded to NodeMetadataEditor; for any other node variant the
+// `label` / `onLabelChange` props on the editor placeholder stay undefined
+// so the row collapses.
+describe('DetailPanel — Label input is gated to group nodes (US-013)', () => {
+  type PanelProps = Parameters<typeof DetailPanel>[0];
+
+  it('forwards label + onLabelChange into the editor when a group is selected', () => {
+    const onLabelChange = () => {};
+    const node: DemoNode = {
+      id: 'g1',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      data: { label: 'Stage 1' },
+    };
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onLabelChange,
+      onClose: () => {},
+    } as PanelProps;
+    const tree = renderWithHooks(() =>
+      (DetailPanel as unknown as (p: PanelProps) => unknown)(props),
+    );
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.label).toBe('Stage 1');
+    expect(editor.props.onLabelChange).toBe(onLabelChange);
+  });
+
+  it('seeds the label as "" when the group has no label set', () => {
+    const node: DemoNode = {
+      id: 'g1',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      data: {},
+    };
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onLabelChange: () => {},
+      onClose: () => {},
+    } as PanelProps;
+    const tree = renderWithHooks(() =>
+      (DetailPanel as unknown as (p: PanelProps) => unknown)(props),
+    );
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.label).toBe('');
+  });
+
+  it('does not forward label or onLabelChange when a non-group node is selected', () => {
+    // The on-disk shape's `data.label` exists for play/state/shape/icon too,
+    // but the side-panel Label control is scoped to groups (the AC names
+    // groups specifically; other variants edit labels via inline-on-node /
+    // StyleStrip). Verify the editor placeholder gets `label: undefined` and
+    // `onLabelChange: undefined` for those variants.
+    const nonGroup: DemoNode = {
+      id: 'sh',
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: { shape: 'rectangle', label: 'Has a label' },
+    };
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node: nonGroup,
+      connector: null,
+      onLabelChange: () => {},
+      onClose: () => {},
+    } as PanelProps;
+    const tree = renderWithHooks(() =>
+      (DetailPanel as unknown as (p: PanelProps) => unknown)(props),
+    );
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.label).toBeUndefined();
+    expect(editor.props.onLabelChange).toBeUndefined();
+  });
+
+  it('shares the exact `onLabelChange` function reference between panel + inline editor wiring (one coalesce key)', () => {
+    // The coalesce contract is: panel-side blur and inline-editor commit BOTH
+    // route through the SAME function (demo-view.tsx::onNodeLabelChange),
+    // which uses coalesceKey `node:<id>:label`. Verify the panel passes the
+    // exact prop reference through to the editor placeholder — any wrapper or
+    // adapter here would break the coalesce by changing the call shape.
+    const onNodeLabelChange = () => {};
+    const node: DemoNode = {
+      id: 'g1',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      data: { label: 'Group' },
+    };
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onLabelChange: onNodeLabelChange,
+      onClose: () => {},
+    } as PanelProps;
+    const tree = renderWithHooks(() =>
+      (DetailPanel as unknown as (p: PanelProps) => unknown)(props),
+    );
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    // Identity check — not just `toBeDefined()`. The same function reference
+    // is what the canvas hands to group-node.tsx as `onLabelChange` on the
+    // node data (verified in demo-canvas.tsx wiring tests).
+    expect(editor.props.onLabelChange).toBe(onNodeLabelChange);
+  });
+});

@@ -57,6 +57,16 @@ export interface DetailPanelProps {
    * only). Empty string clears the field on disk.
    */
   onMetaDescriptionChange?: (nodeId: string, value: string) => void;
+  /**
+   * US-013 (text-and-group-resize): commit a new `data.label` for the given
+   * node from the side panel. Currently surfaced only for group nodes — the
+   * inline editor on the group's label slot (group-node.tsx) still works in
+   * parallel. Both paths SHOULD route to the same dispatcher (e.g.
+   * demo-view.tsx's `onNodeLabelChange`) so the existing coalesce key
+   * `node:<id>:label` keeps a typing session collapsed into a single undo
+   * entry. When omitted the input is read-only.
+   */
+  onLabelChange?: (nodeId: string, label: string) => void;
   onClose: () => void;
 }
 
@@ -69,6 +79,7 @@ export function DetailPanel({
   onDescriptionChange,
   onShortDescriptionChange,
   onMetaDescriptionChange,
+  onLabelChange,
   onClose,
 }: DetailPanelProps) {
   // US-011 (text-and-group-resize): every node variant now carries free-text
@@ -186,6 +197,18 @@ export function DetailPanel({
             <div className="mt-0 flex flex-col gap-3">
               <NodeMetadataEditor
                 nodeId={inspectableNode.id}
+                // US-013: Label input is gated to group nodes — that's the only
+                // variant where the side-panel surfaces a label control (the
+                // shape/play/state/icon label live in StyleStrip or on-node
+                // editors). Passing `label={undefined}` from the other branches
+                // omits the row entirely. Routing `onLabelChange` to the same
+                // dispatcher the inline-edit path uses keeps the coalesce key
+                // `node:<id>:label` shared so both paths collapse into one undo
+                // entry per typing session.
+                label={
+                  inspectableNode.type === 'group' ? (inspectableNode.data.label ?? '') : undefined
+                }
+                onLabelChange={inspectableNode.type === 'group' ? onLabelChange : undefined}
                 shortDescription={inspectableNode.data.shortDescription ?? ''}
                 description={inspectableNode.data.description ?? ''}
                 onShortDescriptionChange={onShortDescriptionChange}
@@ -505,14 +528,29 @@ function autosizeTextarea(el: HTMLTextAreaElement | null): void {
 
 export function NodeMetadataEditor({
   nodeId,
+  label,
   shortDescription,
   description,
+  onLabelChange,
   onShortDescriptionChange,
   onMetaDescriptionChange,
 }: {
   nodeId: string;
+  /**
+   * US-013: optional Label row, surfaced ONLY when this prop is a defined
+   * string. `undefined` (the default for shape/play/state/image/icon nodes
+   * today) hides the row entirely; an empty string still renders the input
+   * (gives the user a place to type for unlabeled groups).
+   */
+  label?: string;
   shortDescription: string;
   description: string;
+  /**
+   * US-013: dispatch a new `data.label` value. When omitted, the label input
+   * is read-only. Empty string clears the label on disk (parity with the
+   * inline editor in group-node.tsx).
+   */
+  onLabelChange?: (nodeId: string, value: string) => void;
   onShortDescriptionChange?: (nodeId: string, value: string) => void;
   onMetaDescriptionChange?: (nodeId: string, value: string) => void;
 }) {
@@ -520,14 +558,16 @@ export function NodeMetadataEditor({
   // is responsive even when the SSE echo bounces the prop value back. On
   // nodeId switch we re-seed from props so switching nodes mid-typing in the
   // OTHER node doesn't bleed across — the deps below cover that case via
-  // `shortDescription` / `description` (both derive from `node.data` in the
-  // parent, so they change when the selected node does).
+  // `label` / `shortDescription` / `description` (all derive from `node.data`
+  // in the parent, so they change when the selected node does).
+  const [labelDraft, setLabelDraft] = useState(label ?? '');
   const [shortDraft, setShortDraft] = useState(shortDescription);
   const [longDraft, setLongDraft] = useState(description);
   useEffect(() => {
+    setLabelDraft(label ?? '');
     setShortDraft(shortDescription);
     setLongDraft(description);
-  }, [shortDescription, description]);
+  }, [label, shortDescription, description]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
@@ -536,6 +576,18 @@ export function NodeMetadataEditor({
     // taller description grows the textarea on mount.
   }, []);
 
+  const onLabelInput = (e: ReactChangeEvent<HTMLInputElement>) => {
+    setLabelDraft(e.target.value);
+  };
+  const onLabelBlur = (e: ReactFocusEvent<HTMLInputElement>) => {
+    if (!onLabelChange) return;
+    const next = e.target.value;
+    // Diff against the seed prop, not the draft — guards against creating an
+    // empty undo entry on focus-then-blur with no typing. Same pattern as the
+    // short/long inputs below.
+    if (next === (label ?? '')) return;
+    onLabelChange(nodeId, next);
+  };
   const onShortInput = (e: ReactChangeEvent<HTMLInputElement>) => {
     setShortDraft(e.target.value);
   };
@@ -566,6 +618,23 @@ export function NodeMetadataEditor({
 
   return (
     <div className="flex flex-col gap-2" data-testid="detail-panel-metadata">
+      {label !== undefined ? (
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="font-medium tracking-wide text-[10px] text-muted-foreground">Label</span>
+          <input
+            type="text"
+            value={labelDraft}
+            placeholder="Group label"
+            onChange={onLabelInput}
+            onBlur={onLabelBlur}
+            onKeyDown={stopKey}
+            readOnly={!onLabelChange}
+            data-testid="detail-panel-label"
+            aria-label="Label"
+            className="block w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring read-only:bg-muted/30 read-only:cursor-default"
+          />
+        </label>
+      ) : null}
       <label className="flex flex-col gap-1 text-xs">
         <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
           Short description
