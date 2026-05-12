@@ -30,16 +30,31 @@ const CORNER_STYLE: CSSProperties = {
 };
 
 // US-016: when cornerVariant === 'visible', the corner handles render as small
-// white squares with a 1px primary/40 border — the same color as the outer
-// selection rect drawn by the node renderer's offset outline. Slightly larger
-// than the AC's ~8px because Chromium scales the visible square down by ~1px
-// per side via the React Flow centering transform; 10px hits the visual mark.
+// white squares with a 1px primary/60 border — the same color as the outer
+// selection rect drawn around the node body. Slightly larger than the AC's
+// ~8px because Chromium scales the visible square down by ~1px per side via
+// the React Flow centering transform; 10px hits the visual mark.
+//
+// Width / height / border-width / border-radius are inverse-scaled by
+// `--rf-zoom` (mirrored from React Flow's viewport zoom in demo-canvas) so the
+// corner box reads the same VISUAL size at every zoom level. Falls back to 1
+// (no compensation) until the first onMove sets the var. Same approach as the
+// outlet handles and the outer selection rectangle for consistency — the four
+// corner boxes and four outlets keep the same on-screen size as the user pans
+// and zooms.
+// zIndex sits above the parent's selection outline (`.react-flow__node.selected::after`),
+// which is z-index: -1 on regular nodes but z-index: 0 on groups (the group rule lifts
+// the outline above the wrapper's own dashed border). Without an explicit z-index here,
+// the corner squares share z-index 0 with the group outline and lose to it on paint
+// order (the `::after` pseudo-element paints after element children at equal z-index),
+// so the outline crossed through the corner boxes.
 const VISIBLE_CORNER_STYLE: CSSProperties = {
-  width: '10px',
-  height: '10px',
+  width: 'calc(10px / var(--rf-zoom, 1))',
+  height: 'calc(10px / var(--rf-zoom, 1))',
   background: 'hsl(var(--background))',
-  border: '1px solid hsl(var(--primary) / 0.6)',
-  borderRadius: '2px',
+  border: 'calc(1px / var(--rf-zoom, 1)) solid hsl(var(--primary) / 0.6)',
+  borderRadius: 'calc(2px / var(--rf-zoom, 1))',
+  zIndex: 1,
 };
 
 const LINE_POSITIONS: Array<{
@@ -145,6 +160,15 @@ export function ResizeControls({
           minWidth={minWidth}
           minHeight={minHeight}
           style={cornerStyle}
+          // xyflow's `autoScale=true` (default) applies an inline `scale:
+          // max(1/zoom, 1)` to the Handle variant — but it ONLY scales DOWN
+          // (the `max(_, 1)` floor preserves clickability when zoomed out).
+          // Combined with our `calc(10px / var(--rf-zoom, 1))` width that
+          // already targets a constant 10px visual, the two stack and the
+          // square ends up too large at zoom<1. Disable autoScale so our
+          // own calc is the sole zoom-compensator and the visual size stays
+          // truly constant across the full zoom range.
+          autoScale={false}
           onResizeStart={onResizeStart}
           onResize={onResize}
           onResizeEnd={onResizeEnd}

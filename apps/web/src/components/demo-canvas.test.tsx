@@ -749,81 +749,21 @@ describe('DemoCanvas', () => {
     });
   });
 
-  describe('US-012: right-click context menu Group item visibility', () => {
-    // After a marquee selects multiple nodes, the right-click context menu
-    // must offer a "Group" action — this is the only path users have to wrap
-    // a selection into a group node. The Group item renders only when
-    // `groupableCount >= 2 && ungroupableCount === 0 && onGroupNodes`. Each
-    // condition has bitten us:
-    //   • groupableCount: filters out already-parented nodes and group nodes
-    //   • ungroupableCount: blocks Group when a group is in the selection
-    //     (Ungroup takes over)
-    //   • onGroupNodes: parent must wire the callback (gated on demoId)
+  describe('right-click context menu Ungroup item visibility', () => {
+    // The create-group menu item has been removed; the marquee multi-select
+    // still works for every other batch action (copy/paste/delete/style/
+    // lock). Ungroup remains for dissolving existing groups.
     const findByTestId = (tree: unknown, id: string) =>
       findElement(tree, (el) => (el.props as { 'data-testid'?: unknown })['data-testid'] === id);
 
-    it('renders the Group item when ≥ 2 free nodes are selected', () => {
-      const tree = callDemoCanvas({
-        nodes: [makeShapeNode('a'), makeShapeNode('b')],
-        selectedNodeIds: ['a', 'b'],
-        onGroupNodes: () => {},
-      });
-      expect(findByTestId(tree, 'node-context-menu-group')).not.toBeNull();
-    });
-
-    it('hides the Group item when only 1 node is selected', () => {
-      const tree = callDemoCanvas({
-        nodes: [makeShapeNode('a'), makeShapeNode('b')],
-        selectedNodeIds: ['a'],
-        onGroupNodes: () => {},
-      });
-      expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
-    });
-
-    it('hides Group and shows Ungroup when a group is in the selection', () => {
+    it('shows Ungroup when a group is in the selection', () => {
       const tree = callDemoCanvas({
         nodes: [makeShapeNode('a'), makeShapeNode('b'), makeGroupNode('g')],
         selectedNodeIds: ['a', 'b', 'g'],
-        onGroupNodes: () => {},
         onUngroupSelection: () => {},
       });
       expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
       expect(findByTestId(tree, 'node-context-menu-ungroup')).not.toBeNull();
-    });
-
-    it('counts only free nodes — already-parented ids are filtered out', () => {
-      // Two selected nodes, but one is parented to a group already. That
-      // leaves a single groupable node — Group must not render.
-      const child: DemoNode = {
-        ...makeShapeNode('a'),
-        parentId: 'g',
-      };
-      const tree = callDemoCanvas({
-        nodes: [child, makeShapeNode('b'), makeGroupNode('g')],
-        selectedNodeIds: ['a', 'b'],
-        onGroupNodes: () => {},
-      });
-      expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
-    });
-
-    it('handleGroupPick forwards selectedNodeIds to onGroupNodes', () => {
-      // Closure over the selection prop — the handler that fires when the
-      // user clicks the Group menu item must pass the current selection ids
-      // (a snapshot copy) to the parent's group op.
-      const captured: string[][] = [];
-      const tree = callDemoCanvas({
-        nodes: [makeShapeNode('a'), makeShapeNode('b'), makeShapeNode('c')],
-        selectedNodeIds: ['a', 'b', 'c'],
-        onGroupNodes: (ids) => {
-          captured.push([...ids]);
-        },
-      });
-      const item = findByTestId(tree, 'node-context-menu-group');
-      if (!item) throw new Error('Group item missing');
-      const onSelect = item.props.onSelect as (() => void) | undefined;
-      if (!onSelect) throw new Error('Group item has no onSelect');
-      onSelect();
-      expect(captured).toEqual([['a', 'b', 'c']]);
     });
   });
 
@@ -831,7 +771,9 @@ describe('DemoCanvas', () => {
     // The group-enter feature: children of a group are gated until the user
     // double-clicks the group to "enter" it. Each rule below corresponds to
     // one bullet in the PRD:
-    //   • child of an inactive group → selectable: false, draggable: false
+    //   • child of an inactive group → selectable: false, draggable: false,
+    //     and `data-gated-child` attribute set (the CSS hook that disables
+    //     pointer-events so mouse gestures pass through to the parent group)
     //   • child of the ACTIVE group → no extra gating
     //   • dbl-click on a group → activeGroupId state updated → children unlock
     //   • single-click on a gated child → click is redirected to the parent
@@ -843,7 +785,7 @@ describe('DemoCanvas', () => {
       return { ...base, parentId };
     }
 
-    it('children of an inactive group are non-selectable and non-draggable', () => {
+    it('children of an inactive group are non-selectable, non-draggable, and gated via data attribute', () => {
       const tree = callDemoCanvas({
         nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
         selectedNodeIds: [],
@@ -856,11 +798,14 @@ describe('DemoCanvas', () => {
       const g = rfNodes.find((n) => n.id === 'g');
       expect(a?.selectable).toBe(false);
       expect(a?.draggable).toBe(false);
+      expect(a?.domAttributes as unknown).toEqual({ 'data-gated-child': 'true' });
       expect(b?.selectable).toBe(false);
       expect(b?.draggable).toBe(false);
+      expect(b?.domAttributes as unknown).toEqual({ 'data-gated-child': 'true' });
       // The group itself is not gated — it's the entry point.
       expect(g?.selectable).toBeUndefined();
       expect(g?.draggable).toBeUndefined();
+      expect(g?.domAttributes).toBeUndefined();
     });
 
     it('child has its label/description edit callbacks stripped while gated', () => {
@@ -1030,14 +975,21 @@ describe('DemoCanvas', () => {
   });
 
   describe('US-006: group onResize branches on data.isActive', () => {
-    // The wrapper sits in `buildNode` (demo-canvas.tsx) and replaces the
-    // group's `data.onResize` with a callback that picks between the
-    // single-node `onNodeResize` path (active group / fallback) and the
-    // batched `onGroupResizeWithChildren` path (inactive group with the
-    // batch prop wired). We exercise the wrapper directly via the rfNode's
-    // data.onResize so the assertion exactly matches what `useResizeGesture`
-    // calls at resize-stop. activeGroupId is the SECOND useState in
-    // demo-canvas.tsx (slot 1, after drawShape) — useStateOverrides drive it.
+    // The wrapper sits in `buildNode` (demo-canvas.tsx) and exposes two
+    // group-resize channels on the rfNode's `data`:
+    //   - `onResize` (per-tick + final) → bounds-only forward to `onNodeResize`.
+    //     Children stay anchored to their original parent-relative positions
+    //     across every tick — feeding the next tick's baseline through
+    //     optimistic overrides previously caused exponential expand/shrink.
+    //   - `onResizeFinal` (mouse-release only, fires AFTER the per-tick path)
+    //     → batches the group's final dims with proportionally scaled child
+    //     positions/sizes via `onGroupResizeWithChildren`. Active (entered)
+    //     groups are exempt from child scaling. The end-only firing is what
+    //     keeps the runaway expand/shrink bug from coming back.
+    // We exercise both channels directly off the rfNode so the assertions
+    // exactly match what `useResizeGesture` calls at every stage of the
+    // gesture. activeGroupId is the SECOND useState in demo-canvas.tsx
+    // (slot 1, after drawShape) — useStateOverrides drive it.
     const ACTIVE_GROUP_STATE_SLOT = 1;
 
     function makeSizedGroup(
@@ -1095,12 +1047,46 @@ describe('DemoCanvas', () => {
       return cb;
     }
 
-    it('inactive-group resize calls onGroupResizeWithChildren with scaled children', () => {
-      // Group at (10, 20) 100×80; child at parent-relative (10, 10), 20×20.
-      // Doubling the group to 200×160 should scale the child to parent-rel
-      // (20, 20), 40×40. Group position move is captured in groupDims —
-      // the parent forwards it to the new x/y so xyflow keeps the children
-      // anchored via parentId.
+    // Counterpart to `getGroupOnResize` for the end-only `data.onResizeFinal`
+    // channel. Returns the callback so a test can simulate the mouse-release
+    // dispatch with explicit (newDims, startDims) and assert the batched
+    // child-scaling result.
+    function getGroupOnResizeFinal(
+      props: Partial<DemoCanvasProps>,
+      opts: { active?: boolean } = {},
+    ): (
+      id: string,
+      dims: { width: number; height: number; x: number; y: number },
+      start: { width: number; height: number; x: number; y: number },
+    ) => void {
+      const useStateOverrides: ReadonlyArray<unknown> = opts.active
+        ? Array.from({ length: ACTIVE_GROUP_STATE_SLOT + 1 }, (_v, i) =>
+            i === ACTIVE_GROUP_STATE_SLOT ? 'g' : undefined,
+          )
+        : [];
+      const tree = callDemoCanvas(props, { useStateOverrides });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const group = rfNodes.find((n) => n.id === 'g');
+      if (!group) throw new Error('group rfNode not found');
+      const cb = (group.data as { onResizeFinal?: unknown }).onResizeFinal as
+        | ((
+            id: string,
+            dims: { width: number; height: number; x: number; y: number },
+            start: { width: number; height: number; x: number; y: number },
+          ) => void)
+        | undefined;
+      if (typeof cb !== 'function') throw new Error('group onResizeFinal callback not wired');
+      return cb;
+    }
+
+    it('inactive-group resize forwards to onNodeResize (bounds-only, no child scaling)', () => {
+      // Group resize is now always bounds-only — children stay anchored at
+      // their original parent-relative positions/sizes. The previous "scale
+      // children" branch was removed because per-tick scaling with optimistic
+      // overrides feeding back into the next tick's baseline produced
+      // exponential expand/shrink as the user moved the mouse.
       const captured: Parameters<OnGroupBatch>[0][] = [];
       const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
       const cb = getGroupOnResize({
@@ -1112,47 +1098,28 @@ describe('DemoCanvas', () => {
         onGroupResizeWithChildren: (u) => captured.push(u),
       });
       cb('g', { x: 10, y: 20, width: 200, height: 160 });
-      expect(single.length).toBe(0);
-      expect(captured.length).toBe(1);
-      const u = captured[0];
-      if (!u) throw new Error('expected one captured update');
-      expect(u.groupId).toBe('g');
-      expect(u.groupDims).toEqual({ x: 10, y: 20, width: 200, height: 160 });
-      expect(u.childUpdates).toEqual([
-        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
-      ]);
+      expect(captured.length).toBe(0);
+      expect(single).toEqual([['g', { x: 10, y: 20, width: 200, height: 160 }]]);
     });
 
-    it('inactive-group resize scales multiple children + skips locked children', () => {
-      // Two children: c1 unlocked (scales) and c2 locked (passes through
-      // unchanged via scale-nodes' locked-skip path).
+    it('inactive-group resize with locked children also forwards to onNodeResize', () => {
+      // Bounds-only resize: locked children get the same pass-through as
+      // unlocked children. The previous locked-child-skip path inside the
+      // scaling helper is no longer reachable since we don't scale at all.
       const captured: Parameters<OnGroupBatch>[0][] = [];
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
       const cb = getGroupOnResize({
         nodes: [
           makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
           makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
           makeSizedChild('c2', 'g', { x: 50, y: 50 }, { width: 30, height: 30 }, { locked: true }),
         ],
-        onNodeResize: () => {},
+        onNodeResize: (id, dims) => single.push([id, dims]),
         onGroupResizeWithChildren: (u) => captured.push(u),
       });
       cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      const u = captured[0];
-      if (!u) throw new Error('expected one captured update');
-      // c1 scales 2x: (20, 20) at 40×40.
-      expect(u.childUpdates.find((c) => c.id === 'c1')).toEqual({
-        id: 'c1',
-        position: { x: 20, y: 20 },
-        width: 40,
-        height: 40,
-      });
-      // c2 is locked → unchanged.
-      expect(u.childUpdates.find((c) => c.id === 'c2')).toEqual({
-        id: 'c2',
-        position: { x: 50, y: 50 },
-        width: 30,
-        height: 30,
-      });
+      expect(captured.length).toBe(0);
+      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
     });
 
     it('active-group resize calls onNodeResize only — children untouched', () => {
@@ -1217,21 +1184,18 @@ describe('DemoCanvas', () => {
       expect(single).toEqual([['s1', { x: 0, y: 0, width: 40, height: 30 }]]);
     });
 
-    it('inactive-group resize with no children dispatches an empty childUpdates batch', () => {
-      // Edge case: childless group still flows through the batched callback
-      // (consistent shape for the parent's commit path). Group dims update;
-      // childUpdates is just an empty array.
+    it('inactive-group resize with no children also forwards to onNodeResize', () => {
+      // Childless group goes through the same simple bounds-only path.
       const captured: Parameters<OnGroupBatch>[0][] = [];
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
       const cb = getGroupOnResize({
         nodes: [makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 })],
+        onNodeResize: (id, dims) => single.push([id, dims]),
         onGroupResizeWithChildren: (u) => captured.push(u),
       });
       cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      const u = captured[0];
-      if (!u) throw new Error('expected one captured update');
-      expect(u.groupId).toBe('g');
-      expect(u.groupDims).toEqual({ x: 0, y: 0, width: 200, height: 200 });
-      expect(u.childUpdates).toEqual([]);
+      expect(captured.length).toBe(0);
+      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
     });
 
     it('group with unknown old dims falls back to onNodeResize (defensive)', () => {
@@ -1255,17 +1219,182 @@ describe('DemoCanvas', () => {
       expect(captured.length).toBe(0);
       expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
     });
+
+    // ---- onResizeFinal path: mouse-release batches scaled children ----
+
+    it('wires data.onResizeFinal on group nodes (end-only channel present)', () => {
+      // buildNode must expose the end-only callback alongside the per-tick
+      // one so useResizeGesture can dispatch the child-scaling batch on
+      // mouse release. Without this wiring, the end-only path is silently
+      // dropped and resize feels like the children never update.
+      const tree = callDemoCanvas({
+        nodes: [makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 })],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const group = (rf.props.nodes as Node[]).find((n) => n.id === 'g');
+      if (!group) throw new Error('group rfNode not found');
+      expect(typeof (group.data as { onResizeFinal?: unknown }).onResizeFinal).toBe('function');
+    });
+
+    it('inactive-group onResizeFinal dispatches scaled children via onGroupResizeWithChildren (live: false)', () => {
+      // Scale from 100×100 → 200×200 (factor 2x both axes). Child at
+      // relative (10, 10) with 20×20 → (20, 20) with 40×40 in the new rect.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResizeFinal({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
+      expect(captured).toHaveLength(1);
+      const batch = captured[0];
+      if (!batch) throw new Error('expected batch dispatch');
+      expect(batch.groupId).toBe('g');
+      expect(batch.groupDims).toEqual({ x: 0, y: 0, width: 200, height: 200 });
+      expect(batch.live).toBe(false);
+      expect(batch.childUpdates).toEqual([
+        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
+      ]);
+    });
+
+    it('inactive-group onResizeFinal scales using the START rect, NOT current data dims', () => {
+      // Regression guard for the exponential expand/shrink bug: if the
+      // handler reads the group's `data.width`/`data.height` (which by now
+      // reflect the LATEST per-tick optimistic override = the final dims),
+      // the computed scale factor is ~1.0 and children never move. The
+      // start rect passed by useResizeGesture is the only stable baseline.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResizeFinal({
+        // Group's stored data.width/height already == FINAL dims (200×200),
+        // simulating the per-tick optimistic-override echo.
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 200, height: 200 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      // Pass start = 100×100 explicitly. Scale factor must come from start
+      // → 2x → child becomes (20, 20) size 40×40.
+      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
+      expect(captured).toHaveLength(1);
+      const batch = captured[0];
+      if (!batch) throw new Error('expected batch dispatch');
+      expect(batch.childUpdates).toEqual([
+        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
+      ]);
+    });
+
+    it('inactive-group onResizeFinal skips locked children in the batch', () => {
+      // scaleNodesWithinRect passes locked nodes through unchanged. Verify
+      // the batch reflects that: c2 (locked) stays at its original position
+      // and size, while c1 scales 2x.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResizeFinal({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+          makeSizedChild('c2', 'g', { x: 50, y: 50 }, { width: 30, height: 30 }, { locked: true }),
+        ],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
+      expect(captured).toHaveLength(1);
+      const batch = captured[0];
+      if (!batch) throw new Error('expected batch dispatch');
+      expect(batch.childUpdates).toEqual([
+        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
+        { id: 'c2', position: { x: 50, y: 50 }, width: 30, height: 30 },
+      ]);
+    });
+
+    it('active-group onResizeFinal does NOT scale children (single-node semantics)', () => {
+      // Entered groups resize like any other node — the user has explicitly
+      // entered the group to edit its bounds independently of its children.
+      // The end-only callback must early-return; per-tick `onResize` already
+      // pushed the group's dims to `onNodeResize`.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResizeFinal(
+        {
+          nodes: [
+            makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+            makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+          ],
+          onNodeResize: () => {},
+          onGroupResizeWithChildren: (u) => captured.push(u),
+        },
+        { active: true },
+      );
+      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
+      expect(captured.length).toBe(0);
+    });
+
+    it('inactive-group onResizeFinal with zero-width start is a no-op for children', () => {
+      // Degenerate start rect (zero on either axis) yields a singular scale.
+      // The batch dispatch is skipped so we don't accidentally NaN child
+      // positions. The per-tick path already committed the group's bounds.
+      const captured: Parameters<OnGroupBatch>[0][] = [];
+      const cb = getGroupOnResizeFinal({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 0, height: 100 });
+      expect(captured.length).toBe(0);
+    });
+
+    it('inactive-group onResizeFinal falls back to onNodeResize when batch prop is absent', () => {
+      // Legacy callers that haven't wired onGroupResizeWithChildren still
+      // get the group's final dims through the standard single-node channel.
+      // Children stay at their parent-relative positions (no scaling
+      // happens — that's the price of skipping the batch prop).
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
+      const cb = getGroupOnResizeFinal({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onNodeResize: (id, dims) => single.push([id, dims]),
+        // onGroupResizeWithChildren intentionally absent
+      });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
+      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
+    });
+
+    it('non-group nodes do NOT expose data.onResizeFinal', () => {
+      // The end-only channel is group-specific. Shape nodes (and every
+      // other variant) only need the per-tick onResize. Leaving the field
+      // undefined keeps useResizeGesture's `onResizeFinalRef.current?.()`
+      // chain a clean no-op for non-group resize gestures.
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('s1')],
+        onNodeResize: () => {},
+        onGroupResizeWithChildren: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const s1 = (rf.props.nodes as Node[]).find((n) => n.id === 's1');
+      if (!s1) throw new Error('shape rfNode not found');
+      expect((s1.data as { onResizeFinal?: unknown }).onResizeFinal).toBeUndefined();
+    });
   });
 
-  describe('US-016: live (per-tick) group resize', () => {
-    // The group's per-tick onResize wrapper (`onGroupNodeResize` in demo-
-    // canvas.tsx) runs each call through `scaleNodesWithinRect` to compute
-    // child positions/sizes, then dispatches via `onGroupResizeWithChildren`.
-    // For a real drag the wrapper is invoked many times across the gesture;
-    // these tests simulate 3 consecutive ticks at progressively larger rects
-    // and assert each tick produces its own batched dispatch with the
-    // correctly-scaled child for that rect (so the live canvas tracks the
-    // cursor, not just the final state).
+  describe('group resize is bounds-only across ticks', () => {
+    // Group resize forwards every tick straight to `onNodeResize` with the
+    // absolute new dims (no scaling, no per-tick batched callback). This
+    // sanity test pins that behavior so a future regression to "scale
+    // children" can't reintroduce the exponential expand/shrink the user
+    // hit while dragging the resize corner.
     function makeSizedGroup(
       id: string,
       pos: { x: number; y: number },
@@ -1306,7 +1435,7 @@ describe('DemoCanvas', () => {
       return cb;
     }
 
-    it('per-tick group resize dispatches scaled children on every tick (3-tick sequence)', () => {
+    it('per-tick group resize forwards every tick to onNodeResize with absolute dims', () => {
       const captured: Array<{
         groupId: string;
         groupDims: { width: number; height: number; x: number; y: number };
@@ -1317,67 +1446,25 @@ describe('DemoCanvas', () => {
           height?: number;
         }>;
       }> = [];
+      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
       const cb = getGroupOnResize({
         nodes: [
           makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
           makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
         ],
+        onNodeResize: (id, dims) => single.push([id, dims]),
         onGroupResizeWithChildren: (u) => captured.push(u),
       });
-      // 3 ticks at 1.1x, 1.5x, 2.0x. Each tick produces a dispatch with the
-      // child scaled by the same factor (parent-relative origin (0,0)).
       cb('g', { x: 0, y: 0, width: 110, height: 110 });
       cb('g', { x: 0, y: 0, width: 150, height: 150 });
       cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      expect(captured.length).toBe(3);
-      expect(captured[0]?.groupDims).toEqual({ x: 0, y: 0, width: 110, height: 110 });
-      expect(captured[0]?.childUpdates[0]).toEqual({
-        id: 'c1',
-        position: { x: 11, y: 11 },
-        width: 22,
-        height: 22,
-      });
-      expect(captured[1]?.groupDims).toEqual({ x: 0, y: 0, width: 150, height: 150 });
-      expect(captured[1]?.childUpdates[0]).toEqual({
-        id: 'c1',
-        position: { x: 15, y: 15 },
-        width: 30,
-        height: 30,
-      });
-      // The FINAL tick's child matches the AC's "size matches final tick".
-      expect(captured[2]?.groupDims).toEqual({ x: 0, y: 0, width: 200, height: 200 });
-      expect(captured[2]?.childUpdates[0]).toEqual({
-        id: 'c1',
-        position: { x: 20, y: 20 },
-        width: 40,
-        height: 40,
-      });
-    });
-
-    it('per-tick callback uses ABSOLUTE newRect dims each call (no drift from accumulated deltas)', () => {
-      // Sanity that the wrapper reads the latest `dims` argument afresh on
-      // every call — not by accumulating deltas relative to a prior tick. If
-      // the wrapper accumulated, a tick that dispatches `{width: 200}` after
-      // a tick that dispatched `{width: 110}` would produce a "double scale"
-      // and the child would balloon to 4x instead of 2x. Pinning this lets
-      // demo-view's coalesced undo entry stay accurate against the absolute
-      // final state, regardless of how many intermediate ticks fired.
-      const captured: Array<{
-        childUpdates: Array<{ id: string; width?: number; height?: number }>;
-      }> = [];
-      const cb = getGroupOnResize({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c', 'g', { x: 0, y: 0 }, { width: 20, height: 20 }),
-        ],
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 110, height: 110 });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      // Last tick: child at 2x base (width 40), NOT 2.2x or anything composed
-      // from the prior tick.
-      expect(captured[1]?.childUpdates[0]?.width).toBe(40);
-      expect(captured[1]?.childUpdates[0]?.height).toBe(40);
+      // No batched scaling — every tick goes through the single-node path.
+      expect(captured.length).toBe(0);
+      expect(single).toEqual([
+        ['g', { x: 0, y: 0, width: 110, height: 110 }],
+        ['g', { x: 0, y: 0, width: 150, height: 150 }],
+        ['g', { x: 0, y: 0, width: 200, height: 200 }],
+      ]);
     });
   });
 
@@ -1831,13 +1918,11 @@ describe('DemoCanvas', () => {
     });
   });
 
-  // US-017: Cmd/Ctrl + G shortcut wiring is exercised via the exported
-  // `handleGroupShortcut` helper. The actual window keydown listener inside
-  // DemoCanvas is a thin `useEffect` whose body just forwards into this
-  // helper — the hook-shim test runner doesn't run `useEffect`, but the
-  // logic under test is the same. Tests cover the AC scenarios end-to-end
-  // (group / ungroup / no-op cases + editable-focus suppression).
-  describe('US-017: Cmd/Ctrl + G groups / ungroups via handleGroupShortcut', () => {
+  // Cmd/Ctrl + G shortcut wiring is exercised via the exported
+  // `handleGroupShortcut` helper. The create-group branch is intentionally
+  // removed (the right-click "Group" item is also gone), so only the ungroup
+  // and no-op paths are exercised here.
+  describe('Cmd/Ctrl + G ungroups (create-group disabled) via handleGroupShortcut', () => {
     const makeEvent = (
       overrides: Partial<GroupShortcutEventLike> = {},
     ): GroupShortcutEventLike & { prevented: boolean } => {
@@ -1873,77 +1958,37 @@ describe('DemoCanvas', () => {
       parentId,
     });
 
-    it('groups 3 loose nodes when Cmd+G fires with them selected', () => {
-      // (a) Cmd+G with 3 loose nodes selected → onGroupNodes called with all
-      // three ids, preventDefault called.
+    it('does NOT create a group from 3 loose nodes (create-group is disabled)', () => {
       const event = makeEvent({ metaKey: true });
-      const groupCalls: string[][] = [];
       const ungroupCalls: string[][] = [];
       const handled = handleGroupShortcut({
         event,
         selectedNodeIds: ['a', 'b', 'c'],
         nodes: [looseShape('a'), looseShape('b'), looseShape('c')],
         activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
         onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
-      expect(handled).toBe(true);
-      expect(event.prevented).toBe(true);
-      expect(groupCalls).toEqual([['a', 'b', 'c']]);
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
       expect(ungroupCalls).toEqual([]);
     });
 
-    it('groups 3 loose nodes when Ctrl+G fires (Windows/Linux variant)', () => {
-      const event = makeEvent({ ctrlKey: true });
-      const groupCalls: string[][] = [];
-      handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
-        activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
-      });
-      expect(groupCalls).toEqual([['a', 'b']]);
-    });
-
-    it('also fires when Shift+Cmd+G is pressed (key === "G")', () => {
-      // Shift produces the uppercase character; the handler accepts both
-      // 'g' and 'G' so non-US layouts that always uppercase G with the modifier
-      // still trigger.
-      const event = makeEvent({ metaKey: true, key: 'G' });
-      const groupCalls: string[][] = [];
-      handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
-        activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
-      });
-      expect(groupCalls).toEqual([['a', 'b']]);
-    });
-
     it('ungroups when Cmd+G fires with a single group node selected', () => {
-      // (b) Single group → onUngroupSelection called with [groupId].
       const event = makeEvent({ metaKey: true });
-      const groupCalls: string[][] = [];
       const ungroupCalls: string[][] = [];
       const handled = handleGroupShortcut({
         event,
         selectedNodeIds: ['g'],
         nodes: [groupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
         activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
         onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
       expect(handled).toBe(true);
       expect(event.prevented).toBe(true);
       expect(ungroupCalls).toEqual([['g']]);
-      expect(groupCalls).toEqual([]);
     });
 
     it('ungroups when Cmd+G fires with all children of one group selected', () => {
-      // Case (b) variant — selection is the children, planner resolves to the
-      // shared parent group id and onUngroupSelection receives [groupId].
       const event = makeEvent({ metaKey: true });
       const ungroupCalls: string[][] = [];
       handleGroupShortcut({
@@ -1951,167 +1996,68 @@ describe('DemoCanvas', () => {
         selectedNodeIds: ['a', 'b'],
         nodes: [groupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
         activeElement: null,
-        onGroupNodes: () => {},
         onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
       expect(ungroupCalls).toEqual([['g']]);
     });
 
     it('no-ops when Cmd+G fires with an empty selection', () => {
-      // (c) Empty selection → handler returns false, no callback fires,
-      // preventDefault is NOT called (the keystroke can fall through to any
-      // native binding if one exists).
       const event = makeEvent({ metaKey: true });
-      const groupCalls: string[][] = [];
       const ungroupCalls: string[][] = [];
       const handled = handleGroupShortcut({
         event,
         selectedNodeIds: [],
         nodes: [],
         activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
         onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
       expect(handled).toBe(false);
       expect(event.prevented).toBe(false);
-      expect(groupCalls).toEqual([]);
-      expect(ungroupCalls).toEqual([]);
-    });
-
-    it('no-ops when Cmd+G fires with a single loose node selected', () => {
-      const event = makeEvent({ metaKey: true });
-      const groupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a'],
-        nodes: [looseShape('a')],
-        activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
-      });
-      expect(handled).toBe(false);
-      expect(event.prevented).toBe(false);
-      expect(groupCalls).toEqual([]);
-    });
-
-    it('no-ops when Cmd+G fires with children from different groups (ambiguous)', () => {
-      const event = makeEvent({ metaKey: true });
-      const groupCalls: string[][] = [];
-      const ungroupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [groupNode('g1'), groupNode('g2'), childOf('a', 'g1'), childOf('b', 'g2')],
-        activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(handled).toBe(false);
-      expect(groupCalls).toEqual([]);
       expect(ungroupCalls).toEqual([]);
     });
 
     it('does not fire when focus is in an INPUT (let the browser handle the keystroke)', () => {
-      // (d) Editable focus suppression — synthesize a minimal Element-like
-      // object whose tagName === 'INPUT'. handleGroupShortcut bails before
-      // calling the planner.
       const event = makeEvent({ metaKey: true });
       const fakeInput = { tagName: 'INPUT' } as unknown as Element;
-      const groupCalls: string[][] = [];
+      const ungroupCalls: string[][] = [];
       const handled = handleGroupShortcut({
         event,
-        selectedNodeIds: ['a', 'b', 'c'],
-        nodes: [looseShape('a'), looseShape('b'), looseShape('c')],
+        selectedNodeIds: ['g'],
+        nodes: [groupNode('g')],
         activeElement: fakeInput,
-        onGroupNodes: (ids) => groupCalls.push(ids),
+        onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
       expect(handled).toBe(false);
       expect(event.prevented).toBe(false);
-      expect(groupCalls).toEqual([]);
-    });
-
-    it('does not fire when focus is in a TEXTAREA', () => {
-      const event = makeEvent({ metaKey: true });
-      const fakeTextarea = { tagName: 'TEXTAREA' } as unknown as Element;
-      const groupCalls: string[][] = [];
-      handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
-        activeElement: fakeTextarea,
-        onGroupNodes: (ids) => groupCalls.push(ids),
-      });
-      expect(groupCalls).toEqual([]);
+      expect(ungroupCalls).toEqual([]);
     });
 
     it('does not fire without the Cmd/Ctrl modifier (plain "g" is a typeable letter)', () => {
       const event = makeEvent({ key: 'g' });
-      const groupCalls: string[][] = [];
+      const ungroupCalls: string[][] = [];
       const handled = handleGroupShortcut({
         event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
+        selectedNodeIds: ['g'],
+        nodes: [groupNode('g')],
         activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
+        onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
       expect(handled).toBe(false);
       expect(event.prevented).toBe(false);
-      expect(groupCalls).toEqual([]);
+      expect(ungroupCalls).toEqual([]);
     });
 
     it('does not fire when the key is not "g" (Cmd+A, Cmd+Z etc. pass through)', () => {
       const event = makeEvent({ metaKey: true, key: 'a' });
-      const groupCalls: string[][] = [];
+      const ungroupCalls: string[][] = [];
       handleGroupShortcut({
         event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
+        selectedNodeIds: ['g'],
+        nodes: [groupNode('g')],
         activeElement: null,
-        onGroupNodes: (ids) => groupCalls.push(ids),
+        onUngroupSelection: (ids) => ungroupCalls.push(ids),
       });
-      expect(groupCalls).toEqual([]);
-    });
-
-    it('delegates to the same onGroupNodes callback the right-click menu uses (single-undo guarantee)', () => {
-      // (e) Cmd+G followed by Cmd+Z is documented to revert in ONE step. The
-      // undo machinery is owned by `onGroupNodes` in demo-view.tsx (see
-      // groupNodes useCallback). Both the keyboard shortcut and the right-click
-      // menu path go through the same callback identity — proven here by
-      // capturing the function reference and asserting the shortcut handler
-      // invoked it. Since the menu path already lands a single undo entry
-      // (separately tested at the demo-view level), the shortcut inherits the
-      // same behaviour.
-      const event = makeEvent({ metaKey: true });
-      const onGroupNodes = (_ids: string[]) => {};
-      let received: ((ids: string[]) => void) | undefined;
-      handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
-        activeElement: null,
-        onGroupNodes: (ids) => {
-          received = onGroupNodes;
-          onGroupNodes(ids);
-        },
-      });
-      expect(received).toBe(onGroupNodes);
-    });
-
-    it('returns false without invoking anything when callbacks are missing for the matched action', () => {
-      // Defensive: parent might pass undefined onGroupNodes (e.g. demoId not
-      // yet resolved). Handler must NOT throw and must NOT preventDefault.
-      const event = makeEvent({ metaKey: true });
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [looseShape('a'), looseShape('b')],
-        activeElement: null,
-        // onGroupNodes intentionally omitted
-      });
-      expect(handled).toBe(false);
-      // preventDefault was still called because the plan was non-none — that's
-      // OK; the keystroke is consumed even if no callback is wired (avoids
-      // surprise browser behaviour for an obviously canvas-scoped shortcut).
-      expect(event.prevented).toBe(true);
+      expect(ungroupCalls).toEqual([]);
     });
   });
 

@@ -19,6 +19,19 @@ export type GroupNodeRuntimeData = GroupNodeData & {
     nodeId: string,
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
+  /**
+   * End-only resize hook. Fires once at mouse release with the FINAL dims and
+   * the START dims (the group's bounds at the moment the gesture began). The
+   * canvas uses this to scale children proportionally against the captured
+   * start rect — deferred to release so per-tick optimistic overrides can't
+   * feed back into the next tick's baseline (the exponential expand/shrink
+   * bug that killed the previous per-tick scaling path).
+   */
+  onResizeFinal?: (
+    nodeId: string,
+    dims: { width: number; height: number; x: number; y: number },
+    start: { width: number; height: number; x: number; y: number },
+  ) => void;
   setResizing?: (on: boolean) => void;
   // US-014: persist the inline-edited label via the shared PATCH path. Reuses
   // demo-view.tsx's `onNodeLabelChange`, which coalesces under
@@ -72,6 +85,7 @@ export function groupChromeStyle(
 function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
+    onResizeFinal: (dims, start) => data.onResizeFinal?.(id, dims, start),
     setResizing: data.setResizing,
   });
   // Once user-resized (or pre-sized via authoring), the React Flow wrapper

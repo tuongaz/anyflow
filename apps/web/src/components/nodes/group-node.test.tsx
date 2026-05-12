@@ -278,6 +278,66 @@ describe('GroupNode (US-011)', () => {
     const cprops = controls.props as { onResize?: unknown };
     expect(typeof cprops.onResize).toBe('function');
   });
+
+  // End-only `onResizeFinal` fires once at mouse release with (newDims,
+  // startDims). The canvas uses it to scale children proportionally without
+  // ever touching them per-tick — that path produced exponential growth via
+  // optimistic-override feedback. The hook captures start dims at
+  // `onResizeStart` and forwards them on `onResizeEnd`.
+  it('forwards onResizeFinal dims AND start to data.onResizeFinal at mouse release', () => {
+    type OnResizeFinalFn = (
+      id: string,
+      dims: { x: number; y: number; width: number; height: number },
+      start: { x: number; y: number; width: number; height: number },
+    ) => void;
+    const onResize = mock(() => {});
+    const onResizeFinal = mock<OnResizeFinalFn>(() => {});
+    const tree = callGroupNode({ onResize, onResizeFinal }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findElement(tree, (type) => type === ResizeControls);
+    if (!controls) throw new Error('ResizeControls not found');
+    const cprops = controls.props as {
+      onResizeStart: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+      onResizeEnd: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+    };
+    const start = { x: 10, y: 20, width: 200, height: 100 };
+    const end = { x: 5, y: 15, width: 300, height: 150 };
+    cprops.onResizeStart({}, start);
+    cprops.onResizeEnd({}, end);
+    expect(onResizeFinal).toHaveBeenCalledWith('group-1', end, start);
+  });
+
+  // Click-no-op guard applies to onResizeFinal too: a mousedown+mouseup with
+  // no movement must NOT dispatch a final-dims batch — otherwise a click on
+  // the corner handle would scale every child against an unchanged rect
+  // (scale = 1.0, but still a redundant PATCH fan-out).
+  it('does NOT dispatch onResizeFinal when dims did not change (click guard)', () => {
+    const onResizeFinal = mock(() => {});
+    const tree = callGroupNode({ onResizeFinal }, { selected: true } as Partial<NodeProps>);
+    const controls = findElement(tree, (type) => type === ResizeControls);
+    if (!controls) throw new Error('ResizeControls not found');
+    const cprops = controls.props as {
+      onResizeStart: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+      onResizeEnd: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+    };
+    const same = { x: 10, y: 20, width: 200, height: 100 };
+    cprops.onResizeStart({}, same);
+    cprops.onResizeEnd({}, same);
+    expect(onResizeFinal).not.toHaveBeenCalled();
+  });
 });
 
 describe('GroupNode label editing (US-014)', () => {

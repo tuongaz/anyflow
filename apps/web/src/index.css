@@ -34,15 +34,25 @@
 
     --radius: 0.5rem;
 
-    /* US-024 / US-028: shared visual tokens for the white-fill / black-border
-     * dot affordance used by BOTH node outlet handles AND connector endpoint
-     * dots. Single source of truth — change here and both places follow.
-     * Border is a fixed black (not theme-tinted) so the dot stands out clearly
-     * against any node background in any state (idle, hover, drag/reconnect). */
-    --anydemo-handle-fill: #ffffff;
-    --anydemo-handle-border-color: #000;
-    --anydemo-handle-border-width: 1.5px;
-    --anydemo-handle-size: 12px;
+    /* Shared visual tokens for the white-fill dot affordance used by BOTH node
+     * outlet handles AND connector endpoint dots. Single source of truth —
+     * change here and both places follow.
+     *
+     * Outlets + endpoint dots share size (17px) and border (1px primary/60) so
+     * the two connection affordances read as the same dot. Border is
+     * theme-tinted (primary/60) rather than fixed black for the same reason.
+     * (The four resize-corner squares are sized separately in resize-controls.tsx
+     * — they stay 10px so the corners read smaller than the outlets they sit
+     * between.)
+     *
+     * Inverse-scaled by `--rf-zoom` (mirrored from the React Flow viewport zoom
+     * in demo-canvas) so the dot reads the same VISUAL size at every zoom
+     * level. Falls back to 1 (no compensation) until the first onMove sets the
+     * var. */
+    --anydemo-handle-fill: hsl(var(--background));
+    --anydemo-handle-border-color: hsl(var(--primary) / 0.6);
+    --anydemo-handle-border-width: calc(1px / var(--rf-zoom, 1));
+    --anydemo-handle-size: calc(17px / var(--rf-zoom, 1));
   }
 
   .dark {
@@ -232,13 +242,12 @@ button:disabled {
   opacity: 0.85;
 }
 
-/* US-023 / US-024 / US-028: outlet handles use the shared --anydemo-handle-*
- * tokens defined in :root so both they AND the connector endpoint dots read
- * as the same affordance. Same diameter (12px), same white fill, same black
- * 1.5px border. Change the tokens once and both call-sites follow. The transform
- * offsets below stack the dots `~outlineOffset` outward from the node body
- * so their CENTER continues to sit on the outer selection-rect edge
- * midpoint (consistent with US-007). */
+/* Outlet handles use the shared --anydemo-handle-* tokens defined in :root so
+ * outlets and connector endpoint dots read as the same affordance — same 17px
+ * size, same primary/60 1px border, same background fill. Change the tokens
+ * once and both call-sites follow. The transform offsets below stack the dots
+ * `~outlineOffset` outward from the node body so their CENTER continues to sit
+ * on the outer selection-rect edge midpoint (consistent with US-007). */
 .react-flow__node .react-flow__handle {
   background: var(--anydemo-handle-fill) !important;
   border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color) !important;
@@ -300,7 +309,7 @@ button:disabled {
  * `pointer-events: all` means xyflow's reconnect-drag machinery still
  * picks up clicks/drags on the dot in the common (non-overlapping) case.
  *
- * Paired with `reconnectRadius={10}` so the SVG `r=10` (20px diameter hit
+ * Paired with `reconnectRadius={10}` so the SVG `r=10` (17px diameter hit
  * region) sits concentric with the smaller visible portal-dot (sized via the
  * shared --anydemo-handle-size token), giving the user a generous click area
  * without enlarging the visible affordance.
@@ -435,34 +444,52 @@ button:disabled {
   opacity: 1 !important;
 }
 
-/* US-010: selection outline lives in CSS (not inline style on each node body)
- * so per-frame React renders during a marquee gesture don't churn style-object
- * identity on every renderer. The five node renderers (play / state / shape /
- * image / icon) used to spread an inline `outline*` style block when `selected`
- * — that breaks `React.memo`'s prop-equality even when nothing visible changed
- * because the spread builds a fresh CSSProperties object every render.
+/* Selection rectangle: a TRUE rectangle (border-radius: 0) drawn 4px outside
+ * the node body via a pseudo-element on the xyflow `.react-flow__node` wrapper.
  *
- * Targeting the inner node div under `.react-flow__node.selected` (xyflow adds
- * the `.selected` class on its node wrapper; the renderer's root div is the
- * single child) gives all node types the same 1px low-contrast outer rectangle
- * 4px outside the node body. The outline follows the inner div's
- * border-radius (so ellipses get an elliptical ring, sticky gets a rounded
- * rectangle, etc.) — matches the pre-US-010 inline-style behaviour exactly.
+ * Why a pseudo-element instead of `outline` on `> div`:
+ *   1. `outline` follows the box's border-radius — so an ellipse gets an
+ *      elliptical ring, a rounded play-node gets a rounded ring. The user
+ *      wants the OUTER selection ring to always be rectangular regardless of
+ *      the inner shape, so we draw it with our own `border` on a pseudo with
+ *      `border-radius: 0`.
+ *   2. The pseudo lives on `.react-flow__node` (xyflow's outer wrapper) — NOT
+ *      on `> div` (the renderer's inner shape). Several renderers
+ *      (play-node, shape-node ellipse, etc.) use `overflow-hidden` on the
+ *      inner div, which would clip a pseudo-element child. The xyflow wrapper
+ *      has no overflow constraint.
+ *
+ * Zoom-invariance: `--rf-zoom` is mirrored from React Flow's viewport.zoom by
+ * `onMove` in demo-canvas. The calcs scale the border-width AND inset inversely
+ * so the ring always reads 1px wide / 4px offset on screen, regardless of how
+ * far the canvas is zoomed in or out. Falls back to 1 (no compensation) until
+ * the first onMove sets the var.
  *
  * Text shapes (US-016) lean on this rule for their only selection affordance
  * — they have no border or background of their own. */
-.react-flow__node.selected > div {
-  outline-width: 1px;
-  outline-style: solid;
-  outline-color: hsl(var(--primary) / 0.4);
-  outline-offset: 4px;
+.react-flow__node.selected::after {
+  content: "";
+  position: absolute;
+  inset: calc(-8px / var(--rf-zoom, 1));
+  border: calc(1px / var(--rf-zoom, 1)) dashed hsl(var(--primary) / 0.6);
+  border-radius: 0;
+  pointer-events: none;
+  /* Paint behind the node body (> div) and outlet handles so the dashed line
+   * never crosses through the handle dots that sit on the rectangle's edge
+   * midpoints. `.react-flow__node` always creates its own stacking context
+   * (xyflow applies `transform: translate(...)` on it), so a negative
+   * z-index here is bounded inside the node — it never sinks behind other
+   * nodes in the canvas. */
+  z-index: -1;
 }
 
 /* US-011: group node — a container that wraps a multi-selection. Chrome
  * lives here (not in JSX) so the GroupNode component stays minimal and a
  * future style story can re-theme without touching React. Default: 1px
  * dashed border with the theme border color, transparent fill. Selected:
- * 2px solid accent border. The label slot sits at the top edge of the
+ * the dashed grey border stays put and the outer dashed primary/60 selection
+ * rectangle (the `::after` rule below) announces selection — same affordance
+ * as every other node type. The label slot sits at the top edge of the
  * bounding box at z-index 2 so it paints above sibling edges (whose
  * `defaultEdgeOptions.zIndex` is 1 per US-010) and never gets clipped.
  *
@@ -484,17 +511,39 @@ button:disabled {
   background: transparent;
   border-radius: 4px;
 }
+/* When a group is selected, hide its own dashed grey border so the ONLY
+ * visible chrome is the outer dashed primary/60 selection rectangle (the
+ * `.react-flow__node.selected::after` rule above) — matches every other node
+ * type, which never shows a second inner border on selection. Without this,
+ * groups paint two concentric dashed rectangles (inner grey + outer primary/60)
+ * and the visual reads as "too many boxes". Border WIDTH stays 1px so the
+ * wrapper's box dimensions don't shift on select/deselect — only the color
+ * goes transparent.
+ *
+ * Specificity matches xyflow's `.react-flow__node-group.selected { border:
+ * 1px solid #555 }` (both 0,2,0); ours wins via source order. The active-group
+ * rule below has higher specificity (`:has(...)`), so an active+selected group
+ * still shows its 2px solid primary border. */
 .react-flow__node-group.selected {
-  border: 2px solid hsl(var(--primary));
+  border-color: transparent;
 }
-/* US-009: bump the selected-group outline (inherited from
- * `.react-flow__node.selected > div`) from 4px out to 8px so the group's
- * selection ring sits clearly outside the chrome of any child node that
- * happens to be selected at the same time (children keep the default 4px
- * offset). Same specificity as the base rule (0,2,1), so source order is
- * what wins — keep this rule below the base in this file. */
-.react-flow__node-group.selected > div {
-  outline-offset: 8px;
+/* Selection rectangle for groups: keep at z-index 0 (vs -1 for normal nodes)
+ * so the rect paints above any background tint applied to the wrapper (the
+ * active-group rule below sets a soft primary/0.04 fill — at z-index -1 the
+ * rect's edges that overlap the wrapper would sink behind that fill). Groups
+ * have no outlet handles, so the rect can sit at z-index 0 without crossing
+ * any dot — the 4 corner squares use `z-index: 1` (see resize-controls.tsx)
+ * so they paint above this rect. */
+.react-flow__node-group.selected::after {
+  z-index: 0;
+}
+/* Children of an inactive group: pointer-events: none so a mousedown/click/
+ * drag lands on the parent group's wrapper underneath, making the gated
+ * child behave as part of the group container. The xyflow `selectable:
+ * false` / `draggable: false` flags on the child are a belt-and-suspenders
+ * fallback for any event path that bypasses this rule. */
+.react-flow__node[data-gated-child="true"] {
+  pointer-events: none;
 }
 /* Active (entered) group — set on the inner [data-testid="group-node"] div by
    GroupNode when data.isActive is true. Distinguish "entered" from "selected"
@@ -534,9 +583,9 @@ button:disabled {
 /* US-007: when a node is selected, its 4 connection handles relocate from
  * the node body's edge midpoints to the OUTER selection-rectangle's edge
  * midpoints — 4px outward, matching the `outlineOffset: 4px` on each node
- * container. Combined with the size set by `--anydemo-handle-size` (12px,
- * shared with connector endpoint dots — US-024), this anchors the outlets
- * to the selection rect rather than the node chrome.
+ * container. Combined with the size set by `--anydemo-handle-size` (17px,
+ * shared with connector endpoint dots), this anchors the outlets to the
+ * selection rect rather than the node chrome.
  *
  * The translate stacks: xyflow's per-side default `translate(-50%, -50%)`
  * (or its 50% variants for bottom/right) keeps the dot CENTERED on the
@@ -546,14 +595,36 @@ button:disabled {
  * position (and remain `opacity-0` per their per-Handle className) so
  * non-selected behavior is unchanged. */
 .react-flow__node.selected .react-flow__handle-top {
-  transform: translate(-50%, -50%) translate(0, -4px);
+  transform: translate(-50%, -50%) translate(0, calc(-8px / var(--rf-zoom, 1)));
 }
 .react-flow__node.selected .react-flow__handle-bottom {
-  transform: translate(-50%, 50%) translate(0, 4px);
+  transform: translate(-50%, 50%) translate(0, calc(8px / var(--rf-zoom, 1)));
 }
 .react-flow__node.selected .react-flow__handle-left {
-  transform: translate(-50%, -50%) translate(-4px, 0);
+  transform: translate(-50%, -50%) translate(calc(-8px / var(--rf-zoom, 1)), 0);
 }
 .react-flow__node.selected .react-flow__handle-right {
-  transform: translate(50%, -50%) translate(4px, 0);
+  transform: translate(50%, -50%) translate(calc(8px / var(--rf-zoom, 1)), 0);
+}
+
+/* Shift the 4 visible resize corner squares OUTSIDE the node body so they sit
+ * on the OUTER selection rectangle's corners, not on the node body's own
+ * corners. xyflow centers each handle on the corner via the CSS `translate`
+ * property (`translate: -50% -50%`); we add a sibling `transform: translate`
+ * to push the square 8px further outward — matching the rectangle's `inset`
+ * offset above. `translate` and `transform` are separate CSS properties that
+ * COMPOSE (both apply), so xyflow's centering survives and we only add the
+ * outward push. Zoom-inverted so the visual offset stays 8px on screen at
+ * every zoom level. */
+.react-flow__node.selected .react-flow__resize-control.handle.top.left {
+  transform: translate(calc(-8px / var(--rf-zoom, 1)), calc(-8px / var(--rf-zoom, 1)));
+}
+.react-flow__node.selected .react-flow__resize-control.handle.top.right {
+  transform: translate(calc(8px / var(--rf-zoom, 1)), calc(-8px / var(--rf-zoom, 1)));
+}
+.react-flow__node.selected .react-flow__resize-control.handle.bottom.left {
+  transform: translate(calc(-8px / var(--rf-zoom, 1)), calc(8px / var(--rf-zoom, 1)));
+}
+.react-flow__node.selected .react-flow__resize-control.handle.bottom.right {
+  transform: translate(calc(8px / var(--rf-zoom, 1)), calc(8px / var(--rf-zoom, 1)));
 }
