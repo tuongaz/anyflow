@@ -529,3 +529,157 @@ describe('StyleStrip — group chrome editor (US-008 + US-012)', () => {
     expect(patch.borderWidth).toBe(4);
   });
 });
+
+// US-014: image-node border editor. Mirrors the group chrome editor (border
+// color picker, border style toggle, border width 1–8) but writes through
+// onStyleNode for any selected imageNode. Multi-image fan-out follows the
+// pureIconNode pattern; mixed selections (image + shape) fall through to the
+// shared shape strip.
+const TINY_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=';
+
+function imageNode(
+  id: string,
+  opts: {
+    borderColor?: string;
+    borderWidth?: number;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    cornerRadius?: number;
+  } = {},
+): DemoNode {
+  return {
+    id,
+    type: 'imageNode',
+    position: { x: 0, y: 0 },
+    data: {
+      image: TINY_PNG,
+      ...(opts.borderColor ? { borderColor: opts.borderColor } : {}),
+      ...(opts.borderWidth !== undefined ? { borderWidth: opts.borderWidth } : {}),
+      ...(opts.borderStyle ? { borderStyle: opts.borderStyle } : {}),
+      ...(opts.cornerRadius !== undefined ? { cornerRadius: opts.cornerRadius } : {}),
+    },
+  } as DemoNode;
+}
+
+describe('StyleStrip — image-node border editor (US-014)', () => {
+  it('renders the image border controls when a single imageNode is selected', () => {
+    const tree = callStrip({ nodes: [imageNode('i1', { borderColor: 'blue', borderWidth: 3 })] });
+    expect(findElement(tree, testIdEquals('style-strip-image-border-color'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-image-border-style'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-image-border-width'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-image-corner-radius'))).not.toBeNull();
+    // Shape-only controls must NOT leak into the image branch.
+    expect(findElement(tree, testIdEquals('style-strip-border-color'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-border-size'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-font-size'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-fill'))).toBeNull();
+    // Group-only controls must not leak either.
+    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-width'))).toBeNull();
+    // Icon-only controls must not leak either.
+    expect(findElement(tree, testIdEquals('style-strip-icon-color'))).toBeNull();
+  });
+
+  it('seeds the active border-color token from data.borderColor', () => {
+    const tree = callStrip({ nodes: [imageNode('i1', { borderColor: 'amber' })] });
+    const swatch = findElement(tree, testIdEquals('style-strip-image-border-color'));
+    expect((swatch?.props as { activeToken?: string }).activeToken).toBe('amber');
+  });
+
+  it("falls back to 'default' border-color when data.borderColor is unset", () => {
+    const tree = callStrip({ nodes: [imageNode('i1')] });
+    const swatch = findElement(tree, testIdEquals('style-strip-image-border-color'));
+    expect((swatch?.props as { activeToken?: string }).activeToken).toBe('default');
+  });
+
+  it('clicking a border-color swatch dispatches onStyleNode with { borderColor }', () => {
+    const onStyleNode = mock(() => {});
+    const tree = callStrip({ nodes: [imageNode('i1')], onStyleNode });
+    const swatch = findElement(tree, testIdEquals('style-strip-image-border-color'));
+    if (!swatch) throw new Error('image border-color swatch missing');
+    (swatch.props as { onSelect: (t: string) => void }).onSelect('green');
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('i1', { borderColor: 'green' });
+  });
+
+  it('fans out the border-color pick to every selected imageNode (multi-select)', () => {
+    const onStyleNode = mock(() => {});
+    const tree = callStrip({
+      nodes: [imageNode('i1'), imageNode('i2', { borderColor: 'red' })],
+      onStyleNode,
+    });
+    const swatch = findElement(tree, testIdEquals('style-strip-image-border-color'));
+    if (!swatch) throw new Error('image border-color swatch missing');
+    (swatch.props as { onSelect: (t: string) => void }).onSelect('purple');
+    expect(onStyleNode).toHaveBeenCalledTimes(2);
+    expect(onStyleNode).toHaveBeenNthCalledWith(1, 'i1', { borderColor: 'purple' });
+    expect(onStyleNode).toHaveBeenNthCalledWith(2, 'i2', { borderColor: 'purple' });
+  });
+
+  it('the border-style toggle dispatches onStyleNode with { borderStyle }', () => {
+    const onStyleNode = mock(() => {});
+    const tree = callStrip({
+      nodes: [imageNode('i1', { borderStyle: 'solid' })],
+      onStyleNode,
+    });
+    const popover = findElement(tree, testIdEquals('style-strip-image-border-style'));
+    if (!popover) throw new Error('image border-style popover missing');
+    const toggle = findElement(popover, (el) => {
+      const p = el.props as { ariaLabel?: string };
+      return p.ariaLabel === 'Border style';
+    });
+    if (!toggle) throw new Error('image border-style toggle missing');
+    (toggle.props as { onChange: (s: 'solid' | 'dashed' | 'dotted') => void }).onChange('dashed');
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('i1', { borderStyle: 'dashed' });
+  });
+
+  it('the border-width slider commits + previews onStyleNode/onStyleNodePreview with 1–8 range', () => {
+    const onStyleNode = mock(() => {});
+    const onStyleNodePreview = mock(() => {});
+    const tree = callStrip({
+      nodes: [imageNode('i1', { borderWidth: 2 })],
+      onStyleNode,
+      onStyleNodePreview,
+    });
+    const popover = findElement(tree, testIdEquals('style-strip-image-border-width'));
+    if (!popover) throw new Error('image border-width popover missing');
+    const slider = findElement(popover, (el) => {
+      const p = el.props as { testId?: string };
+      return p.testId === 'style-tab-image-border-width-slider';
+    });
+    if (!slider) throw new Error('image border-width slider missing');
+    const props = slider.props as {
+      onCommit: (n: number) => void;
+      onPreview?: (n: number) => void;
+      min: number;
+      max: number;
+    };
+    expect(props.min).toBe(1);
+    expect(props.max).toBe(8);
+    props.onPreview?.(4);
+    props.onCommit(6);
+    expect(onStyleNodePreview).toHaveBeenCalledTimes(1);
+    expect(onStyleNodePreview).toHaveBeenCalledWith('i1', { borderWidth: 4 });
+    expect(onStyleNode).toHaveBeenCalledTimes(1);
+    expect(onStyleNode).toHaveBeenCalledWith('i1', { borderWidth: 6 });
+  });
+
+  it('does NOT render the image branch in a mixed (image + shape) selection', () => {
+    const tree = callStrip({ nodes: [imageNode('i1'), shapeNode('s1')] });
+    expect(findElement(tree, testIdEquals('style-strip-image-border-color'))).toBeNull();
+    // Mixed selection falls through to the shared shape strip.
+    expect(findElement(tree, testIdEquals('style-strip-border-color'))).not.toBeNull();
+  });
+
+  it('does NOT render the image branch when a connector is also selected', () => {
+    const cn: Connector = {
+      id: 'c1',
+      source: 'a',
+      target: 'b',
+      kind: 'default',
+    } as Connector;
+    const tree = callStrip({ nodes: [imageNode('i1')], connectors: [cn] });
+    expect(findElement(tree, testIdEquals('style-strip-image-border-color'))).toBeNull();
+  });
+});

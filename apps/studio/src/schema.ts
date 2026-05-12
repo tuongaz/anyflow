@@ -148,6 +148,10 @@ const ShapeNodeSchema = z.object({
 
 // Decorative image node — embeds a base64 data URL on the canvas. No semantic
 // payload; reuses NodeVisualBaseShape so it themes the same way as other nodes.
+// US-014 (text-and-group-resize): image-only `borderWidth` (1–8) mirrors the
+// group field so the property panel exposes the same border controls. Distinct
+// from the open-ended `borderSize` that shape nodes use; `borderColor` and
+// `borderStyle` already come via NodeVisualBaseShape with matching token types.
 const ImageNodeDataSchema = z.object({
   image: z
     .string()
@@ -158,6 +162,7 @@ const ImageNodeDataSchema = z.object({
   alt: z.string().optional(),
   ...NodeVisualBaseShape,
   ...NodeDescriptionBaseShape,
+  borderWidth: z.number().min(1).max(8).optional(),
 });
 
 const ImageNodeSchema = z.object({

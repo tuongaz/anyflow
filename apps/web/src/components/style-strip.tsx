@@ -215,6 +215,11 @@ export function StyleStrip({
     pureNode && nodes.length === 1 && nodes[0]?.type === 'group'
       ? (nodes[0] as Extract<DemoNode, { type: 'group' }>)
       : undefined;
+  // US-014: dedicated image-node branch. Image borders use `borderWidth` (1–8,
+  // same range as the group's chrome), NOT shape nodes' open-ended `borderSize`.
+  // Multi-image selections fan out across every selected node so the user can
+  // restyle a batch of screenshots in one pass.
+  const pureImageNode = pureNode && nodes.every((n) => n.type === 'imageNode');
   // Text-shape simplification only applies to pure-node selections of a single
   // text shape. Mixed selections (text-shape node + connector) still need the
   // shared border controls visible, so the guard is gated on `pureNode`.
@@ -504,6 +509,120 @@ export function StyleStrip({
               </TooltipContent>
             </Tooltip>
           ) : null}
+          {showLockToggle ? (
+            <LockToggleButton
+              locked={allNodesLocked}
+              tooltip={lockTooltip}
+              Icon={LockIcon}
+              onClick={handleLockToggle}
+            />
+          ) : null}
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  if (pureImageNode) {
+    // US-014: image-node border editor. Border color + style + width (1–8) —
+    // the same three controls the group editor exposes. Edits dispatch via
+    // onStyleNode (per-node fan-out for multi-image selections), reusing the
+    // existing PATCH+undo path. Image nodes also keep their cornerRadius
+    // control (already supported by the renderer's containerStyle).
+    const firstImage = nodes[0] as Extract<DemoNode, { type: 'imageNode' }> | undefined;
+    const imageBorderColor: ColorToken = firstImage?.data.borderColor ?? 'default';
+    const imageBorderStyle = (firstImage?.data.borderStyle ?? 'solid') as
+      | 'solid'
+      | 'dashed'
+      | 'dotted';
+    const imageBorderWidth = firstImage?.data.borderWidth ?? 1;
+    const applyImageBorderColor = (token: ColorToken) => {
+      for (const n of nodes) onStyleNode(n.id, { borderColor: token });
+    };
+    const applyImageBorderStyle = (style: 'solid' | 'dashed' | 'dotted') => {
+      for (const n of nodes) onStyleNode(n.id, { borderStyle: style });
+    };
+    const applyImageBorderWidth = (n: number) => {
+      for (const node of nodes) onStyleNode(node.id, { borderWidth: n });
+    };
+    const previewImageBorderWidth = (n: number) => {
+      for (const node of nodes) onStyleNodePreview?.(node.id, { borderWidth: n });
+    };
+    const applyImageCornerRadius = (n: number) => {
+      for (const node of nodes) onStyleNode(node.id, { cornerRadius: n });
+    };
+    const previewImageCornerRadius = (n: number) => {
+      for (const node of nodes) onStyleNodePreview?.(node.id, { cornerRadius: n });
+    };
+    return (
+      <TooltipProvider delayDuration={300}>
+        <div
+          data-testid="canvas-style-strip"
+          className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
+        >
+          <SwatchButton
+            testId="style-strip-image-border-color"
+            tooltip="Border color"
+            ariaLabel="image border color"
+            activeToken={imageBorderColor}
+            previewKind="border"
+            tokenTestIdPrefix="style-tab-image-border-color"
+            innerTestId="style-tab-image-border-color-trigger"
+            onSelect={applyImageBorderColor}
+          />
+          <PopoverButton
+            testId="style-strip-image-border-style"
+            tooltip="Border style"
+            ariaLabel="image border style"
+            renderIcon={() => {
+              const Icon =
+                BORDER_STYLE_OPTIONS.find((o) => o.value === imageBorderStyle)?.icon ??
+                LineSolidIcon;
+              return <Icon className="h-4 w-4" />;
+            }}
+          >
+            <IconToggleGroup<'solid' | 'dashed' | 'dotted'>
+              ariaLabel="Border style"
+              value={imageBorderStyle}
+              onChange={applyImageBorderStyle}
+              options={BORDER_STYLE_OPTIONS}
+            />
+          </PopoverButton>
+          <PopoverButton
+            testId="style-strip-image-border-width"
+            tooltip="Border width"
+            ariaLabel="image border width"
+            renderIcon={() => (
+              <span className="font-mono text-[10px] tabular-nums">{imageBorderWidth}</span>
+            )}
+          >
+            <SliderControl
+              value={firstImage?.data.borderWidth}
+              defaultValue={1}
+              min={1}
+              max={8}
+              suffix="px"
+              onPreview={previewImageBorderWidth}
+              onCommit={applyImageBorderWidth}
+              testId="style-tab-image-border-width-slider"
+            />
+          </PopoverButton>
+          <PopoverButton
+            testId="style-strip-image-corner-radius"
+            tooltip="Corners"
+            ariaLabel="image corner radius"
+            renderIcon={() => <Squircle className="h-4 w-4" />}
+          >
+            <SliderControl
+              value={firstImage?.data.cornerRadius}
+              defaultValue={DEFAULT_CORNER_RADIUS}
+              min={0}
+              max={32}
+              suffix="px"
+              onPreview={previewImageCornerRadius}
+              onCommit={applyImageCornerRadius}
+              testId="style-tab-image-corner-radius-slider"
+            />
+          </PopoverButton>
           {showLockToggle ? (
             <LockToggleButton
               locked={allNodesLocked}

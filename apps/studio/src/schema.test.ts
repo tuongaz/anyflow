@@ -909,6 +909,94 @@ describe('DemoSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  // US-014 (text-and-group-resize): image nodes gain an optional `borderWidth`
+  // (1–8) that mirrors the group's chrome field. `borderColor` + `borderStyle`
+  // already come via NodeVisualBaseShape — these tests pin the new field's
+  // accept/reject behavior alongside back-compat for unset fields.
+  it('round-trips an image node with borderColor / borderWidth / borderStyle (US-014)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'styled-image',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+            borderColor: 'blue' as const,
+            borderWidth: 4,
+            borderStyle: 'dashed' as const,
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'imageNode') throw new Error('expected imageNode');
+    expect(node.data.borderColor).toBe('blue');
+    expect(node.data.borderWidth).toBe(4);
+    expect(node.data.borderStyle).toBe('dashed');
+  });
+
+  it('accepts an image node with no border fields (US-014 back-compat)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'plain-image',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            image:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+          },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'imageNode') throw new Error('expected imageNode');
+    expect(node.data.borderColor).toBeUndefined();
+    expect(node.data.borderWidth).toBeUndefined();
+    expect(node.data.borderStyle).toBeUndefined();
+  });
+
+  it('rejects an image node with borderWidth outside the 1–8 range (US-014)', () => {
+    const baseImage =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=';
+    const tooSmall = {
+      version: 1 as const,
+      name: 'bad-w',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: { image: baseImage, borderWidth: 0 },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(tooSmall).success).toBe(false);
+
+    const tooLarge = {
+      ...tooSmall,
+      nodes: [{ ...tooSmall.nodes[0], data: { image: baseImage, borderWidth: 9 } }],
+    };
+    expect(DemoSchema.safeParse(tooLarge).success).toBe(false);
+  });
+
   it('accepts a connector pointing at an imageNode id (US-002)', () => {
     const demo = {
       version: 1 as const,

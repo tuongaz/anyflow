@@ -34,11 +34,17 @@ function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNod
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
 
   // US-010: selection outline moved to CSS (see play-node.tsx note).
+  // US-014: render the optional image border from `borderColor` / `borderWidth`
+  // / `borderStyle`. Each field is independently optional; only the keys whose
+  // data value is defined land in the style object so the "chromeless image"
+  // default is preserved when nothing is set.
   const containerStyle: CSSProperties = {
-    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
-    borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
-    borderStyle: data.borderStyle,
-    borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,
+    ...(data.borderColor !== undefined
+      ? { borderColor: colorTokenStyle(data.borderColor, 'node').borderColor }
+      : {}),
+    ...(data.borderWidth !== undefined ? { borderWidth: data.borderWidth } : {}),
+    ...(data.borderStyle !== undefined ? { borderStyle: data.borderStyle } : {}),
+    ...(data.cornerRadius !== undefined ? { borderRadius: data.cornerRadius } : {}),
     ...(sized ? {} : { width: IMAGE_DEFAULT_SIZE.width, height: IMAGE_DEFAULT_SIZE.height }),
   };
 
