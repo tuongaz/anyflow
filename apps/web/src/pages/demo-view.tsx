@@ -570,6 +570,13 @@ export function DemoView({
             ...childTargets.map((t) => updateNode(demoId, t.id, t.prev)),
           ]);
         },
+        // US-016: per-tick resize during a live drag pushes many entries
+        // through this callback. The coalesce key folds them into a single
+        // undo entry — the first push captures the original `undo` (pre-
+        // gesture state); subsequent pushes within COALESCE_WINDOW_MS replace
+        // `do` with the new final state while preserving that original
+        // `undo`. Net: one Cmd+Z reverts the entire gesture.
+        coalesceKey: `group:${update.groupId}:resize`,
       });
       // Fire-and-forget fan-out. Per-node failure drops that node's override
       // so the canvas falls back to server state; we surface a single banner.
@@ -647,6 +654,13 @@ export function DemoView({
       }
       setEditError(null);
       markMutation();
+      // US-016: per-tick multi-select resize dispatches many updates through
+      // this callback. The coalesce key (sorted-id list, stable across ticks
+      // of the same selection) folds them into one undo entry — first push
+      // captures the original `undo`; subsequent pushes within
+      // COALESCE_WINDOW_MS replace `do` with the latest state. One Cmd+Z
+      // reverts the whole gesture.
+      const sortedIds = targets.map((t) => t.id).sort();
       pushUndo({
         do: async () => {
           await Promise.allSettled(targets.map((t) => updateNode(demoId, t.id, t.next)));
@@ -654,6 +668,7 @@ export function DemoView({
         undo: async () => {
           await Promise.allSettled(targets.map((t) => updateNode(demoId, t.id, t.prev)));
         },
+        coalesceKey: `multi:resize:${sortedIds.join(',')}`,
       });
       Promise.all(
         targets.map(async (t) => {

@@ -1,6 +1,7 @@
 import {
   type ControlPosition,
   NodeResizeControl,
+  type OnResize,
   type OnResizeEnd,
   type OnResizeStart,
   ResizeControlVariant,
@@ -64,6 +65,12 @@ export interface ResizeControlsProps {
   minWidth?: number;
   minHeight?: number;
   onResizeStart?: OnResizeStart;
+  /**
+   * US-016: per-tick callback fired on every xyflow `onResize` event during
+   * the drag (NOT just at the end). Wiring this lets node renderers update
+   * canvas state live as the user drags a resize handle.
+   */
+  onResize?: OnResize;
   onResizeEnd?: OnResizeEnd;
   /**
    * US-016: 'visible' renders the 4 corner handles as small white squares with
@@ -103,6 +110,7 @@ export function ResizeControls({
   minWidth = 80,
   minHeight = 40,
   onResizeStart,
+  onResize,
   onResizeEnd,
   cornerVariant = 'invisible',
 }: ResizeControlsProps) {
@@ -123,6 +131,7 @@ export function ResizeControls({
           minHeight={minHeight}
           style={lineStyle(style)}
           onResizeStart={onResizeStart}
+          onResize={onResize}
           onResizeEnd={onResizeEnd}
         >
           <span data-testid="resize-control" data-position={position} />
@@ -137,6 +146,7 @@ export function ResizeControls({
           minHeight={minHeight}
           style={cornerStyle}
           onResizeStart={onResizeStart}
+          onResize={onResize}
           onResizeEnd={onResizeEnd}
         >
           <span data-testid="resize-control" data-position={position} />

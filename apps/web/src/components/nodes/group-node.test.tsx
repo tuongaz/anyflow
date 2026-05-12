@@ -230,6 +230,54 @@ describe('GroupNode (US-011)', () => {
     cprops.onResizeEnd({}, { width: 500, height: 350, x: 10, y: 20 });
     expect(onResize).toHaveBeenCalledWith('group-1', { width: 500, height: 350, x: 10, y: 20 });
   });
+
+  // US-016: per-tick (live) resize updates the canvas continuously during a
+  // drag, not only at release. The hook exposes `onResize` (per-tick) on the
+  // ResizeControls props; each invocation forwards to data.onResize with the
+  // current dims, so child nodes / overlay payloads scale live.
+  it('forwards per-tick onResize dims to data.onResize during a drag (US-016)', () => {
+    type OnResizeFn = (
+      id: string,
+      dims: { x: number; y: number; width: number; height: number },
+    ) => void;
+    const onResize = mock<OnResizeFn>(() => {});
+    const tree = callGroupNode({ onResize }, { selected: true } as Partial<NodeProps>);
+    const controls = findElement(tree, (type) => type === ResizeControls);
+    if (!controls) throw new Error('ResizeControls not found');
+    const cprops = controls.props as {
+      onResizeStart: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+      onResize: (
+        e: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ) => void;
+    };
+    const start = { x: 10, y: 20, width: 200, height: 100 };
+    cprops.onResizeStart({}, start);
+    // Three progressive ticks — each must fire data.onResize with that tick's
+    // dims (latest call wins; per-tick is the source of truth).
+    cprops.onResize({}, { x: 10, y: 20, width: 220, height: 110 });
+    cprops.onResize({}, { x: 10, y: 20, width: 260, height: 130 });
+    cprops.onResize({}, { x: 10, y: 20, width: 300, height: 150 });
+    expect(onResize).toHaveBeenCalledTimes(3);
+    expect(onResize.mock.calls[0]).toEqual(['group-1', { x: 10, y: 20, width: 220, height: 110 }]);
+    expect(onResize.mock.calls[2]).toEqual(['group-1', { x: 10, y: 20, width: 300, height: 150 }]);
+  });
+
+  // US-016: ResizeControls must expose a fresh `onResize` (per-tick) prop so
+  // NodeResizeControl can route xyflow's per-tick events through it. Without
+  // this prop wiring, the per-tick path would be silently dropped at the
+  // ResizeControls boundary.
+  it('wires onResize on ResizeControls (US-016 per-tick prop present)', () => {
+    const onResize = mock(() => {});
+    const tree = callGroupNode({ onResize }, { selected: true } as Partial<NodeProps>);
+    const controls = findElement(tree, (type) => type === ResizeControls);
+    if (!controls) throw new Error('ResizeControls not found');
+    const cprops = controls.props as { onResize?: unknown };
+    expect(typeof cprops.onResize).toBe('function');
+  });
 });
 
 describe('GroupNode label editing (US-014)', () => {

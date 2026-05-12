@@ -70,7 +70,7 @@ export function groupChromeStyle(
 }
 
 function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
-  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
   });
@@ -130,6 +130,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}

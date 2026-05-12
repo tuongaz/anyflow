@@ -1077,6 +1077,130 @@ describe('DemoCanvas', () => {
     });
   });
 
+  describe('US-016: live (per-tick) group resize', () => {
+    // The group's per-tick onResize wrapper (`onGroupNodeResize` in demo-
+    // canvas.tsx) runs each call through `scaleNodesWithinRect` to compute
+    // child positions/sizes, then dispatches via `onGroupResizeWithChildren`.
+    // For a real drag the wrapper is invoked many times across the gesture;
+    // these tests simulate 3 consecutive ticks at progressively larger rects
+    // and assert each tick produces its own batched dispatch with the
+    // correctly-scaled child for that rect (so the live canvas tracks the
+    // cursor, not just the final state).
+    function makeSizedGroup(
+      id: string,
+      pos: { x: number; y: number },
+      dims: { width: number; height: number },
+    ): DemoNode {
+      return {
+        id,
+        type: 'group',
+        position: pos,
+        data: { width: dims.width, height: dims.height },
+      };
+    }
+    function makeSizedChild(
+      id: string,
+      parentId: string,
+      pos: { x: number; y: number },
+      dims: { width: number; height: number },
+    ): DemoNode {
+      return {
+        id,
+        type: 'shapeNode',
+        parentId,
+        position: pos,
+        data: { label: id, shape: 'rectangle', ...dims },
+      };
+    }
+    function getGroupOnResize(props: Partial<DemoCanvasProps>) {
+      const tree = callDemoCanvas(props);
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const group = rfNodes.find((n) => n.id === 'g');
+      if (!group) throw new Error('group rfNode not found');
+      const cb = (group.data as { onResize?: unknown }).onResize as
+        | ((id: string, dims: { width: number; height: number; x: number; y: number }) => void)
+        | undefined;
+      if (typeof cb !== 'function') throw new Error('group onResize callback not wired');
+      return cb;
+    }
+
+    it('per-tick group resize dispatches scaled children on every tick (3-tick sequence)', () => {
+      const captured: Array<{
+        groupId: string;
+        groupDims: { width: number; height: number; x: number; y: number };
+        childUpdates: Array<{
+          id: string;
+          position: { x: number; y: number };
+          width?: number;
+          height?: number;
+        }>;
+      }> = [];
+      const cb = getGroupOnResize({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
+        ],
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      // 3 ticks at 1.1x, 1.5x, 2.0x. Each tick produces a dispatch with the
+      // child scaled by the same factor (parent-relative origin (0,0)).
+      cb('g', { x: 0, y: 0, width: 110, height: 110 });
+      cb('g', { x: 0, y: 0, width: 150, height: 150 });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      expect(captured.length).toBe(3);
+      expect(captured[0]?.groupDims).toEqual({ x: 0, y: 0, width: 110, height: 110 });
+      expect(captured[0]?.childUpdates[0]).toEqual({
+        id: 'c1',
+        position: { x: 11, y: 11 },
+        width: 22,
+        height: 22,
+      });
+      expect(captured[1]?.groupDims).toEqual({ x: 0, y: 0, width: 150, height: 150 });
+      expect(captured[1]?.childUpdates[0]).toEqual({
+        id: 'c1',
+        position: { x: 15, y: 15 },
+        width: 30,
+        height: 30,
+      });
+      // The FINAL tick's child matches the AC's "size matches final tick".
+      expect(captured[2]?.groupDims).toEqual({ x: 0, y: 0, width: 200, height: 200 });
+      expect(captured[2]?.childUpdates[0]).toEqual({
+        id: 'c1',
+        position: { x: 20, y: 20 },
+        width: 40,
+        height: 40,
+      });
+    });
+
+    it('per-tick callback uses ABSOLUTE newRect dims each call (no drift from accumulated deltas)', () => {
+      // Sanity that the wrapper reads the latest `dims` argument afresh on
+      // every call — not by accumulating deltas relative to a prior tick. If
+      // the wrapper accumulated, a tick that dispatches `{width: 200}` after
+      // a tick that dispatched `{width: 110}` would produce a "double scale"
+      // and the child would balloon to 4x instead of 2x. Pinning this lets
+      // demo-view's coalesced undo entry stay accurate against the absolute
+      // final state, regardless of how many intermediate ticks fired.
+      const captured: Array<{
+        childUpdates: Array<{ id: string; width?: number; height?: number }>;
+      }> = [];
+      const cb = getGroupOnResize({
+        nodes: [
+          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
+          makeSizedChild('c', 'g', { x: 0, y: 0 }, { width: 20, height: 20 }),
+        ],
+        onGroupResizeWithChildren: (u) => captured.push(u),
+      });
+      cb('g', { x: 0, y: 0, width: 110, height: 110 });
+      cb('g', { x: 0, y: 0, width: 200, height: 200 });
+      // Last tick: child at 2x base (width 40), NOT 2.2x or anything composed
+      // from the prior tick.
+      expect(captured[1]?.childUpdates[0]?.width).toBe(40);
+      expect(captured[1]?.childUpdates[0]?.height).toBe(40);
+    });
+  });
+
   describe('US-007: multi-select bounding-box resize overlay', () => {
     // The overlay component itself decides presence via
     // `selectionEligibleForOverlay`; here we test the canvas-side wiring —

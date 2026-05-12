@@ -250,6 +250,27 @@ interface DragState {
 }
 
 /**
+ * US-016: schedule a per-tick dispatch on the next animation frame, replacing
+ * any previously scheduled one for the same gesture. Caps live multi-resize
+ * updates at the browser's repaint cadence (~60fps) so a fast drag doesn't
+ * spam the parent with more updates per second than it can repaint.
+ *
+ * The fn argument captures the latest pre-rAF state (closure over current
+ * dragState + selectedNodes + newRect); it always represents the freshest
+ * scheduled dispatch, not a stale one.
+ *
+ * Exported for testing — call sites should use it via the overlay's own
+ * pointer-move handler.
+ */
+export function scheduleRaf(rafRef: { current: number | null }, fn: () => void): void {
+  if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  rafRef.current = requestAnimationFrame(() => {
+    rafRef.current = null;
+    fn();
+  });
+}
+
+/**
  * Render-side test seam: when `selectionEligibleForOverlay` returns false the
  * component returns null so the parent canvas can wire the overlay
  * unconditionally and not worry about the gating logic.
@@ -265,6 +286,8 @@ export function SelectionResizeOverlay({
   // Track the in-flight modifier state so a Shift release mid-drag flips
   // back to free-resize without waiting for the next pointer-move event.
   const shiftHeldRef = useRef(false);
+  // US-016: pending per-tick dispatch handle; cancelled on every new move.
+  const liveDispatchRafRef = useRef<number | null>(null);
 
   if (!selectionEligibleForOverlay(selectedNodes)) return null;
   const unionRect = computeUnionRect(selectedNodes);
@@ -306,9 +329,30 @@ export function SelectionResizeOverlay({
     });
     const dx = flowCursor.x - dragState.startCursor.x;
     const dy = flowCursor.y - dragState.startCursor.y;
-    setPreviewRect(
-      computeNewRectFromAnchorDrag(dragState.oldRect, dragState.anchor, dx, dy, event.shiftKey),
+    const newRect = computeNewRectFromAnchorDrag(
+      dragState.oldRect,
+      dragState.anchor,
+      dx,
+      dy,
+      event.shiftKey,
     );
+    setPreviewRect(newRect);
+    // US-016: per-tick live dispatch. Children scale continuously as the user
+    // drags, not only at pointer-up. rAF-throttled so we cap at ~60fps even
+    // on a fast trackpad emitting hundreds of pointermove events/sec. Demo-
+    // view's `onMultiResize` coalesces every tick into one undo entry via the
+    // shared coalesceKey, so this loop produces exactly ONE Cmd+Z reversion.
+    if (onMultiResize) {
+      const lockAspect = event.shiftKey;
+      const oldRectAtStart = dragState.oldRect;
+      const nodesAtTick = selectedNodes;
+      scheduleRaf(liveDispatchRafRef, () => {
+        const updates = computeSelectionResizeUpdates(nodesAtTick, oldRectAtStart, newRect, {
+          lockAspectRatio: lockAspect,
+        });
+        if (updates.length > 0) onMultiResize(updates);
+      });
+    }
   };
 
   const onHandlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -327,6 +371,13 @@ export function SelectionResizeOverlay({
       dy,
       event.shiftKey,
     );
+    // US-016: cancel any pending per-tick rAF so the final dispatch below is
+    // the last word — otherwise a coalesced rAF could fire after pointer-up
+    // with a stale rect.
+    if (liveDispatchRafRef.current !== null) {
+      cancelAnimationFrame(liveDispatchRafRef.current);
+      liveDispatchRafRef.current = null;
+    }
     setDragState(null);
     setPreviewRect(null);
     shiftHeldRef.current = false;
@@ -354,6 +405,10 @@ export function SelectionResizeOverlay({
 
   const onHandlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragState || event.pointerId !== dragState.pointerId) return;
+    if (liveDispatchRafRef.current !== null) {
+      cancelAnimationFrame(liveDispatchRafRef.current);
+      liveDispatchRafRef.current = null;
+    }
     setDragState(null);
     setPreviewRect(null);
     shiftHeldRef.current = false;

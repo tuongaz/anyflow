@@ -24,7 +24,7 @@ const MIN_H = 40;
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
 function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNodeType>) {
-  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
   });
@@ -60,6 +60,7 @@ function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNod
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}

@@ -100,7 +100,7 @@ const HANDLE_CLASS = 'opacity-0 transition-opacity';
 function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = SHAPE_DEFAULT_SIZE[shape];
-  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
   });
@@ -179,6 +179,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
         minWidth={80}
         minHeight={40}
         onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}

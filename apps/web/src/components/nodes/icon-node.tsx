@@ -47,7 +47,7 @@ function resolveIconColor(token: IconNodeData['color']): string {
 const WARNED_NAMES = new Set<string>();
 
 function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeType>) {
-  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
   });
@@ -95,6 +95,7 @@ function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeT
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}

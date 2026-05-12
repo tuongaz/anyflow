@@ -55,7 +55,7 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
         ? `Failed: ${data.errorMessage}`
         : 'Failed'
       : 'Play';
-  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
   });
@@ -136,6 +136,7 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}

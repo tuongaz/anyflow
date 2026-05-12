@@ -37,7 +37,7 @@ const DEFAULT_W = 200;
 function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNodeType>) {
   const status = data.status ?? 'idle';
   const description = data.detail?.summary ?? data.kind;
-  const { isResizing, onResizeStart, onResizeEnd } = useResizeGesture({
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
     onResize: (dims) => data.onResize?.(id, dims),
     setResizing: data.setResizing,
   });
@@ -116,6 +116,7 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
         minWidth={MIN_W}
         minHeight={MIN_H}
         onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
         onResizeEnd={onResizeEnd}
       />
       {data.locked ? <LockBadge /> : null}

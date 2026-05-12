@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import {
   type OverlayInputNode,
   computeNewRectFromAnchorDrag,
   computeSelectionResizeUpdates,
   computeUnionRect,
+  scheduleRaf,
   selectionEligibleForOverlay,
 } from '@/components/selection-resize-overlay';
 
@@ -196,5 +197,82 @@ describe('computeSelectionResizeUpdates', () => {
       { id: 'a', position: { x: 20, y: 20 } },
       { id: 'b', position: { x: 100, y: 100 } },
     ]);
+  });
+});
+
+// US-016: rAF-throttle helper. The overlay calls this on every pointermove
+// during a multi-select resize so the live dispatch caps at ~60fps even when
+// xyflow's pointer stream is faster. Each new schedule cancels the prior one
+// so only the LATEST tick's callback fires per frame (no backed-up queue).
+describe('scheduleRaf (US-016 live dispatch throttle)', () => {
+  type RafFrame = { id: number; fn: FrameRequestCallback };
+  let pending: RafFrame[];
+  let nextId: number;
+  let originalRaf: typeof globalThis.requestAnimationFrame;
+  let originalCancel: typeof globalThis.cancelAnimationFrame;
+
+  beforeEach(() => {
+    pending = [];
+    nextId = 0;
+    originalRaf = globalThis.requestAnimationFrame;
+    originalCancel = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame = ((fn: FrameRequestCallback) => {
+      nextId += 1;
+      pending.push({ id: nextId, fn });
+      return nextId;
+    }) as typeof globalThis.requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((id: number) => {
+      pending = pending.filter((p) => p.id !== id);
+    }) as typeof globalThis.cancelAnimationFrame;
+  });
+  afterEach(() => {
+    globalThis.requestAnimationFrame = originalRaf;
+    globalThis.cancelAnimationFrame = originalCancel;
+  });
+  function flushRaf() {
+    const snapshot = pending.slice();
+    pending = [];
+    for (const frame of snapshot) frame.fn(performance.now());
+  }
+
+  it('schedules a single callback on first call', () => {
+    const ref = { current: null as number | null };
+    const fn = mock(() => {});
+    scheduleRaf(ref, fn);
+    expect(ref.current).not.toBeNull();
+    expect(fn).not.toHaveBeenCalled();
+    flushRaf();
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(ref.current).toBeNull();
+  });
+
+  it('coalesces multiple rapid schedules into ONE callback per frame', () => {
+    // Mimics what a fast pointermove stream does — many calls in the same
+    // frame, only the LAST callback runs (the others are cancelled).
+    const ref = { current: null as number | null };
+    const first = mock(() => {});
+    const second = mock(() => {});
+    const third = mock(() => {});
+    scheduleRaf(ref, first);
+    scheduleRaf(ref, second);
+    scheduleRaf(ref, third);
+    flushRaf();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
+    expect(third).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the ref after the scheduled frame runs (allows re-scheduling next frame)', () => {
+    const ref = { current: null as number | null };
+    scheduleRaf(ref, () => {});
+    flushRaf();
+    expect(ref.current).toBeNull();
+    // Second schedule should work without a prior cancel; a new id lands in
+    // the ref so the next frame's flushRaf catches it.
+    const second = mock(() => {});
+    scheduleRaf(ref, second);
+    expect(ref.current).not.toBeNull();
+    flushRaf();
+    expect(second).toHaveBeenCalledTimes(1);
   });
 });
