@@ -48,6 +48,7 @@ import {
   Background,
   type Connection,
   type ConnectionLineComponentProps,
+  ControlButton,
   Controls,
   type Edge,
   type EdgeChange,
@@ -66,6 +67,7 @@ import {
   useStore,
   useStoreApi,
 } from '@xyflow/react';
+import { LayoutDashboard, Maximize2 } from 'lucide-react';
 import {
   type ComponentType,
   type PointerEvent,
@@ -2951,7 +2953,38 @@ export function DemoCanvas({
       >
         <StoreApiBridge storeApiRef={storeApiRef} />
         <Background gap={12} size={0.6} />
-        <Controls showInteractive={false} />
+        {/* US-020: bottom-left canvas-view cluster. xyflow's default Fit View
+            is hidden so we can render a Lucide-styled button that calls
+            fitView with the documented options (padding 0.15, duration 300).
+            Auto Align (Tidy) moved here from CanvasToolbar so all canvas-view
+            actions live in the same place. Order: zoom-in, zoom-out (from
+            <Controls>), Fit View, Auto Align. */}
+        <Controls showInteractive={false} showFitView={false}>
+          <ControlButton
+            data-testid="controls-fit-view"
+            aria-label="Fit view"
+            title="Fit view"
+            disabled={nodes.length === 0}
+            onClick={() => {
+              rfInstanceRef.current?.fitView({
+                padding: 0.15,
+                duration: 300,
+                includeHiddenNodes: false,
+              });
+            }}
+          >
+            <Maximize2 className="h-3 w-3" aria-hidden="true" />
+          </ControlButton>
+          <ControlButton
+            data-testid="controls-tidy"
+            aria-label="Tidy layout (⌘⇧L)"
+            title="Tidy layout (⌘⇧L)"
+            disabled={!onTidy}
+            onClick={() => onTidy?.()}
+          >
+            <LayoutDashboard className="h-3 w-3" aria-hidden="true" />
+          </ControlButton>
+        </Controls>
         {/* US-007: multi-select bounding-box resize overlay. Renders only when
             ≥ 2 selected nodes are NOT all children of the same group; the
             internal check is in `<SelectionResizeOverlay>`. We pass through
@@ -2967,7 +3000,6 @@ export function DemoCanvas({
                 <CanvasToolbar
                   activeShape={drawShape}
                   onSelectShape={setDrawShape}
-                  onTidy={onTidy}
                   iconPickerOpen={iconPickerOpen ?? false}
                   onOpenIconPicker={onOpenIconPicker}
                   onCloseIconPicker={onCloseIconPicker}

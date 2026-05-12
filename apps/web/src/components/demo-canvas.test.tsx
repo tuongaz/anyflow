@@ -2156,4 +2156,164 @@ describe('DemoCanvas', () => {
       expect(findByTestId(tree, 'node-context-menu-delete')).toBeNull();
     });
   });
+
+  describe('US-020: bottom-left Controls cluster (Fit View + Auto Align)', () => {
+    // The cluster lives inside xyflow's <Controls> Panel. The hook-shim
+    // renderer captures the ControlButton children as `{ type, props }`
+    // placeholders without executing their bodies — perfect for asserting
+    // on data-testid, aria-label, disabled, and onClick wiring.
+    const findByTestId = (tree: unknown, id: string) =>
+      findElement(tree, (el) => (el.props as { 'data-testid'?: unknown })['data-testid'] === id);
+
+    it('hides the built-in xyflow Fit View (showFitView=false) and Interactive toggle', () => {
+      // We render our own Fit View ControlButton with a Lucide icon and the
+      // documented fitView options (padding 0.15, duration 300). The built-in
+      // one would have a different icon + default options, so it must stay
+      // suppressed.
+      const tree = callDemoCanvas();
+      const controlsRoot = findElement(tree, (el) =>
+        Boolean((el.props as { showFitView?: unknown }).showFitView !== undefined),
+      );
+      expect(controlsRoot).not.toBeNull();
+      expect(controlsRoot?.props.showFitView).toBe(false);
+      expect(controlsRoot?.props.showInteractive).toBe(false);
+    });
+
+    it('renders the Fit View ControlButton with Lucide-styled tooltip', () => {
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')] });
+      const btn = findByTestId(tree, 'controls-fit-view');
+      expect(btn).not.toBeNull();
+      expect(btn?.props['aria-label']).toBe('Fit view');
+      expect(btn?.props.title).toBe('Fit view');
+    });
+
+    it('renders the Auto Align (Tidy) ControlButton with the documented tooltip', () => {
+      const tree = callDemoCanvas({ onTidy: () => {} });
+      const btn = findByTestId(tree, 'controls-tidy');
+      expect(btn).not.toBeNull();
+      expect(btn?.props['aria-label']).toBe('Tidy layout (⌘⇧L)');
+      expect(btn?.props.title).toBe('Tidy layout (⌘⇧L)');
+    });
+
+    it('Fit View button is disabled when there are no nodes on the canvas', () => {
+      const tree = callDemoCanvas({ nodes: [] });
+      const btn = findByTestId(tree, 'controls-fit-view');
+      expect(btn).not.toBeNull();
+      expect(btn?.props.disabled).toBe(true);
+    });
+
+    it('Fit View button is enabled when at least one node is on the canvas', () => {
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')] });
+      const btn = findByTestId(tree, 'controls-fit-view');
+      expect(btn).not.toBeNull();
+      expect(btn?.props.disabled).toBe(false);
+    });
+
+    it('Auto Align is disabled when no onTidy prop is wired', () => {
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')] });
+      const btn = findByTestId(tree, 'controls-tidy');
+      expect(btn).not.toBeNull();
+      expect(btn?.props.disabled).toBe(true);
+    });
+
+    it('Auto Align is enabled when an onTidy callback is wired', () => {
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')], onTidy: () => {} });
+      const btn = findByTestId(tree, 'controls-tidy');
+      expect(btn).not.toBeNull();
+      expect(btn?.props.disabled).toBe(false);
+    });
+
+    it('clicking Auto Align fires the onTidy prop', () => {
+      let tidyCalls = 0;
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a')],
+        onTidy: () => {
+          tidyCalls += 1;
+        },
+      });
+      const btn = findByTestId(tree, 'controls-tidy');
+      if (!btn) throw new Error('Auto Align button not found');
+      const onClick = btn.props.onClick as (() => void) | undefined;
+      if (typeof onClick !== 'function') throw new Error('onClick not wired');
+      onClick();
+      expect(tidyCalls).toBe(1);
+    });
+
+    it('clicking Fit View calls fitView with padding 0.15, duration 300, includeHiddenNodes: false', () => {
+      // The ControlButton closes over rfInstanceRef.current via the
+      // demo-canvas useCallback. We patch the ref directly via refSink to
+      // capture the fitView args without needing a real ReactFlowInstance.
+      const refSink: { current: unknown }[] = [];
+      const fitViewCalls: unknown[] = [];
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')] }, { refSink });
+      // rfInstanceRef is the SECOND useRef in DemoCanvas (slot 1):
+      //   slot 0 = wrapperRef
+      //   slot 1 = rfInstanceRef
+      // Inject a fake ReactFlowInstance with a fitView spy. If the ref slot
+      // ordering changes in the future the test will fail loudly because
+      // fitViewCalls stays empty.
+      const stubInstance = {
+        fitView: (opts: unknown) => {
+          fitViewCalls.push(opts);
+        },
+      };
+      const rfRef = refSink[1];
+      if (!rfRef) throw new Error('rfInstanceRef slot not captured');
+      rfRef.current = stubInstance;
+
+      const btn = findByTestId(tree, 'controls-fit-view');
+      if (!btn) throw new Error('Fit View button not found');
+      const onClick = btn.props.onClick as (() => void) | undefined;
+      if (typeof onClick !== 'function') throw new Error('onClick not wired');
+      onClick();
+
+      expect(fitViewCalls.length).toBe(1);
+      expect(fitViewCalls[0]).toEqual({
+        padding: 0.15,
+        duration: 300,
+        includeHiddenNodes: false,
+      });
+    });
+
+    it('clicking Fit View is a no-op when rfInstanceRef has no instance attached', () => {
+      // Defensive: if the canvas mounts and the user clicks Fit View before
+      // onInit fires, the click must not throw. fitView simply doesn't run.
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')] });
+      const btn = findByTestId(tree, 'controls-fit-view');
+      if (!btn) throw new Error('Fit View button not found');
+      const onClick = btn.props.onClick as (() => void) | undefined;
+      if (typeof onClick !== 'function') throw new Error('onClick not wired');
+      expect(() => onClick()).not.toThrow();
+    });
+
+    it('renders Fit View BEFORE Auto Align inside the Controls children (documented order)', () => {
+      // PRD AC: "presence of zoom-in, zoom-out, Fit View, Auto Align buttons
+      // in that order". Zoom-in/zoom-out are owned by xyflow's <Controls>
+      // (showZoom default true). We assert the post-zoom order on OUR
+      // ControlButton children: Fit View, then Auto Align.
+      const tree = callDemoCanvas({ nodes: [makeShapeNode('a')], onTidy: () => {} });
+      const controlsRoot = findElement(tree, (el) =>
+        Boolean((el.props as { showFitView?: unknown }).showFitView !== undefined),
+      );
+      if (!controlsRoot) throw new Error('Controls element not found');
+      const rawChildren = controlsRoot.props.children;
+      const childrenArr = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
+      const testIds: string[] = [];
+      for (const child of childrenArr) {
+        if (
+          child !== null &&
+          typeof child === 'object' &&
+          'props' in (child as { props?: unknown })
+        ) {
+          const id = (child as { props: { 'data-testid'?: unknown } }).props['data-testid'];
+          if (typeof id === 'string') testIds.push(id);
+        }
+      }
+      const fitIdx = testIds.indexOf('controls-fit-view');
+      const tidyIdx = testIds.indexOf('controls-tidy');
+      expect(fitIdx).toBeGreaterThanOrEqual(0);
+      expect(tidyIdx).toBeGreaterThanOrEqual(0);
+      expect(fitIdx).toBeLessThan(tidyIdx);
+    });
+  });
 });

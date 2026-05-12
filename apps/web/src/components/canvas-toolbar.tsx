@@ -1,18 +1,13 @@
 import { IconPickerPopover } from '@/components/icon-picker-popover';
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, LayoutDashboard, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import { Circle, Square, Sticker, StickyNote, Type } from 'lucide-react';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
   activeShape: ShapeKind | null;
   /** Toggles draw mode for the given shape; pass null to exit. */
   onSelectShape: (shape: ShapeKind | null) => void;
-  /**
-   * Run the auto-layout (Tidy) action. When omitted, the Tidy button still
-   * renders but is disabled — used while no demo is loaded.
-   */
-  onTidy?: () => void;
   /**
    * US-013 (icon picker): controlled-open state for the insert-icon popover.
    * The Insert icon button anchors the IconPickerPopover; the toolbar's parent
@@ -46,13 +41,15 @@ export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'text', label: 'Text', Icon: Type },
 ];
 
-const TIDY_LABEL = 'Tidy layout (⌘⇧L)';
 const INSERT_ICON_LABEL = 'Insert icon';
 
+// US-020: the "Tidy layout" (Auto Align) button used to live here, between the
+// shapes and the icon picker. It moved to the bottom-left Controls cluster in
+// demo-canvas.tsx so all canvas-view actions (zoom, fit, auto align) live in
+// one consistent place. The keyboard shortcut (⌘⇧L) is unchanged.
 export function CanvasToolbar({
   activeShape,
   onSelectShape,
-  onTidy,
   iconPickerOpen,
   onOpenIconPicker,
   onCloseIconPicker,
@@ -86,22 +83,6 @@ export function CanvasToolbar({
           </button>
         );
       })}
-      <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
-      <button
-        type="button"
-        data-testid="toolbar-tidy"
-        aria-label={TIDY_LABEL}
-        title={TIDY_LABEL}
-        disabled={!onTidy}
-        onClick={() => onTidy?.()}
-        className={cn(
-          'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-          'hover:bg-accent hover:text-accent-foreground',
-          'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
-        )}
-      >
-        <LayoutDashboard className="h-4 w-4" />
-      </button>
       {onPickIcon ? (
         <>
           <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
