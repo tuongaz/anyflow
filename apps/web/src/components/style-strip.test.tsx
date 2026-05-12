@@ -305,7 +305,7 @@ describe('StyleStrip — iconNode Change-icon button (US-022)', () => {
   });
 });
 
-describe('StyleStrip — active group chrome editor (US-008)', () => {
+describe('StyleStrip — group chrome editor (US-008 + US-012)', () => {
   it('renders the group chrome controls when an isActive group is selected', () => {
     const tree = callStrip({ nodes: [groupNode('g1', { active: true })] });
     // The four chrome controls are the only buttons the group strip needs;
@@ -323,14 +323,66 @@ describe('StyleStrip — active group chrome editor (US-008)', () => {
     expect(findElement(tree, testIdEquals('style-strip-corner-radius'))).toBeNull();
   });
 
-  it('does NOT render the group chrome branch when isActive is absent', () => {
-    // A selected-but-not-entered group should fall through to the shape strip
-    // branch, which filters groups out of visualNodes — net effect: the strip
-    // still mounts (border-color swatch exists for the empty-visualNode case),
-    // but the group-specific test ids never appear.
+  it('US-012: also renders the group chrome controls when isActive is absent', () => {
+    // US-012 loosened the US-008 gate so a single-click (selected-but-not-
+    // entered) group also gets the chrome editor. Same four controls, same
+    // dispatch wiring as the entered state.
     const tree = callStrip({ nodes: [groupNode('g1')] });
-    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).toBeNull();
-    expect(findElement(tree, testIdEquals('style-strip-group-border-width'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-color'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-fill'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-style'))).not.toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-group-border-width'))).not.toBeNull();
+    // Shape-only controls stay hidden — group branch takes over.
+    expect(findElement(tree, testIdEquals('style-strip-border-color'))).toBeNull();
+    expect(findElement(tree, testIdEquals('style-strip-border-size'))).toBeNull();
+  });
+
+  it("US-012: data-group-active is 'false' for a selected-but-not-entered group", () => {
+    // Wrapper carries the entered state as an informational data attribute so
+    // playwright snapshots / future visual hints can branch on it without
+    // forking the editor markup. Inactive group → "false"; active → "true".
+    const tree = callStrip({ nodes: [groupNode('g1')] });
+    const strip = findElement(tree, testIdEquals('canvas-style-strip'));
+    expect(strip).not.toBeNull();
+    expect((strip?.props as { 'data-group-active'?: string })['data-group-active']).toBe('false');
+  });
+
+  it("US-012: data-group-active is 'true' for an entered group (regression pin)", () => {
+    const tree = callStrip({ nodes: [groupNode('g1', { active: true })] });
+    const strip = findElement(tree, testIdEquals('canvas-style-strip'));
+    expect(strip).not.toBeNull();
+    expect((strip?.props as { 'data-group-active'?: string })['data-group-active']).toBe('true');
+  });
+
+  it('US-012: inactive-group edits dispatch onStyleNode with the same patch shape as active', () => {
+    // The point of US-012 is behavioural parity: edits in the inactive state
+    // should be indistinguishable from the active state at the callback layer
+    // so they go through the same PATCH path + share the same coalesce key.
+    const onStyleNodeInactive = mock(() => {});
+    const onStyleNodeActive = mock(() => {});
+
+    const inactiveTree = callStrip({
+      nodes: [groupNode('g1')],
+      onStyleNode: onStyleNodeInactive,
+    });
+    const inactiveSwatch = findElement(
+      inactiveTree,
+      testIdEquals('style-strip-group-border-color'),
+    );
+    if (!inactiveSwatch) throw new Error('inactive group border-color swatch missing');
+    (inactiveSwatch.props as { onSelect: (token: string) => void }).onSelect('blue');
+
+    const activeTree = callStrip({
+      nodes: [groupNode('g1', { active: true })],
+      onStyleNode: onStyleNodeActive,
+    });
+    const activeSwatch = findElement(activeTree, testIdEquals('style-strip-group-border-color'));
+    if (!activeSwatch) throw new Error('active group border-color swatch missing');
+    (activeSwatch.props as { onSelect: (token: string) => void }).onSelect('blue');
+
+    expect(onStyleNodeInactive).toHaveBeenCalledTimes(1);
+    expect(onStyleNodeActive).toHaveBeenCalledTimes(1);
+    expect(onStyleNodeInactive.mock.calls[0]).toEqual(onStyleNodeActive.mock.calls[0]);
   });
 
   it('does NOT render the group chrome branch when the group is mixed with another node', () => {

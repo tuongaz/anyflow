@@ -200,15 +200,19 @@ export function StyleStrip({
   const firstIconNode = pureIconNode
     ? (nodes.find((n) => n.type === 'iconNode') as Extract<DemoNode, { type: 'iconNode' }>)
     : undefined;
-  // US-008: when a single group is selected AND the user has entered it
-  // (data.isActive === true, injected by demo-canvas), the strip collapses to
+  // US-008 + US-012: when a single group is selected, the strip collapses to
   // the group chrome controls (border color, fill, border style, border
-  // width). Edits dispatch via the same onStyleNode path used by shape
-  // styling — the writer applies the patch keys directly to data, and the
-  // group renderer (group-node.tsx) reads them inline via groupChromeStyle.
+  // width). US-012 loosened the gate: the editor now renders for ANY selected
+  // group, not only entered (isActive) ones, so a single click is enough to
+  // edit the chrome. The `data.isActive` flag is still injected by demo-canvas
+  // for the entered group and surfaced via `data-group-active` on the wrapper
+  // (informational hint only; editable controls are identical in both states).
+  // Edits dispatch via the same onStyleNode path used by shape styling —
+  // the writer applies the patch keys directly to data, and the group
+  // renderer (group-node.tsx) reads them inline via groupChromeStyle.
   // Note: groups use `borderWidth` (1–8), NOT `borderSize` like shape nodes.
-  const activeGroupNode =
-    pureNode && nodes.length === 1 && nodes[0]?.type === 'group' && nodes[0].data.isActive === true
+  const selectedGroupNode =
+    pureNode && nodes.length === 1 && nodes[0]?.type === 'group'
       ? (nodes[0] as Extract<DemoNode, { type: 'group' }>)
       : undefined;
   // Text-shape simplification only applies to pure-node selections of a single
@@ -353,14 +357,16 @@ export function StyleStrip({
   const colorTokenPrefix =
     pureConnector || isTextShape ? 'style-tab-color' : 'style-tab-border-color';
 
-  if (activeGroupNode) {
-    // US-008: dedicated branch for an entered (isActive) group. Renders the
+  if (selectedGroupNode) {
+    // US-008 + US-012: dedicated branch for a selected group. Renders the
     // same four chrome controls a shape gets (border color, fill, border
     // style, border width) but writes through `borderWidth` (1–8) instead of
     // `borderSize`. Each control dispatches via onStyleNode on the group's id,
-    // reusing the existing PATCH+undo path (coalesce key `node:<id>:style`).
-    const groupId = activeGroupNode.id;
-    const groupData = activeGroupNode.data;
+    // reusing the existing PATCH+undo path (coalesce key `node:<id>:style`)
+    // — identical wiring whether the group is `isActive` or not (US-012).
+    const groupId = selectedGroupNode.id;
+    const groupData = selectedGroupNode.data;
+    const groupIsActive = groupData.isActive === true;
     const groupBorderColor: ColorToken = groupData.borderColor ?? 'default';
     const groupBackground: ColorToken = groupData.backgroundColor ?? 'default';
     const groupBorderStyle = (groupData.borderStyle ?? 'dashed') as 'solid' | 'dashed' | 'dotted';
@@ -378,7 +384,7 @@ export function StyleStrip({
       <TooltipProvider delayDuration={300}>
         <div
           data-testid="canvas-style-strip"
-          data-group-active="true"
+          data-group-active={groupIsActive ? 'true' : 'false'}
           className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
         >
           <SwatchButton
