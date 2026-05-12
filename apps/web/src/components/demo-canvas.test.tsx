@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  type ClipboardShortcutEventLike,
   DemoCanvas,
   type DemoCanvasProps,
   type GroupShortcutEventLike,
   eventTargetIsOtherNode,
+  handleClipboardShortcut,
   handleGroupShortcut,
 } from '@/components/demo-canvas';
 import {
@@ -1939,6 +1941,280 @@ describe('DemoCanvas', () => {
       // OK; the keystroke is consumed even if no callback is wired (avoids
       // surprise browser behaviour for an obviously canvas-scoped shortcut).
       expect(event.prevented).toBe(true);
+    });
+  });
+
+  // US-022: Cmd/Ctrl + C / Cmd/Ctrl + V shortcut wiring exercised via the
+  // exported `handleClipboardShortcut` helper (mirrors the US-017 pattern).
+  // The actual listener in DemoCanvas is a thin useEffect that forwards into
+  // this helper; the hook-shim test runner doesn't run useEffect, but the
+  // logic under test is the same.
+  describe('US-022: Cmd/Ctrl + C / V copy & paste via handleClipboardShortcut', () => {
+    const makeEvent = (
+      overrides: Partial<ClipboardShortcutEventLike> = {},
+    ): ClipboardShortcutEventLike & { prevented: boolean } => {
+      const ev = {
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        key: 'c',
+        prevented: false,
+        preventDefault() {
+          this.prevented = true;
+        },
+        ...overrides,
+      } as ClipboardShortcutEventLike & { prevented: boolean };
+      return ev;
+    };
+
+    it('copies the current selection on Cmd+C with at least one node selected', () => {
+      // (a) Cmd+C with a selected node calls onCopySelection with the live
+      // selectedNodeIds and preventDefaults the event so the browser doesn't
+      // also try to copy the page text.
+      const event = makeEvent({ metaKey: true, key: 'c' });
+      const copyCalls: string[][] = [];
+      const pasteCalls: number[] = [];
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: false,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+        onPasteSelection: () => pasteCalls.push(1),
+      });
+      expect(handled).toBe(true);
+      expect(event.prevented).toBe(true);
+      expect(copyCalls).toEqual([['n-1']]);
+      expect(pasteCalls).toEqual([]);
+    });
+
+    it('copies multi-select on Cmd+C and forwards all selected ids', () => {
+      // (b-source) 3 selected nodes → onCopySelection sees all three.
+      const event = makeEvent({ metaKey: true, key: 'c' });
+      const copyCalls: string[][] = [];
+      handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1', 'n-2', 'n-3'],
+        hasClipboard: false,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(copyCalls).toEqual([['n-1', 'n-2', 'n-3']]);
+    });
+
+    it('also fires on Ctrl+C (Windows/Linux variant)', () => {
+      const event = makeEvent({ ctrlKey: true, key: 'c' });
+      const copyCalls: string[][] = [];
+      handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: false,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(copyCalls).toEqual([['n-1']]);
+    });
+
+    it('pastes on Cmd+V when the clipboard is populated', () => {
+      // (a-paste, b-paste) Cmd+V with hasClipboard=true calls onPasteSelection.
+      const event = makeEvent({ metaKey: true, key: 'v' });
+      const pasteCalls: number[] = [];
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: true,
+        activeElement: null,
+        onPasteSelection: () => pasteCalls.push(1),
+      });
+      expect(handled).toBe(true);
+      expect(event.prevented).toBe(true);
+      expect(pasteCalls).toEqual([1]);
+    });
+
+    it('also fires on Ctrl+V (Windows/Linux variant)', () => {
+      const event = makeEvent({ ctrlKey: true, key: 'v' });
+      const pasteCalls: number[] = [];
+      handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: true,
+        activeElement: null,
+        onPasteSelection: () => pasteCalls.push(1),
+      });
+      expect(pasteCalls).toEqual([1]);
+    });
+
+    it('no-ops on Cmd+C when the selection is empty (no preventDefault, no callback)', () => {
+      // Lets the browser's native Cmd+C path through (in case the user has
+      // text selected somewhere else on the page).
+      const event = makeEvent({ metaKey: true, key: 'c' });
+      const copyCalls: string[][] = [];
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: false,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+      expect(copyCalls).toEqual([]);
+    });
+
+    it('no-ops on Cmd+V when the clipboard is empty', () => {
+      const event = makeEvent({ metaKey: true, key: 'v' });
+      const pasteCalls: number[] = [];
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: false,
+        activeElement: null,
+        onPasteSelection: () => pasteCalls.push(1),
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+      expect(pasteCalls).toEqual([]);
+    });
+
+    it('no-ops on Cmd+C when focus is in an editable element (InlineEdit / input / textarea)', () => {
+      // (c) Skip when an input is focused so the browser's native text copy
+      // keeps working inside form controls / InlineEdit.
+      const event = makeEvent({ metaKey: true, key: 'c' });
+      const copyCalls: string[][] = [];
+      const fakeInput = { tagName: 'INPUT' } as unknown as Element;
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: false,
+        activeElement: fakeInput,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+      expect(copyCalls).toEqual([]);
+    });
+
+    it('no-ops on Cmd+V when focus is in an editable element', () => {
+      // Same skip applies for paste so the browser's native text paste works
+      // inside textareas / contentEditable surfaces.
+      const event = makeEvent({ metaKey: true, key: 'v' });
+      const pasteCalls: number[] = [];
+      const fakeTextarea = { tagName: 'TEXTAREA' } as unknown as Element;
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: true,
+        activeElement: fakeTextarea,
+        onPasteSelection: () => pasteCalls.push(1),
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+      expect(pasteCalls).toEqual([]);
+    });
+
+    it("no-ops on Shift+Cmd+C (devtools chord shouldn't copy)", () => {
+      const event = makeEvent({ metaKey: true, shiftKey: true, key: 'c' });
+      const copyCalls: string[][] = [];
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: false,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+      expect(copyCalls).toEqual([]);
+    });
+
+    it('no-ops on Cmd+Alt+V (avoid shadowing browser devtools chords)', () => {
+      const event = makeEvent({ metaKey: true, altKey: true, key: 'v' });
+      const pasteCalls: number[] = [];
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: true,
+        activeElement: null,
+        onPasteSelection: () => pasteCalls.push(1),
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+      expect(pasteCalls).toEqual([]);
+    });
+
+    it("no-ops on bare C / V (no modifiers — that's the user typing)", () => {
+      const bare = makeEvent({ key: 'c' });
+      const copyCalls: string[][] = [];
+      const handled = handleClipboardShortcut({
+        event: bare,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: true,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(handled).toBe(false);
+      expect(bare.prevented).toBe(false);
+      expect(copyCalls).toEqual([]);
+    });
+
+    it('no-ops for unrelated chords (Cmd+B, Cmd+S, etc.)', () => {
+      const event = makeEvent({ metaKey: true, key: 'b' });
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: true,
+        activeElement: null,
+        onCopySelection: () => {},
+        onPasteSelection: () => {},
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+    });
+
+    it('returns false without invoking when onCopySelection is missing for Cmd+C', () => {
+      // Defensive: parent might pass undefined onCopySelection (e.g. demoId
+      // not yet resolved). Handler must NOT throw and must NOT preventDefault.
+      const event = makeEvent({ metaKey: true, key: 'c' });
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: false,
+        activeElement: null,
+        // onCopySelection intentionally omitted
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+    });
+
+    it('returns false without invoking when onPasteSelection is missing for Cmd+V', () => {
+      const event = makeEvent({ metaKey: true, key: 'v' });
+      const handled = handleClipboardShortcut({
+        event,
+        selectedNodeIds: [],
+        hasClipboard: true,
+        activeElement: null,
+        // onPasteSelection intentionally omitted
+      });
+      expect(handled).toBe(false);
+      expect(event.prevented).toBe(false);
+    });
+
+    it('accepts uppercase key (e.g. Shift was held; some layouts always uppercase)', () => {
+      // The handler matches case-insensitively so Cmd+Shift+C is rejected by
+      // the shift gate (not by the key), and a layout that always uppercases
+      // the letter when Cmd is held still works. Drive with shift=false + key=C
+      // to exercise the case-folding path.
+      const event = makeEvent({ metaKey: true, key: 'C' });
+      const copyCalls: string[][] = [];
+      handleClipboardShortcut({
+        event,
+        selectedNodeIds: ['n-1'],
+        hasClipboard: false,
+        activeElement: null,
+        onCopySelection: (ids) => copyCalls.push(ids),
+      });
+      expect(copyCalls).toEqual([['n-1']]);
     });
   });
 

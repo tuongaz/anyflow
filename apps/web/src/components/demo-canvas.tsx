@@ -262,6 +262,19 @@ export interface DemoCanvasProps {
    * the menu re-renders on every open via `contextMenuPos` setState. */
   hasClipboard?: boolean;
   /**
+   * US-022: copy every currently-selected node into the in-app clipboard.
+   * Triggered by the Cmd/Ctrl+C keyboard handler owned by this canvas (the
+   * right-click menu still uses the single-id `onCopyNode` above). Receives
+   * the live `selectedNodeIds` array; absent → the shortcut is a no-op.
+   */
+  onCopySelection?: (nodeIds: string[]) => void;
+  /**
+   * US-022: paste the in-app clipboard at a +24,+24 offset (no flowPos —
+   * keyboard pastes don't anchor on the cursor, unlike the right-click
+   * `onPasteAt` above). Absent → the shortcut is a no-op.
+   */
+  onPasteSelection?: () => void;
+  /**
    * Currently selected nodes (with optimistic overrides applied) — drives the
    * canvas style strip's controls and fan-out apply (US-019). Empty when no
    * node is selected.
@@ -702,6 +715,67 @@ export function handleGroupShortcut(deps: GroupShortcutDeps): boolean {
   return true;
 }
 
+/**
+ * US-022: Cmd/Ctrl + C and Cmd/Ctrl + V keyboard handler. Pure function that
+ * consumes a KeyboardEvent-shape, decides on a copy / paste action, and
+ * dispatches to the provided callbacks. Mirrors the `handleGroupShortcut`
+ * shape: exported so demo-canvas.test.tsx can drive the gesture without a
+ * real DOM, and the production wiring is a thin `useEffect` whose body forwards
+ * into this helper. Returns `true` when the event was handled (preventDefault
+ * called + a callback fired), `false` for pass-through (wrong chord, no-op
+ * selection, focus in an editor, etc.).
+ *
+ * Selection-empty (Cmd+C) and clipboard-empty (Cmd+V) cases are no-ops so the
+ * browser's native chord handling can fall through if relevant (e.g. inside
+ * a future paste-on-empty-canvas behavior).
+ */
+export interface ClipboardShortcutEventLike {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  key: string;
+  preventDefault: () => void;
+}
+
+export interface ClipboardShortcutDeps {
+  event: ClipboardShortcutEventLike;
+  selectedNodeIds: readonly string[];
+  hasClipboard: boolean;
+  activeElement: Element | null;
+  onCopySelection?: (nodeIds: string[]) => void;
+  onPasteSelection?: () => void;
+}
+
+export function handleClipboardShortcut(deps: ClipboardShortcutDeps): boolean {
+  const { event, selectedNodeIds, hasClipboard, activeElement, onCopySelection, onPasteSelection } =
+    deps;
+  // Pre-filter: only Cmd/Ctrl chords are candidates. Shift+Cmd+C (devtools)
+  // and Cmd+Alt+V are intentionally NOT synonyms so they fall through to
+  // their native bindings.
+  if (!(event.metaKey || event.ctrlKey)) return false;
+  if (event.shiftKey || event.altKey) return false;
+  const key = event.key.toLowerCase();
+  if (key !== 'c' && key !== 'v') return false;
+  // Skip when focus is in an editable surface so the browser's native
+  // copy/paste of selected text keeps working inside InlineEdit / inputs /
+  // textareas / contentEditable.
+  if (isEditableTarget(activeElement)) return false;
+  if (key === 'c') {
+    if (selectedNodeIds.length === 0) return false;
+    if (!onCopySelection) return false;
+    event.preventDefault();
+    onCopySelection([...selectedNodeIds]);
+    return true;
+  }
+  // key === 'v'
+  if (!hasClipboard) return false;
+  if (!onPasteSelection) return false;
+  event.preventDefault();
+  onPasteSelection();
+  return true;
+}
+
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
   runs?.[id]?.status ?? 'idle';
 
@@ -768,6 +842,8 @@ export function DemoCanvas({
   onCopyNode,
   onPasteAt,
   hasClipboard,
+  onCopySelection,
+  onPasteSelection,
   selectedNodes,
   selectedConnectors,
   onStyleNode,
@@ -1192,6 +1268,27 @@ export function DemoCanvas({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedNodeIds, nodes, onGroupNodes, onUngroupSelection]);
+
+  // US-022: Cmd/Ctrl + C / Cmd/Ctrl + V — copy/paste the current selection.
+  // Mirrors the US-017 pattern: pure helper drives the dispatch, the listener
+  // body is a thin shim. Delegates to `onCopySelection` / `onPasteSelection`
+  // (the same paths the right-click menu's Copy / Paste items use, modulo the
+  // multi-id signature for keyboard copy), so undo plumbing + single-undo-step
+  // + edge filtering come for free from the parent's existing implementation.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      handleClipboardShortcut({
+        event: e,
+        selectedNodeIds,
+        hasClipboard: !!hasClipboard,
+        activeElement: document.activeElement,
+        onCopySelection,
+        onPasteSelection,
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedNodeIds, hasClipboard, onCopySelection, onPasteSelection]);
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!drawShapeRef.current) return;

@@ -30,6 +30,7 @@ import {
   updateNodePosition,
 } from '@/lib/api';
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
+import { buildPastePayload } from '@/lib/clipboard';
 import { captureViewportPng, downloadDataUrl } from '@/lib/export-png';
 import {
   type GroupableNode,
@@ -2403,42 +2404,24 @@ export function DemoView({
   // Paste the clipboard. `flowPos` (when set) anchors the paste at a specific
   // point — used by the right-click menu's "Paste" item which records the
   // cursor's flow-space position. When null (keyboard Ctrl/Cmd+V), every
-  // pasted node is offset by +24,+24 from its original position.
+  // pasted top-level node is offset by +24,+24 from its original position.
+  //
+  // US-022 parent-child preservation: a child whose `parentId` is ALSO in the
+  // copied set is rewired to the new parent id; its (parent-relative) position
+  // is preserved verbatim so it lands at the same offset inside the new parent
+  // (NOT double-translated by the absolute paste offset). Top-level nodes
+  // (no parent, or parent not in the copy set) receive the absolute offset.
   const onPasteNodes = useCallback(
     (flowPos: Position | null) => {
       if (!demoId) return;
       const payload = clipboardRef.current;
       if (!payload || payload.nodes.length === 0) return;
-      // Anchor the paste so flowPos lands on the topmost-leftmost original;
-      // every other pasted node maintains its relative offset to that anchor.
-      let minX = Number.POSITIVE_INFINITY;
-      let minY = Number.POSITIVE_INFINITY;
-      for (const n of payload.nodes) {
-        if (n.position.x < minX) minX = n.position.x;
-        if (n.position.y < minY) minY = n.position.y;
-      }
-      const offsetX = flowPos ? flowPos.x - minX : 24;
-      const offsetY = flowPos ? flowPos.y - minY : 24;
-
-      const idMap = new Map<string, string>();
-      const newNodes: DemoNode[] = payload.nodes.map((n) => {
-        const newId = `node-${crypto.randomUUID()}`;
-        idMap.set(n.id, newId);
-        return {
-          ...n,
-          id: newId,
-          position: { x: n.position.x + offsetX, y: n.position.y + offsetY },
-        } as DemoNode;
-      });
-      const newConnectors: Connector[] = payload.connectors.map((c) => {
-        const newSource = idMap.get(c.source);
-        const newTarget = idMap.get(c.target);
-        return {
-          ...c,
-          id: `conn-${crypto.randomUUID()}`,
-          source: newSource ?? c.source,
-          target: newTarget ?? c.target,
-        } as Connector;
+      const { newNodes, newConnectors } = buildPastePayload<DemoNode, Connector>({
+        nodes: payload.nodes,
+        connectors: payload.connectors,
+        flowPos,
+        nodeIdGen: () => `node-${crypto.randomUUID()}`,
+        connectorIdGen: () => `conn-${crypto.randomUUID()}`,
       });
 
       // Optimistic overrides — render the pasted entities immediately while
@@ -2519,24 +2502,21 @@ export function DemoView({
     ],
   );
 
-  // US-019 keyboard chords:
+  // Keyboard chords routed through `resolveClipboardChord`:
   //   • Cmd+A — select all nodes and connectors (skipped in contenteditable
   //     so InlineEdit's native text-select still works).
-  //   • Cmd+C — copy every selected node (connectors copy implicitly when
-  //     both endpoints are in the node set).
-  //   • Cmd+V — paste at +24,+24 offset; pasted clones become the selection.
   //   • Cmd+D — duplicate (Cmd+C followed by Cmd+V at +24,+24); single
   //     keystroke equivalent to copy+paste.
-  // All four are skipped while focus is in any editable element so the
-  // browser's native chords keep working inside form controls / InlineEdit.
+  // Both are skipped while focus is in any editable element so the browser's
+  // native chords keep working inside form controls / InlineEdit.
+  //
+  // US-022: Cmd+C and Cmd+V are NOT handled here — DemoCanvas owns them via
+  // its own `handleClipboardShortcut` listener (wired through the new
+  // `onCopySelection` / `onPasteSelection` props). The resolver still emits
+  // `copy` / `paste` action types for the Cmd+D path, but the dispatcher
+  // ignores them when they arrive standalone — the canvas's listener fires
+  // first via window-event ordering and already drove the action.
   useEffect(() => {
-    // US-020: the chord rules live in `resolveClipboardChord` (pure resolver in
-    // lib/keyboard-shortcuts.ts) so the dispatcher here stays trivial and the
-    // rules are unit-testable without rendering DemoView. Selection ids and
-    // clipboard state are read from refs so the listener doesn't re-bind on
-    // every selection change (US-010 deferred the parent's onSelectionChange
-    // to onSelectionEnd for marquee perf; the refs are still synchronously
-    // updated by the parent state's useEffect on every render).
     const handler = (e: KeyboardEvent) => {
       const action = resolveClipboardChord({
         event: e,
@@ -2547,22 +2527,17 @@ export function DemoView({
         hasClipboard: !!clipboardRef.current,
       });
       if (action.type === 'noop') return;
+      // US-022: copy / paste are owned by the canvas; skip them here to avoid
+      // double-firing. The canvas listener already handled the event.
+      if (action.type === 'copy' || action.type === 'paste') return;
       e.preventDefault();
       if (action.type === 'selectAll') {
         setSelectedIds((demoNodes ?? []).map((n) => n.id));
         setSelectedConnectorIds((demoConnectors ?? []).map((c) => c.id));
         return;
       }
-      if (action.type === 'copy') {
-        onCopyNodes([...action.ids]);
-        return;
-      }
-      if (action.type === 'duplicate') {
-        onCopyNodes([...action.ids]);
-        onPasteNodes(null);
-        return;
-      }
-      // paste
+      // duplicate (Cmd+D) — chain copy+paste in one keystroke.
+      onCopyNodes([...action.ids]);
       onPasteNodes(null);
     };
     window.addEventListener('keydown', handler);
@@ -3211,6 +3186,8 @@ export function DemoView({
           onToggleNodeLock={demoId ? onToggleNodeLock : undefined}
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
+          onCopySelection={demoId ? onCopyNodes : undefined}
+          onPasteSelection={demoId ? () => onPasteNodes(null) : undefined}
           onGroupNodes={demoId ? groupNodes : undefined}
           onUngroupSelection={demoId ? ungroupSelectedGroups : undefined}
           hasClipboard={hasClipboard}
