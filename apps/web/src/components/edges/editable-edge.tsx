@@ -2,6 +2,7 @@ import { InlineEdit } from '@/components/inline-edit';
 import type { ConnectorPath, EdgePin } from '@/lib/api';
 import {
   type Endpoint,
+  type FloatingRect,
   type Pin,
   type Side,
   projectCursorToPerimeter,
@@ -97,10 +98,26 @@ export type EditableEdgeData = {
   reconnectable?: boolean;
   /**
    * US-007: persist a new perimeter pin for the named endpoint. Called on
-   * pointer-up at the end of a pin-drag gesture; the parent is responsible
-   * for the optimistic override + PATCH + undo entry.
+   * pointer-up at the end of a pin-drag gesture when the endpoint was
+   * released over the SAME node it was already attached to. The parent is
+   * responsible for the optimistic override + PATCH + undo entry.
    */
   onPinEndpoint?: (id: string, kind: 'source' | 'target', pin: Pin) => void;
+  /**
+   * Reattach the named endpoint to a different node AND pin it on that
+   * node's perimeter. Called on pointer-up at the end of a pin-drag gesture
+   * when the cursor was released over a node OTHER than the one the
+   * endpoint was attached to. The parent is responsible for rejecting
+   * invalid targets (text shapes, same-node-as-other-endpoint), the
+   * optimistic override, PATCH (source/target + handle clear + autoPicked
+   * + pin in one go), and the undo entry.
+   */
+  onReconnectEndpointToNode?: (
+    id: string,
+    kind: 'source' | 'target',
+    newNodeId: string,
+    pin: Pin,
+  ) => void;
   /**
    * US-007: open the endpoint context menu (Unpin item) at the cursor.
    * `pinned` lets the canvas gate the Unpin item's visibility without
@@ -164,7 +181,7 @@ export function EditableEdge({
   // endpoint along the perimeter in real time without any rerouter machinery.
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getInternalNode } = useReactFlow();
 
   // US-007: local preview pins, set per-frame while the user is dragging the
   // endpoint dot. Override `data.sourcePin` / `data.targetPin` for the
@@ -172,14 +189,44 @@ export function EditableEdge({
   // without round-tripping through the parent + PATCH on every mousemove.
   // On pointer-up we clear the local state and the parent's optimistic
   // override takes over until the SSE echo of the PATCH arrives.
-  const [dragPin, setDragPin] = useState<{ kind: 'source' | 'target'; pin: Pin } | null>(null);
+  //
+  // `nodeId` is the node the preview should anchor against. While the user
+  // drags the cursor across nodes it switches to the hovered node so the
+  // edge visibly reattaches in real time; on pointer-up over a foreign node
+  // we dispatch `onReconnectEndpointToNode` rather than `onPinEndpoint`.
+  const [dragPreview, setDragPreview] = useState<{
+    kind: 'source' | 'target';
+    nodeId: string;
+    pin: Pin;
+  } | null>(null);
 
   const dataSourcePin = data?.sourcePin;
   const dataTargetPin = data?.targetPin;
-  const effectiveSourcePin =
-    dragPin?.kind === 'source' ? dragPin.pin : (dataSourcePin as Pin | undefined);
-  const effectiveTargetPin =
-    dragPin?.kind === 'target' ? dragPin.pin : (dataTargetPin as Pin | undefined);
+  // Live preview pin only applies when the drag is still anchored on the
+  // edge's own endpoint node — a drag onto a different node is rendered by
+  // swapping the box below, not by overriding the pin against the original
+  // box (which would draw the preview on the wrong rectangle).
+  const sourceDragOnSelf = dragPreview?.kind === 'source' && dragPreview.nodeId === source;
+  const targetDragOnSelf = dragPreview?.kind === 'target' && dragPreview.nodeId === target;
+  const effectiveSourcePin = sourceDragOnSelf
+    ? dragPreview.pin
+    : (dataSourcePin as Pin | undefined);
+  const effectiveTargetPin = targetDragOnSelf
+    ? dragPreview.pin
+    : (dataTargetPin as Pin | undefined);
+
+  // Live preview against a different node: swap the source/target node used
+  // for box geometry to the hovered one, and feed the preview pin through.
+  // resolveEdgeEndpoints prefers `pin` over autoPicked/floating, so the dot
+  // tracks the cursor against the new node's perimeter.
+  const sourceForeignDrag =
+    dragPreview?.kind === 'source' && dragPreview.nodeId !== source ? dragPreview : null;
+  const targetForeignDrag =
+    dragPreview?.kind === 'target' && dragPreview.nodeId !== target ? dragPreview : null;
+  const sourceForeignNode = sourceForeignDrag ? getInternalNode(sourceForeignDrag.nodeId) : null;
+  const targetForeignNode = targetForeignDrag ? getInternalNode(targetForeignDrag.nodeId) : null;
+  const sourceRenderNode = sourceForeignNode ?? sourceNode;
+  const targetRenderNode = targetForeignNode ?? targetNode;
 
   const sourceFallback: Endpoint = {
     x: sourceX,
@@ -192,29 +239,29 @@ export function EditableEdge({
     side: sideFromPosition(targetPosition),
   };
   const endpoints = resolveEdgeEndpoints(
-    sourceNode
+    sourceRenderNode
       ? {
           box: {
-            x: sourceNode.internals.positionAbsolute.x,
-            y: sourceNode.internals.positionAbsolute.y,
-            w: sourceNode.measured.width ?? sourceNode.width ?? 0,
-            h: sourceNode.measured.height ?? sourceNode.height ?? 0,
+            x: sourceRenderNode.internals.positionAbsolute.x,
+            y: sourceRenderNode.internals.positionAbsolute.y,
+            w: sourceRenderNode.measured.width ?? sourceRenderNode.width ?? 0,
+            h: sourceRenderNode.measured.height ?? sourceRenderNode.height ?? 0,
           },
           autoPicked: data?.sourceHandleAutoPicked,
-          pin: effectiveSourcePin,
+          pin: sourceForeignDrag ? sourceForeignDrag.pin : effectiveSourcePin,
           fallback: sourceFallback,
         }
       : null,
-    targetNode
+    targetRenderNode
       ? {
           box: {
-            x: targetNode.internals.positionAbsolute.x,
-            y: targetNode.internals.positionAbsolute.y,
-            w: targetNode.measured.width ?? targetNode.width ?? 0,
-            h: targetNode.measured.height ?? targetNode.height ?? 0,
+            x: targetRenderNode.internals.positionAbsolute.x,
+            y: targetRenderNode.internals.positionAbsolute.y,
+            w: targetRenderNode.measured.width ?? targetRenderNode.width ?? 0,
+            h: targetRenderNode.measured.height ?? targetRenderNode.height ?? 0,
           },
           autoPicked: data?.targetHandleAutoPicked,
-          pin: effectiveTargetPin,
+          pin: targetForeignDrag ? targetForeignDrag.pin : effectiveTargetPin,
           fallback: targetFallback,
         }
       : null,
@@ -272,59 +319,106 @@ export function EditableEdge({
   // the gesture.
   const showEndpointDots = data?.reconnectable === true;
   const onPinEndpoint = data?.onPinEndpoint;
+  const onReconnectEndpointToNode = data?.onReconnectEndpointToNode;
   const onEndpointContextMenu = data?.onEndpointContextMenu;
 
-  // US-007: per-endpoint pin-drag handler. Captures the source/target node's
-  // current bbox on pointer-down (re-read on every mousemove so the pin
-  // tracks a node that drags concurrently), projects the cursor onto the
-  // perimeter, and updates `dragPin` every frame. On pointer-up the final
-  // pin is persisted via `data.onPinEndpoint`; the local state is cleared
-  // so the parent's optimistic override drives the rendered position until
-  // the SSE echo arrives.
+  // US-007 / endpoint reattach: per-endpoint pin-drag handler. On each
+  // mousemove we hit-test the cursor: if it lies over a node OTHER than the
+  // one this endpoint is attached to (and not the OTHER endpoint's node —
+  // that would create a self-loop), we project against the hovered node's
+  // bbox so the live edge reattaches to it. Releasing then either pins
+  // (same node) or reattaches+pins (different node).
   //
   // The handler is bound to the visible dot's `onMouseDown`. We use document-
   // level mousemove/mouseup so the gesture survives the cursor leaving the
   // dot's bbox (the user is dragging an endpoint, not the dot itself).
-  // `latestPinRef` carries the per-frame pin out of the move callback into
+  // `latestRef` carries the per-frame state out of the move callback into
   // mouseup since closures over state would read the stale initial value.
-  const latestPinRef = useRef<Pin | null>(null);
+  const latestRef = useRef<{ nodeId: string; pin: Pin } | null>(null);
   const onPinDragStart = useCallback(
     (kind: 'source' | 'target') => (e: ReactMouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
-      if (!onPinEndpoint) return;
-      const node = kind === 'source' ? sourceNode : targetNode;
-      if (!node) return;
+      // Either callback enables the drag — same-node releases need
+      // onPinEndpoint, cross-node releases need onReconnectEndpointToNode.
+      // Without either the drag is inert.
+      if (!onPinEndpoint && !onReconnectEndpointToNode) return;
+      const ownNodeId = kind === 'source' ? source : target;
+      const otherEndpointNodeId = kind === 'source' ? target : source;
+      const ownNode = getInternalNode(ownNodeId);
+      if (!ownNode) return;
       e.preventDefault();
       e.stopPropagation();
-      latestPinRef.current = null;
+      latestRef.current = null;
 
-      const readBox = () => ({
-        x: node.internals.positionAbsolute.x,
-        y: node.internals.positionAbsolute.y,
-        w: node.measured.width ?? node.width ?? 0,
-        h: node.measured.height ?? node.height ?? 0,
-      });
+      const boxFromNode = (n: ReturnType<typeof getInternalNode>): FloatingRect | null => {
+        if (!n) return null;
+        return {
+          x: n.internals.positionAbsolute.x,
+          y: n.internals.positionAbsolute.y,
+          w: n.measured.width ?? n.width ?? 0,
+          h: n.measured.height ?? n.height ?? 0,
+        };
+      };
+
+      // Walk elementsFromPoint and return the topmost `.react-flow__node`
+      // wrapper id under the cursor, or null. The endpoint dot itself isn't
+      // inside a node (it's portal-rendered in the viewport), so the dot
+      // won't shadow the node beneath the cursor.
+      const nodeIdAt = (clientX: number, clientY: number): string | null => {
+        const stack = document.elementsFromPoint(clientX, clientY);
+        for (const el of stack) {
+          const nodeEl = (el as HTMLElement).closest?.('.react-flow__node');
+          if (nodeEl) return nodeEl.getAttribute('data-id');
+        }
+        return null;
+      };
 
       const onMove = (ev: MouseEvent) => {
         const flow = screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-        const pin = projectCursorToPerimeter(readBox(), flow);
-        latestPinRef.current = pin;
-        setDragPin({ kind, pin });
+        const hoveredId = nodeIdAt(ev.clientX, ev.clientY);
+        // Reattach only when the hovered node is a different node AND not
+        // the other endpoint's node (rejecting same-node-as-other-endpoint
+        // here avoids drawing a self-loop preview; the parent re-checks on
+        // commit). Otherwise stay on the own node and treat the gesture as
+        // a perimeter-pin slide.
+        const targetNodeId =
+          hoveredId && hoveredId !== ownNodeId && hoveredId !== otherEndpointNodeId
+            ? hoveredId
+            : ownNodeId;
+        const hoveredNode = targetNodeId === ownNodeId ? ownNode : getInternalNode(targetNodeId);
+        const box = boxFromNode(hoveredNode);
+        if (!box) return;
+        const pin = projectCursorToPerimeter(box, flow);
+        latestRef.current = { nodeId: targetNodeId, pin };
+        setDragPreview({ kind, nodeId: targetNodeId, pin });
       };
 
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        const finalPin = latestPinRef.current;
-        latestPinRef.current = null;
-        setDragPin(null);
-        if (finalPin) onPinEndpoint(id, kind, finalPin);
+        const final = latestRef.current;
+        latestRef.current = null;
+        setDragPreview(null);
+        if (!final) return;
+        if (final.nodeId === ownNodeId) {
+          onPinEndpoint?.(id, kind, final.pin);
+        } else {
+          onReconnectEndpointToNode?.(id, kind, final.nodeId, final.pin);
+        }
       };
 
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     },
-    [id, onPinEndpoint, sourceNode, targetNode, screenToFlowPosition],
+    [
+      id,
+      source,
+      target,
+      onPinEndpoint,
+      onReconnectEndpointToNode,
+      getInternalNode,
+      screenToFlowPosition,
+    ],
   );
 
   const onDotContextMenu = useCallback(
@@ -355,7 +449,7 @@ export function EditableEdge({
           <div
             data-testid={`edge-endpoint-source-${id}`}
             data-pinned={sourcePinned ? 'true' : 'false'}
-            data-dragging={dragPin?.kind === 'source' ? 'true' : 'false'}
+            data-dragging={dragPreview?.kind === 'source' ? 'true' : 'false'}
             className="anydemo-connector-endpoint-dot"
             style={{
               transform: `translate(-50%, -50%) translate(${sX}px, ${sY}px)`,
@@ -366,7 +460,7 @@ export function EditableEdge({
           <div
             data-testid={`edge-endpoint-target-${id}`}
             data-pinned={targetPinned ? 'true' : 'false'}
-            data-dragging={dragPin?.kind === 'target' ? 'true' : 'false'}
+            data-dragging={dragPreview?.kind === 'target' ? 'true' : 'false'}
             className="anydemo-connector-endpoint-dot"
             style={{
               transform: `translate(-50%, -50%) translate(${tX}px, ${tY}px)`,

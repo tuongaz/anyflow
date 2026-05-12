@@ -2707,14 +2707,16 @@ export function DemoView({
         targetHandle?: string | null;
         sourceHandleAutoPicked?: boolean;
         targetHandleAutoPicked?: boolean;
+        sourcePin?: EdgePin | null;
+        targetPin?: EdgePin | null;
       },
     ) => {
       if (!demoId) return;
       const conn = demoConnectors?.find((c) => c.id === connId);
-      // Capture all four endpoint fields so undo can reset whichever side(s)
+      // Capture every endpoint-shape field so undo can reset whichever side(s)
       // moved (and leave the unchanged side at its original value). The
-      // auto-picked flags are also captured so an undone reroute restores
-      // the prior auto/pinned state.
+      // auto-picked flags and pin coords are also captured so an undone
+      // reroute restores the prior float/pin/handle state.
       const prev = conn
         ? {
             source: conn.source,
@@ -2723,6 +2725,11 @@ export function DemoView({
             targetHandle: conn.targetHandle,
             sourceHandleAutoPicked: conn.sourceHandleAutoPicked,
             targetHandleAutoPicked: conn.targetHandleAutoPicked,
+            // `null` is the clear-on-disk signal; if the prior connector had
+            // no pin we send null on undo so any pin written by the redo step
+            // is removed. Mirrors the unpin path's wire format.
+            sourcePin: (conn.sourcePin ?? null) as EdgePin | null,
+            targetPin: (conn.targetPin ?? null) as EdgePin | null,
           }
         : null;
       // Optimistic override: convert wire-format `null` (clear-on-disk
@@ -2742,6 +2749,12 @@ export function DemoView({
           : {}),
         ...(patch.targetHandleAutoPicked !== undefined
           ? { targetHandleAutoPicked: patch.targetHandleAutoPicked }
+          : {}),
+        ...(patch.sourcePin !== undefined
+          ? { sourcePin: patch.sourcePin === null ? undefined : patch.sourcePin }
+          : {}),
+        ...(patch.targetPin !== undefined
+          ? { targetPin: patch.targetPin === null ? undefined : patch.targetPin }
           : {}),
       };
       setConnectorOverride(connId, optimistic);

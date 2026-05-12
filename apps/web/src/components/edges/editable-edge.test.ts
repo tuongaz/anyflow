@@ -72,3 +72,61 @@ describe('US-015: connector label paints above edge line', () => {
     expect(src).toMatch(/:\s*editable\s*\?[\s\S]*?:\s*null/);
   });
 });
+
+// Endpoint-dot drag must support reattaching the dragged endpoint to a
+// DIFFERENT node, not just sliding along the current node's perimeter. The
+// hit-test walks elementsFromPoint each mousemove and, when the cursor lies
+// over a foreign node, the live preview anchors against that node and
+// pointer-up dispatches onReconnectEndpointToNode (rather than onPinEndpoint).
+// Two source-level invariants pin the behaviour:
+//
+//   1. The drag move handler reads the node under the cursor via
+//      `elementsFromPoint` + `.closest('.react-flow__node')`. Without this,
+//      the cursor can never escape the original node's box.
+//
+//   2. The pointer-up branch dispatches `onReconnectEndpointToNode` when the
+//      finalized drag target is a different node from the endpoint's own
+//      node. A single same-node dispatcher (`onPinEndpoint` only) would
+//      collapse the foreign-node case back to a perimeter-pin.
+describe('endpoint-dot drag reattaches to a different node', () => {
+  it('move handler hit-tests elementsFromPoint for the cursor node', () => {
+    const src = readFileSync(editableEdgePath, 'utf-8');
+    // The drag move callback must look up which node lies under the cursor
+    // — without this lookup the gesture stays clamped to the original node.
+    expect(src).toMatch(/document\.elementsFromPoint/);
+    expect(src).toMatch(/\.closest\?\.\(['"]\.react-flow__node['"]\)/);
+  });
+
+  it('drag preview state carries the destination node id, not just the pin', () => {
+    const src = readFileSync(editableEdgePath, 'utf-8');
+    // The state shape must include `nodeId` so the renderer can swap the
+    // bbox used for resolveEdgeEndpoints when the cursor crosses onto a
+    // foreign node. A `{ kind, pin }`-only shape would lose the
+    // information needed to render the preview against the new node.
+    expect(src).toMatch(/setDragPreview\(\{\s*kind,\s*nodeId:\s*\w+,\s*pin\s*\}\)/);
+    // And the useState shape itself must declare the nodeId field.
+    expect(src).toMatch(/useState<\{[\s\S]*?nodeId:\s*string;[\s\S]*?pin:\s*Pin/);
+  });
+
+  it('pointer-up dispatches onReconnectEndpointToNode when the target node differs', () => {
+    const src = readFileSync(editableEdgePath, 'utf-8');
+    // The pointer-up branch must call onReconnectEndpointToNode when the
+    // final drop is over a foreign node — without this, the gesture
+    // silently degrades to a same-node pin.
+    expect(src).toMatch(
+      /onReconnectEndpointToNode\?\.\(id,\s*kind,\s*final\.nodeId,\s*final\.pin\)/,
+    );
+    // …and call onPinEndpoint for the same-node branch (the perimeter-pin
+    // affordance still works).
+    expect(src).toMatch(/onPinEndpoint\?\.\(id,\s*kind,\s*final\.pin\)/);
+  });
+
+  it('move handler rejects the other endpoint node (no self-loop preview)', () => {
+    const src = readFileSync(editableEdgePath, 'utf-8');
+    // Dragging the source endpoint onto the target node (or vice versa)
+    // would create a self-loop. The preview path must refuse to switch to
+    // the other endpoint's node so the user can't even visually flick
+    // onto it.
+    expect(src).toMatch(/otherEndpointNodeId/);
+  });
+});

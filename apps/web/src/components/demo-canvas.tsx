@@ -33,7 +33,7 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
-import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
+import type { Connector, DemoNode, EdgePin, ReorderOp, ShapeKind } from '@/lib/api';
 import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { type GroupableNode, planGroupShortcutAction, selectUngroupableSet } from '@/lib/group-ops';
@@ -218,6 +218,13 @@ export interface DemoCanvasProps {
       targetHandle?: string | null;
       sourceHandleAutoPicked?: boolean;
       targetHandleAutoPicked?: boolean;
+      /**
+       * Reattach-and-pin (endpoint-dot drag onto a different node): set
+       * alongside `source`/`target` so the new perimeter pin lands in a
+       * single PATCH + undo entry. `null` clears any prior pin on disk.
+       */
+      sourcePin?: EdgePin | null;
+      targetPin?: EdgePin | null;
     },
   ) => void;
   /**
@@ -2270,6 +2277,49 @@ export function DemoCanvas({
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   }, []);
 
+  // Endpoint-dot drag onto a different node (editable-edge fires this on
+  // pointer-up when the cursor crossed onto a foreign node mid-drag). We
+  // reattach the dragged side AND pin it on the new node's perimeter in a
+  // single PATCH so undo carries one entry per gesture. editable-edge's
+  // mousemove already rejects the other-endpoint-node and stays on the own
+  // node when the cursor is over empty pane; here we re-validate the drop
+  // against the text-shape rejection invariant (US-004 — text nodes can
+  // never be an endpoint), reading from `rfNodesRef.current` so the freshly-
+  // dropped node's data.shape is visible even if it hasn't echoed through
+  // the `nodes` prop yet.
+  const handleReconnectEndpointToNode = useCallback(
+    (connId: string, kind: 'source' | 'target', newNodeId: string, pin: EdgePin) => {
+      if (!onReconnectConnector) return;
+      const edge = rfEdgesRef.current.find((e) => e.id === connId);
+      if (!edge) return;
+      if (kind === 'source' && newNodeId === edge.target) return;
+      if (kind === 'target' && newNodeId === edge.source) return;
+      const newNode = rfNodesRef.current.find((n) => n.id === newNodeId);
+      if (
+        newNode?.type === 'shapeNode' &&
+        (newNode.data as { shape?: ShapeKind }).shape === 'text'
+      ) {
+        return;
+      }
+      if (kind === 'source') {
+        onReconnectConnector(connId, {
+          source: newNodeId,
+          sourceHandle: null,
+          sourceHandleAutoPicked: true,
+          sourcePin: pin,
+        });
+      } else {
+        onReconnectConnector(connId, {
+          target: newNodeId,
+          targetHandle: null,
+          targetHandleAutoPicked: true,
+          targetPin: pin,
+        });
+      }
+    },
+    [onReconnectConnector],
+  );
+
   const reconnectableEdges = !!onReconnectConnector;
   // Reconnect endpoint handles are only useful when EXACTLY one connector is
   // selected — multi-select disables endpoint-drag (drag would re-route just
@@ -2313,6 +2363,7 @@ export function DemoCanvas({
           onLabelChange: onConnectorLabelChange,
           reconnectable: enableReconnect,
           onPinEndpoint,
+          onReconnectEndpointToNode: handleReconnectEndpointToNode,
           onEndpointContextMenu: handleEndpointContextMenu,
           // US-018: stable callback (useCallback with empty deps) so the
           // memoized edge cache key doesn't churn.
@@ -2353,6 +2404,7 @@ export function DemoCanvas({
     onConnectorLabelChange,
     reconnectableEdges,
     onPinEndpoint,
+    handleReconnectEndpointToNode,
     handleEndpointContextMenu,
     registerEditHandle,
     parentIdById,
