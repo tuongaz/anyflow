@@ -2277,49 +2277,6 @@ export function DemoCanvas({
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   }, []);
 
-  // Endpoint-dot drag onto a different node (editable-edge fires this on
-  // pointer-up when the cursor crossed onto a foreign node mid-drag). We
-  // reattach the dragged side AND pin it on the new node's perimeter in a
-  // single PATCH so undo carries one entry per gesture. editable-edge's
-  // mousemove already rejects the other-endpoint-node and stays on the own
-  // node when the cursor is over empty pane; here we re-validate the drop
-  // against the text-shape rejection invariant (US-004 — text nodes can
-  // never be an endpoint), reading from `rfNodesRef.current` so the freshly-
-  // dropped node's data.shape is visible even if it hasn't echoed through
-  // the `nodes` prop yet.
-  const handleReconnectEndpointToNode = useCallback(
-    (connId: string, kind: 'source' | 'target', newNodeId: string, pin: EdgePin) => {
-      if (!onReconnectConnector) return;
-      const edge = rfEdgesRef.current.find((e) => e.id === connId);
-      if (!edge) return;
-      if (kind === 'source' && newNodeId === edge.target) return;
-      if (kind === 'target' && newNodeId === edge.source) return;
-      const newNode = rfNodesRef.current.find((n) => n.id === newNodeId);
-      if (
-        newNode?.type === 'shapeNode' &&
-        (newNode.data as { shape?: ShapeKind }).shape === 'text'
-      ) {
-        return;
-      }
-      if (kind === 'source') {
-        onReconnectConnector(connId, {
-          source: newNodeId,
-          sourceHandle: null,
-          sourceHandleAutoPicked: true,
-          sourcePin: pin,
-        });
-      } else {
-        onReconnectConnector(connId, {
-          target: newNodeId,
-          targetHandle: null,
-          targetHandleAutoPicked: true,
-          targetPin: pin,
-        });
-      }
-    },
-    [onReconnectConnector],
-  );
-
   const reconnectableEdges = !!onReconnectConnector;
   // Reconnect endpoint handles are only useful when EXACTLY one connector is
   // selected — multi-select disables endpoint-drag (drag would re-route just
@@ -2352,19 +2309,15 @@ export function DemoCanvas({
       const gated: Edge = gatedByGroup ? { ...next, selectable: false } : next;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
-      // US-024: also pass `reconnectable` so the edge component knows when
-      // to render the visible portal endpoint dots. US-007: inject the
-      // pin-drag persistence callback and the endpoint-right-click handler
-      // so editable-edge can stay free of canvas state.
+      // US-024: `reconnectable` tells the edge component to render the
+      // visible (non-interactive) endpoint dots above other nodes; React
+      // Flow's native EdgeUpdateAnchors handle the actual drag.
       return {
         ...gated,
         data: {
           ...gated.data,
           onLabelChange: onConnectorLabelChange,
           reconnectable: enableReconnect,
-          onPinEndpoint,
-          onReconnectEndpointToNode: handleReconnectEndpointToNode,
-          onEndpointContextMenu: handleEndpointContextMenu,
           // US-018: stable callback (useCallback with empty deps) so the
           // memoized edge cache key doesn't churn.
           registerEditHandle,
@@ -2403,9 +2356,6 @@ export function DemoCanvas({
     connectorOverrides,
     onConnectorLabelChange,
     reconnectableEdges,
-    onPinEndpoint,
-    handleReconnectEndpointToNode,
-    handleEndpointContextMenu,
     registerEditHandle,
     parentIdById,
     activeGroupId,

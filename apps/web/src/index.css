@@ -369,13 +369,11 @@ button:disabled {
  * Uses the shared --anydemo-handle-* tokens so visuals stay identical to
  * the node outlet dots — same diameter, fill, and border.
  *
- * US-007: the dot is the click target for the perimeter pin-drag gesture.
- * Mousedown on the dot starts a drag that clamps the endpoint to the
- * connected node's perimeter (no detachment). Right-click on a *pinned*
- * dot opens an "Unpin" context menu item. Pinned dots get the
- * `--pinned` modifier (filled with the accent color) so the user can tell
- * pinned and unpinned endpoints apart at a glance. Cursor is `grab`
- * (idle) / `grabbing` (mid-drag) so the affordance reads as draggable. */
+ * The dot is purely visual: `pointer-events: none` lets clicks pass
+ * through to React Flow's native EdgeUpdateAnchors that sit at the same
+ * position and drive the free-floating reconnect drag. Pinned dots get a
+ * primary-color fill so the user can tell pinned and unpinned endpoints
+ * apart at a glance. */
 .anydemo-connector-endpoint-dot {
   position: absolute;
   width: var(--anydemo-handle-size);
@@ -383,15 +381,11 @@ button:disabled {
   background: var(--anydemo-handle-fill);
   border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color);
   border-radius: 50%;
-  pointer-events: auto;
-  cursor: grab;
+  pointer-events: none;
   z-index: 2000;
 }
 .anydemo-connector-endpoint-dot[data-pinned="true"] {
   background: hsl(var(--primary));
-}
-.anydemo-connector-endpoint-dot[data-dragging="true"] {
-  cursor: grabbing;
 }
 
 /* Connection-in-progress overrides (US-017).
