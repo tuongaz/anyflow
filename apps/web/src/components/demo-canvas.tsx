@@ -36,7 +36,12 @@ import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, ReorderOp, ShapeKind } from '@/lib/api';
 import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
-import { type GroupableNode, selectGroupableSet, selectUngroupableSet } from '@/lib/group-ops';
+import {
+  type GroupableNode,
+  planGroupShortcutAction,
+  selectGroupableSet,
+  selectUngroupableSet,
+} from '@/lib/group-ops';
 import { scaleNodesWithinRect } from '@/lib/scale-nodes';
 import { cn } from '@/lib/utils';
 import {
@@ -632,6 +637,69 @@ const isEditableTarget = (el: Element | null): boolean => {
   return el instanceof HTMLElement && el.isContentEditable;
 };
 
+/**
+ * US-017: Cmd/Ctrl + G keyboard handler — pure function that consumes a
+ * KeyboardEvent-shape, decides on a group/ungroup action via
+ * `planGroupShortcutAction`, and dispatches to the provided callbacks. Exported
+ * so demo-canvas.test.tsx can drive the gesture without a real DOM (Bun's
+ * test env has no `window` / `KeyboardEvent`). Returns `true` when the event
+ * was handled (i.e. preventDefault was called and a callback fired), `false`
+ * for pass-through (wrong key, no-op selection, focus in an editor, etc.).
+ *
+ * Why pure: the production wiring lives in a `useEffect` that registers a
+ * window keydown listener; the effect body is just `handleGroupShortcut(...)`.
+ * The hook-shim test runner in demo-canvas.test.tsx makes `useEffect` a no-op,
+ * so the only way to exercise the handler under tests is to call it directly
+ * with synthetic deps — which is also better unit-isolation.
+ */
+export interface GroupShortcutEventLike {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  key: string;
+  preventDefault: () => void;
+}
+
+export interface GroupShortcutDeps {
+  event: GroupShortcutEventLike;
+  selectedNodeIds: readonly string[];
+  nodes: readonly GroupableNode[];
+  activeElement: Element | null;
+  onGroupNodes?: (selectedNodeIds: string[]) => void;
+  onUngroupSelection?: (selectedNodeIds: string[]) => void;
+}
+
+export function handleGroupShortcut(deps: GroupShortcutDeps): boolean {
+  const { event, selectedNodeIds, nodes, activeElement, onGroupNodes, onUngroupSelection } = deps;
+  // Bail before any work when this isn't the shortcut — pre-filter keeps the
+  // hot path cheap for every other keystroke. macOS uses metaKey, Win/Linux
+  // ctrlKey; either flips the gate (Shift+G is intentionally NOT a synonym).
+  if (!(event.metaKey || event.ctrlKey)) return false;
+  if (event.key !== 'g' && event.key !== 'G') return false;
+  // Don't fire when focus is in a text input / contenteditable — the user is
+  // typing, and Cmd+G may also map to a browser-native "Find next" binding
+  // inside form controls we don't own.
+  if (isEditableTarget(activeElement)) return false;
+
+  const plan = planGroupShortcutAction(selectedNodeIds, nodes);
+  if (plan.kind === 'none') {
+    // Visibility hint for devs trying to figure out why the shortcut "did
+    // nothing". console.debug is filtered out at default verbosity in
+    // production browsers, so this is silent for users.
+    console.debug('Cmd/Ctrl+G no-op:', plan.reason);
+    return false;
+  }
+  event.preventDefault();
+  if (plan.kind === 'group') {
+    if (!onGroupNodes) return false;
+    onGroupNodes([...selectedNodeIds]);
+    return true;
+  }
+  // plan.kind === 'ungroup'
+  if (!onUngroupSelection) return false;
+  onUngroupSelection(plan.groupIds);
+  return true;
+}
+
 const statusFor = (runs: NodeRuns | undefined, id: string): NodeStatus =>
   runs?.[id]?.status ?? 'idle';
 
@@ -1100,6 +1168,28 @@ export function DemoCanvas({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [exitDrawMode]);
+
+  // US-017: Cmd/Ctrl + G — toggle grouping on the current selection. The
+  // pure planner + handler live as module-level exports above so tests can
+  // drive the gesture without a DOM; the listener body is a thin shim that
+  // captures the current props and forwards them. The handler delegates to
+  // the same `onGroupNodes` / `onUngroupSelection` callbacks the right-click
+  // menu uses (US-012 / US-013), so undo plumbing + single-undo-step + edge
+  // preservation come for free.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      handleGroupShortcut({
+        event: e,
+        selectedNodeIds,
+        nodes: nodes as GroupableNode[],
+        activeElement: document.activeElement,
+        onGroupNodes,
+        onUngroupSelection,
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedNodeIds, nodes, onGroupNodes, onUngroupSelection]);
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!drawShapeRef.current) return;

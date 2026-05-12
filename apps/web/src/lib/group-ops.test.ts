@@ -4,6 +4,7 @@ import {
   computeGroupBbox,
   expandGroupNodeIds,
   insertGroupBeforeChildren,
+  planGroupShortcutAction,
   selectGroupableSet,
   selectUngroupableSet,
   toAbsolutePosition,
@@ -254,5 +255,105 @@ describe('expandGroupNodeIds (US-014)', () => {
     const input = ['g'];
     expandGroupNodeIds(input, nodes);
     expect(input).toEqual(['g']);
+  });
+});
+
+describe('planGroupShortcutAction', () => {
+  it('returns none/empty for an empty selection', () => {
+    expect(planGroupShortcutAction([], [])).toEqual({ kind: 'none', reason: 'empty' });
+  });
+
+  it('returns none/empty when selected ids do not resolve to any node', () => {
+    expect(planGroupShortcutAction(['ghost'], [makeNode({ id: 'a' })])).toEqual({
+      kind: 'none',
+      reason: 'empty',
+    });
+  });
+
+  it('returns none/single-loose for a single loose shape selected', () => {
+    expect(planGroupShortcutAction(['a'], [makeNode({ id: 'a', type: 'shapeNode' })])).toEqual({
+      kind: 'none',
+      reason: 'single-loose',
+    });
+  });
+
+  it('returns ungroup with the group id when a single group node is selected', () => {
+    expect(planGroupShortcutAction(['g'], [makeNode({ id: 'g', type: 'group' })])).toEqual({
+      kind: 'ungroup',
+      groupIds: ['g'],
+    });
+  });
+
+  it('returns ungroup with the parent group id when a single child of a group is selected', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', type: 'shapeNode', parentId: 'g' }),
+    ];
+    expect(planGroupShortcutAction(['a'], nodes)).toEqual({ kind: 'ungroup', groupIds: ['g'] });
+  });
+
+  it('returns ungroup with the parent group id when all selected children share a parent', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', type: 'shapeNode', parentId: 'g' }),
+      makeNode({ id: 'b', type: 'shapeNode', parentId: 'g' }),
+    ];
+    expect(planGroupShortcutAction(['a', 'b'], nodes)).toEqual({
+      kind: 'ungroup',
+      groupIds: ['g'],
+    });
+  });
+
+  it('returns none/mixed when selected children come from different parent groups', () => {
+    const nodes = [
+      makeNode({ id: 'g1', type: 'group' }),
+      makeNode({ id: 'g2', type: 'group' }),
+      makeNode({ id: 'a', type: 'shapeNode', parentId: 'g1' }),
+      makeNode({ id: 'b', type: 'shapeNode', parentId: 'g2' }),
+    ];
+    expect(planGroupShortcutAction(['a', 'b'], nodes)).toEqual({ kind: 'none', reason: 'mixed' });
+  });
+
+  it('returns none/mixed when selection has both a parented child and a loose node', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', type: 'shapeNode', parentId: 'g' }),
+      makeNode({ id: 'b', type: 'shapeNode' }),
+    ];
+    expect(planGroupShortcutAction(['a', 'b'], nodes)).toEqual({ kind: 'none', reason: 'mixed' });
+  });
+
+  it('returns none/mixed when selection has a group node plus a foreign child', () => {
+    const nodes = [
+      makeNode({ id: 'g1', type: 'group' }),
+      makeNode({ id: 'g2', type: 'group' }),
+      makeNode({ id: 'a', type: 'shapeNode', parentId: 'g2' }),
+    ];
+    expect(planGroupShortcutAction(['g1', 'a'], nodes)).toEqual({ kind: 'none', reason: 'mixed' });
+  });
+
+  it('returns group when 2+ loose nodes are selected', () => {
+    const nodes = [
+      makeNode({ id: 'a', type: 'shapeNode' }),
+      makeNode({ id: 'b', type: 'shapeNode' }),
+      makeNode({ id: 'c', type: 'shapeNode' }),
+    ];
+    expect(planGroupShortcutAction(['a', 'b', 'c'], nodes)).toEqual({ kind: 'group' });
+  });
+
+  it('returns group when 2+ top-level nodes are selected even if one is a group node', () => {
+    // Defers filtering to onGroupNodes → selectGroupableSet, which excludes
+    // groups from the wrapper. Treating this as kind=group keeps the planner
+    // simple — the consumer is the right place for "groups don't nest in v1".
+    const nodes = [makeNode({ id: 'g', type: 'group' }), makeNode({ id: 'a', type: 'shapeNode' })];
+    expect(planGroupShortcutAction(['g', 'a'], nodes)).toEqual({ kind: 'group' });
+  });
+
+  it('treats a group + its own only child as mixed (group has no parentId, child has one)', () => {
+    const nodes = [
+      makeNode({ id: 'g', type: 'group' }),
+      makeNode({ id: 'a', type: 'shapeNode', parentId: 'g' }),
+    ];
+    expect(planGroupShortcutAction(['g', 'a'], nodes)).toEqual({ kind: 'none', reason: 'mixed' });
   });
 });

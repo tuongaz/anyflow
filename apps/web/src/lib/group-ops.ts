@@ -164,6 +164,84 @@ export function expandGroupNodeIds(
 }
 
 /**
+ * US-017: the Cmd/Ctrl+G shortcut toggles grouping based on the current
+ * selection. This pure planner is the decision oracle — it does NOT mutate
+ * anything; the caller dispatches the resulting `kind` through the existing
+ * `onGroupNodes` / `onUngroupSelection` callbacks. Cases:
+ *
+ *  - `none`: empty selection, single loose node, mixed-parent selections, or
+ *    a [child + loose] selection. The `reason` field is exposed for
+ *    `console.debug` diagnostics in dev — silent in prod where `debug`
+ *    severity is filtered out by default.
+ *  - `ungroup`: selection is either a single group node OR one-or-more
+ *    children that all share the same `parentId`. `groupIds` contains the
+ *    parent group id(s) to dissolve (NEVER child ids — the consumer's
+ *    `selectUngroupableSet` filter requires `type === 'group'`).
+ *  - `group`: selection is 2+ nodes that aren't all children of the same
+ *    group. The consumer (`groupNodes` in demo-view.tsx) re-filters via
+ *    `selectGroupableSet` so groups + already-parented nodes are excluded
+ *    from the new wrapper.
+ */
+export type GroupShortcutPlan =
+  | { kind: 'none'; reason: 'empty' | 'single-loose' | 'mixed' }
+  | { kind: 'group' }
+  | { kind: 'ungroup'; groupIds: string[] };
+
+export function planGroupShortcutAction(
+  selectedIds: readonly string[],
+  nodes: readonly GroupableNode[],
+): GroupShortcutPlan {
+  if (selectedIds.length === 0) return { kind: 'none', reason: 'empty' };
+
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const selected: GroupableNode[] = [];
+  for (const id of selectedIds) {
+    const node = byId.get(id);
+    if (node) selected.push(node);
+  }
+  if (selected.length === 0) return { kind: 'none', reason: 'empty' };
+
+  const groupIdsInSelection = new Set<string>();
+  for (const n of selected) {
+    if (n.type === 'group') groupIdsInSelection.add(n.id);
+  }
+  const parentIdsInSelection = new Set<string>();
+  for (const n of selected) {
+    if (n.parentId !== undefined) parentIdsInSelection.add(n.parentId);
+  }
+
+  // (a) single group node selected → ungroup it.
+  if (selected.length === 1 && groupIdsInSelection.size === 1) {
+    return { kind: 'ungroup', groupIds: [...groupIdsInSelection] };
+  }
+
+  // (b) selection is one-or-more children that all share the same parentId
+  //     and contains NO group nodes → ungroup that parent.
+  if (
+    groupIdsInSelection.size === 0 &&
+    parentIdsInSelection.size === 1 &&
+    selected.every((n) => n.parentId !== undefined)
+  ) {
+    return { kind: 'ungroup', groupIds: [...parentIdsInSelection] };
+  }
+
+  // No-op: single loose node (length 1 but not a group).
+  if (selected.length === 1) return { kind: 'none', reason: 'single-loose' };
+
+  // No-op: mixed parents — children from different groups, or some-children-
+  // some-loose, or a group + a foreign child. All ambiguous semantics.
+  if (parentIdsInSelection.size > 1) return { kind: 'none', reason: 'mixed' };
+  if (parentIdsInSelection.size === 1 && !selected.every((n) => n.parentId !== undefined)) {
+    return { kind: 'none', reason: 'mixed' };
+  }
+
+  // Otherwise (2+ nodes, all at the top level — loose shapes and/or group
+  // nodes): defer to onGroupNodes, which filters via selectGroupableSet and
+  // bails if fewer than 2 eligible nodes remain.
+  return { kind: 'group' };
+}
+
+/**
  * React Flow invariant: a parent node must appear BEFORE all of its children
  * in the `nodes` array, otherwise the child renders without a parent context
  * for one frame and its position is mis-anchored. Use this to insert a freshly
