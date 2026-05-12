@@ -49,6 +49,7 @@ import {
   getZoomChord,
   resolveClipboardChord,
 } from '@/lib/keyboard-shortcuts';
+import { buildNewGroupData, buildNewImageData, buildNewShapeData } from '@/lib/node-defaults';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { jsPDF } from 'jspdf';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1602,11 +1603,15 @@ export function DemoView({
       // server echo share an id — the SSE-driven prune drops the override
       // cleanly once they match (mirrors `onCreateConnector`).
       const id = `node-${crypto.randomUUID()}`;
+      // US-024: fresh shapes start with borderSize=1 + fontSize=12 (text
+      // variant gets fontSize only — no border, per US-003). Existing nodes
+      // on disk that lack these fields keep their renderer-side fallbacks.
+      const data = buildNewShapeData(shape, dims);
       const payload = {
         id,
         type: 'shapeNode' as const,
         position,
-        data: { shape, width: dims.width, height: dims.height },
+        data,
       };
       // Optimistic: render the new node at the dragged size BEFORE the SSE
       // echo arrives. Without this the node briefly shows at SHAPE_DEFAULT_SIZE
@@ -1616,7 +1621,7 @@ export function DemoView({
         id,
         type: 'shapeNode',
         position,
-        data: { shape, width: dims.width, height: dims.height },
+        data,
       };
       setNodeOverride(id, optimistic as Partial<DemoNode>);
       markMutation();
@@ -1652,11 +1657,10 @@ export function DemoView({
       if (!demoId) return;
       setEditError(null);
       const id = `node-${crypto.randomUUID()}`;
-      const data = {
-        image,
-        width: IMAGE_DEFAULT_SIZE.width,
-        height: IMAGE_DEFAULT_SIZE.height,
-      };
+      // US-024: fresh images start with borderWidth=1 (per US-014 image uses
+      // `borderWidth`, mirroring group). No fontSize — image renders no body
+      // text.
+      const data = buildNewImageData(image, IMAGE_DEFAULT_SIZE);
       const payload = {
         id,
         type: 'imageNode' as const,
@@ -1913,11 +1917,15 @@ export function DemoView({
       const groupWidth = rawBbox.width + 48;
       const groupHeight = rawBbox.height + 76;
       const groupId = `node-${crypto.randomUUID()}`;
+      // US-024: fresh groups start with borderWidth=1 (PRD-canonical group
+      // field; NOT `borderSize` per US-001 / progress.txt). No fontSize —
+      // groups render a label slot but not body text.
+      const groupData = buildNewGroupData({ width: groupWidth, height: groupHeight });
       const groupNode: DemoNode = {
         id: groupId,
         type: 'group',
         position: groupPosition,
-        data: { width: groupWidth, height: groupHeight },
+        data: groupData,
       };
       // Snapshot pre-state for the undo entry (absolute position + parentId
       // for each child — most children have parentId === undefined here
@@ -1958,7 +1966,7 @@ export function DemoView({
           id: forcedGroupId,
           type: 'group',
           position: groupPosition,
-          data: { width: groupWidth, height: groupHeight },
+          data: groupData,
         });
         await Promise.all(
           childRelative.map((c) =>
@@ -2299,11 +2307,14 @@ export function DemoView({
       const newNodeId = `node-${crypto.randomUUID()}`;
       const newConnId = `conn-${crypto.randomUUID()}`;
       const dims = SHAPE_DEFAULT_SIZE[shape];
+      // US-024: shape defaults (borderSize=1 + fontSize=12; text variant
+      // skips border) — same path the toolbar drag-create uses.
+      const shapeData = buildNewShapeData(shape, dims);
       const nodePayload = {
         id: newNodeId,
         type: 'shapeNode' as const,
         position,
-        data: { shape, width: dims.width, height: dims.height },
+        data: shapeData,
       };
       const connPayload: DefaultConnector = {
         id: newConnId,
@@ -2319,7 +2330,7 @@ export function DemoView({
         id: newNodeId,
         type: 'shapeNode',
         position,
-        data: { shape, width: dims.width, height: dims.height },
+        data: shapeData,
       };
       setNodeOverride(newNodeId, optimisticNode as Partial<DemoNode>);
       setConnectorOverride(newConnId, connPayload as Partial<Connector>);
