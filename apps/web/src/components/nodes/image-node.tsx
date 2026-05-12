@@ -2,7 +2,7 @@ import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ImageNodeData } from '@/lib/api';
-import { colorTokenStyle } from '@/lib/color-tokens';
+import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { type CSSProperties, memo } from 'react';
@@ -38,7 +38,15 @@ function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNod
   // / `borderStyle`. Each field is independently optional; only the keys whose
   // data value is defined land in the style object so the "chromeless image"
   // default is preserved when nothing is set.
+  // US-021: image nodes default to a white fill when `backgroundColor` is
+  // unset — so transparent PNGs / partial-alpha screenshots read as a clean
+  // framed image on light AND dark canvases. Field stays unset on disk; this
+  // is a render-time fallback only. An explicit token wins.
   const containerStyle: CSSProperties = {
+    backgroundColor:
+      data.backgroundColor !== undefined
+        ? colorTokenStyle(data.backgroundColor, 'node').backgroundColor
+        : NODE_DEFAULT_BG_WHITE,
     ...(data.borderColor !== undefined
       ? { borderColor: colorTokenStyle(data.borderColor, 'node').borderColor }
       : {}),

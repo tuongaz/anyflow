@@ -3,7 +3,7 @@ import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
-import { colorTokenStyle } from '@/lib/color-tokens';
+import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useState } from 'react';
@@ -78,11 +78,24 @@ export function shapeChromeStyle(
   >,
 ): CSSProperties {
   if (shape === 'text') return {};
-  const effectiveBg = data?.backgroundColor ?? (shape === 'sticky' ? 'amber' : undefined);
+  // US-021: rectangle + ellipse fall back to a literal white fill when the
+  // author hasn't set `backgroundColor`, so the canvas reads as a clean diagram
+  // on light AND dark themes (whiteboard-app convention). The field stays
+  // unset on disk — this is a render-time fallback only. Sticky keeps its
+  // pre-existing amber default; text is excluded (chromeless per US-003).
+  const explicitToken = data?.backgroundColor;
+  let backgroundColor: string | undefined;
+  if (explicitToken !== undefined) {
+    backgroundColor = colorTokenStyle(explicitToken, 'node').backgroundColor;
+  } else if (shape === 'sticky') {
+    backgroundColor = colorTokenStyle('amber', 'node').backgroundColor;
+  } else if (shape === 'rectangle' || shape === 'ellipse') {
+    backgroundColor = NODE_DEFAULT_BG_WHITE;
+  }
   const supportsCornerRadius = shape === 'rectangle' || shape === 'sticky';
   return {
     borderColor: colorTokenStyle(data?.borderColor, 'node').borderColor,
-    backgroundColor: effectiveBg ? colorTokenStyle(effectiveBg, 'node').backgroundColor : undefined,
+    backgroundColor,
     borderWidth: data?.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data?.borderStyle,
     borderRadius:

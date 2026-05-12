@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { ImageNode } from '@/components/nodes/image-node';
-import { COLOR_TOKENS } from '@/lib/color-tokens';
+import { COLOR_TOKENS, NODE_DEFAULT_BG_WHITE } from '@/lib/color-tokens';
 import { Handle, type NodeProps } from '@xyflow/react';
 import type { CSSProperties } from 'react';
 import * as React from 'react';
@@ -195,5 +195,29 @@ describe('ImageNode border render (US-014)', () => {
     );
     expect(style.borderWidth).toBe(2);
     expect(style.borderRadius).toBe(12);
+  });
+});
+
+// US-021: image nodes default to a literal white fill when `backgroundColor`
+// is unset — gives transparent PNGs / partial-alpha screenshots a clean frame
+// on light + dark canvases. Field is never auto-injected on disk; this is a
+// render-time fallback only.
+describe('ImageNode default-white fill (US-021)', () => {
+  it('renders #ffffff when backgroundColor is unset', () => {
+    const style = getContainerStyle(callImageNode());
+    expect(style.backgroundColor).toBe(NODE_DEFAULT_BG_WHITE);
+  });
+
+  it('uses the explicit token when backgroundColor is set', () => {
+    const style = getContainerStyle(callImageNode({ backgroundColor: 'blue' }));
+    expect(style.backgroundColor).toBe(COLOR_TOKENS.blue.background);
+  });
+
+  it('explicit "default" token resolves to theme --card (opt-back-into-theme)', () => {
+    // The 'default' token is how a user explicitly opts back into the
+    // theme-aware --card fill via the property panel. The render-time
+    // white fallback only fires when the field is truly unset.
+    const style = getContainerStyle(callImageNode({ backgroundColor: 'default' }));
+    expect(style.backgroundColor).toBe(COLOR_TOKENS.default.background);
   });
 });

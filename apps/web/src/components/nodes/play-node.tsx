@@ -5,7 +5,7 @@ import type { NodeStatus } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import { Button } from '@/components/ui/button';
 import type { NodeData } from '@/lib/api';
-import { colorTokenStyle } from '@/lib/color-tokens';
+import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { Loader2, Play } from 'lucide-react';
@@ -74,15 +74,23 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
   const descriptionFontStyle: CSSProperties = labelFontStyle;
 
   // Border + background tokens are independent — picking a border color
-  // shouldn't tint the background and vice versa. Unset → fall through to
-  // the theme defaults baked into the 'default' token (--border / --card).
+  // shouldn't tint the background and vice versa. Border unset → fall
+  // through to the theme default (--border) via the 'default' token.
+  // US-021: when `backgroundColor` is unset, the node renders a literal white
+  // fill (NODE_DEFAULT_BG_WHITE) instead of the theme-tied --card, so dark
+  // theme keeps a crisp white play-node on the darker canvas. An explicit
+  // token (including 'default') still wins so a user can opt back into the
+  // theme-aware shade. Field stays unset on disk.
   // US-010: selection outline moved to CSS (`.react-flow__node.selected > div`
   // in index.css) so per-render style-object identity is stable for
   // `React.memo`'s prop-equality check below — no inline `outline*` keys
   // whose identity churns when `selected` flips.
   const containerStyle: CSSProperties = {
     borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
-    backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
+    backgroundColor:
+      data.backgroundColor !== undefined
+        ? colorTokenStyle(data.backgroundColor, 'node').backgroundColor
+        : NODE_DEFAULT_BG_WHITE,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
     borderRadius: data.cornerRadius !== undefined ? data.cornerRadius : undefined,

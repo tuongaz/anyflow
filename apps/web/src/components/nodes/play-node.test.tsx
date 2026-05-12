@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { PlayNode } from '@/components/nodes/play-node';
 import { Button } from '@/components/ui/button';
+import { COLOR_TOKENS, NODE_DEFAULT_BG_WHITE } from '@/lib/color-tokens';
 import type { NodeProps } from '@xyflow/react';
+import type { CSSProperties } from 'react';
 import * as React from 'react';
 
 // Mirrors the hook-shim pattern from icon-node.test.tsx — no DOM, no React
@@ -168,5 +170,41 @@ describe('PlayNode play button (US-021 hover affordance)', () => {
     const button = findPlayButton(tree);
     const disabled = (button.props as { disabled?: boolean }).disabled;
     expect(disabled).toBe(true);
+  });
+});
+
+// US-021 (text-and-group-resize): default-white background fallback for the
+// play-node container. Unset `data.backgroundColor` → literal #ffffff (NOT
+// the theme-tied --card from the 'default' token), so dark theme keeps a
+// crisp white node on the darker canvas. Field stays unset on disk.
+function findPlayContainer(tree: unknown): ReactElementLike {
+  const container = findElement(tree, (el) => {
+    const p = el.props as { 'data-testid'?: string };
+    return p['data-testid'] === 'play-node';
+  });
+  if (!container) throw new Error('play-node container not found');
+  return container;
+}
+
+describe('PlayNode default-white fill (US-021 default node background)', () => {
+  it('renders #ffffff when backgroundColor is unset', () => {
+    const tree = callPlayNode({});
+    const container = findPlayContainer(tree);
+    const style = (container.props as { style?: CSSProperties }).style ?? {};
+    expect(style.backgroundColor).toBe(NODE_DEFAULT_BG_WHITE);
+  });
+
+  it('uses the explicit token when backgroundColor is set', () => {
+    const tree = callPlayNode({ backgroundColor: 'blue' });
+    const container = findPlayContainer(tree);
+    const style = (container.props as { style?: CSSProperties }).style ?? {};
+    expect(style.backgroundColor).toBe(COLOR_TOKENS.blue.background);
+  });
+
+  it('explicit "default" token resolves to theme --card (opt-back-into-theme)', () => {
+    const tree = callPlayNode({ backgroundColor: 'default' });
+    const container = findPlayContainer(tree);
+    const style = (container.props as { style?: CSSProperties }).style ?? {};
+    expect(style.backgroundColor).toBe(COLOR_TOKENS.default.background);
   });
 });
