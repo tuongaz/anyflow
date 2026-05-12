@@ -466,6 +466,41 @@ const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
 };
 
 /**
+ * US-023: classify why a connection drop landed in the
+ * `connectionState.isValid === false` state.
+ *
+ *  • `'flash'` — the target handle is fully connectable at the node level
+ *    (no `connectable: false` on the node) but xyflow refused the drop
+ *    because of strict-mode type-direction mismatch OR our isValidConnection
+ *    callback rejected (e.g. text-shape gate from US-004). The caller
+ *    should call flashInvalidHandle and bail — this is the US-022 invariant
+ *    "give the user red feedback when they release on the wrong handle".
+ *
+ *  • `'fall-through'` — the target node has `connectable: false` (US-025:
+ *    unselected node, INCLUDING a freshly-created one whose selection
+ *    hasn't propagated). xyflow rejected the handle drop, but our body-
+ *    drop fallback still wants to land the connector on the node. The
+ *    caller should NOT flash red and SHOULD continue to the body-drop path.
+ *
+ *  • `'no-flash-no-fall-through'` — there's no `toHandle` (cursor wasn't
+ *    near any handle at drop) or `isValid` is null/true. Caller proceeds
+ *    to the body-drop path without flashing.
+ *
+ * Pure function so the dispatch logic is testable without a DOM
+ * (the production gate lives inside onConnectEndCb).
+ */
+export function classifyHandleDropFailure(
+  toHandle: { nodeId: string } | null,
+  isValid: boolean | null,
+  nodes: ReadonlyArray<{ id: string; connectable?: boolean }>,
+): 'flash' | 'fall-through' | 'no-flash-no-fall-through' {
+  if (!toHandle || isValid !== false) return 'no-flash-no-fall-through';
+  const target = nodes.find((n) => n.id === toHandle.nodeId);
+  if (target?.connectable === false) return 'fall-through';
+  return 'flash';
+}
+
+/**
  * Imperatively flash a handle's `data-invalid-flash` attribute for ~250ms so
  * a wrong-type drop (e.g. dragging a target endpoint onto a source-only
  * handle) gives the user a brief red feedback before the edge restores
@@ -1948,7 +1983,16 @@ export function DemoCanvas({
   // rfNodes is also mirrored into a ref so the change handler can compute the
   // post-applyNodeChanges selection synchronously (the setRfNodes updater
   // function runs later and can't drive a side effect).
-  const rfNodesRef = useRef<Node[]>([]);
+  //
+  // Initialised to `sourceNodes` so synchronous render-time consumers
+  // (US-023: isValidConnection + the onConnectEndCb non-connectable-target
+  // distinguisher) see the live merged node list on the FIRST render,
+  // before the mirror-useEffect below has had a chance to fire. Without
+  // this seed the ref would be empty until after first paint — fine in
+  // production (drags can't fire that fast) but inaccurate under test, and
+  // also a subtle correctness window in production for any future code
+  // that reads the ref synchronously during render.
+  const rfNodesRef = useRef<Node[]>(sourceNodes);
 
   // US-010: marquee gesture state. While a marquee drag is in flight,
   // `marqueeActiveRef` flips true and the per-frame select changes accumulate
@@ -2372,18 +2416,24 @@ export function DemoCanvas({
   // drag (the `connectionState.isValid === false` branch in onConnectEnd)
   // for visible user feedback. NOT a per-handle count gate — that would
   // defeat US-015; see connection-limit.test.ts for the static-text fence.
-  const isValidConnection = useCallback(
-    (conn: Connection | Edge) => {
-      const isTextShape = (id: string | null | undefined): boolean => {
-        if (!id) return false;
-        const node = nodes.find((n) => n.id === id);
-        if (!node) return false;
-        return node.type === 'shapeNode' && (node.data as { shape?: ShapeKind }).shape === 'text';
-      };
-      return !isTextShape(conn.source) && !isTextShape(conn.target);
-    },
-    [nodes],
-  );
+  //
+  // US-023: read from `rfNodesRef.current` (the post-merge xyflow node list
+  // including optimistic overrides) rather than the `nodes` PROP. Freshly-
+  // created nodes live in `nodeOverrides` until the SSE echo lands — they
+  // appear in `rfNodes` immediately but only flow into the `nodes` prop
+  // after the server round-trip. Reading from the ref means the validator
+  // sees the fresh node and rejects-or-accepts based on its real
+  // data.shape, not on a (stale) "id not found → fall through to valid"
+  // path that would let a fresh TEXT node bypass the gate.
+  const isValidConnection = useCallback((conn: Connection | Edge) => {
+    const isTextShape = (id: string | null | undefined): boolean => {
+      if (!id) return false;
+      const node = rfNodesRef.current.find((n) => n.id === id);
+      if (!node) return false;
+      return node.type === 'shapeNode' && (node.data as { shape?: ShapeKind }).shape === 'text';
+    };
+    return !isTextShape(conn.source) && !isTextShape(conn.target);
+  }, []);
 
   // Body-drop fallback for NEW connections (US-014). When the user drags from
   // a source handle and releases over a node's BODY (not precisely on one of
@@ -2427,8 +2477,19 @@ export function DemoCanvas({
       // role doesn't match the moving endpoint. React Flow refuses the drop
       // (no onConnect), so we flash the handle red and bail without falling
       // through to the body-drop fallback (US-022).
+      //
+      // US-023: see `classifyHandleDropFailure` for the gate's full
+      // semantics. In short: flash red only when the target handle is fully
+      // connectable (US-022 invariant); otherwise fall through to the
+      // body-drop fallback so drops on freshly-created (unselected) nodes
+      // still land.
       const toHandle = connectionState.toHandle;
-      if (toHandle && connectionState.isValid === false) {
+      const dropFailure = classifyHandleDropFailure(
+        toHandle,
+        connectionState.isValid,
+        rfNodesRef.current,
+      );
+      if (dropFailure === 'flash' && toHandle) {
         flashInvalidHandle(wrapperRef.current, toHandle.nodeId, toHandle.id);
         return;
       }
@@ -2441,6 +2502,23 @@ export function DemoCanvas({
       if (targetEl) {
         const targetNodeId = targetEl.getAttribute('data-id');
         if (!targetNodeId || targetNodeId === fromNodeId) return;
+        // US-023: re-run isValidConnection on the body-drop fallback path to
+        // preserve US-004's text-shape rejection invariant — without this,
+        // dropping onto a text node's body would create a connector that
+        // bypassed the validator (xyflow only calls isValidConnection on the
+        // handle-drop path, never on a body drop). The connection shape
+        // matches xyflow's strict-mode Connection: floating drops have null
+        // handle ids per US-025.
+        if (
+          !isValidConnection({
+            source: fromNodeId,
+            target: targetNodeId,
+            sourceHandle: null,
+            targetHandle: null,
+          })
+        ) {
+          return;
+        }
         // US-023 + US-025: drag-from is always source, drop-node is always
         // target — including when the user drags from a target-type handle.
         // No handle ids are persisted; the resulting connector is floating.
@@ -2466,7 +2544,7 @@ export function DemoCanvas({
         sourceNodeId: fromNodeId,
       });
     },
-    [onCreateConnector, onCreateAndConnectFromPane, clearConnectMarkers],
+    [onCreateConnector, onCreateAndConnectFromPane, clearConnectMarkers, isValidConnection],
   );
 
   // Drag an edge endpoint onto another handle to reattach it. React Flow

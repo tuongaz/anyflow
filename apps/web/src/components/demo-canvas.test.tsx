@@ -4,6 +4,7 @@ import {
   DemoCanvas,
   type DemoCanvasProps,
   type GroupShortcutEventLike,
+  classifyHandleDropFailure,
   eventTargetIsOtherNode,
   handleClipboardShortcut,
   handleGroupShortcut,
@@ -305,6 +306,176 @@ describe('DemoCanvas', () => {
       const validator = getValidator([makeShapeNode('a')]);
       expect(validator(makeConnection('a', 'missing'))).toBe(true);
       expect(validator(makeConnection('missing', 'a'))).toBe(true);
+    });
+  });
+
+  describe('US-023: connector drop on a freshly-created node lands every time', () => {
+    // The bug: after creating a node via the toolbar drag-create flow, the
+    // new node is unselected → its handles render with `connectable: false`
+    // (US-025). xyflow's drop-validation then sets connectionState.isValid
+    // === false for the freshly-created handle (the handle's `connectable`
+    // class is missing), and the previous gate flashed red + bailed without
+    // falling through to the body-drop fallback. Result: edge never lands
+    // on the new node when the cursor releases near one of its handles.
+    //
+    // The fix has three layers — each independently tested:
+    //  1. isValidConnection reads from rfNodesRef (post-merge xyflow node
+    //     list including optimistic overrides), so a freshly-created text
+    //     node is STILL rejected per US-004.
+    //  2. The red-flash gate distinguishes "handle is non-connectable" from
+    //     "handle is connectable but invalid" via `classifyHandleDropFailure`.
+    //  3. The body-drop fallback re-runs isValidConnection so US-004 holds
+    //     on the fall-through path too.
+
+    function makeShapeNodeOverride(id: string): Partial<DemoNode> {
+      return {
+        id,
+        type: 'shapeNode',
+        position: { x: 100, y: 100 },
+        data: { shape: 'rectangle', width: 120, height: 80 },
+      };
+    }
+
+    function makeTextNodeOverride(id: string): Partial<DemoNode> {
+      return {
+        id,
+        type: 'shapeNode',
+        position: { x: 100, y: 100 },
+        data: { shape: 'text', width: 120, height: 80 },
+      };
+    }
+
+    function getValidatorWithOverrides(
+      nodes: DemoNode[],
+      nodeOverrides: Record<string, Partial<DemoNode>>,
+      selectedNodeIds: readonly string[] = [],
+    ): (c: Connection) => boolean {
+      const tree = callDemoCanvas({
+        nodes,
+        nodeOverrides,
+        selectedNodeIds,
+        onCreateConnector: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const validator = rf.props.isValidConnection as ((c: Connection) => boolean) | undefined;
+      if (typeof validator !== 'function') {
+        throw new Error('isValidConnection not wired on ReactFlow root');
+      }
+      return validator;
+    }
+
+    it('isValidConnection accepts an edge to a freshly-created node (override-only)', () => {
+      // Repro the failing scenario: an existing node + a freshly-created
+      // node living in nodeOverrides (not yet echoed back into the `nodes`
+      // prop from the server). Pre-fix the validator read from the `nodes`
+      // prop and would happily fall through to "valid" for unknown ids —
+      // but that meant the broader fix (refining the red-flash gate) had to
+      // be the load-bearing piece. Pin the validator-side invariant too so
+      // a future refactor can't silently regress to "fresh nodes are
+      // invisible to the validator".
+      const validator = getValidatorWithOverrides([makeShapeNode('existing')], {
+        fresh: makeShapeNodeOverride('fresh'),
+      });
+      expect(validator(makeConnection('existing', 'fresh'))).toBe(true);
+      expect(validator(makeConnection('fresh', 'existing'))).toBe(true);
+    });
+
+    it('isValidConnection rejects an edge to a freshly-created TEXT node', () => {
+      // US-004 regression: even though the text node lives in
+      // nodeOverrides (not yet in `nodes`), the validator must still reject
+      // — otherwise a fresh text node would be wirable via the body-drop
+      // fallback path until the SSE echo arrives.
+      const validator = getValidatorWithOverrides([makeShapeNode('existing')], {
+        'fresh-text': makeTextNodeOverride('fresh-text'),
+      });
+      expect(validator(makeConnection('existing', 'fresh-text'))).toBe(false);
+      expect(validator(makeConnection('fresh-text', 'existing'))).toBe(false);
+    });
+
+    it('isValidConnection accepts an edge across a group boundary', () => {
+      // Connections between nodes at different parentId levels (top-level
+      // ↔ inside-group) must still work — there is no parentId-spanning
+      // gate in our validator and adding one would break a documented
+      // capability.
+      const child: DemoNode = { ...makeShapeNode('child'), parentId: 'g1' };
+      const top = makeShapeNode('top');
+      const tree = callDemoCanvas({
+        nodes: [makeGroupNode('g1'), child, top],
+        selectedNodeIds: [],
+        onCreateConnector: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const validator = rf.props.isValidConnection as (c: Connection) => boolean;
+      expect(validator(makeConnection('top', 'child'))).toBe(true);
+      expect(validator(makeConnection('child', 'top'))).toBe(true);
+    });
+
+    describe('classifyHandleDropFailure (pure gate predicate)', () => {
+      it('returns "no-flash-no-fall-through" when toHandle is null', () => {
+        expect(classifyHandleDropFailure(null, false, [])).toBe('no-flash-no-fall-through');
+      });
+
+      it('returns "no-flash-no-fall-through" when isValid is true', () => {
+        expect(classifyHandleDropFailure({ nodeId: 'a' }, true, [{ id: 'a' }])).toBe(
+          'no-flash-no-fall-through',
+        );
+      });
+
+      it('returns "no-flash-no-fall-through" when isValid is null (still in-progress)', () => {
+        expect(classifyHandleDropFailure({ nodeId: 'a' }, null, [{ id: 'a' }])).toBe(
+          'no-flash-no-fall-through',
+        );
+      });
+
+      it('returns "flash" when the target handle is fully connectable but isValid is false', () => {
+        // Case (a): handle is connectable at the node level but xyflow
+        // refused (strict-mode type mismatch, isValidConnection rejection).
+        // The user picked a wrong handle — flash red feedback.
+        expect(classifyHandleDropFailure({ nodeId: 'a' }, false, [{ id: 'a' }])).toBe('flash');
+        expect(
+          classifyHandleDropFailure({ nodeId: 'a' }, false, [{ id: 'a', connectable: true }]),
+        ).toBe('flash');
+      });
+
+      it('returns "fall-through" when the target node has connectable: false', () => {
+        // Case (b): handle's node is non-connectable (US-025 for unselected
+        // nodes, including freshly-created ones). xyflow refused but the
+        // body-drop fallback should still land the connector on the node.
+        expect(
+          classifyHandleDropFailure({ nodeId: 'fresh' }, false, [
+            { id: 'fresh', connectable: false },
+          ]),
+        ).toBe('fall-through');
+      });
+
+      it('returns "flash" when the target node is missing from the node list', () => {
+        // Defensive: an unknown nodeId means we can't make the
+        // non-connectable claim — default to flashing (preserves US-022
+        // intent of "if in doubt, give the user red feedback").
+        expect(classifyHandleDropFailure({ nodeId: 'phantom' }, false, [])).toBe('flash');
+      });
+    });
+
+    it('fresh node (override-only) is rendered with connectable: false (the bug trigger)', () => {
+      // This pins the upstream condition that makes the
+      // `classifyHandleDropFailure === 'fall-through'` branch fire in
+      // practice: a freshly-created node is unselected, so the buildNode
+      // path stamps `connectable: false` on its rfNode payload. Without
+      // this, the AC's failing repro wouldn't reproduce at all.
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('existing')],
+        nodeOverrides: { fresh: makeShapeNodeOverride('fresh') },
+        selectedNodeIds: ['existing'],
+        onCreateConnector: () => {},
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfNodes = rf.props.nodes as Node[];
+      const fresh = rfNodes.find((n) => n.id === 'fresh');
+      expect(fresh).toBeDefined();
+      expect(fresh?.connectable).toBe(false);
     });
   });
 
