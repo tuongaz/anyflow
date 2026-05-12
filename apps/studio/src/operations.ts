@@ -100,6 +100,11 @@ export const NodePatchBodySchema = z
     // US-019: lock state. Lands at data.locked; persists across save/reload.
     // Absent → unlocked default (no badge, all gestures work).
     locked: z.boolean().optional(),
+    // US-011 (text-and-group-resize): free-text metadata on every node variant.
+    // `shortDescription` caps at 200 chars (matches the schema); `description`
+    // has no cap. Both land at data.shortDescription / data.description.
+    shortDescription: z.string().max(200).optional(),
+    description: z.string().optional(),
   })
   .strict();
 export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
@@ -126,6 +131,8 @@ const NODE_DATA_PATCH_KEYS = [
   'alt',
   'icon',
   'locked',
+  'shortDescription',
+  'description',
 ] as const satisfies ReadonlyArray<keyof NodePatchBody>;
 
 export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {
@@ -148,10 +155,20 @@ export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePat
       : {};
   let touchedData = false;
   for (const key of NODE_DATA_PATCH_KEYS) {
-    if (updates[key] !== undefined) {
-      data[key] = updates[key];
-      touchedData = true;
+    if (updates[key] === undefined) continue;
+    // US-011 (text-and-group-resize): empty string on the two free-text
+    // metadata fields is the documented clear-on-serialize signal — strip the
+    // key instead of writing "" to disk so demo.json stays compact and
+    // round-tripping a cleared node doesn't reintroduce the field.
+    if ((key === 'shortDescription' || key === 'description') && updates[key] === '') {
+      if (key in data) {
+        delete data[key];
+        touchedData = true;
+      }
+      continue;
     }
+    data[key] = updates[key];
+    touchedData = true;
   }
   if (touchedData) {
     node.data = data;

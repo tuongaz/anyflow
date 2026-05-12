@@ -15,7 +15,9 @@ import { cn } from '@/lib/utils';
 import { Check, Pencil, RefreshCw } from 'lucide-react';
 import {
   type CSSProperties,
+  type ChangeEvent as ReactChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
+  type FocusEvent as ReactFocusEvent,
   type FormEvent as ReactFormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -41,6 +43,20 @@ export interface DetailPanelProps {
    * affordance appears. Saving an empty string clears the description.
    */
   onDescriptionChange?: (nodeId: string, description: string) => void;
+  /**
+   * US-011 (text-and-group-resize): commit a new one-line caption to
+   * `data.shortDescription` for the given node. Works for every node variant
+   * (shape, play, state, image, icon, group). When omitted the input is
+   * read-only. Empty string clears the field on disk.
+   */
+  onShortDescriptionChange?: (nodeId: string, value: string) => void;
+  /**
+   * US-011 (text-and-group-resize): commit new long-form notes to
+   * `data.description` for the given node. Distinct from
+   * `onDescriptionChange` above which targets `detail.description` (play/state
+   * only). Empty string clears the field on disk.
+   */
+  onMetaDescriptionChange?: (nodeId: string, value: string) => void;
   onClose: () => void;
 }
 
@@ -51,22 +67,26 @@ export function DetailPanel({
   run,
   recentEvents,
   onDescriptionChange,
+  onShortDescriptionChange,
+  onMetaDescriptionChange,
   onClose,
 }: DetailPanelProps) {
-  // Decorative nodes (imageNode, iconNode) never open the detail panel —
-  // they're edited inline via the left StyleStrip (US-022). Selection /
-  // style-strip / resize handles still work for them because they live on
-  // the React Flow node, not the panel.
-  const inspectableNode =
-    node && node.type !== 'imageNode' && node.type !== 'iconNode' && node.type !== 'group'
-      ? node
-      : null;
+  // US-011 (text-and-group-resize): every node variant now carries free-text
+  // metadata (`data.shortDescription`, `data.description`) editable via the
+  // side panel. The pre-US-011 gate excluded decorative nodes (image, icon,
+  // group); that gate is gone so the panel opens for any selected node. The
+  // play/state-only sections (detail summary/fields/dynamicSource, run,
+  // events) stay gated on `functionalNode` below.
+  const inspectableNode = node;
   const open = inspectableNode !== null || connector !== null;
-  // Shape and image nodes are decorative — no detail/dynamicSource/run surface.
+  // Shape, image, icon, group are decorative — no detail/dynamicSource/run
+  // surface. Only play/state nodes carry `data.detail` and run state.
   const functionalNode =
-    inspectableNode && inspectableNode.type !== 'shapeNode' ? inspectableNode : null;
+    inspectableNode && (inspectableNode.type === 'playNode' || inspectableNode.type === 'stateNode')
+      ? inspectableNode
+      : null;
   const detail = functionalNode?.data.detail;
-  // ImageNodeData has no `label`; shape/play/state nodes do (optional or required).
+  // ImageNodeData has no `label`; shape/play/state/icon/group nodes do (optional or required).
   const nodeLabel =
     inspectableNode && 'label' in inspectableNode.data ? inspectableNode.data.label : undefined;
   const hasDynamicSource = !!detail?.dynamicSource;
@@ -164,6 +184,14 @@ export function DetailPanel({
             </div>
 
             <div className="mt-0 flex flex-col gap-3">
+              <NodeMetadataEditor
+                nodeId={inspectableNode.id}
+                shortDescription={inspectableNode.data.shortDescription ?? ''}
+                description={inspectableNode.data.description ?? ''}
+                onShortDescriptionChange={onShortDescriptionChange}
+                onMetaDescriptionChange={onMetaDescriptionChange}
+              />
+
               {detail?.description || detail?.summary ? (
                 <EditableDescription
                   nodeId={inspectableNode.id}
@@ -449,6 +477,132 @@ export function EditableDescription({
           </Button>
         </>
       )}
+    </div>
+  );
+}
+
+// US-011 (text-and-group-resize): side-panel metadata block — a short-text
+// input + auto-grow textarea for the two free-text fields. Each control is
+// uncontrolled-then-controlled: seeded from props on mount / nodeId change,
+// the user types into local state, and the value commits on blur (one PATCH
+// per typing session → one undo entry per coalesceKey, see
+// `onNodeShortDescriptionChange` / `onNodeMetaDescriptionChange` in
+// demo-view.tsx). The textarea uses imperative `scrollHeight` growth so the
+// height tracks the content up to ~10 line-heights, then scrolls.
+export const NODE_DESCRIPTION_TEXTAREA_MAX_PX = 240; // ~10 lines at ~24px/line
+export const NODE_SHORT_DESCRIPTION_MAX_LENGTH = 200;
+
+// Imperative auto-grow for the description textarea — sets `.style.height`
+// to track `scrollHeight` up to the documented ceiling, then unlocks vertical
+// scroll. Module-scoped so the useEffect/onInput dep lists stay clean.
+function autosizeTextarea(el: HTMLTextAreaElement | null): void {
+  if (!el) return;
+  el.style.height = 'auto';
+  const next = Math.min(el.scrollHeight, NODE_DESCRIPTION_TEXTAREA_MAX_PX);
+  el.style.height = `${next}px`;
+  el.style.overflowY = el.scrollHeight > NODE_DESCRIPTION_TEXTAREA_MAX_PX ? 'auto' : 'hidden';
+}
+
+export function NodeMetadataEditor({
+  nodeId,
+  shortDescription,
+  description,
+  onShortDescriptionChange,
+  onMetaDescriptionChange,
+}: {
+  nodeId: string;
+  shortDescription: string;
+  description: string;
+  onShortDescriptionChange?: (nodeId: string, value: string) => void;
+  onMetaDescriptionChange?: (nodeId: string, value: string) => void;
+}) {
+  // Local drafts decouple typing from the parent's commit cycle so the input
+  // is responsive even when the SSE echo bounces the prop value back. On
+  // nodeId switch we re-seed from props so switching nodes mid-typing in the
+  // OTHER node doesn't bleed across — the deps below cover that case via
+  // `shortDescription` / `description` (both derive from `node.data` in the
+  // parent, so they change when the selected node does).
+  const [shortDraft, setShortDraft] = useState(shortDescription);
+  const [longDraft, setLongDraft] = useState(description);
+  useEffect(() => {
+    setShortDraft(shortDescription);
+    setLongDraft(description);
+  }, [shortDescription, description]);
+
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    autosizeTextarea(textareaRef.current);
+    // Re-fire when the seeded value changes so switching to a node with a
+    // taller description grows the textarea on mount.
+  }, []);
+
+  const onShortInput = (e: ReactChangeEvent<HTMLInputElement>) => {
+    setShortDraft(e.target.value);
+  };
+  const onShortBlur = (e: ReactFocusEvent<HTMLInputElement>) => {
+    if (!onShortDescriptionChange) return;
+    const next = e.target.value;
+    if (next === shortDescription) return;
+    onShortDescriptionChange(nodeId, next);
+  };
+  const onLongInput = (e: ReactChangeEvent<HTMLTextAreaElement>) => {
+    setLongDraft(e.target.value);
+    autosizeTextarea(e.target);
+  };
+  const onLongBlur = (e: ReactFocusEvent<HTMLTextAreaElement>) => {
+    if (!onMetaDescriptionChange) return;
+    const next = e.target.value;
+    if (next === description) return;
+    onMetaDescriptionChange(nodeId, next);
+  };
+  // Keyboard events inside the inputs would otherwise bubble up to the
+  // canvas-level Backspace/Delete listeners (US-027 node deletion). Stop both
+  // the React synthetic and native side so typing here never deletes the
+  // selected node. Mirrors the same defensive pattern in EditableDescription.
+  const stopKey = (e: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    e.nativeEvent.stopPropagation();
+  };
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="detail-panel-metadata">
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
+          Short description
+        </span>
+        <input
+          type="text"
+          value={shortDraft}
+          placeholder="One-line caption"
+          maxLength={NODE_SHORT_DESCRIPTION_MAX_LENGTH}
+          onChange={onShortInput}
+          onBlur={onShortBlur}
+          onKeyDown={stopKey}
+          readOnly={!onShortDescriptionChange}
+          data-testid="detail-panel-short-description"
+          aria-label="Short description"
+          className="block w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring read-only:bg-muted/30 read-only:cursor-default"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
+          Description
+        </span>
+        <textarea
+          ref={textareaRef}
+          value={longDraft}
+          placeholder="Notes, context, anything…"
+          onChange={onLongInput}
+          onBlur={onLongBlur}
+          onKeyDown={stopKey}
+          readOnly={!onMetaDescriptionChange}
+          rows={3}
+          data-testid="detail-panel-description-meta"
+          aria-label="Description"
+          className="block w-full resize-none rounded-md border bg-background px-2 py-1.5 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-ring read-only:bg-muted/30 read-only:cursor-default"
+          style={{ maxHeight: `${NODE_DESCRIPTION_TEXTAREA_MAX_PX}px` }}
+        />
+      </label>
     </div>
   );
 }

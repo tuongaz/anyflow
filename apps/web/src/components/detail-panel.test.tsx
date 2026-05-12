@@ -37,9 +37,14 @@ const mockWindow = {
 };
 (globalThis as { window?: typeof mockWindow }).window = mockWindow;
 
-const { DescriptionMarkdown, DetailPanel, EditableDescription } = await import(
-  '@/components/detail-panel'
-);
+const {
+  DescriptionMarkdown,
+  DetailPanel,
+  EditableDescription,
+  NodeMetadataEditor,
+  NODE_DESCRIPTION_TEXTAREA_MAX_PX,
+  NODE_SHORT_DESCRIPTION_MAX_LENGTH,
+} = await import('@/components/detail-panel');
 const { DETAIL_PANEL_WIDTH_KEY } = await import('@/lib/detail-panel-width');
 
 // Same dispatcher-shim trick used by icon-node.test.tsx and
@@ -589,5 +594,271 @@ describe('EditableDescription (US-005)', () => {
     (editor.props.onBlur as () => void)();
     // Blur path on its own discards — no onSave invocation.
     expect(calls).toEqual([]);
+  });
+});
+
+// US-011 (text-and-group-resize): NodeMetadataEditor renders the two free-text
+// metadata controls (short description input + long description textarea) that
+// edit `data.shortDescription` / `data.description` for every node variant.
+// Both controls commit on blur via the callbacks; the textarea grows up to
+// ~10 line-heights then scrolls; both inputs stop key events from bubbling
+// to the canvas (so Backspace/Delete in the input never deletes the selected
+// node).
+describe('NodeMetadataEditor (US-011)', () => {
+  type Props = Parameters<typeof NodeMetadataEditor>[0];
+  const callEditor = (overrides: Partial<Props> = {}) => {
+    const props: Props = {
+      nodeId: 'n1',
+      shortDescription: '',
+      description: '',
+      ...overrides,
+    } as Props;
+    return renderWithHooks(() => (NodeMetadataEditor as unknown as (p: Props) => unknown)(props));
+  };
+
+  it('renders both controls with the documented placeholders and aria-labels', () => {
+    const tree = callEditor();
+    const meta = findElement(tree, testIdEquals('detail-panel-metadata'));
+    if (!meta) throw new Error('metadata block not found');
+
+    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!short) throw new Error('short description input not found');
+    expect(short.props.type).toBe('text');
+    expect(short.props.placeholder).toBe('One-line caption');
+    expect(short.props['aria-label']).toBe('Short description');
+    expect(short.props.maxLength).toBe(NODE_SHORT_DESCRIPTION_MAX_LENGTH);
+
+    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
+    if (!long) throw new Error('description textarea not found');
+    expect(long.props.placeholder).toBe('Notes, context, anything…');
+    expect(long.props['aria-label']).toBe('Description');
+    // Textarea has a max-height cap that drives the auto-grow ceiling (~10
+    // line-heights). Beyond it the user gets a scroll bar.
+    const style = long.props.style as { maxHeight?: string };
+    expect(style.maxHeight).toBe(`${NODE_DESCRIPTION_TEXTAREA_MAX_PX}px`);
+  });
+
+  it('seeds both controls from props (defaultValue equivalents via local state)', () => {
+    const tree = callEditor({ shortDescription: 'hello short', description: 'hello long' });
+    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
+    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
+    if (!short || !long) throw new Error('inputs not found');
+    expect(short.props.value).toBe('hello short');
+    expect(long.props.value).toBe('hello long');
+  });
+
+  it('blur on short description input dispatches onShortDescriptionChange', () => {
+    const calls: Array<{ id: string; value: string }> = [];
+    const onShortDescriptionChange = (id: string, value: string) => calls.push({ id, value });
+    const tree = callEditor({ onShortDescriptionChange });
+    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!short) throw new Error('short description input not found');
+    (short.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: 'A caption' },
+    });
+    expect(calls).toEqual([{ id: 'n1', value: 'A caption' }]);
+  });
+
+  it('blur on description textarea dispatches onMetaDescriptionChange', () => {
+    const calls: Array<{ id: string; value: string }> = [];
+    const onMetaDescriptionChange = (id: string, value: string) => calls.push({ id, value });
+    const tree = callEditor({ onMetaDescriptionChange });
+    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
+    if (!long) throw new Error('description textarea not found');
+    (long.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: 'multi-line\nnotes here' },
+    });
+    expect(calls).toEqual([{ id: 'n1', value: 'multi-line\nnotes here' }]);
+  });
+
+  it('does not redispatch when the blur value equals the seeded prop value', () => {
+    // Blurring without typing should be a no-op — otherwise every focus change
+    // would create an undo entry with an identical value.
+    const shortCalls: Array<{ id: string; value: string }> = [];
+    const longCalls: Array<{ id: string; value: string }> = [];
+    const onShortDescriptionChange = (id: string, value: string) => shortCalls.push({ id, value });
+    const onMetaDescriptionChange = (id: string, value: string) => longCalls.push({ id, value });
+    const tree = callEditor({
+      shortDescription: 'unchanged',
+      description: 'also unchanged',
+      onShortDescriptionChange,
+      onMetaDescriptionChange,
+    });
+    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
+    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
+    if (!short || !long) throw new Error('inputs not found');
+    (short.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: 'unchanged' },
+    });
+    (long.props.onBlur as (e: { target: { value: string } }) => void)({
+      target: { value: 'also unchanged' },
+    });
+    expect(shortCalls).toEqual([]);
+    expect(longCalls).toEqual([]);
+  });
+
+  it('renders both controls read-only when no callbacks are wired (no PATCH plumbing)', () => {
+    const tree = callEditor();
+    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
+    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
+    if (!short || !long) throw new Error('inputs not found');
+    expect(short.props.readOnly).toBe(true);
+    expect(long.props.readOnly).toBe(true);
+  });
+
+  it('stops keystrokes from bubbling to the canvas (Backspace would otherwise delete the node)', () => {
+    const tree = callEditor({ onShortDescriptionChange: () => {} });
+    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!short) throw new Error('short description input not found');
+    let stoppedReact = false;
+    let stoppedNative = false;
+    const e = {
+      key: 'Backspace',
+      stopPropagation: () => {
+        stoppedReact = true;
+      },
+      nativeEvent: {
+        stopPropagation: () => {
+          stoppedNative = true;
+        },
+      },
+    };
+    (short.props.onKeyDown as (e: unknown) => void)(e);
+    expect(stoppedReact).toBe(true);
+    expect(stoppedNative).toBe(true);
+  });
+});
+
+// US-011 (text-and-group-resize): the DetailPanel widens to open for every
+// node variant (the pre-US-011 gate excluded image/icon/group). The metadata
+// editor is the universal block; the play/state-only sections (EditableDescription,
+// detail.fields, DynamicSection, RunSection, RecentEventsSection) remain gated.
+describe('DetailPanel — metadata editor renders for every node variant (US-011)', () => {
+  type PanelProps = Parameters<typeof DetailPanel>[0];
+  const callPanel = (node: DemoNode) => {
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onClose: () => {},
+    } as PanelProps;
+    return renderWithHooks(() => (DetailPanel as unknown as (p: PanelProps) => unknown)(props));
+  };
+
+  const variants: DemoNode[] = [
+    {
+      id: 'p',
+      type: 'playNode',
+      position: { x: 0, y: 0 },
+      data: {
+        label: 'p',
+        kind: 'svc',
+        stateSource: { kind: 'request' },
+        playAction: { kind: 'http', method: 'GET', url: '/p' },
+      },
+    },
+    {
+      id: 's',
+      type: 'stateNode',
+      position: { x: 0, y: 0 },
+      data: { label: 's', kind: 'svc', stateSource: { kind: 'event' } },
+    },
+    {
+      id: 'sh',
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: { shape: 'rectangle' },
+    },
+    {
+      id: 'im',
+      type: 'imageNode',
+      position: { x: 0, y: 0 },
+      data: { image: 'data:image/png;base64,AA' },
+    },
+    {
+      id: 'ic',
+      type: 'iconNode',
+      position: { x: 0, y: 0 },
+      data: { icon: 'shopping-cart' },
+    },
+    {
+      id: 'g',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      data: { label: 'g' },
+    },
+  ];
+
+  for (const node of variants) {
+    it(`renders the NodeMetadataEditor when a ${node.type} is selected`, () => {
+      // NodeMetadataEditor is captured as a placeholder by the hook-shim — its
+      // body doesn't execute, so we match it by component identity, not by
+      // a nested data-testid that would live inside the un-executed body.
+      const tree = callPanel(node);
+      const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+      expect(editor).not.toBeNull();
+    });
+  }
+
+  it('forwards shortDescription / description prop values into the metadata editor', () => {
+    const node: DemoNode = {
+      id: 'sh',
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: {
+        shape: 'rectangle',
+        shortDescription: 'a one-liner',
+        description: 'multi\nlines',
+      },
+    };
+    const tree = callPanel(node);
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.nodeId).toBe('sh');
+    expect(editor.props.shortDescription).toBe('a one-liner');
+    expect(editor.props.description).toBe('multi\nlines');
+  });
+
+  it('forwards both metadata change callbacks into the editor placeholder', () => {
+    const node: DemoNode = {
+      id: 'sh',
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: { shape: 'rectangle' },
+    };
+    const onShortDescriptionChange = () => {};
+    const onMetaDescriptionChange = () => {};
+    const props = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onClose: () => {},
+      onShortDescriptionChange,
+      onMetaDescriptionChange,
+    };
+    const tree = renderWithHooks(() =>
+      (DetailPanel as unknown as (p: typeof props) => unknown)(props),
+    );
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.onShortDescriptionChange).toBe(onShortDescriptionChange);
+    expect(editor.props.onMetaDescriptionChange).toBe(onMetaDescriptionChange);
+  });
+
+  it('still gates EditableDescription / detail.fields behind play/state node types', () => {
+    // Shape / image / icon / group don't carry `data.detail` — the legacy
+    // EditableDescription block (driven by detail.summary/detail.description)
+    // must not render for them. The new NodeMetadataEditor is the universal
+    // surface.
+    const shape: DemoNode = {
+      id: 'sh',
+      type: 'shapeNode',
+      position: { x: 0, y: 0 },
+      data: { shape: 'rectangle' },
+    };
+    const tree = callPanel(shape);
+    expect(findElement(tree, testIdEquals('detail-panel-description-block'))).toBeNull();
+    // detail-panel-description is the read-mode markdown wrapper; also absent.
+    expect(findElement(tree, testIdEquals('detail-panel-description'))).toBeNull();
   });
 });

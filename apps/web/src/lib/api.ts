@@ -61,7 +61,20 @@ export interface NodeVisual {
   locked?: boolean;
 }
 
-export interface NodeData extends NodeVisual {
+// US-011 (text-and-group-resize): free-text metadata fields available on every
+// node variant. `shortDescription` is a one-line caption (200-char cap);
+// `description` is open-ended notes (no cap). Both optional and metadata-only
+// — never rendered on the canvas. Distinct from `detail.summary` /
+// `detail.description` (play/state-only demo-runtime fields). Mirrors
+// `NodeDescriptionBaseShape` in apps/studio/src/schema.ts. Mirrored explicitly
+// into IconNodeData / GroupNodeData (those variants don't extend
+// NodeDescription via NodeVisual).
+export interface NodeDescription {
+  shortDescription?: string;
+  description?: string;
+}
+
+export interface NodeData extends NodeVisual, NodeDescription {
   label: string;
   kind: string;
   stateSource: { kind: 'request' | 'event' };
@@ -72,7 +85,7 @@ export interface NodeData extends NodeVisual {
 
 export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky' | 'text';
 
-export interface ShapeNodeData extends NodeVisual {
+export interface ShapeNodeData extends NodeVisual, NodeDescription {
   shape: ShapeKind;
   label?: string;
 }
@@ -80,7 +93,7 @@ export interface ShapeNodeData extends NodeVisual {
 // Decorative image node — embeds a base64 data URL on the canvas. Mirrors
 // ImageNodeDataSchema in apps/studio/src/schema.ts; `image` is always a
 // `data:image/...` URL (validated by Zod on the studio side).
-export interface ImageNodeData extends NodeVisual {
+export interface ImageNodeData extends NodeVisual, NodeDescription {
   image: string;
   alt?: string;
 }
@@ -88,7 +101,7 @@ export interface ImageNodeData extends NodeVisual {
 // Decorative icon node — renders a Lucide glyph. Mirrors IconNodeDataSchema
 // in apps/studio/src/schema.ts; unboxed (no border/cornerRadius/background)
 // so it does NOT extend NodeVisual — only width/height are reused.
-export interface IconNodeData {
+export interface IconNodeData extends NodeDescription {
   icon: string;
   color?: ColorToken;
   strokeWidth?: number;
@@ -105,7 +118,7 @@ export interface IconNodeData {
 // US-011: container node grouping other nodes via their `parentId`. No
 // semantic payload; chrome (dashed border, transparent fill) lives in CSS.
 // `width`/`height` size the group's bounding box for the renderer.
-export interface GroupNodeData {
+export interface GroupNodeData extends NodeDescription {
   label?: string;
   width?: number;
   height?: number;
@@ -349,6 +362,13 @@ export interface UpdateNodeBody {
   icon?: string;
   /** US-019: lock state. true freezes the node; false unlocks. */
   locked?: boolean;
+  /** US-011 (text-and-group-resize): one-line caption (max 200 chars). Lands
+   * at data.shortDescription. Empty string clears the field on disk. */
+  shortDescription?: string;
+  /** US-011 (text-and-group-resize): long-form free-text notes (no cap). Lands
+   * at data.description. Empty string clears the field on disk. Distinct from
+   * `detail.description` (play/state-only runtime payload markdown). */
+  description?: string;
 }
 
 export const updateNode = async (

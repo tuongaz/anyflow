@@ -536,6 +536,8 @@ describe('anydemo_patch_node', () => {
         'width',
         'height',
         'shape',
+        'shortDescription',
+        'description',
       ]),
     );
     const required = tool?.inputSchema?.required as string[];

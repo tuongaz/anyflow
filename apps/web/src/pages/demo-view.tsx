@@ -1511,6 +1511,73 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
+  // US-011 (text-and-group-resize): side-panel edit of the top-level
+  // `data.shortDescription` metadata field — works for every node variant
+  // (shape, play, state, image, icon, group). Distinct from
+  // `onNodeDescriptionChange` above which writes to `detail.summary` on
+  // play/state nodes only. Empty string clears the field on disk (the merge
+  // logic in apps/studio/src/operations.ts:mergeNodeUpdates drops the key
+  // entirely when '' arrives, so the demo.json stays compact).
+  const onNodeShortDescriptionChange = useCallback(
+    (nodeId: string, next: string) => {
+      if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      if (!node) return;
+      const prev = node.data.shortDescription ?? '';
+      setNodeOverride(nodeId, { data: { shortDescription: next } } as Partial<DemoNode>);
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await updateNode(demoId, nodeId, { shortDescription: next });
+        },
+        undo: async () => {
+          await updateNode(demoId, nodeId, { shortDescription: prev });
+        },
+        coalesceKey: `node:${nodeId}:shortDescription`,
+      });
+      updateNode(demoId, nodeId, { shortDescription: next }).catch((err) => {
+        // US-021: keep optimistic visible — see `onNodeLabelChange` for the
+        // failure-mode rationale.
+        dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode shortDescription failed', err);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
+  );
+
+  // US-011 (text-and-group-resize): side-panel edit of the top-level
+  // `data.description` metadata field. Distinct from `onDetailDescriptionChange`
+  // above which writes to `detail.description` (play/state only). Empty string
+  // clears (see merge-logic note on `onNodeShortDescriptionChange`).
+  const onNodeMetaDescriptionChange = useCallback(
+    (nodeId: string, next: string) => {
+      if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      if (!node) return;
+      const prev = node.data.description ?? '';
+      setNodeOverride(nodeId, { data: { description: next } } as Partial<DemoNode>);
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await updateNode(demoId, nodeId, { description: next });
+        },
+        undo: async () => {
+          await updateNode(demoId, nodeId, { description: prev });
+        },
+        coalesceKey: `node:${nodeId}:description-meta`,
+      });
+      updateNode(demoId, nodeId, { description: next }).catch((err) => {
+        dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode description failed', err);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
+  );
+
   const onCreateShapeNode = useCallback(
     (shape: ShapeKind, position: Position, dims: { width: number; height: number }) => {
       if (!demoId) return;
@@ -3177,6 +3244,8 @@ export function DemoView({
         run={inspectedRun}
         recentEvents={inspectedEvents}
         onDescriptionChange={onDetailDescriptionChange}
+        onShortDescriptionChange={onNodeShortDescriptionChange}
+        onMetaDescriptionChange={onNodeMetaDescriptionChange}
         onClose={() => {
           // US-003: panel state is decoupled from selection — closing the
           // panel only clears the open-target. The user's selection ring

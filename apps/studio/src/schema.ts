@@ -38,6 +38,19 @@ const NodeVisualBaseShape = {
   locked: z.boolean().optional(),
 };
 
+// US-011 (text-and-group-resize): free-text metadata available on every node
+// variant. `shortDescription` is a one-line caption (200-char cap so the input
+// stays compact in the side panel); `description` is open-ended Markdown-ish
+// notes with no length cap. Distinct from `detail.summary`/`detail.description`
+// (which only exist on play/state nodes and drive demo-runtime payload display)
+// — these are general node metadata that the canvas never renders. Both
+// optional, so existing demo files round-trip unchanged. Spread into every
+// node-data schema below since Group / Icon don't share NodeVisualBaseShape.
+const NodeDescriptionBaseShape = {
+  shortDescription: z.string().max(200).optional(),
+  description: z.string().optional(),
+};
+
 const HttpActionSchema = z.object({
   kind: z.literal('http'),
   method: HttpMethodSchema,
@@ -82,6 +95,7 @@ const NodeDataBaseSchema = z.object({
   // Schema-only at v1 — never read at runtime.
   handlerModule: z.string().optional(),
   ...NodeVisualBaseShape,
+  ...NodeDescriptionBaseShape,
 });
 
 const PlayNodeDataSchema = NodeDataBaseSchema.extend({
@@ -123,6 +137,7 @@ const ShapeNodeDataSchema = z.object({
   shape: ShapeKindSchema,
   label: z.string().optional(),
   ...NodeVisualBaseShape,
+  ...NodeDescriptionBaseShape,
 });
 
 const ShapeNodeSchema = z.object({
@@ -142,6 +157,7 @@ const ImageNodeDataSchema = z.object({
     }),
   alt: z.string().optional(),
   ...NodeVisualBaseShape,
+  ...NodeDescriptionBaseShape,
 });
 
 const ImageNodeSchema = z.object({
@@ -167,6 +183,7 @@ const IconNodeDataSchema = z.object({
   // US-019: lock state mirror of NodeVisualBaseShape.locked. IconNode does
   // not spread the visual base so we declare it here explicitly.
   locked: z.boolean().optional(),
+  ...NodeDescriptionBaseShape,
 });
 
 const IconNodeSchema = z.object({
@@ -195,6 +212,7 @@ const GroupNodeDataSchema = z.object({
   borderColor: ColorTokenSchema.optional(),
   borderWidth: z.number().min(1).max(8).optional(),
   borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
+  ...NodeDescriptionBaseShape,
 });
 
 const GroupNodeSchema = z.object({

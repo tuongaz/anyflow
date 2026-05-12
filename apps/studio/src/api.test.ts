@@ -1377,6 +1377,75 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     expect(text.endsWith('\n')).toBe(true);
     expect(text).toMatch(/^\{\n {2}"version": 1,/);
   });
+
+  // US-011 (text-and-group-resize): both metadata fields land at the top
+  // level of node.data and round-trip through DemoSchema unchanged. Empty
+  // string on either field is the documented clear-on-serialize signal —
+  // mergeNodeUpdates strips the key so the on-disk demo stays compact.
+  it('persists shortDescription + description fields to data on patch', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      shortDescription: 'a caption',
+      description: 'multi-line\nnotes about the node',
+    });
+    expect(res.status).toBe(200);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; data: { shortDescription?: string; description?: string } }>;
+    };
+    const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
+    expect(node?.data.shortDescription).toBe('a caption');
+    expect(node?.data.description).toBe('multi-line\nnotes about the node');
+  });
+
+  it('strips shortDescription / description on disk when empty string is patched', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    // First set both fields, then clear them with empty strings.
+    await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      shortDescription: 'tmp',
+      description: 'tmp notes',
+    });
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      shortDescription: '',
+      description: '',
+    });
+    expect(res.status).toBe(200);
+
+    const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
+      nodes: Array<{ id: string; data: Record<string, unknown> }>;
+    };
+    const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
+    expect(node?.data.shortDescription).toBeUndefined();
+    expect(node?.data.description).toBeUndefined();
+    expect('shortDescription' in (node?.data ?? {})).toBe(false);
+    expect('description' in (node?.data ?? {})).toBe(false);
+  });
+
+  it('rejects shortDescription longer than 200 characters at the body schema', async () => {
+    const { app } = buildApp();
+    const repoPath = tmpRepoWithDemo();
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const tooLong = 'x'.repeat(201);
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
+      shortDescription: tooLong,
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('POST /api/demos/:id/nodes', () => {

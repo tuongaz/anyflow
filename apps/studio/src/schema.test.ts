@@ -1583,4 +1583,183 @@ describe('DemoSchema', () => {
         .success,
     ).toBe(true);
   });
+
+  // US-011 (text-and-group-resize): free-text metadata fields available on
+  // every node variant. Two top-level fields on `data`: shortDescription
+  // (max 200 chars) and description (no length cap). Both optional so older
+  // demos round-trip unchanged. Distinct from `detail.summary` /
+  // `detail.description` (play/state-only).
+  describe('shortDescription / description metadata (US-011 text-and-group-resize)', () => {
+    const makeDemoWithNode = (node: Record<string, unknown>) => ({
+      version: 1 as const,
+      name: 'meta-demo',
+      nodes: [node],
+      connectors: [],
+    });
+
+    it('round-trips shortDescription + description on every node variant', () => {
+      const variants: Array<{ id: string; node: Record<string, unknown> }> = [
+        {
+          id: 'play',
+          node: {
+            id: 'n-play',
+            type: 'playNode',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'p',
+              kind: 'svc',
+              stateSource: { kind: 'request' },
+              playAction: { kind: 'http', method: 'GET', url: '/p' },
+              shortDescription: 'a play caption',
+              description: 'multi-line\nplay notes',
+            },
+          },
+        },
+        {
+          id: 'state',
+          node: {
+            id: 'n-state',
+            type: 'stateNode',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 's',
+              kind: 'svc',
+              stateSource: { kind: 'event' },
+              shortDescription: 'a state caption',
+              description: 'state notes',
+            },
+          },
+        },
+        {
+          id: 'shape',
+          node: {
+            id: 'n-shape',
+            type: 'shapeNode',
+            position: { x: 0, y: 0 },
+            data: {
+              shape: 'rectangle',
+              shortDescription: 'a shape caption',
+              description: 'shape notes\nline 2',
+            },
+          },
+        },
+        {
+          id: 'image',
+          node: {
+            id: 'n-image',
+            type: 'imageNode',
+            position: { x: 0, y: 0 },
+            data: {
+              image: 'data:image/png;base64,AAA',
+              shortDescription: 'an image caption',
+              description: 'image notes',
+            },
+          },
+        },
+        {
+          id: 'icon',
+          node: {
+            id: 'n-icon',
+            type: 'iconNode',
+            position: { x: 0, y: 0 },
+            data: {
+              icon: 'shopping-cart',
+              shortDescription: 'an icon caption',
+              description: 'icon notes',
+            },
+          },
+        },
+        {
+          id: 'group',
+          node: {
+            id: 'n-group',
+            type: 'group',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'group label',
+              shortDescription: 'a group caption',
+              description: 'group notes',
+            },
+          },
+        },
+      ];
+
+      for (const { id, node } of variants) {
+        const demo = makeDemoWithNode(node);
+        const parsed = DemoSchema.safeParse(demo);
+        if (!parsed.success) {
+          throw new Error(
+            `${id} expected to parse, got: ${JSON.stringify(parsed.error.issues, null, 2)}`,
+          );
+        }
+        // Round-trip preserves both fields byte-for-byte (no silent
+        // injection or stripping of the optional fields).
+        const serialized = JSON.parse(JSON.stringify(parsed.data)) as unknown;
+        expect(serialized).toEqual(demo);
+      }
+    });
+
+    it('accepts nodes with NO shortDescription / description (back-compat)', () => {
+      const demo = makeDemoWithNode({
+        id: 'n1',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle' },
+      });
+      expect(DemoSchema.safeParse(demo).success).toBe(true);
+    });
+
+    it('rejects shortDescription longer than 200 characters', () => {
+      const tooLong = 'a'.repeat(201);
+      const demo = makeDemoWithNode({
+        id: 'n1',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle', shortDescription: tooLong },
+      });
+      expect(DemoSchema.safeParse(demo).success).toBe(false);
+    });
+
+    it('accepts shortDescription at exactly 200 characters', () => {
+      const justFits = 'a'.repeat(200);
+      const demo = makeDemoWithNode({
+        id: 'n1',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle', shortDescription: justFits },
+      });
+      expect(DemoSchema.safeParse(demo).success).toBe(true);
+    });
+
+    it('accepts description with no length cap (large free-form text round-trips)', () => {
+      const big = 'line\n'.repeat(2000); // 10kB of newlines
+      const demo = makeDemoWithNode({
+        id: 'n1',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle', description: big },
+      });
+      const parsed = DemoSchema.safeParse(demo);
+      if (!parsed.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      const first = parsed.data.nodes[0];
+      if (first?.type !== 'shapeNode') throw new Error('expected shape node');
+      expect(first.data.description).toBe(big);
+    });
+
+    it('accepts empty string for both fields (transient state during clear)', () => {
+      // The wire-format merge logic (operations.ts) strips '' on serialize,
+      // but the schema itself must accept '' so the optimistic override
+      // (which carries '' through React state) still validates if a stray
+      // SSE echo replays it back.
+      const demo = makeDemoWithNode({
+        id: 'n1',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle', shortDescription: '', description: '' },
+      });
+      expect(DemoSchema.safeParse(demo).success).toBe(true);
+    });
+  });
 });
