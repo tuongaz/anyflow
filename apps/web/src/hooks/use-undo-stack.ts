@@ -3,7 +3,7 @@ import { useCallback, useReducer, useRef } from 'react';
 // US-008 mutation-coverage audit (every user-visible canvas mutation produces
 // exactly one undo entry per gesture; coalesced gestures reuse the 500ms window
 // keyed on the gesture id):
-//   • node add — onCreateShapeNode / onCreateImageNode / onCreateIconNode (no key)
+//   • node add — onCreateShapeNode / onCreateIconNode (no key)
 //   • node delete — onDeleteNode / onDeleteSelection (no key, batched)
 //   • node drag — onNodePositionChange (key: node:<id>:position) / onNodePositionsChange (batched)
 //   • node resize — onNodeResize (key: node:<id>:resize)

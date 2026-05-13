@@ -773,7 +773,7 @@ describe('DetailPanel — metadata editor renders for every node variant (US-011
       id: 'im',
       type: 'imageNode',
       position: { x: 0, y: 0 },
-      data: { image: 'data:image/png;base64,AA' },
+      data: { path: 'assets/pixel.png' },
     },
     {
       id: 'ic',

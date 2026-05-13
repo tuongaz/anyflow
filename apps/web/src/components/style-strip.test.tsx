@@ -535,8 +535,9 @@ describe('StyleStrip — group chrome editor (US-008 + US-012)', () => {
 // onStyleNode for any selected imageNode. Multi-image fan-out follows the
 // pureIconNode pattern; mixed selections (image + shape) fall through to the
 // shared shape strip.
-const TINY_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=';
+// US-004: image nodes reference a relative `path` (resolved at render time
+// against the project file endpoint) instead of an inline base64 data URL.
+const SAMPLE_PATH = 'assets/pixel.png';
 
 function imageNode(
   id: string,
@@ -552,7 +553,7 @@ function imageNode(
     type: 'imageNode',
     position: { x: 0, y: 0 },
     data: {
-      image: TINY_PNG,
+      path: SAMPLE_PATH,
       ...(opts.borderColor ? { borderColor: opts.borderColor } : {}),
       ...(opts.borderWidth !== undefined ? { borderWidth: opts.borderWidth } : {}),
       ...(opts.borderStyle ? { borderStyle: opts.borderStyle } : {}),

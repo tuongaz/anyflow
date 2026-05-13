@@ -3,6 +3,7 @@ import { ResizeControls } from '@/components/nodes/resize-controls';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ImageNodeData } from '@/lib/api';
 import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
+import { fileUrl } from '@/lib/file-url';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import { type CSSProperties, memo } from 'react';
@@ -13,6 +14,12 @@ export type ImageNodeRuntimeData = ImageNodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
+  /**
+   * US-004: project id injected into every node's runtime data by demo-canvas
+   * so the renderer can build a project-scoped file URL. Not persisted to disk
+   * — `path` is the only on-disk field.
+   */
+  projectId?: string;
 } & Record<string, unknown>;
 export type ImageNodeType = Node<ImageNodeRuntimeData, 'imageNode'>;
 
@@ -87,7 +94,7 @@ function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNod
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
       <img
-        src={data.image}
+        src={data.projectId ? fileUrl(data.projectId, data.path) : ''}
         alt={data.alt ?? ''}
         // `block` strips the inline-element baseline gap that would otherwise
         // leave a thin strip below the image inside the node container.

@@ -88,8 +88,10 @@ function findElement(
   return null;
 }
 
-const TINY_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=';
+// US-004: imageNode renders from a relative `path` resolved via the project
+// file-serving endpoint. Tests pin the relative path; the renderer threads the
+// `projectId` through runtime data injected by demo-canvas at mount time.
+const SAMPLE_PATH = 'assets/pixel.png';
 
 function callImageNode(
   data: Record<string, unknown> = {},
@@ -98,7 +100,7 @@ function callImageNode(
   const props = {
     id: 'i1',
     type: 'imageNode',
-    data: { image: TINY_PNG, ...data },
+    data: { path: SAMPLE_PATH, projectId: 'p1', ...data },
     selected: false,
     isConnectable: true,
     xPos: 0,
@@ -195,6 +197,34 @@ describe('ImageNode border render (US-014)', () => {
     );
     expect(style.borderWidth).toBe(2);
     expect(style.borderRadius).toBe(12);
+  });
+});
+
+// US-004: image src is built via `fileUrl(projectId, path)` (project file-
+// serving endpoint), not from a `data:image/...` base64 URL. Renderer reads
+// `projectId` from the runtime data injected by demo-canvas at mount.
+describe('ImageNode file-backed src (US-004)', () => {
+  function getImgSrc(tree: unknown): string | undefined {
+    const img = findElement(tree, (el) => el.type === 'img');
+    return (img?.props as { src?: string }).src;
+  }
+
+  it('builds src via fileUrl(projectId, path)', () => {
+    const src = getImgSrc(callImageNode({ path: 'assets/cover.png', projectId: 'demo-1' }));
+    expect(src).toBe('/api/projects/demo-1/files/assets/cover.png');
+  });
+
+  it('encodes spaces in the path while preserving slash separators', () => {
+    const src = getImgSrc(callImageNode({ path: 'assets/hero shot.png', projectId: 'demo-1' }));
+    expect(src).toBe('/api/projects/demo-1/files/assets/hero%20shot.png');
+  });
+
+  it('renders an empty src when projectId is not yet wired (pre-mount)', () => {
+    // The renderer can mount before the parent has the project id (e.g.
+    // briefly during initial load); empty src is preferred over a malformed
+    // URL.
+    const src = getImgSrc(callImageNode({ path: 'assets/cover.png', projectId: undefined }));
+    expect(src).toBe('');
   });
 });
 

@@ -90,14 +90,15 @@ export interface ShapeNodeData extends NodeVisual, NodeDescription {
   label?: string;
 }
 
-// Decorative image node — embeds a base64 data URL on the canvas. Mirrors
-// ImageNodeDataSchema in apps/studio/src/schema.ts; `image` is always a
-// `data:image/...` URL (validated by Zod on the studio side).
+// Decorative image node — references a file under `<project>/.anydemo/` by
+// relative path (US-004 hard-cut from base64). Mirrors ImageNodeDataSchema in
+// apps/studio/src/schema.ts; the renderer fetches via the file-serving
+// endpoint at `GET /api/projects/:id/files/:path`.
 // US-014: optional `borderWidth` (1–8) mirrors `GroupNodeData.borderWidth` so
 // the property panel can drive an image border with the same control set.
 // `borderColor` and `borderStyle` come via NodeVisual.
 export interface ImageNodeData extends NodeVisual, NodeDescription {
-  image: string;
+  path: string;
   alt?: string;
   borderWidth?: number;
 }

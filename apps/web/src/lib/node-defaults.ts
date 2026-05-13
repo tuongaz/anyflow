@@ -61,7 +61,7 @@ export function buildNewShapeData(
 
 export interface ImageDataDefaults {
   [key: string]: unknown;
-  image: string;
+  path: string;
   width: number;
   height: number;
   borderWidth: number;
@@ -69,13 +69,14 @@ export interface ImageDataDefaults {
 
 /** Build the `data` object for a freshly-created image node. Image uses
  * `borderWidth` (US-014), not `borderSize`. No `fontSize` — image renders
- * no body text. */
+ * no body text. `path` is a relative path under `<project>/.anydemo/`
+ * (US-004 hard-cut from base64 data URLs). */
 export function buildNewImageData(
-  image: string,
+  path: string,
   dims: { width: number; height: number },
 ): ImageDataDefaults {
   return {
-    image,
+    path,
     width: dims.width,
     height: dims.height,
     borderWidth: NEW_NODE_BORDER_WIDTH,

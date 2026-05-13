@@ -49,8 +49,8 @@ describe('buildNewShapeData', () => {
 
 describe('buildNewImageData', () => {
   it('image gets borderWidth=1 (NOT borderSize) and no fontSize', () => {
-    const data = buildNewImageData('data:image/png;base64,abc', { width: 200, height: 150 });
-    expect(data.image).toBe('data:image/png;base64,abc');
+    const data = buildNewImageData('assets/hello.png', { width: 200, height: 150 });
+    expect(data.path).toBe('assets/hello.png');
     expect(data.width).toBe(200);
     expect(data.height).toBe(150);
     expect(data.borderWidth).toBe(NEW_NODE_BORDER_WIDTH);
@@ -58,6 +58,8 @@ describe('buildNewImageData', () => {
     expect('fontSize' in data).toBe(false);
     // confirm we used the group/image naming, not the shape spelling.
     expect('borderSize' in data).toBe(false);
+    // US-004: on-disk field is `path`, not `image` (base64 hard-cut).
+    expect('image' in data).toBe(false);
   });
 });
 

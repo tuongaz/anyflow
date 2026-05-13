@@ -314,7 +314,7 @@ describe('DemoSchema', () => {
           id: 'img',
           type: 'imageNode' as const,
           position: { x: 0, y: 300 },
-          data: { image: 'data:image/png;base64,iVBORw0KGgo=', locked: true },
+          data: { path: 'assets/locked.png', locked: true },
         },
         {
           id: 'icon',
@@ -861,7 +861,11 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(-5)).success).toBe(false);
   });
 
-  it('parses a demo containing one imageNode with a base64 data URL (US-002)', () => {
+  // US-004: ImageNodeDataSchema hard-cut from a `data:image/...` URL to a
+  // relative `path` under `<project>/.anydemo/`. The renderer resolves it via
+  // the file-serving endpoint added in US-001. Path-safety mirrors htmlPath:
+  // no absolute paths, no `..` traversal, no leading slash.
+  it('parses a demo containing one imageNode with data.path (US-004)', () => {
     const demo = {
       version: 1 as const,
       name: 'image-demo',
@@ -871,8 +875,7 @@ describe('DemoSchema', () => {
           type: 'imageNode' as const,
           position: { x: 10, y: 20 },
           data: {
-            image:
-              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+            path: 'assets/pixel.png',
             alt: 'pixel',
             width: 200,
             height: 150,
@@ -887,26 +890,63 @@ describe('DemoSchema', () => {
     }
     const node = result.data.nodes[0];
     if (node?.type !== 'imageNode') throw new Error('expected imageNode');
-    expect(node.data.image.startsWith('data:image/png;base64,')).toBe(true);
+    expect(node.data.path).toBe('assets/pixel.png');
     expect(node.data.alt).toBe('pixel');
   });
 
-  it('rejects an imageNode whose image is not a data URL (US-002)', () => {
+  it('rejects an imageNode whose data carries the legacy `image` key (US-004 hard-cut)', () => {
+    // The pre-US-004 schema accepted `data.image` as a base64 data URL. After
+    // the hard-cut, `image` is an unknown key and `path` is required — the
+    // result is that the schema rejects the legacy payload, with no compat
+    // layer.
     const demo = {
       version: 1 as const,
-      name: 'bad-image',
+      name: 'legacy-image',
       nodes: [
         {
           id: 'img-1',
           type: 'imageNode' as const,
           position: { x: 0, y: 0 },
-          data: { image: 'https://example.com/cat.png' },
+          data: { image: 'data:image/png;base64,iVBORw0KGgo=' },
         },
       ],
       connectors: [],
     };
-    const result = DemoSchema.safeParse(demo);
-    expect(result.success).toBe(false);
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('rejects an imageNode whose path is absolute (US-004)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-image-abs',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: { path: '/etc/passwd' },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
+  });
+
+  it('rejects an imageNode whose path uses `..` traversal (US-004)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'bad-image-traversal',
+      nodes: [
+        {
+          id: 'img-1',
+          type: 'imageNode' as const,
+          position: { x: 0, y: 0 },
+          data: { path: '../../etc/passwd' },
+        },
+      ],
+      connectors: [],
+    };
+    expect(DemoSchema.safeParse(demo).success).toBe(false);
   });
 
   // US-014 (text-and-group-resize): image nodes gain an optional `borderWidth`
@@ -923,8 +963,7 @@ describe('DemoSchema', () => {
           type: 'imageNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            image:
-              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+            path: 'assets/pixel.png',
             borderColor: 'blue' as const,
             borderWidth: 4,
             borderStyle: 'dashed' as const,
@@ -953,10 +992,7 @@ describe('DemoSchema', () => {
           id: 'img-1',
           type: 'imageNode' as const,
           position: { x: 0, y: 0 },
-          data: {
-            image:
-              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
-          },
+          data: { path: 'assets/pixel.png' },
         },
       ],
       connectors: [],
@@ -973,8 +1009,7 @@ describe('DemoSchema', () => {
   });
 
   it('rejects an image node with borderWidth outside the 1–8 range (US-014)', () => {
-    const baseImage =
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=';
+    const basePath = 'assets/pixel.png';
     const tooSmall = {
       version: 1 as const,
       name: 'bad-w',
@@ -983,7 +1018,7 @@ describe('DemoSchema', () => {
           id: 'img-1',
           type: 'imageNode' as const,
           position: { x: 0, y: 0 },
-          data: { image: baseImage, borderWidth: 0 },
+          data: { path: basePath, borderWidth: 0 },
         },
       ],
       connectors: [],
@@ -992,7 +1027,7 @@ describe('DemoSchema', () => {
 
     const tooLarge = {
       ...tooSmall,
-      nodes: [{ ...tooSmall.nodes[0], data: { image: baseImage, borderWidth: 9 } }],
+      nodes: [{ ...tooSmall.nodes[0], data: { path: basePath, borderWidth: 9 } }],
     };
     expect(DemoSchema.safeParse(tooLarge).success).toBe(false);
   });
@@ -1012,10 +1047,7 @@ describe('DemoSchema', () => {
           id: 'img-1',
           type: 'imageNode' as const,
           position: { x: 100, y: 0 },
-          data: {
-            image:
-              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
-          },
+          data: { path: 'assets/pixel.png' },
         },
       ],
       connectors: [{ id: 'c1', source: 's', target: 'img-1', kind: 'default' as const }],
@@ -1476,10 +1508,7 @@ describe('DemoSchema', () => {
           type: 'imageNode' as const,
           position: { x: 0, y: 0 },
           parentId: 'group-1',
-          data: {
-            image:
-              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
-          },
+          data: { path: 'assets/parented.png' },
         },
         {
           id: 'ic1',
@@ -1738,7 +1767,7 @@ describe('DemoSchema', () => {
             type: 'imageNode',
             position: { x: 0, y: 0 },
             data: {
-              image: 'data:image/png;base64,AAA',
+              path: 'assets/captioned.png',
               shortDescription: 'an image caption',
               description: 'image notes',
             },

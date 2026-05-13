@@ -146,19 +146,27 @@ const ShapeNodeSchema = z.object({
   data: ShapeNodeDataSchema,
 });
 
-// Decorative image node — embeds a base64 data URL on the canvas. No semantic
-// payload; reuses NodeVisualBaseShape so it themes the same way as other nodes.
-// US-014 (text-and-group-resize): image-only `borderWidth` (1–8) mirrors the
-// group field so the property panel exposes the same border controls. Distinct
-// from the open-ended `borderSize` that shape nodes use; `borderColor` and
-// `borderStyle` already come via NodeVisualBaseShape with matching token types.
+// US-004 path-safety refine: relative paths under `<project>/.anydemo/` only.
+// Rejects absolute paths (rooted or drive-letter prefixed) and any `..`
+// traversal segment. The studio's file-serving endpoint layers a realpath
+// check on top of this for symlink-escape defense.
+const isCleanRelativePath = (s: string): boolean => {
+  if (s.length === 0) return false;
+  if (s.startsWith('/') || s.startsWith('\\')) return false;
+  if (/^[A-Za-z]:[\\/]/.test(s)) return false;
+  const segments = s.split(/[\\/]/);
+  return !segments.some((seg) => seg === '..');
+};
+
+// Decorative image node — references a file under `<project>/.anydemo/` by
+// relative path (US-004 hard-cut from base64 data URLs to path-backed files).
+// `path` is the same kind of relative path as `htmlPath` on htmlNode: rooted
+// at `.anydemo/`, no leading slash, no `..` segments. The renderer fetches via
+// `GET /api/projects/:id/files/:path`.
 const ImageNodeDataSchema = z.object({
-  image: z
-    .string()
-    .min(1)
-    .refine((s) => s.startsWith('data:image/'), {
-      message: 'image must be a data URL starting with "data:image/"',
-    }),
+  path: z.string().min(1).refine(isCleanRelativePath, {
+    message: 'path must be a relative path under .anydemo/ (no absolute / traversal)',
+  }),
   alt: z.string().optional(),
   ...NodeVisualBaseShape,
   ...NodeDescriptionBaseShape,

@@ -2,7 +2,7 @@ import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
 import { GroupNode } from '@/components/nodes/group-node';
 import { IconNode } from '@/components/nodes/icon-node';
-import { IMAGE_DEFAULT_SIZE, ImageNode } from '@/components/nodes/image-node';
+import { ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
 import {
   SHAPE_DEFAULT_SIZE,
@@ -34,7 +34,6 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, EdgePin, ReorderOp, ShapeKind } from '@/lib/api';
-import { handleCanvasDrop, isCandidateImageDrag } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { type GroupableNode, planGroupShortcutAction, selectUngroupableSet } from '@/lib/group-ops';
 import { scaleNodesWithinRect } from '@/lib/scale-nodes';
@@ -77,6 +76,15 @@ import {
 import '@xyflow/react/dist/style.css';
 
 export interface DemoCanvasProps {
+  /**
+   * US-004: project id used by file-backed nodes (imageNode, future htmlNode)
+   * to build project-scoped file URLs via `fileUrl(projectId, path)`. Threaded
+   * into each node's runtime `data` so renderers can fetch from
+   * `GET /api/projects/:id/files/:path`. Absent → file-backed nodes render
+   * without a source URL (e.g. during pre-mount before the parent knows the
+   * project id).
+   */
+  projectId?: string;
   nodes: DemoNode[];
   connectors: Connector[];
   /** Currently selected node ids (US-019: multi-select). */
@@ -358,23 +366,6 @@ export interface DemoCanvasProps {
    * leaves the id pinned.
    */
   pendingEditNodeId?: string | null;
-  /**
-   * US-010 / US-011: commit a new imageNode created from paste-from-clipboard
-   * or drag-drop file ingestion. The canvas owns the listeners + screen→flow
-   * translation; the parent owns id generation, optimistic overrides,
-   * persistence, and the undo entry (mirrors `onCreateShapeNode`). When
-   * omitted both ingestion paths are inert.
-   */
-  onCreateImageNode?: (image: string, position: { x: number; y: number }) => void;
-  /**
-   * US-012: ingest an http(s) URL dropped on the canvas (e.g. dragging an
-   * <img> from a webpage). The canvas extracts the URL from `text/uri-list`
-   * or `text/plain` and translates the drop point to flow space; the parent
-   * owns the fetch → blob → base64 conversion (so fetch failures can flow
-   * through the same `editError` surface as other create-node errors). When
-   * omitted, URL drags are ignored.
-   */
-  onIngestImageUrl?: (url: string, position: { x: number; y: number }) => void;
   /**
    * US-013/015 (icon picker): controlled-open state for the toolbar's Insert
    * icon popover. Wired through to `<CanvasToolbar>` unchanged. The parent
@@ -846,24 +837,8 @@ const dataStatusFor = (runs: NodeRuns | undefined, id: string): NodeStatus | und
 const dataErrorMessageFor = (runs: NodeRuns | undefined, id: string): string | undefined =>
   runs?.[id]?.status === 'error' ? runs[id]?.error : undefined;
 
-/**
- * Promise-wrapped FileReader → base64 data: URL. Injected into
- * `handleCanvasDrop` so the orchestration stays testable (tests pass a
- * deterministic stub instead of constructing a real FileReader).
- */
-const readFileAsDataUrl = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === 'string') resolve(result);
-      else reject(new Error('FileReader did not produce a string'));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'));
-    reader.readAsDataURL(file);
-  });
-
 export function DemoCanvas({
+  projectId,
   nodes,
   connectors,
   selectedNodeIds,
@@ -907,8 +882,6 @@ export function DemoCanvas({
   onPaneClick,
   onCreateAndConnectFromPane,
   pendingEditNodeId,
-  onCreateImageNode,
-  onIngestImageUrl,
   iconPickerOpen,
   onOpenIconPicker,
   onCloseIconPicker,
@@ -944,93 +917,6 @@ export function DemoCanvas({
   useEffect(() => {
     activeGroupIdRef.current = activeGroupId;
   }, [activeGroupId]);
-  // US-010: paste an image from the clipboard onto the canvas. Listens at the
-  // document level (paste events bubble there regardless of focus) and skips
-  // pastes that originate inside an editable target — InlineEdit / form inputs
-  // keep their native paste behaviour. The new imageNode is centered on the
-  // wrapper's viewport center, translated to flow space via the React Flow
-  // instance, then offset by half the default size so the node is visually
-  // centered. The parent owns persistence + undo via `onCreateImageNode`.
-  useEffect(() => {
-    if (!onCreateImageNode) return;
-    const handler = (e: ClipboardEvent) => {
-      const target = e.target as Element | null;
-      if (isEditableTarget(target)) return;
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      let imageFile: File | null = null;
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (!item) continue;
-        if (item.kind === 'file' && item.type.startsWith('image/')) {
-          imageFile = item.getAsFile();
-          if (imageFile) break;
-        }
-      }
-      if (!imageFile) return;
-      const wrapper = wrapperRef.current;
-      const rfInstance = rfInstanceRef.current;
-      if (!wrapper || !rfInstance) return;
-      e.preventDefault();
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result;
-        if (typeof dataUrl !== 'string') return;
-        const rect = wrapper.getBoundingClientRect();
-        const center = rfInstance.screenToFlowPosition({
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        });
-        onCreateImageNode(dataUrl, {
-          x: center.x - IMAGE_DEFAULT_SIZE.width / 2,
-          y: center.y - IMAGE_DEFAULT_SIZE.height / 2,
-        });
-      };
-      reader.readAsDataURL(imageFile);
-    };
-    document.addEventListener('paste', handler);
-    return () => document.removeEventListener('paste', handler);
-  }, [onCreateImageNode]);
-  // US-011 / US-012 / US-023: drag-drop image ingestion. Listeners are
-  // attached to the wrapper directly (drop events fire on the actual drop
-  // target, unlike paste which bubbles to document). `dragover` is required
-  // to call preventDefault so the browser permits the subsequent `drop`; we
-  // gate that on a payload we know how to handle (Files for US-011,
-  // text/uri-list or text/plain for US-012) so internal canvas drag gestures
-  // (node drag, connector drag, draw-shape drag) keep their default behaviour.
-  //
-  // Orchestration lives in @/lib/canvas-drop so the test suite can pin the
-  // behaviour without a DOM. US-023 extracted it after a regression-report
-  // that turned out to be non-reproducible — the unit tests now make sure a
-  // future marquee/perf refactor can't silently break the drop path.
-  useEffect(() => {
-    if (!onCreateImageNode && !onIngestImageUrl) return;
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const gates = { file: !!onCreateImageNode, url: !!onIngestImageUrl };
-    const onDragOver = (e: DragEvent) => {
-      if (!isCandidateImageDrag(e.dataTransfer?.types, gates)) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-    };
-    const onDrop = (e: DragEvent) => {
-      const rfInstance = rfInstanceRef.current;
-      if (!rfInstance) return;
-      void handleCanvasDrop(e, {
-        onCreateImageNode,
-        onIngestImageUrl,
-        screenToFlowPosition: rfInstance.screenToFlowPosition,
-        imageDefaultSize: IMAGE_DEFAULT_SIZE,
-        readFileAsDataUrl: readFileAsDataUrl,
-      });
-    };
-    wrapper.addEventListener('dragover', onDragOver);
-    wrapper.addEventListener('drop', onDrop);
-    return () => {
-      wrapper.removeEventListener('dragover', onDragOver);
-      wrapper.removeEventListener('drop', onDrop);
-    };
-  }, [onCreateImageNode, onIngestImageUrl]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
   // US-018: per-edge imperative handle map. Each EditableEdge registers its
@@ -1797,6 +1683,9 @@ export function DemoCanvas({
         position: merged.position,
         data: {
           ...merged.data,
+          // US-004: file-backed renderers (imageNode, future htmlNode) read
+          // `projectId` to construct project-scoped file URLs.
+          projectId,
           status: dataStatusFor(runs, merged.id),
           errorMessage: dataErrorMessageFor(runs, merged.id),
           onPlay: onPlayNode,
@@ -1920,6 +1809,7 @@ export function DemoCanvas({
     }
     return merged;
   }, [
+    projectId,
     nodes,
     selectedNodeIdSet,
     runs,
