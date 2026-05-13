@@ -1907,4 +1907,261 @@ describe('DemoSchema', () => {
       expect(DemoSchema.safeParse(demo).success).toBe(true);
     });
   });
+
+  // US-011 (illustrative-shapes-htmlnode): htmlNode is the new escape-hatch
+  // node type — references author-written HTML at `<project>/.anydemo/<htmlPath>`.
+  // `htmlPath` shares the path-safety refine used by imageNode.path; the schema
+  // intentionally does NOT validate file existence (the US-014 renderer shows a
+  // placeholder when the file is missing).
+  describe('htmlNode (US-011 illustrative-shapes-htmlnode)', () => {
+    it('parses a minimal htmlNode with only the required htmlPath', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'html-demo',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 10, y: 20 },
+            data: { htmlPath: 'blocks/html-1.html' },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      const node = result.data.nodes[0];
+      if (node?.type !== 'htmlNode') throw new Error('expected htmlNode');
+      expect(node.data.htmlPath).toBe('blocks/html-1.html');
+      expect(node.data.label).toBeUndefined();
+    });
+
+    it('round-trips an htmlNode with label + every NodeVisualBaseShape field', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'html-styled',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              htmlPath: 'blocks/card.html',
+              label: 'Promo card',
+              width: 320,
+              height: 200,
+              borderColor: 'blue' as const,
+              backgroundColor: 'slate' as const,
+              borderSize: 2,
+              borderStyle: 'dashed' as const,
+              fontSize: 14,
+              cornerRadius: 8,
+              locked: true,
+            },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      const node = result.data.nodes[0];
+      if (node?.type !== 'htmlNode') throw new Error('expected htmlNode');
+      expect(node.data.htmlPath).toBe('blocks/card.html');
+      expect(node.data.label).toBe('Promo card');
+      expect(node.data.width).toBe(320);
+      expect(node.data.height).toBe(200);
+      expect(node.data.borderColor).toBe('blue');
+      expect(node.data.backgroundColor).toBe('slate');
+      expect(node.data.borderSize).toBe(2);
+      expect(node.data.borderStyle).toBe('dashed');
+      expect(node.data.fontSize).toBe(14);
+      expect(node.data.cornerRadius).toBe(8);
+      expect(node.data.locked).toBe(true);
+    });
+
+    it('round-trips shortDescription / description on an htmlNode (US-011 metadata)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'html-meta',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              htmlPath: 'blocks/x.html',
+              shortDescription: 'a card with x',
+              description: 'multi-line\nnotes',
+            },
+          },
+        ],
+        connectors: [],
+      };
+      const parsed = DemoSchema.safeParse(demo);
+      if (!parsed.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(parsed.error.issues)}`);
+      }
+      const serialized = JSON.parse(JSON.stringify(parsed.data)) as unknown;
+      expect(serialized).toEqual(demo);
+    });
+
+    it('rejects an htmlNode whose htmlPath is absolute', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'bad-abs',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: { htmlPath: '/etc/passwd' },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      const issue = result.error.issues.find((i) => i.path.includes('htmlPath'));
+      expect(issue).toBeDefined();
+    });
+
+    it('rejects an htmlNode whose htmlPath uses `..` traversal', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'bad-traversal',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: { htmlPath: '../../etc/passwd' },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      const issue = result.error.issues.find((i) => i.path.includes('htmlPath'));
+      expect(issue).toBeDefined();
+    });
+
+    it('rejects an htmlNode whose htmlPath uses a Windows drive-letter root', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'bad-drive',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: { htmlPath: 'C:\\Windows\\System32\\foo.html' },
+          },
+        ],
+        connectors: [],
+      };
+      expect(DemoSchema.safeParse(demo).success).toBe(false);
+    });
+
+    it('rejects an htmlNode with an empty htmlPath', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'empty-path',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: { htmlPath: '' },
+          },
+        ],
+        connectors: [],
+      };
+      expect(DemoSchema.safeParse(demo).success).toBe(false);
+    });
+
+    it('does NOT enforce file existence — missing htmlPath files parse cleanly (renderer shows placeholder)', () => {
+      // Schema is pure: file existence is intentionally NOT validated here so
+      // missing files render a placeholder (US-014) instead of breaking the
+      // entire demo at parse time.
+      const demo = {
+        version: 1 as const,
+        name: 'missing-on-disk',
+        nodes: [
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 0, y: 0 },
+            data: { htmlPath: 'blocks/never-written.html' },
+          },
+        ],
+        connectors: [],
+      };
+      expect(DemoSchema.safeParse(demo).success).toBe(true);
+    });
+
+    it('accepts an htmlNode as a connector endpoint (source AND target)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'html-conn',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+          },
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 100, y: 0 },
+            data: { htmlPath: 'blocks/note.html' },
+          },
+        ],
+        connectors: [
+          { id: 'c1', source: 's', target: 'html-1', kind: 'default' as const },
+          { id: 'c2', source: 'html-1', target: 's', kind: 'default' as const },
+        ],
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      expect(result.data.connectors).toHaveLength(2);
+    });
+
+    it('accepts an htmlNode with an optional parentId pointing at a group (US-011 parentId back-compat)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'html-in-group',
+        nodes: [
+          {
+            id: 'group-1',
+            type: 'group' as const,
+            position: { x: 0, y: 0 },
+            data: { label: 'G' },
+          },
+          {
+            id: 'html-1',
+            type: 'htmlNode' as const,
+            position: { x: 20, y: 40 },
+            parentId: 'group-1',
+            data: { htmlPath: 'blocks/inner.html' },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      const html = result.data.nodes.find((n) => n.id === 'html-1');
+      expect(html?.parentId).toBe('group-1');
+    });
+  });
 });

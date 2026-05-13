@@ -556,6 +556,7 @@ export function createApi(options: ApiOptions): Hono {
       node.type === 'imageNode' ||
       node.type === 'iconNode' ||
       node.type === 'group' ||
+      node.type === 'htmlNode' ||
       !node.data.playAction
     ) {
       return c.json({ error: `Node ${nodeId} has no playAction` }, 400);
@@ -684,7 +685,8 @@ export function createApi(options: ApiOptions): Hono {
       node.type === 'shapeNode' ||
       node.type === 'imageNode' ||
       node.type === 'iconNode' ||
-      node.type === 'group'
+      node.type === 'group' ||
+      node.type === 'htmlNode'
         ? undefined
         : node.data.detail?.dynamicSource;
     if (!dynamicSource) {

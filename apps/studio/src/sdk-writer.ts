@@ -23,6 +23,7 @@ export function writeSdkEmitIfNeeded(repoPath: string, demo: Demo): SdkWriteResu
       n.type !== 'imageNode' &&
       n.type !== 'iconNode' &&
       n.type !== 'group' &&
+      n.type !== 'htmlNode' &&
       n.data.stateSource.kind === 'event',
   );
   if (!hasEventState) return { outcome: 'skipped', filePath: null };

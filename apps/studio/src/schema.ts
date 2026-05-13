@@ -183,6 +183,35 @@ const ImageNodeSchema = z.object({
   data: ImageNodeDataSchema,
 });
 
+// US-011 (illustrative-shapes-htmlnode): htmlNode is the escape-hatch node type
+// for content the curated nodes don't cover — references author-written HTML at
+// `<project>/.anydemo/<htmlPath>`. The renderer fetches via the file-serving
+// endpoint and sanitizes before injecting (US-013/US-014). `htmlPath` uses the
+// same path-safety refine as imageNode.path: relative under `.anydemo/`, no
+// absolute root, no `..` traversal. Spreads NodeVisualBaseShape so authors can
+// theme the wrapper (border / background / radius / font) with the same fields
+// available on every other visual node.
+//
+// File existence is INTENTIONALLY not validated at the schema level. Missing
+// files are a normal authoring state (author drops a node, file hasn't been
+// written yet) and would otherwise reject the whole demo. The US-014 renderer
+// renders a `PlaceholderCard` instead — so a missing htmlPath WARNS (via the
+// placeholder visual) without ERRORING (without failing demo parse).
+const HtmlNodeDataSchema = z.object({
+  htmlPath: z.string().min(1).refine(isCleanRelativePath, {
+    message: 'htmlPath must be a relative path under .anydemo/ (no absolute / traversal)',
+  }),
+  label: z.string().optional(),
+  ...NodeVisualBaseShape,
+  ...NodeDescriptionBaseShape,
+});
+
+const HtmlNodeSchema = z.object({
+  ...NodeBaseShape,
+  type: z.literal('htmlNode'),
+  data: HtmlNodeDataSchema,
+});
+
 // Decorative icon node — renders a Lucide glyph on the canvas. Unboxed
 // (no border/cornerRadius/backgroundColor) so it does NOT spread
 // NodeVisualBaseShape; only `width` / `height` are reused for resizing.
@@ -245,6 +274,7 @@ const NodeSchema = z.discriminatedUnion('type', [
   ImageNodeSchema,
   IconNodeSchema,
   GroupNodeSchema,
+  HtmlNodeSchema,
 ]);
 
 // Connector is the semantic edge between two nodes — describes HOW they are
@@ -413,6 +443,8 @@ export type ShapeNode = z.infer<typeof ShapeNodeSchema>;
 export type ImageNode = z.infer<typeof ImageNodeSchema>;
 export type IconNode = z.infer<typeof IconNodeSchema>;
 export type GroupNode = z.infer<typeof GroupNodeSchema>;
+export type HtmlNode = z.infer<typeof HtmlNodeSchema>;
+export type HtmlNodeData = z.infer<typeof HtmlNodeDataSchema>;
 export type ShapeKind = z.infer<typeof ShapeKindSchema>;
 export type ColorToken = z.infer<typeof ColorTokenSchema>;
 export type Connector = z.infer<typeof ConnectorSchema>;
