@@ -27,6 +27,7 @@ import {
   updateConnector,
   updateNode,
   updateNodePosition,
+  uploadImageFile,
 } from '@/lib/api';
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { buildPastePayload } from '@/lib/clipboard';
@@ -39,6 +40,7 @@ import {
 } from '@/lib/group-ops';
 import { computeIconInsertPosition } from '@/lib/icon-insert';
 import { pushRecent } from '@/lib/icon-recents';
+import { performImageDropUpload } from '@/lib/image-upload-flow';
 import {
   applyNudge,
   getNudgeDelta,
@@ -246,6 +248,9 @@ export function DemoView({
     setEditError(null);
     clipboardRef.current = null;
     setHasClipboard(false);
+    // US-008: drop any in-flight upload retry entries — they're scoped to the
+    // previous demo's optimistic nodes which have already been reset above.
+    imageRetryRef.current.clear();
     undoStack.clear();
   }, [detail?.id]);
 
@@ -1702,6 +1707,100 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-008: retry map for in-flight image uploads. Keyed by the optimistic
+  // node id; entries are added when the canvas commits a drop and removed
+  // once the upload + createNode pair succeeds. Persisted across renders
+  // via a ref (the map mutates in place; renders shouldn't churn from a
+  // upload-progress dictionary).
+  const imageRetryRef = useRef<
+    Map<
+      string,
+      {
+        file: File;
+        originalFilename: string;
+        position: Position;
+        dims: { width: number; height: number };
+      }
+    >
+  >(new Map());
+
+  const rememberImageRetry = useCallback(
+    (
+      nodeId: string,
+      args: {
+        file: File;
+        originalFilename: string;
+        position: Position;
+        dims: { width: number; height: number };
+      },
+    ) => {
+      imageRetryRef.current.set(nodeId, args);
+    },
+    [],
+  );
+  const forgetImageRetry = useCallback((nodeId: string) => {
+    imageRetryRef.current.delete(nodeId);
+  }, []);
+
+  // US-008: shared upload-and-persist runner. Called by both the initial drop
+  // (`onCreateImageFromFile`) and the retry path (`onRetryImageUpload`).
+  // Errors are swallowed and surfaced via the placeholder UX — never via the
+  // top-of-canvas editError banner — so a user's transient network glitch
+  // doesn't shove an alarming red banner up between drops.
+  const runImageUpload = useCallback(
+    (args: {
+      nodeId: string;
+      file: File;
+      originalFilename: string;
+      position: Position;
+      dims: { width: number; height: number };
+    }) => {
+      if (!demoId) return;
+      setEditError(null);
+      markMutation();
+      void performImageDropUpload(
+        { ...args, demoId },
+        {
+          upload: uploadImageFile,
+          createNode,
+          deleteNode,
+          setOverride: setNodeOverride,
+          pushUndo,
+          rememberRetry: rememberImageRetry,
+          forgetRetry: forgetImageRetry,
+        },
+      ).catch((err) => {
+        console.error('image-upload-flow failed', err);
+      });
+    },
+    [demoId, setNodeOverride, pushUndo, markMutation, rememberImageRetry, forgetImageRetry],
+  );
+
+  const onCreateImageFromFile = useCallback(
+    (args: {
+      file: File;
+      position: Position;
+      dims: { width: number; height: number };
+      originalFilename: string;
+    }) => {
+      if (!demoId) return;
+      // Generate the id client-side so the optimistic override and the server
+      // echo share an id (mirrors `onCreateShapeNode`).
+      const nodeId = `node-${crypto.randomUUID()}`;
+      runImageUpload({ nodeId, ...args });
+    },
+    [demoId, runImageUpload],
+  );
+
+  const onRetryImageUpload = useCallback(
+    (nodeId: string) => {
+      const args = imageRetryRef.current.get(nodeId);
+      if (!args) return;
+      runImageUpload({ nodeId, ...args });
+    },
+    [runImageUpload],
+  );
+
   // US-015: icon-picker state slice. Lives here (not in demo-canvas) so the
   // detail panel's "Change icon…" button can dispatch openIconPicker('replace',
   // nodeId) without going through DemoCanvas. demo-canvas is a transparent
@@ -2968,6 +3067,8 @@ export function DemoView({
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
+          onCreateImageFromFile={demoId ? onCreateImageFromFile : undefined}
+          onRetryImageUpload={demoId ? onRetryImageUpload : undefined}
           iconPickerOpen={iconPicker.open}
           onOpenIconPicker={demoId ? handleOpenIconPickerInsert : undefined}
           onCloseIconPicker={demoId ? closeIconPicker : undefined}

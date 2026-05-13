@@ -228,6 +228,70 @@ describe('ImageNode file-backed src (US-004)', () => {
   });
 });
 
+// US-008: optimistic-placement loading + failure overlays. Driven by transient
+// `_uploading` / `_uploadError` flags on the runtime data — never persisted to
+// disk. The renderer swaps the <img> for the appropriate placeholder so the
+// canvas position stays committed while the upload round-trips.
+describe('ImageNode upload placeholder (US-008)', () => {
+  function findPlaceholder(tree: unknown): ReactElementLike | null {
+    return findElement(tree, (el) => {
+      const p = el.props as { 'data-testid'?: string };
+      return p['data-testid'] === 'image-node-placeholder';
+    });
+  }
+  function findImg(tree: unknown): ReactElementLike | null {
+    return findElement(tree, (el) => el.type === 'img');
+  }
+
+  it('renders a Loading placeholder (not <img>) when data._uploading is true', () => {
+    const tree = callImageNode({ _uploading: true });
+    const placeholder = findPlaceholder(tree);
+    expect(placeholder).not.toBeNull();
+    expect((placeholder?.props as { 'data-placeholder'?: string })['data-placeholder']).toBe(
+      'loading',
+    );
+    // The img must NOT render during the loading state — otherwise the empty
+    // `path` would resolve to a broken file-serving URL and show a torn-image
+    // icon over the 'Loading…' text.
+    expect(findImg(tree)).toBeNull();
+  });
+
+  it('renders an upload-failed placeholder (not <img>) when data._uploadError is set', () => {
+    const tree = callImageNode({ _uploadError: 'network down' });
+    const placeholder = findPlaceholder(tree);
+    expect(placeholder).not.toBeNull();
+    expect((placeholder?.props as { 'data-placeholder'?: string })['data-placeholder']).toBe(
+      'failed',
+    );
+    expect(findImg(tree)).toBeNull();
+  });
+
+  it('failed-placeholder click dispatches data.onRetryUpload with the node id', () => {
+    const seen: { id: string | null } = { id: null };
+    const tree = callImageNode(
+      {
+        _uploadError: 'fail',
+        onRetryUpload: (id: string) => {
+          seen.id = id;
+        },
+      },
+      { id: 'img-42' } as Partial<NodeProps>,
+    );
+    const placeholder = findPlaceholder(tree);
+    if (!placeholder) throw new Error('expected placeholder');
+    const onClick = (placeholder.props as { onClick?: () => void }).onClick;
+    expect(typeof onClick).toBe('function');
+    onClick?.();
+    expect(seen.id).toBe('img-42');
+  });
+
+  it('renders <img> (not placeholder) when neither flag is set', () => {
+    const tree = callImageNode();
+    expect(findPlaceholder(tree)).toBeNull();
+    expect(findImg(tree)).not.toBeNull();
+  });
+});
+
 // US-021: image nodes default to a literal white fill when `backgroundColor`
 // is unset — gives transparent PNGs / partial-alpha screenshots a clean frame
 // on light + dark canvases. Field is never auto-injected on disk; this is a

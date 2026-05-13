@@ -2709,4 +2709,135 @@ describe('DemoCanvas', () => {
       expect(fitIdx).toBeLessThan(tidyIdx);
     });
   });
+
+  describe('US-008: OS image drop wiring', () => {
+    function findCanvasWrapper(tree: unknown): ReactElementLike | null {
+      return findElement(tree, (el) => {
+        const p = el.props as { 'data-testid'?: string };
+        return p['data-testid'] === 'anydemo-canvas';
+      });
+    }
+
+    /** Synthesize the minimum of a React DragEvent the handler reads. */
+    function dragEvent(args: {
+      files?: File[];
+      types?: string[];
+      clientX?: number;
+      clientY?: number;
+    }): {
+      preventDefault: () => void;
+      dataTransfer: DataTransfer;
+      clientX: number;
+      clientY: number;
+      defaultPrevented: boolean;
+    } {
+      const files = args.files ?? [];
+      let defaultPrevented = false;
+      let dropEffectSet = '';
+      const dt = {
+        files: { length: files.length, item: (i: number) => files[i] ?? null },
+        types: args.types ?? (files.length > 0 ? ['Files'] : []),
+        set dropEffect(v: string) {
+          dropEffectSet = v;
+        },
+        get dropEffect() {
+          return dropEffectSet;
+        },
+      } as unknown as DataTransfer;
+      return {
+        preventDefault: () => {
+          defaultPrevented = true;
+        },
+        dataTransfer: dt,
+        clientX: args.clientX ?? 100,
+        clientY: args.clientY ?? 200,
+        get defaultPrevented() {
+          return defaultPrevented;
+        },
+      };
+    }
+
+    const stubFile = (name = 'pic.png', type = 'image/png'): File =>
+      new File([new Uint8Array([0])], name, { type });
+
+    it('wires onDragOver + onDrop on the wrapper when onCreateImageFromFile is set', () => {
+      const tree = callDemoCanvas({ onCreateImageFromFile: () => {} });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      expect(typeof (wrapper.props as { onDragOver?: unknown }).onDragOver).toBe('function');
+      expect(typeof (wrapper.props as { onDrop?: unknown }).onDrop).toBe('function');
+    });
+
+    it('onDragOver preventDefault()s when the OS hints at file drag', () => {
+      const tree = callDemoCanvas({ onCreateImageFromFile: () => {} });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDragOver = (wrapper.props as { onDragOver?: (e: unknown) => void }).onDragOver;
+      if (typeof onDragOver !== 'function') throw new Error('onDragOver not wired');
+      const e = dragEvent({ files: [stubFile()] });
+      onDragOver(e);
+      expect(e.defaultPrevented).toBe(true);
+    });
+
+    it('onDragOver does NOT preventDefault when the drag is not a file payload', () => {
+      const tree = callDemoCanvas({ onCreateImageFromFile: () => {} });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDragOver = (wrapper.props as { onDragOver?: (e: unknown) => void }).onDragOver;
+      if (typeof onDragOver !== 'function') throw new Error('onDragOver not wired');
+      // text drag (no 'Files' in types) — must not opt-in as drop target,
+      // otherwise we'd hijack toolbar / connection-line drags.
+      const e = dragEvent({ files: [], types: ['text/plain'] });
+      onDragOver(e);
+      expect(e.defaultPrevented).toBe(false);
+    });
+
+    it('onDragOver is a no-op when onCreateImageFromFile is NOT wired', () => {
+      const tree = callDemoCanvas({});
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDragOver = (wrapper.props as { onDragOver?: (e: unknown) => void }).onDragOver;
+      if (typeof onDragOver !== 'function') throw new Error('onDragOver not wired');
+      // Even with files, the handler must early-return when no image-create
+      // callback is wired (otherwise we'd block native file-drop affordances
+      // on a read-only canvas).
+      const e = dragEvent({ files: [stubFile()] });
+      onDragOver(e);
+      expect(e.defaultPrevented).toBe(false);
+    });
+
+    it('onDrop preventDefault()s and does not throw when no rfInstance is attached', () => {
+      // Drop before onRfInit ever fired: handleCanvasFileDrop short-circuits
+      // on rfInstance===null, but preventDefault still runs (we want to
+      // suppress the browser's default 'open this image in a new tab' even
+      // when we can't honor the drop).
+      const dispatched: unknown[] = [];
+      const tree = callDemoCanvas({
+        onCreateImageFromFile: (a) => dispatched.push(a),
+      });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDrop = (wrapper.props as { onDrop?: (e: unknown) => void }).onDrop;
+      if (typeof onDrop !== 'function') throw new Error('onDrop not wired');
+      const e = dragEvent({ files: [stubFile()] });
+      expect(() => onDrop(e)).not.toThrow();
+      expect(e.defaultPrevented).toBe(true);
+      // rfInstance is null in the hook-shim render → no dispatch.
+      expect(dispatched).toHaveLength(0);
+    });
+
+    it("threads onRetryImageUpload into each node's runtime data as data.onRetryUpload", () => {
+      const onRetryImageUpload = (_id: string) => {};
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a')],
+        onRetryImageUpload,
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found');
+      const rfNodes = rf.props.nodes as Node[];
+      expect(rfNodes).toHaveLength(1);
+      const data = rfNodes[0]?.data as { onRetryUpload?: (id: string) => void };
+      expect(data.onRetryUpload).toBe(onRetryImageUpload);
+    });
+  });
 });

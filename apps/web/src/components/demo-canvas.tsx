@@ -34,6 +34,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, EdgePin, ReorderOp, ShapeKind } from '@/lib/api';
+import { computeImageDims, handleCanvasFileDrop } from '@/lib/canvas-drop';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { type GroupableNode, planGroupShortcutAction, selectUngroupableSet } from '@/lib/group-ops';
 import { scaleNodesWithinRect } from '@/lib/scale-nodes';
@@ -65,6 +66,7 @@ import { LayoutDashboard, Maximize2 } from 'lucide-react';
 import {
   type ComponentType,
   type PointerEvent,
+  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
@@ -190,6 +192,27 @@ export interface DemoCanvasProps {
     position: { x: number; y: number },
     dims: { width: number; height: number },
   ) => void;
+  /**
+   * US-008: commit a new imageNode from an OS-image file drop. The canvas
+   * detects the drop, computes the natural dims (capped at 400px longest side),
+   * and projects the drop client-position into flow-space; the parent owns id
+   * allocation, optimistic override, upload POST, and createNode persistence.
+   * Wiring this enables the drop handler; absent → OS image drops are ignored.
+   */
+  onCreateImageFromFile?: (args: {
+    file: File;
+    position: { x: number; y: number };
+    dims: { width: number; height: number };
+    originalFilename: string;
+  }) => void;
+  /**
+   * US-008: dispatched when the user clicks the 'Upload failed (click to
+   * retry)' placeholder on an imageNode whose initial upload failed. Receives
+   * the node id; the parent retries the upload using the file reference stored
+   * in its retry map. Threaded into every imageNode's runtime data so the
+   * renderer can call it on click.
+   */
+  onRetryImageUpload?: (nodeId: string) => void;
   /**
    * Commit a new connector from a handle-drag gesture. Wiring this enables
    * `nodesConnectable` on the React Flow instance; absent → handles are
@@ -857,6 +880,8 @@ export function DemoCanvas({
   onNodeDescriptionChange,
   onConnectorLabelChange,
   onCreateShapeNode,
+  onCreateImageFromFile,
+  onRetryImageUpload,
   onCreateConnector,
   onReconnectConnector,
   onReorderNode,
@@ -1686,6 +1711,10 @@ export function DemoCanvas({
           // US-004: file-backed renderers (imageNode, future htmlNode) read
           // `projectId` to construct project-scoped file URLs.
           projectId,
+          // US-008: imageNode placeholder uses this callback when the user
+          // clicks the 'Upload failed (click to retry)' state. Injected here so
+          // every imageNode picks it up uniformly; non-imageNodes ignore it.
+          onRetryUpload: onRetryImageUpload,
           status: dataStatusFor(runs, merged.id),
           errorMessage: dataErrorMessageFor(runs, merged.id),
           onPlay: onPlayNode,
@@ -1821,6 +1850,7 @@ export function DemoCanvas({
     nodeOverrides,
     onNodeLabelChange,
     onNodeDescriptionChange,
+    onRetryImageUpload,
     pendingEditNodeId,
     activeGroupId,
   ]);
@@ -2166,6 +2196,62 @@ export function DemoCanvas({
     setContextEndpoint(null);
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   }, []);
+
+  // US-008: OS file-drag enter. Surfaced as `onDragOver` rather than
+  // `onDragEnter` because the spec only fires `drop` for elements that called
+  // preventDefault() on the preceding dragover. We only opt in when an
+  // `onCreateImageFromFile` handler is wired (drop is otherwise a no-op).
+  // Setting `dropEffect = 'copy'` gives the OS cursor the canonical "drop a
+  // copy here" affordance.
+  const onWrapperDragOver = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>) => {
+      if (!onCreateImageFromFile) return;
+      const dt = e.dataTransfer;
+      // Only intercept when the OS hints at file payload (DataTransfer.types
+      // contains 'Files' when files are being dragged). React Flow's own
+      // toolbar gestures don't set this, so we won't fight them.
+      if (!dt) return;
+      const hasFiles = dt.types && Array.from(dt.types).includes('Files');
+      if (!hasFiles) return;
+      e.preventDefault();
+      try {
+        dt.dropEffect = 'copy';
+      } catch {
+        // Safari can throw if dropEffect is set when DataTransfer is
+        // read-only mid-dispatch — ignore; the preventDefault is what counts.
+      }
+    },
+    [onCreateImageFromFile],
+  );
+
+  // US-008: OS file drop on the canvas. Walks the dropped files for the first
+  // acceptable image, reads its natural dims via an in-memory `Image` element,
+  // projects the drop clientX/Y into flow space, and dispatches
+  // `onCreateImageFromFile`. The parent owns id allocation, optimistic
+  // override, upload POST, and createNode persistence. No-op when the handler
+  // is unwired, when the drop has no image, or when React Flow's instance
+  // isn't initialized (drop on a not-yet-mounted canvas). The composition is
+  // delegated to `handleCanvasFileDrop` so the pipeline is unit-testable
+  // without a DOM (computeDims + dispatch are injectable).
+  const onWrapperDrop = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>) => {
+      if (!onCreateImageFromFile) return;
+      // Capture clientX/Y synchronously — the synthetic event is recycled by
+      // React once the handler returns, so the awaited dims read would see
+      // stale coordinates.
+      const clientPos = { x: e.clientX, y: e.clientY };
+      const dataTransfer = e.dataTransfer;
+      e.preventDefault();
+      void handleCanvasFileDrop({
+        dataTransfer,
+        clientPos,
+        rfInstance: rfInstanceRef.current,
+        computeDims: computeImageDims,
+        dispatch: onCreateImageFromFile,
+      });
+    },
+    [onCreateImageFromFile],
+  );
 
   const reconnectableEdges = !!onReconnectConnector;
   // Reconnect endpoint handles are only useful when EXACTLY one connector is
@@ -2825,6 +2911,10 @@ export function DemoCanvas({
       // right-click opens OUR Radix menu instead of xyflow's single-node
       // menu (which would also clear the multi-selection en route).
       onContextMenuCapture={onWrapperContextMenuCapture}
+      // US-008: OS-image drop. Both handlers are no-ops unless
+      // `onCreateImageFromFile` is wired.
+      onDragOver={onWrapperDragOver}
+      onDrop={onWrapperDrop}
     >
       <ReactFlow
         nodes={rfNodes}

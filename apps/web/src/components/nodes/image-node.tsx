@@ -20,6 +20,12 @@ export type ImageNodeRuntimeData = ImageNodeData & {
    * — `path` is the only on-disk field.
    */
   projectId?: string;
+  /**
+   * US-008: click-to-retry callback dispatched when the user clicks the
+   * 'Upload failed' placeholder. Injected by demo-canvas's `sourceNodes`
+   * builder. Absent → the placeholder still renders, but clicking is inert.
+   */
+  onRetryUpload?: (nodeId: string) => void;
 } & Record<string, unknown>;
 export type ImageNodeType = Node<ImageNodeRuntimeData, 'imageNode'>;
 
@@ -93,16 +99,43 @@ function ImageNodeImpl({ id, data, selected, isConnectable }: NodeProps<ImageNod
         isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
-      <img
-        src={data.projectId ? fileUrl(data.projectId, data.path) : ''}
-        alt={data.alt ?? ''}
-        // `block` strips the inline-element baseline gap that would otherwise
-        // leave a thin strip below the image inside the node container.
-        // `pointer-events-none` ensures the React Flow wrapper still receives
-        // drag/select gestures rather than the browser's native image drag.
-        className="block h-full w-full select-none object-contain pointer-events-none"
-        draggable={false}
-      />
+      {data._uploading ? (
+        // US-008: optimistic-placement loading state. The <img> is suppressed
+        // because the file hasn't been uploaded yet (data.path is empty), so
+        // we render a flat 'Loading…' tile sized to the dropped image dims.
+        <div
+          data-testid="image-node-placeholder"
+          data-placeholder="loading"
+          className="flex h-full w-full select-none items-center justify-center text-xs text-muted-foreground pointer-events-none"
+        >
+          Loading…
+        </div>
+      ) : data._uploadError ? (
+        // US-008: upload failed — the node stays on the canvas with a click-to-
+        // retry affordance. Never auto-deletes; the user explicitly opts to
+        // retry (or deletes the node themselves).
+        <button
+          type="button"
+          data-testid="image-node-placeholder"
+          data-placeholder="failed"
+          onClick={() => data.onRetryUpload?.(id)}
+          title={data._uploadError}
+          className="flex h-full w-full cursor-pointer select-none items-center justify-center px-2 text-center text-xs text-destructive"
+        >
+          Upload failed (click to retry)
+        </button>
+      ) : (
+        <img
+          src={data.projectId ? fileUrl(data.projectId, data.path) : ''}
+          alt={data.alt ?? ''}
+          // `block` strips the inline-element baseline gap that would otherwise
+          // leave a thin strip below the image inside the node container.
+          // `pointer-events-none` ensures the React Flow wrapper still receives
+          // drag/select gestures rather than the browser's native image drag.
+          className="block h-full w-full select-none object-contain pointer-events-none"
+          draggable={false}
+        />
+      )}
       <Handle
         type="source"
         position={Position.Right}

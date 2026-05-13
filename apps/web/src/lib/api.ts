@@ -101,6 +101,19 @@ export interface ImageNodeData extends NodeVisual, NodeDescription {
   path: string;
   alt?: string;
   borderWidth?: number;
+  /**
+   * US-008: transient overlay flag set on the optimistic node placed by the
+   * OS-image drop handler before the file has finished uploading. Lives only
+   * in the in-memory nodeOverrides map — never serialized to disk (cleared
+   * before createNode is called). Leading underscore marks it private.
+   */
+  _uploading?: boolean;
+  /**
+   * US-008: transient overlay flag set when the upload POST failed. The
+   * renderer shows a 'click to retry' placeholder and clicking dispatches the
+   * retry callback. Cleared on successful retry. Never serialized.
+   */
+  _uploadError?: string;
 }
 
 // Decorative icon node — renders a Lucide glyph. Mirrors IconNodeDataSchema
@@ -652,6 +665,42 @@ export const resetDemo = async (demoId: string): Promise<ResetDemoResult> => {
     throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/reset → ${res.status}`);
   }
   return (await res.json()) as ResetDemoResult;
+};
+
+export interface UploadImageResult {
+  path: string;
+}
+
+/**
+ * US-008: POST a single image File to the project's upload endpoint (US-007).
+ * `filename` overrides the File's own `.name` for the server-side slugging.
+ * The browser sets the multipart boundary automatically — never pass an
+ * explicit `content-type` header.
+ */
+export const uploadImageFile = async (
+  projectId: string,
+  file: File,
+  filename: string,
+): Promise<UploadImageResult> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('filename', filename);
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      errorBody?.error ?? `POST /api/projects/${projectId}/files/upload → ${res.status}`,
+    );
+  }
+  return (await res.json()) as UploadImageResult;
 };
 
 export const playNode = async (demoId: string, nodeId: string): Promise<PlayResult> => {
