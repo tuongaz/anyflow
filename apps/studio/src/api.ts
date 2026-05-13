@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { isAbsolute, join, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
@@ -37,6 +37,7 @@ import {
 import { fetchDynamicDetail, runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
 import { DemoSchema } from './schema.ts';
+import { type Spawner, defaultSpawner } from './shellout.ts';
 import type { DemoWatcher } from './watcher.ts';
 
 const EmitBodySchema = z.object({
@@ -69,14 +70,69 @@ const EMIT_STATUS_TO_EVENT = {
   error: 'node:error',
 } as const;
 
+const FilePathBodySchema = z.object({ path: z.string() });
+
+type ResolvedProjectFile =
+  | { kind: 'ok'; absPath: string; anydemoRoot: string }
+  | { kind: 'unknownProject' }
+  | { kind: 'invalidPath'; reason: string }
+  | { kind: 'fileMissing'; absPath: string };
+
+// Shared path-safety + filesystem resolution for project-scoped file routes.
+// Performs textual rejection of absolute paths / `..` traversal, then layered
+// realpath verification that the resolved file stays inside `<project>/.anydemo/`
+// (defense against symlink escapes). Returns the realpath of an existing file
+// on success, or `fileMissing` with the would-be absolute path so callers can
+// soft-fail with that path included for clipboard fallback.
+function resolveProjectFile(
+  registry: Registry,
+  projectId: string,
+  relPath: string,
+): ResolvedProjectFile {
+  const entry = registry.getById(projectId);
+  if (!entry) return { kind: 'unknownProject' };
+
+  const guard = validateRelativePath(relPath);
+  if (guard.kind === 'invalid') return { kind: 'invalidPath', reason: guard.reason };
+
+  const anydemoRoot = join(entry.repoPath, '.anydemo');
+  let realRoot: string;
+  try {
+    realRoot = realpathSync(anydemoRoot);
+  } catch {
+    return { kind: 'fileMissing', absPath: resolve(anydemoRoot, relPath) };
+  }
+
+  const target = resolve(anydemoRoot, relPath);
+  let realTarget: string;
+  try {
+    realTarget = realpathSync(target);
+  } catch {
+    return { kind: 'fileMissing', absPath: target };
+  }
+
+  const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+  if (realTarget !== realRoot && !realTarget.startsWith(rootWithSep)) {
+    return { kind: 'invalidPath', reason: 'path escapes project root' };
+  }
+
+  return { kind: 'ok', absPath: realTarget, anydemoRoot: realRoot };
+}
+
 export interface ApiOptions {
   registry: Registry;
   events?: EventBus;
   watcher?: DemoWatcher;
+  /** Injectable shellout for tests; defaults to Bun.spawn fire-and-forget. */
+  spawner?: Spawner;
+  /** Override `process.platform` for tests covering darwin/win32/linux branches. */
+  platform?: NodeJS.Platform;
 }
 
 export function createApi(options: ApiOptions): Hono {
   const { registry, events, watcher } = options;
+  const spawner = options.spawner ?? defaultSpawner;
+  const platform = options.platform ?? process.platform;
   const api = new Hono();
 
   api.post('/demos/register', async (c) => {
@@ -238,10 +294,6 @@ export function createApi(options: ApiOptions): Hono {
   // (absolute / traversal), then realpath check that the resolved file stays
   // inside the project's .anydemo root (defends against symlink escapes).
   api.get('/projects/:id/files/:path{.+}', async (c) => {
-    const projectId = c.req.param('id');
-    const entry = registry.getById(projectId);
-    if (!entry) return c.json({ error: 'unknown project' }, 404);
-
     const rawPath = c.req.param('path');
     let relPath: string;
     try {
@@ -250,33 +302,17 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: 'invalid path encoding' }, 400);
     }
 
-    const guard = validateRelativePath(relPath);
-    if (guard.kind === 'invalid') {
-      return c.json({ error: guard.reason }, 400);
+    const resolved = resolveProjectFile(registry, c.req.param('id'), relPath);
+    switch (resolved.kind) {
+      case 'unknownProject':
+        return c.json({ error: 'unknown project' }, 404);
+      case 'invalidPath':
+        return c.json({ error: resolved.reason }, 400);
+      case 'fileMissing':
+        return c.json({ error: 'file not found' }, 404);
     }
 
-    const anydemoRoot = join(entry.repoPath, '.anydemo');
-    let realRoot: string;
-    try {
-      realRoot = realpathSync(anydemoRoot);
-    } catch {
-      return c.json({ error: 'file not found' }, 404);
-    }
-
-    const target = resolve(anydemoRoot, relPath);
-    let realTarget: string;
-    try {
-      realTarget = realpathSync(target);
-    } catch {
-      return c.json({ error: 'file not found' }, 404);
-    }
-
-    const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
-    if (realTarget !== realRoot && !realTarget.startsWith(rootWithSep)) {
-      return c.json({ error: 'path escapes project root' }, 400);
-    }
-
-    const file = Bun.file(realTarget);
+    const file = Bun.file(resolved.absPath);
     if (!(await file.exists())) {
       return c.json({ error: 'file not found' }, 404);
     }
@@ -287,6 +323,96 @@ export function createApi(options: ApiOptions): Hono {
         'content-length': String(file.size),
       },
     });
+  });
+
+  // POST /api/projects/:id/files/open — shell out to `$EDITOR <abs>` so the
+  // user can edit a project-scoped file (htmlNode block, image asset) in
+  // their IDE. The endpoint always returns the resolved absolute path in
+  // the response body so the frontend can copy-to-clipboard when $EDITOR
+  // isn't set or the spawn fails. Path safety mirrors the GET route.
+  api.post('/projects/:id/files/open', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = FilePathBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid open body', issues: parsed.error.issues }, 400);
+    }
+
+    const resolved = resolveProjectFile(registry, c.req.param('id'), parsed.data.path);
+    switch (resolved.kind) {
+      case 'unknownProject':
+        return c.json({ error: 'unknown project' }, 404);
+      case 'invalidPath':
+        return c.json({ error: resolved.reason }, 400);
+      case 'fileMissing':
+        return c.json({ error: 'file not found', absPath: resolved.absPath }, 404);
+    }
+
+    const editor = process.env.EDITOR;
+    if (!editor || editor.trim().length === 0) {
+      return c.json({ ok: false, absPath: resolved.absPath, error: 'EDITOR not set' });
+    }
+
+    const run = await spawner(editor, [resolved.absPath]);
+    if (!run.ok) {
+      return c.json({ ok: false, absPath: resolved.absPath, error: run.error ?? 'spawn failed' });
+    }
+    return c.json({ ok: true, absPath: resolved.absPath });
+  });
+
+  // POST /api/projects/:id/files/reveal — open the OS file manager with the
+  // target file selected. Platform commands: `open -R <abs>` (macOS),
+  // `explorer /select,<abs>` (Windows), `xdg-open <dir>` (Linux — selects the
+  // containing directory; xdg has no portable "select-this-file" verb). Same
+  // fallback shape as /open: response always includes `absPath` for clipboard.
+  api.post('/projects/:id/files/reveal', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Body must be valid JSON' }, 400);
+    }
+    const parsed = FilePathBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid reveal body', issues: parsed.error.issues }, 400);
+    }
+
+    const resolved = resolveProjectFile(registry, c.req.param('id'), parsed.data.path);
+    switch (resolved.kind) {
+      case 'unknownProject':
+        return c.json({ error: 'unknown project' }, 404);
+      case 'invalidPath':
+        return c.json({ error: resolved.reason }, 400);
+      case 'fileMissing':
+        return c.json({ error: 'file not found', absPath: resolved.absPath }, 404);
+    }
+
+    let cmd: string;
+    let args: string[];
+    switch (platform) {
+      case 'darwin':
+        cmd = 'open';
+        args = ['-R', resolved.absPath];
+        break;
+      case 'win32':
+        cmd = 'explorer';
+        args = [`/select,${resolved.absPath}`];
+        break;
+      default:
+        cmd = 'xdg-open';
+        args = [dirname(resolved.absPath)];
+        break;
+    }
+
+    const run = await spawner(cmd, args);
+    if (!run.ok) {
+      return c.json({ ok: false, absPath: resolved.absPath, error: run.error ?? 'spawn failed' });
+    }
+    return c.json({ ok: true, absPath: resolved.absPath });
   });
 
   api.delete('/demos/:id', (c) => {

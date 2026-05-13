@@ -5,6 +5,7 @@ import { createApi } from './api.ts';
 import { type EventBus, createEventBus } from './events.ts';
 import { createMcpServer } from './mcp.ts';
 import { type Registry, createRegistry } from './registry.ts';
+import type { Spawner } from './shellout.ts';
 import { type DemoWatcher, createWatcher } from './watcher.ts';
 
 export type AppMode = 'dev' | 'prod';
@@ -25,6 +26,10 @@ export interface CreateAppOptions {
   watchAllOnBoot?: boolean;
   /** Disable file watching entirely (no fs handles leaked). Useful for tests. */
   disableWatcher?: boolean;
+  /** Inject a shellout spawner; tests use this to avoid launching $EDITOR/Finder. */
+  spawner?: Spawner;
+  /** Override the host platform for tests covering darwin/win32/linux branches. */
+  platform?: NodeJS.Platform;
 }
 
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
@@ -49,7 +54,16 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
 
   app.get('/health', (c) => c.json({ ok: true }));
-  app.route('/api', createApi({ registry, events, watcher }));
+  app.route(
+    '/api',
+    createApi({
+      registry,
+      events,
+      watcher,
+      spawner: options.spawner,
+      platform: options.platform,
+    }),
+  );
 
   // Per-request stateless MCP transport: every /mcp call builds a fresh
   // Server + Streamable HTTP transport pair. The transport's stateless mode
