@@ -1,0 +1,161 @@
+import { LockBadge } from '@/components/nodes/lock-badge';
+import { PlaceholderCard } from '@/components/nodes/placeholder-card';
+import { ResizeControls } from '@/components/nodes/resize-controls';
+import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
+import type { HtmlNodeData } from '@/lib/api';
+import { colorTokenStyle } from '@/lib/color-tokens';
+import { injectSanitizedHtml } from '@/lib/inject-sanitized-html';
+import { ensureTailwindLoaded } from '@/lib/tailwind-runtime';
+import { useHtmlContent } from '@/lib/use-html-content';
+import { cn } from '@/lib/utils';
+import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
+import { type CSSProperties, type ReactNode, memo, useEffect } from 'react';
+
+export type HtmlNodeRuntimeData = HtmlNodeData & {
+  onResize?: (
+    nodeId: string,
+    dims: { width: number; height: number; x: number; y: number },
+  ) => void;
+  setResizing?: (on: boolean) => void;
+  /**
+   * US-014: project id injected into every node's runtime data by demo-canvas
+   * so the renderer can build a project-scoped file URL. Mirrors the same
+   * field on `ImageNodeRuntimeData` (US-004). Not persisted to disk —
+   * `htmlPath` is the only on-disk reference.
+   */
+  projectId?: string;
+} & Record<string, unknown>;
+export type HtmlNodeType = Node<HtmlNodeRuntimeData, 'htmlNode'>;
+
+export const HTML_DEFAULT_SIZE = { width: 320, height: 200 } as const;
+
+const MIN_W = 80;
+const MIN_H = 40;
+
+const HANDLE_CLASS = 'opacity-0 transition-opacity';
+
+function HtmlNodeImpl({ id, data, selected, isConnectable }: NodeProps<HtmlNodeType>) {
+  const { isResizing, onResizeStart, onResizeEvent, onResizeEnd } = useResizeGesture({
+    onResize: (dims) => data.onResize?.(id, dims),
+    setResizing: data.setResizing,
+  });
+  // Once user-resized (or pre-sized via authoring), the React Flow wrapper
+  // owns dimensions and the inner fills via h-full w-full. Before any resize,
+  // we pin the default size so the wrapper auto-sizes to it.
+  const sized = isResizing || data.width !== undefined || data.height !== undefined;
+
+  // US-014: htmlNode defaults to a transparent / borderless wrapper so author
+  // HTML can paint edge-to-edge. Only fields the author has SET land in the
+  // style object — `colorTokenStyle` is used so theming stays consistent with
+  // every other visual node.
+  const containerStyle: CSSProperties = {
+    ...(data.backgroundColor !== undefined
+      ? { backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor }
+      : {}),
+    ...(data.borderColor !== undefined
+      ? { borderColor: colorTokenStyle(data.borderColor, 'node').borderColor }
+      : {}),
+    ...(data.borderSize !== undefined ? { borderWidth: data.borderSize } : {}),
+    ...(data.borderStyle !== undefined ? { borderStyle: data.borderStyle } : {}),
+    ...(data.cornerRadius !== undefined ? { borderRadius: data.cornerRadius } : {}),
+    ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
+    ...(sized ? {} : { width: HTML_DEFAULT_SIZE.width, height: HTML_DEFAULT_SIZE.height }),
+  };
+
+  // US-012: load Tailwind Play CDN at mount so author HTML's utility classes
+  // actually paint. Idempotent — only the first htmlNode on the page injects
+  // the script; subsequent mounts are no-ops.
+  useEffect(() => {
+    ensureTailwindLoaded();
+  }, []);
+
+  const content = useHtmlContent(data.projectId, data.htmlPath);
+
+  let body: ReactNode;
+  if (content.kind === 'loaded') {
+    // US-013 / US-014: the trust boundary lives in `injectSanitizedHtml` —
+    // every site that mounts untrusted author HTML threads through that
+    // helper. The sanitizer drops <script>, <style>, <iframe>, on*=
+    // attributes, and javascript: URLs before the HTML is returned.
+    body = (
+      <div
+        data-testid="html-node-content"
+        className="h-full w-full overflow-auto"
+        {...injectSanitizedHtml(content.html)}
+      />
+    );
+  } else if (content.kind === 'missing') {
+    body = <PlaceholderCard message={`Missing: ${data.htmlPath}`} variant="destructive" />;
+  } else if (content.kind === 'error') {
+    body = <PlaceholderCard message={`Error: ${content.message}`} variant="destructive" />;
+  } else {
+    body = <PlaceholderCard message="Loading…" />;
+  }
+
+  return (
+    <div
+      className={cn('group relative overflow-hidden', sized ? 'h-full w-full' : '')}
+      style={containerStyle}
+      data-testid="html-node"
+    >
+      <ResizeControls
+        visible={!!selected && !!data.onResize && !data.locked}
+        cornerVariant="visible"
+        minWidth={MIN_W}
+        minHeight={MIN_H}
+        onResizeStart={onResizeStart}
+        onResize={onResizeEvent}
+        onResizeEnd={onResizeEnd}
+      />
+      {data.locked ? <LockBadge /> : null}
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="t"
+        isConnectable={isConnectable}
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="l"
+        isConnectable={isConnectable}
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
+      {body}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="r"
+        isConnectable={isConnectable}
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="b"
+        isConnectable={isConnectable}
+        className={cn(HANDLE_CLASS, selected && '!opacity-100')}
+      />
+      {data.label !== undefined && data.label !== '' ? (
+        <div
+          data-testid="html-node-label"
+          className="-bottom-5 absolute right-0 left-0 truncate text-center text-[11px] text-muted-foreground"
+        >
+          {data.label}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function arePropsEqual(prev: NodeProps<HtmlNodeType>, next: NodeProps<HtmlNodeType>): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+}
+
+export const HtmlNode = memo(HtmlNodeImpl, arePropsEqual);

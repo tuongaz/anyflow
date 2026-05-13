@@ -137,6 +137,16 @@ export interface IconNodeData extends NodeDescription {
   locked?: boolean;
 }
 
+// Decorative htmlNode — references author-written HTML at
+// `<project>/.anydemo/<htmlPath>` (US-011 schema, US-014 renderer). The
+// renderer fetches the file via the project file-serving endpoint, sanitizes
+// the contents via `sanitizeHtml`, and injects the result. Mirrors
+// `HtmlNodeDataSchema` in `apps/studio/src/schema.ts`.
+export interface HtmlNodeData extends NodeVisual, NodeDescription {
+  htmlPath: string;
+  label?: string;
+}
+
 // US-011: container node grouping other nodes via their `parentId`. No
 // semantic payload; chrome (dashed border, transparent fill) lives in CSS.
 // `width`/`height` size the group's bounding box for the renderer.
@@ -178,7 +188,8 @@ export type DemoNode =
   | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData })
   | (NodeBase & { type: 'imageNode'; data: ImageNodeData })
   | (NodeBase & { type: 'iconNode'; data: IconNodeData })
-  | (NodeBase & { type: 'group'; data: GroupNodeData });
+  | (NodeBase & { type: 'group'; data: GroupNodeData })
+  | (NodeBase & { type: 'htmlNode'; data: HtmlNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
 export type ConnectorDirection = 'forward' | 'backward' | 'both';
@@ -488,7 +499,7 @@ export const updateConnector = async (
 
 export interface CreateNodeBody {
   id?: string;
-  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode' | 'group';
+  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode' | 'group' | 'htmlNode';
   position: { x: number; y: number };
   data: Record<string, unknown>;
   /** US-011: optional parent-node id (must reference an existing node). */

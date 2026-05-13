@@ -1,6 +1,7 @@
 import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
 import { GroupNode } from '@/components/nodes/group-node';
+import { HtmlNode } from '@/components/nodes/html-node';
 import { IconNode } from '@/components/nodes/icon-node';
 import { ImageNode } from '@/components/nodes/image-node';
 import { PlayNode } from '@/components/nodes/play-node';
@@ -566,6 +567,10 @@ const nodeTypes = {
   shapeNode: ShapeNode,
   imageNode: ImageNode,
   iconNode: IconNode,
+  // US-014: file-backed escape-hatch node — fetches author HTML at
+  // `<project>/.anydemo/<htmlPath>`, sanitizes (US-013), and renders with
+  // Tailwind Play CDN (US-012). Missing files render PlaceholderCard.
+  htmlNode: HtmlNode,
   // US-011: container node grouping other nodes via `parentId`. React Flow
   // positions children relative to the group; dragging the group moves the
   // group + every child together.
