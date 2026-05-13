@@ -505,14 +505,16 @@ const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
 
 /**
  * Drop-buffer (in CSS pixels) for "near-miss" connect/reconnect releases.
- * The user explicitly asked for this: "When moving the outlet and release
- * the mouse, give some buffer, so that even you drop the mouse out of a
- * node, if it is still close, then still connect to it." 50 pixels is wide
- * enough to forgive overshoots and make the snap visibly auto-engage when
- * the outlet approaches a perimeter, without trapping intentional empty-
- * space drops.
+ * The user originally asked for this ("give some buffer so that even if you
+ * drop the mouse out of a node, if it is still close, then still connect to
+ * it"), then later asked for a tighter zone. 24 px is wide enough to forgive
+ * a trackpad overshoot while keeping the magnetism contained: it sits just
+ * under xyflow's `connectionRadius={32}` (so handle-snap remains the wider
+ * affordance) and is roughly one outlet-dot away from the node bbox, which
+ * is the visual distance users perceive as "still close." Intentional empty-
+ * space drops past that distance no longer get pulled toward a neighbour.
  */
-const RECONNECT_BUFFER_PX = 50;
+const RECONNECT_BUFFER_PX = 24;
 
 /**
  * Hit-test for connect/reconnect body drops. Returns the topmost
