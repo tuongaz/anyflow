@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
@@ -117,6 +117,41 @@ function resolveProjectFile(
   }
 
   return { kind: 'ok', absPath: realTarget, anydemoRoot: realRoot };
+}
+
+// Allowed extensions for /files/upload. Lowercased; matched after dropping the
+// leading `.`. Stored as a Set so future expansion (PDF, video) is one-edit.
+const UPLOAD_ALLOWED_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+
+// Turn a user-supplied filename into a `<slug>.<ext>` pair. Returns null when
+// the extension isn't on the allowlist or the slug is empty after sanitization.
+function sanitizeUploadFilename(name: string): { base: string; ext: string } | null {
+  const last = name.split(/[\\/]/).pop() ?? name;
+  const dotIdx = last.lastIndexOf('.');
+  if (dotIdx <= 0 || dotIdx === last.length - 1) return null;
+  const ext = last.slice(dotIdx).toLowerCase();
+  if (!UPLOAD_ALLOWED_EXTS.has(ext)) return null;
+  const slug = last
+    .slice(0, dotIdx)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (slug.length === 0) return null;
+  return { base: slug, ext };
+}
+
+// Find the first unused `<base>.<ext>` (then `<base>-2.<ext>`, `<base>-3.<ext>`,
+// …) inside `assetsDir`. Caps at 999 attempts to avoid an unbounded loop on a
+// pathologically full directory.
+function pickUploadFilename(assetsDir: string, base: string, ext: string): string {
+  const first = `${base}${ext}`;
+  if (!existsSync(join(assetsDir, first))) return first;
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base}-${i}${ext}`;
+    if (!existsSync(join(assetsDir, candidate))) return candidate;
+  }
+  return `${base}-${Date.now()}${ext}`;
 }
 
 export interface ApiOptions {
@@ -413,6 +448,66 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ ok: false, absPath: resolved.absPath, error: run.error ?? 'spawn failed' });
     }
     return c.json({ ok: true, absPath: resolved.absPath });
+  });
+
+  // POST /api/projects/:id/files/upload — accept a multipart image upload and
+  // persist it under `<project>/.anydemo/assets/`. The frontend (US-008 OS
+  // drop) sends `file` (Blob) and optionally `filename` (the original OS name)
+  // in a multipart form; we sanitize the filename to a lowercased slug,
+  // dedupe with `-2`, `-3` suffixes inside the assets dir, and return the
+  // demo-relative path. Allowlist + 5 MB cap guard against arbitrary uploads.
+  api.post('/projects/:id/files/upload', async (c) => {
+    const projectId = c.req.param('id');
+    const entry = registry.getById(projectId);
+    if (!entry) return c.json({ error: 'unknown project' }, 404);
+
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json({ error: 'Body must be valid multipart form-data' }, 400);
+    }
+
+    const fileField = form.get('file');
+    if (!(fileField instanceof File)) {
+      return c.json({ error: 'Missing file field' }, 400);
+    }
+    if (fileField.size > UPLOAD_MAX_BYTES) {
+      return c.json({ error: 'file too large', maxBytes: UPLOAD_MAX_BYTES }, 413);
+    }
+
+    const suggestedRaw = form.get('filename');
+    const suggested =
+      typeof suggestedRaw === 'string' && suggestedRaw.length > 0 ? suggestedRaw : fileField.name;
+    const sanitized = sanitizeUploadFilename(suggested);
+    if (!sanitized) {
+      return c.json({ error: 'invalid filename or extension' }, 400);
+    }
+
+    const assetsDir = join(entry.repoPath, '.anydemo', 'assets');
+    try {
+      mkdirSync(assetsDir, { recursive: true });
+    } catch (err) {
+      return c.json(
+        {
+          error: `Failed to create assets dir: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        500,
+      );
+    }
+
+    const finalName = pickUploadFilename(assetsDir, sanitized.base, sanitized.ext);
+    const absPath = join(assetsDir, finalName);
+    try {
+      await Bun.write(absPath, fileField);
+    } catch (err) {
+      return c.json(
+        { error: `Failed to write file: ${err instanceof Error ? err.message : String(err)}` },
+        500,
+      );
+    }
+
+    return c.json({ path: `assets/${finalName}` });
   });
 
   api.delete('/demos/:id', (c) => {

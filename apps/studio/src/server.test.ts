@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createRegistry } from './registry.ts';
@@ -320,5 +327,136 @@ describe('POST /api/projects/:id/files/reveal', () => {
     expect(body.ok).toBe(false);
     expect(body.absPath).toBe(fix.blockHtmlAbs);
     expect(body.error).toBe('spawn ENOENT');
+  });
+});
+
+describe('POST /api/projects/:id/files/upload', () => {
+  const buildUploadFixture = () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'anydemo-upload-repo-'));
+    mkdirSync(join(repoDir, '.anydemo'), { recursive: true });
+    writeFileSync(join(repoDir, '.anydemo', 'demo.json'), '{"version":1}');
+
+    const registry = createRegistry({
+      path: join(mkdtempSync(join(tmpdir(), 'anydemo-upload-reg-')), 'registry.json'),
+    });
+    const entry = registry.upsert({
+      name: 'Upload Test',
+      repoPath: repoDir,
+      demoPath: '.anydemo/demo.json',
+    });
+    const app = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry,
+      disableWatcher: true,
+    });
+    return { app, projectId: entry.id, repoDir };
+  };
+
+  // 1×1 transparent PNG to act as a real image payload across the tests.
+  const PNG_BYTES = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+  ]);
+
+  const formPost = (path: string, form: FormData): Request =>
+    new Request(`http://test${path}`, { method: 'POST', body: form });
+
+  it('persists the upload and returns the relative path', async () => {
+    const { app, projectId, repoDir } = buildUploadFixture();
+    const form = new FormData();
+    form.set('file', new File([PNG_BYTES], 'Hello World.png', { type: 'image/png' }));
+    const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { path: string };
+    expect(body.path).toBe('assets/hello-world.png');
+    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'hello-world.png'))).toBe(true);
+    const written = readFileSync(join(repoDir, '.anydemo', 'assets', 'hello-world.png'));
+    expect(new Uint8Array(written)).toEqual(PNG_BYTES);
+  });
+
+  it('uses the `filename` field when present', async () => {
+    const { app, projectId, repoDir } = buildUploadFixture();
+    const form = new FormData();
+    form.set('file', new File([PNG_BYTES], 'blob', { type: 'image/png' }));
+    form.set('filename', 'My Image.PNG');
+    const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { path: string }).path).toBe('assets/my-image.png');
+    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'my-image.png'))).toBe(true);
+  });
+
+  it('dedupes with -2, -3 suffix when the same name already exists', async () => {
+    const { app, projectId, repoDir } = buildUploadFixture();
+    const upload = async (n: string) => {
+      const form = new FormData();
+      form.set('file', new File([PNG_BYTES], n, { type: 'image/png' }));
+      const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+      return (await res.json()) as { path: string };
+    };
+    expect((await upload('logo.png')).path).toBe('assets/logo.png');
+    expect((await upload('logo.png')).path).toBe('assets/logo-2.png');
+    expect((await upload('logo.png')).path).toBe('assets/logo-3.png');
+    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'logo.png'))).toBe(true);
+    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'logo-2.png'))).toBe(true);
+    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'logo-3.png'))).toBe(true);
+  });
+
+  it('rejects non-image extensions with 400', async () => {
+    const { app, projectId, repoDir } = buildUploadFixture();
+    const form = new FormData();
+    form.set(
+      'file',
+      new File([new TextEncoder().encode('hi')], 'notes.txt', { type: 'text/plain' }),
+    );
+    const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/invalid|extension/i);
+    expect(existsSync(join(repoDir, '.anydemo', 'assets'))).toBe(false);
+  });
+
+  it('rejects files larger than 5 MB with 413', async () => {
+    const { app, projectId, repoDir } = buildUploadFixture();
+    const big = new Uint8Array(5 * 1024 * 1024 + 1);
+    const form = new FormData();
+    form.set('file', new File([big], 'big.png', { type: 'image/png' }));
+    const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { error: string; maxBytes: number };
+    expect(body.error).toMatch(/too large/i);
+    expect(body.maxBytes).toBe(5 * 1024 * 1024);
+    expect(existsSync(join(repoDir, '.anydemo', 'assets'))).toBe(false);
+  });
+
+  it('returns 400 when the file field is missing', async () => {
+    const { app, projectId } = buildUploadFixture();
+    const form = new FormData();
+    form.set('filename', 'whatever.png');
+    const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/file/i);
+  });
+
+  it('returns 404 for an unknown projectId', async () => {
+    const { app } = buildUploadFixture();
+    const form = new FormData();
+    form.set('file', new File([PNG_BYTES], 'pic.png', { type: 'image/png' }));
+    const res = await app.fetch(formPost('/api/projects/does-not-exist/files/upload', form));
+    expect(res.status).toBe(404);
+  });
+
+  it('accepts SVG uploads', async () => {
+    const { app, projectId, repoDir } = buildUploadFixture();
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>';
+    const form = new FormData();
+    form.set('file', new File([svg], 'icon.svg', { type: 'image/svg+xml' }));
+    const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { path: string }).path).toBe('assets/icon.svg');
+    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'icon.svg'))).toBe(true);
   });
 });
