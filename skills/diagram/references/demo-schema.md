@@ -25,7 +25,7 @@ Every node has `{ id, type, position, data }`. `id` is a non-empty string and
 **must be unique** across `nodes[]`. `position` is `{ x: number, y: number }`.
 
 ```ts
-type Node = PlayNode | StateNode | ShapeNode | ImageNode;
+type Node = PlayNode | StateNode | ShapeNode | ImageNode | HtmlNode;
 ```
 
 **PlayNode** — has a `playAction` (clickable, runs an HTTP call):
@@ -78,12 +78,21 @@ type Node = PlayNode | StateNode | ShapeNode | ImageNode;
   type: 'shapeNode';
   position: { x: number; y: number };
   data: {
-    shape: 'rectangle' | 'ellipse' | 'sticky' | 'text';
+    shape: 'rectangle' | 'ellipse' | 'sticky' | 'text' | 'database';
     label?: string;
     // visual fields (same as PlayNode)
   };
 }
 ```
+
+`shape: 'database'` is an *illustrative* cylinder (SVG with rounded top/bottom),
+intended for static datastore visuals next to playNodes/stateNodes that read or
+write it. Authors typically pair it with `kind: "database"` on the *adjacent*
+stateNode that actually carries the request/event source — the shapeNode itself
+has no `kind` field. Default size is 120 × 140. When `shape: 'database'` is set,
+the rectangular chrome (border/background classes) is cleared so only the SVG
+paints; the `borderColor` / `backgroundColor` ColorToken fields still apply to
+the SVG stroke / fill.
 
 **ImageNode** — decorative; references a file under `<project>/.anydemo/`
 by relative path. The renderer fetches via
@@ -107,6 +116,35 @@ for hot-reload (`file:changed` SSE).
 The image file MUST already exist under `<project>/.anydemo/<path>` before the
 demo loads — author it by hand into `.anydemo/assets/<name>.<ext>`, or upload
 via the canvas (drag-and-drop) which writes through `POST /api/projects/:id/files/upload`.
+
+**HtmlNode** — decorative escape-hatch; renders author-written HTML fetched from
+a relative path under `<project>/.anydemo/`. Use for legends, callouts, rich
+annotations, or any content the curated nodes don't cover. The studio's
+renderer pipes the file through a sanitizer (strips `<script>`, `on*=`
+handlers, `javascript:` URLs) before injection, and Tailwind utility classes
+work because the runtime is auto-loaded on first htmlNode mount.
+
+```ts
+{
+  id: string;
+  type: 'htmlNode';
+  position: { x: number; y: number };
+  data: {
+    htmlPath: string;             // relative to <project>/.anydemo/, e.g. "blocks/legend.html"
+                                  // NO leading slash, NO ".." segments
+    label?: string;               // optional caption rendered below the content
+    // visual fields (same as PlayNode — applied to the wrapper)
+  };
+}
+```
+
+The convention for studio-created htmlNodes is `htmlPath: "blocks/<id>.html"`
+(matching the node's own `id` so the file is auto-managed: created on
+drop-create, deleted on node-delete). Hand-authored htmlNodes can point at any
+path under `.anydemo/` — e.g. `blocks/legend.html` or `content/intro.html` —
+as long as the file is a clean relative path. If the file is missing at load
+time, the renderer shows a `PlaceholderCard` with "Missing: &lt;htmlPath&gt;"
+instead of failing the parse.
 
 ## Connector — discriminated union on `kind`
 
@@ -234,6 +272,56 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 }
 ```
 
+## Illustrative database shape + htmlNode
+
+The snippet below shows one `shapeNode` with `data.shape: 'database'` (placed
+next to a stateNode that carries the request source) and one `htmlNode`
+referencing `blocks/legend.html` for a custom legend block. Both compose with
+the canonical example above.
+
+```json
+{
+  "nodes": [
+    {
+      "id": "db-orders-cyl",
+      "type": "shapeNode",
+      "position": { "x": 600, "y": 0 },
+      "data": { "shape": "database", "label": "Orders DB" }
+    },
+    {
+      "id": "db-orders",
+      "type": "stateNode",
+      "position": { "x": 600, "y": 180 },
+      "data": {
+        "label": "Orders DB",
+        "kind": "database",
+        "stateSource": { "kind": "request" },
+        "detail": {
+          "summary": "Stores order rows.",
+          "description": "Postgres table holding one row per order. Written by `POST /orders`, read by the shipping worker."
+        }
+      }
+    },
+    {
+      "id": "legend-block",
+      "type": "htmlNode",
+      "position": { "x": 0, "y": 400 },
+      "data": {
+        "htmlPath": "blocks/legend.html",
+        "label": "Legend"
+      }
+    }
+  ]
+}
+```
+
+The illustrative `shapeNode` provides the cylinder *visual* while the adjacent
+`stateNode` carries the actual `kind` / `stateSource` / `detail` payload —
+keeping the data contract on the stateNode and the icon-style chrome on the
+shapeNode. The `htmlNode` is rendered from `<project>/.anydemo/blocks/legend.html`
+(the studio writes a starter file when you drop the node from the canvas
+toolbar; hand-edit the file in `$EDITOR` to customise it).
+
 ## Common rejection causes
 
 - `version` not literal `1` → reject.
@@ -242,6 +330,8 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 - `QueueConnector` without `queueName` → reject.
 - `PlayNode` without `playAction` → reject.
 - `imageNode.data.path` is absolute, contains `..` segments, or is a `data:` URL → reject. Must be a clean relative path under `.anydemo/` (e.g. `assets/logo.png`).
+- `htmlNode.data.htmlPath` is empty, absolute, or contains `..` segments → reject. Must be a clean relative path under `.anydemo/` (e.g. `blocks/legend.html`). Missing-on-disk is NOT a rejection — the renderer shows a placeholder.
+- `shapeNode.data.shape` outside the allowed set (`'rectangle' | 'ellipse' | 'sticky' | 'text' | 'database'`) → reject.
 - `sourceHandle: 't'` / `targetHandle: 'r'` (wrong role) → reject.
 - Duplicate node ids or duplicate connector ids → undefined behavior; the
   studio's assemble endpoint dedupes, but author-side duplicates indicate a

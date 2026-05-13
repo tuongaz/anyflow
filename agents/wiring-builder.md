@@ -20,8 +20,18 @@ list of common rejection causes. The studio's `/api/demos/validate` endpoint
 rejects anything that doesn't match it. Pay particular attention to:
 
 - Required vs. optional fields per node type (`playNode` REQUIRES `playAction`,
-  `stateNode` does not; `shapeNode`/`imageNode` have a totally different `data`
-  shape).
+  `stateNode` does not; `shapeNode` / `imageNode` / `htmlNode` carry a totally
+  different `data` shape — see the per-variant blocks in `demo-schema.md`).
+- `shapeNode` supports the illustrative `'database'` cylinder alongside the
+  rectangular variants — use it as a static cylinder placed next to the
+  `stateNode` that carries the actual datastore payload.
+- `htmlNode` is the escape-hatch for content the curated nodes don't cover
+  (legends, callouts, rich annotations). It references author-written HTML
+  via `data.htmlPath` (relative under `.anydemo/`, conventionally
+  `blocks/<node-id>.html`). Optional `label` + `NodeVisualBaseShape` fields
+  (width / height / borderColor / backgroundColor / borderSize / borderStyle /
+  fontSize / cornerRadius / locked) apply to the wrapper. Missing files render
+  a placeholder instead of failing the parse.
 - The connector discriminator: `eventName` is REQUIRED for `kind: 'event'`,
   `queueName` is REQUIRED for `kind: 'queue'`.
 - Handle role: `sourceHandle` must be `'r'` or `'b'`; `targetHandle` must be
