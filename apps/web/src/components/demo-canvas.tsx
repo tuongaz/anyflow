@@ -459,6 +459,14 @@ export interface DemoCanvasProps {
    * group nodes removed).
    */
   onUngroupSelection?: (selectedNodeIds: string[]) => void;
+  /**
+   * US-019: flip the lock state for a batch of nodes as one undo entry.
+   * Wiring this enables the right-click "Lock"/"Unlock" menu item. The
+   * parent's existing mixed-selection convention applies: if ANY id is
+   * unlocked the batch locks all; only when ALL are already locked does
+   * the batch unlock. Absent → the menu item is hidden.
+   */
+  onToggleNodeLock?: (nodeIds: string[]) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -1354,6 +1362,7 @@ export function DemoCanvas({
   onPinEndpoint,
   onUnpinEndpoint,
   onUngroupSelection,
+  onToggleNodeLock,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1874,6 +1883,18 @@ export function DemoCanvas({
     if (!onUngroupSelection) return;
     onUngroupSelection([...selectedNodeIds]);
   }, [onUngroupSelection, selectedNodeIds]);
+
+  // US-019: flip the lock state from the right-click menu. Single-node
+  // right-click acts on the right-clicked id; multi-selection right-click
+  // (contextNodeIdRef cleared by `onWrapperContextMenuCapture`) acts on the
+  // whole selection — same as the old Cmd/Ctrl+Shift+L shortcut used to.
+  const handleToggleLockPick = useCallback(() => {
+    if (!onToggleNodeLock) return;
+    const single = contextNodeIdRef.current;
+    const ids = single ? [single] : [...selectedNodeIds];
+    if (ids.length === 0) return;
+    onToggleNodeLock(ids);
+  }, [onToggleNodeLock, selectedNodeIds]);
 
   // US-007: right-click on a visible endpoint dot opens the canvas's
   // context menu in "endpoint mode". The dot calls into this from its own
@@ -3950,7 +3971,32 @@ export function DemoCanvas({
                 </ContextMenuItem>
               </>
             ) : null}
-            {contextOnNode && onReorderNode && onDeleteNode ? <ContextMenuSeparator /> : null}
+            {contextOnNode && onReorderNode && (onToggleNodeLock || onDeleteNode) ? (
+              <ContextMenuSeparator />
+            ) : null}
+            {contextOnNode && onToggleNodeLock
+              ? (() => {
+                  // Label echoes the keyboard-shortcut's mixed-selection rule
+                  // (see onToggleNodeLock JSDoc): "Unlock" only when EVERY
+                  // target id is already locked; otherwise "Lock".
+                  const single = contextNodeIdRef.current;
+                  const targetIds = single ? [single] : selectedNodeIds;
+                  const label =
+                    targetIds.length > 0 && targetIds.every((id) => lockedNodeIdSet.has(id))
+                      ? 'Unlock'
+                      : 'Lock';
+                  return (
+                    <ContextMenuItem
+                      data-testid="node-context-menu-toggle-lock"
+                      onSelect={handleToggleLockPick}
+                      disabled={targetIds.length === 0}
+                    >
+                      {label}
+                    </ContextMenuItem>
+                  );
+                })()
+              : null}
+            {contextOnNode && onToggleNodeLock && onDeleteNode ? <ContextMenuSeparator /> : null}
             {contextOnNode && onDeleteNode ? (
               <ContextMenuItem
                 data-testid="node-context-menu-delete"

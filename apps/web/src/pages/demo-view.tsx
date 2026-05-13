@@ -1362,26 +1362,6 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, [onDeleteSelection]);
 
-  // US-019: Cmd/Ctrl+Shift+L toggles the lock state of every selected node.
-  // Mirrors the Delete-shortcut guards (skip in any editable element, skip
-  // when any inline editor is mounted) so a stray Shift+L mid-typing never
-  // hijacks the gesture.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (!e.shiftKey) return;
-      if (e.key.toLowerCase() !== 'l') return;
-      if (isEditableElement(document.activeElement)) return;
-      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
-      const nodeIds = selectedIdsRef.current;
-      if (nodeIds.length === 0) return;
-      e.preventDefault();
-      onToggleNodeLock(nodeIds);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onToggleNodeLock]);
-
   // Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z (redo). Skipped while focus is in
   // any editable element so native browser undo handles input/textarea/
   // contentEditable. We always preventDefault on the chord — even when the
@@ -3067,6 +3047,7 @@ export function DemoView({
           onCopySelection={demoId ? onCopyNodes : undefined}
           onPasteSelection={demoId ? () => onPasteNodes(null) : undefined}
           onUngroupSelection={demoId ? ungroupSelectedGroups : undefined}
+          onToggleNodeLock={demoId ? onToggleNodeLock : undefined}
           hasClipboard={hasClipboard}
           selectedNodes={selectedNodes}
           selectedConnectors={selectedConnectorsList}
