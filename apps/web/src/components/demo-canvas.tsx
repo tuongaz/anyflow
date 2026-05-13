@@ -2154,12 +2154,22 @@ export function DemoCanvas({
           onResizeFinal: merged.type === 'group' ? onGroupNodeResizeFinal : undefined,
           setResizing,
           onNameChange: gatedByGroup ? undefined : onNodeNameChange,
-          onDescriptionChange:
-            merged.type === 'shapeNode' || merged.type === 'imageNode' || merged.type === 'iconNode'
-              ? undefined
-              : gatedByGroup
-                ? undefined
-                : onNodeDescriptionChange,
+          onDescriptionChange: (() => {
+            if (gatedByGroup) return undefined;
+            // Rectangle and ellipse shapes render a description body — wire
+            // the canvas-side inline edit so dblclick on the body lands an
+            // edit. Other shape kinds (text/sticky/database) and imageNode /
+            // iconNode have no on-canvas body text, so the inline-edit
+            // callback stays undefined.
+            if (merged.type === 'shapeNode') {
+              const shapeKind = (merged.data as { shape?: ShapeKind }).shape;
+              return shapeKind === 'rectangle' || shapeKind === 'ellipse'
+                ? onNodeDescriptionChange
+                : undefined;
+            }
+            if (merged.type === 'imageNode' || merged.type === 'iconNode') return undefined;
+            return onNodeDescriptionChange;
+          })(),
           // US-015: inject autoEditOnMount on the freshly drop-popover-created
           // node so it opens in label-edit mode. The flag is consumed once at
           // mount by the node component (lazy useState initializer); leaving

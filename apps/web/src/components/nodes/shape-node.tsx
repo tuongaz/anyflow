@@ -35,6 +35,12 @@ export type ShapeNodeRuntimeData = ShapeNodeData & {
   /** Persist a new name (PATCH /nodes/:id { name }). Optional for shape nodes. */
   onNameChange?: (nodeId: string, name: string) => void;
   /**
+   * Persist a new description (PATCH /nodes/:id { description }). When set on
+   * rectangle/ellipse shapes, dblclick on the body region enters description
+   * edit. Other shape kinds ignore it.
+   */
+  onDescriptionChange?: (nodeId: string, description: string) => void;
+  /**
    * US-015: when true on the first mount, the node enters inline label-edit
    * mode automatically. Used by the drop-on-pane popover so the user can type
    * a label immediately after creating a node via drag-from-handle. The flag
@@ -159,6 +165,8 @@ function resolveIllustrativeColors(data: ShapeNodeData): {
 // up across all nodes during the drag, preserving the US-014 auto-snap UX.
 const HANDLE_CLASS = 'opacity-0 transition-opacity';
 
+type EditField = 'name' | 'description' | null;
+
 function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNodeType>) {
   const shape = data.shape;
   const size = SHAPE_DEFAULT_SIZE[shape];
@@ -171,8 +179,18 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // read ONCE at mount via the lazy initializer; subsequent renders keep the
   // local state regardless of whether the upstream injection clears the flag
   // (e.g. because the parent's pendingEditNodeId moved to a different node).
-  const [isEditing, setIsEditing] = useState(() => Boolean(data.autoEditOnMount));
+  const [editing, setEditing] = useState<EditField>(() => (data.autoEditOnMount ? 'name' : null));
+  const isEditing = editing !== null;
   const nameEditable = !!data.onNameChange;
+  const descEditable = !!data.onDescriptionChange;
+  // Rectangle and ellipse support a two-region layout (header + body) so a
+  // title in the panel surfaces as a header on the node. When the title is
+  // empty, the header collapses and the node renders only a body region with
+  // the description (or the centered single-label fallback for back-compat
+  // with the auto-edit-on-mount flow that types into the centered area).
+  const isHeaderShape = shape === 'rectangle' || shape === 'ellipse';
+  const hasName = data.name !== undefined && data.name !== '';
+  const useHeaderLayout = isHeaderShape && hasName;
   // While resizing OR once data.width/height are set, the React Flow wrapper
   // owns the dimensions; the inner fills via h-full w-full. Before any resize,
   // we still need an explicit size so the wrapper auto-sizes to it.
@@ -212,16 +230,31 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // wrapper handler bails out for handles + resize controls so connect/resize
   // gestures keep their drag semantics, and is a no-op when already editing or
   // when the node doesn't expose a label-change callback.
-  const handleWrapperDoubleClick = nameEditable
-    ? (e: ReactMouseEvent<HTMLDivElement>) => {
-        if (isEditing) return;
-        const target = e.target as HTMLElement | null;
-        if (target?.closest('.react-flow__handle')) return;
-        if (target?.closest('.react-flow__resize-control')) return;
-        e.stopPropagation();
-        setIsEditing(true);
-      }
-    : undefined;
+  // For rectangle/ellipse with header layout: dblclick on the header routes to
+  // name edit, dblclick on the body routes to description edit. Other shapes
+  // and the no-header fallback keep the original "anywhere → name edit" path.
+  const handleWrapperDoubleClick =
+    nameEditable || descEditable
+      ? (e: ReactMouseEvent<HTMLDivElement>) => {
+          if (isEditing) return;
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('.react-flow__handle')) return;
+          if (target?.closest('.react-flow__resize-control')) return;
+          e.stopPropagation();
+          if (useHeaderLayout) {
+            if (target?.closest('[data-testid="shape-node-header"]')) {
+              if (nameEditable) setEditing('name');
+              return;
+            }
+            if (target?.closest('[data-testid="shape-node-body"]')) {
+              if (descEditable) setEditing('description');
+              else if (nameEditable) setEditing('name');
+              return;
+            }
+          }
+          if (nameEditable) setEditing('name');
+        }
+      : undefined;
 
   // US-009: illustrative shape overlay. Renders BEFORE the label JSX so the
   // label (positioned via the `relative` class below) stacks above by DOM
@@ -251,10 +284,122 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
     );
   }
 
+  const description = data.description ?? '';
+  const hasDescription = description !== '';
+  const descriptionFontStyle: CSSProperties =
+    data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
+
+  // Single-label content (sticky/text/database + rect/ellipse with no title).
+  // The body owns the inline edit for `name` so a freshly created shape with
+  // autoEditOnMount lands on the label immediately, matching pre-header
+  // behaviour.
+  const singleLabelContent =
+    editing === 'name' && nameEditable ? (
+      <InlineEdit
+        initialValue={data.name ?? ''}
+        field="node-label"
+        commitMode="blur-only"
+        onCommit={(v) => data.onNameChange?.(id, v)}
+        onExit={() => setEditing(null)}
+        // US-009: `relative` keeps the label as a positioned sibling of the
+        // illustrative overlay above, so DOM order alone is enough to stack
+        // it over the SVG without juggling explicit z-index values.
+        className="relative text-[22px]"
+        style={labelFontStyle}
+        placeholder={isText ? 'Text' : 'Label'}
+      />
+    ) : (
+      <button
+        type="button"
+        className={cn(
+          // US-009: `relative` — see the InlineEdit branch above.
+          'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
+          data.name ? 'break-words' : 'text-muted-foreground/40 italic',
+        )}
+        style={labelFontStyle}
+      >
+        {data.name ?? (nameEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
+      </button>
+    );
+
+  // Header + body layout for rectangle/ellipse with a title set. The header
+  // hosts the name (bold, bordered) and the body hosts the description so a
+  // title typed in the detail panel surfaces as a header on the canvas, and
+  // the body always reflects `description`.
+  const headerBodyContent = (
+    <>
+      <div
+        className="relative flex shrink-0 items-center border-b bg-muted/30 px-2 py-1.5"
+        data-testid="shape-node-header"
+      >
+        <div
+          className="min-w-0 flex-1 whitespace-pre-wrap break-words text-left font-semibold text-[18px] leading-tight"
+          style={labelFontStyle}
+        >
+          {editing === 'name' && nameEditable ? (
+            <InlineEdit
+              initialValue={data.name ?? ''}
+              field="node-label"
+              commitMode="blur-only"
+              onCommit={(v) => data.onNameChange?.(id, v)}
+              onExit={() => setEditing(null)}
+              className="text-[18px] font-semibold"
+              style={labelFontStyle}
+              placeholder="Title"
+            />
+          ) : (
+            <button
+              type="button"
+              className={cn(
+                'block w-full whitespace-pre-wrap break-words bg-transparent p-0 text-left font-semibold text-[18px] leading-tight',
+                nameEditable ? 'hover:opacity-80' : '',
+              )}
+              style={labelFontStyle}
+            >
+              {data.name}
+            </button>
+          )}
+        </div>
+      </div>
+      <div
+        className="relative flex min-h-0 flex-1 items-center px-2 py-1.5"
+        data-testid="shape-node-body"
+      >
+        {editing === 'description' && descEditable ? (
+          <InlineEdit
+            initialValue={description}
+            field="node-description"
+            commitMode="blur-only"
+            onCommit={(v) => data.onDescriptionChange?.(id, v)}
+            onExit={() => setEditing(null)}
+            className="w-full text-[16px] text-muted-foreground"
+            style={descriptionFontStyle}
+            placeholder="Description"
+          />
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              'block w-full whitespace-pre-wrap break-words bg-transparent p-0 text-left text-[16px] leading-tight',
+              hasDescription ? 'text-muted-foreground' : 'italic text-muted-foreground/40',
+              descEditable ? 'hover:opacity-80' : '',
+            )}
+            style={descriptionFontStyle}
+          >
+            {hasDescription ? description : descEditable ? 'Double-click to add description' : ''}
+          </button>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div
       className={cn(
-        'group relative flex items-center justify-center p-2 text-center text-[22px]',
+        'group relative',
+        useHeaderLayout
+          ? 'flex flex-col overflow-hidden text-left'
+          : 'flex items-center justify-center p-2 text-center text-[22px]',
         sized ? 'h-full w-full' : '',
         shapeChromeClass(shape),
       )}
@@ -293,33 +438,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           className={cn(HANDLE_CLASS, selected && '!opacity-100')}
         />
       )}
-      {isEditing && nameEditable ? (
-        <InlineEdit
-          initialValue={data.name ?? ''}
-          field="node-label"
-          commitMode="blur-only"
-          onCommit={(v) => data.onNameChange?.(id, v)}
-          onExit={() => setIsEditing(false)}
-          // US-009: `relative` keeps the label as a positioned sibling of the
-          // illustrative overlay above, so DOM order alone is enough to stack
-          // it over the SVG without juggling explicit z-index values.
-          className="relative text-[22px]"
-          style={labelFontStyle}
-          placeholder={isText ? 'Text' : 'Label'}
-        />
-      ) : (
-        <button
-          type="button"
-          className={cn(
-            // US-009: `relative` — see the InlineEdit branch above.
-            'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
-            data.name ? 'break-words' : 'text-muted-foreground/40 italic',
-          )}
-          style={labelFontStyle}
-        >
-          {data.name ?? (nameEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
-        </button>
-      )}
+      {useHeaderLayout ? headerBodyContent : singleLabelContent}
       {!isText && (
         <Handle
           type="source"

@@ -282,6 +282,85 @@ describe('ShapeNode connect handles', () => {
   });
 });
 
+describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
+  // Rectangle and ellipse render a header section (data.name) plus a body
+  // section (data.description) when a title is set in the detail panel.
+  // Other shapes keep the centered single-label layout.
+  it('rectangle with name renders header + body regions', () => {
+    const tree = callShapeNode({
+      shape: 'rectangle',
+      name: 'Order Service',
+      description: 'Handles checkout orchestration',
+    });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    const bodies = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-body',
+    );
+    expect(headers).toHaveLength(1);
+    expect(bodies).toHaveLength(1);
+  });
+
+  it('ellipse with name renders header + body regions', () => {
+    const tree = callShapeNode({
+      shape: 'ellipse',
+      name: 'Cache',
+      description: 'In-memory store',
+    });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    const bodies = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-body',
+    );
+    expect(headers).toHaveLength(1);
+    expect(bodies).toHaveLength(1);
+  });
+
+  it('rectangle WITHOUT a name does NOT render a header (no title set yet)', () => {
+    // Override the callShapeNode default name='Hello' with an empty name so we
+    // exercise the no-title path the user hits right after drawing a shape.
+    const tree = callShapeNode({ shape: 'rectangle', name: '' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
+
+  it('sticky with name does NOT switch to header layout (kept as centered label)', () => {
+    const tree = callShapeNode({ shape: 'sticky', name: 'Note' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
+
+  it('text with name does NOT render a header (chromeless annotation)', () => {
+    const tree = callShapeNode({ shape: 'text', name: 'Label' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
+
+  it('database with name does NOT switch layouts (illustrative shape keeps SVG visuals)', () => {
+    const tree = callShapeNode({ shape: 'database', name: 'Users DB' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
+});
+
 describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
   it('text shape with autoEditOnMount mounts directly into InlineEdit (focus claimed on mount)', () => {
     // US-015 already mounts shape nodes directly into label-edit when
