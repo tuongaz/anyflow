@@ -58,6 +58,7 @@ import {
   Controls,
   type Edge,
   type EdgeChange,
+  type EdgeMarker,
   type FinalConnectionState,
   type HandleType,
   type Node,
@@ -767,6 +768,27 @@ export function eventTargetIsOtherNode(target: EventTarget | null, nodeId: strin
 const SMOOTHSTEP_BORDER_RADIUS = 8;
 
 /**
+ * Mirror of `@xyflow/system::getMarkerId` — the function isn't exposed in
+ * the package's public types, so we reimplement the deterministic algorithm
+ * to match xyflow's internal id format byte-for-byte. The id is consumed by
+ * the in-flight reconnect connection line so its arrowhead points at the
+ * same `<defs><marker /></defs>` the committed edge uses.
+ */
+const makeMarkerUrl = (
+  marker: EdgeMarker | string | undefined,
+  rfId: string | undefined,
+): string | undefined => {
+  if (!marker) return undefined;
+  if (typeof marker === 'string') return `url('#${marker}')`;
+  const prefix = rfId ? `${rfId}__` : '';
+  const id = `${prefix}${Object.keys(marker)
+    .sort()
+    .map((key) => `${key}=${(marker as unknown as Record<string, unknown>)[key]}`)
+    .join('&')}`;
+  return `url('#${id}')`;
+};
+
+/**
  * US-009: custom connection-line component used while a reconnect drag is in
  * flight. xyflow unmounts the original edge for the duration of the gesture
  * (see EdgeWrapper: `!reconnecting && <EdgeComponent />`) and substitutes a
@@ -1015,7 +1037,28 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
           targetPosition: effectiveToPosition,
         });
     const style = reconnectingEdge?.style ?? connectionLineStyle ?? undefined;
-    return <path d={path} fill="none" className="react-flow__connection-path" style={style} />;
+    // Mirror the committed edge's arrow markers onto the in-flight line so
+    // the connector keeps its arrowhead while the user drags an outlet.
+    // xyflow generates the marker URL as `url('#${markerId}')` where
+    // `markerId` follows the deterministic algorithm in
+    // `@xyflow/system::getMarkerId` (sort marker object keys alphabetically,
+    // join as `key=value&...`, optionally prefixed with `${rfId}__`). The
+    // <defs> are registered from the live edges array, so the original
+    // edge's marker is already in the DOM during the reconnect drag — we
+    // just need to re-derive the same id to point at it.
+    const rfId = useStore((s) => s.rfId);
+    const markerStartUrl = makeMarkerUrl(reconnectingEdge?.markerStart, rfId);
+    const markerEndUrl = makeMarkerUrl(reconnectingEdge?.markerEnd, rfId);
+    return (
+      <path
+        d={path}
+        fill="none"
+        className="react-flow__connection-path"
+        style={style}
+        markerStart={markerStartUrl}
+        markerEnd={markerEndUrl}
+      />
+    );
   };
 };
 
