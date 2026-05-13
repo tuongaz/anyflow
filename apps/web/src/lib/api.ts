@@ -509,7 +509,7 @@ export interface CreateNodeBody {
 export const createNode = async (
   demoId: string,
   node: CreateNodeBody,
-): Promise<{ ok: true; id: string }> => {
+): Promise<{ ok: true; id: string; node: Record<string, unknown> }> => {
   const res = await fetch(`/api/demos/${demoId}/nodes`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -524,7 +524,7 @@ export const createNode = async (
     }
     throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/nodes → ${res.status}`);
   }
-  return (await res.json()) as { ok: true; id: string };
+  return (await res.json()) as { ok: true; id: string; node: Record<string, unknown> };
 };
 
 export interface CreateConnectorBody {

@@ -836,7 +836,7 @@ export function createApi(options: ApiOptions): Hono {
     const result = await addNodeImpl({ registry, watcher }, id, body as Record<string, unknown>);
     switch (result.kind) {
       case 'ok':
-        return c.json({ ok: true, id: result.data.id });
+        return c.json({ ok: true, id: result.data.id, node: result.data.node });
       case 'demoNotFound':
         return c.json({ error: 'unknown demo' }, 404);
       case 'fileNotFound':

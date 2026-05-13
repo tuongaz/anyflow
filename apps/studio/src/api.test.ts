@@ -1526,6 +1526,119 @@ describe('POST /api/demos/:id/nodes', () => {
     });
     expect(res.status).toBe(404);
   });
+
+  // US-015: when an htmlNode is drop-created without a client-supplied htmlPath,
+  // the backend allocates `blocks/<id>.html`, writes the starter file with the
+  // 'Edit me' card markup, and persists the path on the node.
+  describe('htmlNode starter-file (US-015)', () => {
+    it('writes blocks/<id>.html with starter content and persists htmlPath', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+        type: 'htmlNode',
+        position: { x: 50, y: 60 },
+        data: {},
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        ok: boolean;
+        id: string;
+        node: { type: string; data: { htmlPath: string } };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.id).toMatch(/^node-/);
+      expect(body.node.type).toBe('htmlNode');
+      expect(body.node.data.htmlPath).toBe(`blocks/${body.id}.html`);
+
+      const starter = readFileSync(join(repoPath, '.anydemo', 'blocks', `${body.id}.html`), 'utf8');
+      expect(starter).toContain('Edit me');
+      expect(starter).toContain(`blocks/${body.id}.html`);
+      expect(starter).toContain('class="text-center"');
+
+      const onDisk = JSON.parse(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf8')) as {
+        nodes: Array<{ id: string; type: string; data: { htmlPath?: string } }>;
+      };
+      const persisted = onDisk.nodes.find((n) => n.id === body.id);
+      expect(persisted?.type).toBe('htmlNode');
+      expect(persisted?.data.htmlPath).toBe(`blocks/${body.id}.html`);
+    });
+
+    it('respects caller-provided id when allocating blocks/<id>.html', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+        id: 'hero-block',
+        type: 'htmlNode',
+        position: { x: 0, y: 0 },
+        data: {},
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id: string; node: { data: { htmlPath: string } } };
+      expect(body.id).toBe('hero-block');
+      expect(body.node.data.htmlPath).toBe('blocks/hero-block.html');
+
+      const starter = readFileSync(join(repoPath, '.anydemo', 'blocks', 'hero-block.html'), 'utf8');
+      expect(starter).toContain('blocks/hero-block.html');
+    });
+
+    it('preserves a client-supplied htmlPath and skips the starter file', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+        type: 'htmlNode',
+        position: { x: 0, y: 0 },
+        data: { htmlPath: 'custom/hero.html' },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id: string; node: { data: { htmlPath: string } } };
+      expect(body.node.data.htmlPath).toBe('custom/hero.html');
+
+      // No starter file should have been written under blocks/.
+      const blocksDir = join(repoPath, '.anydemo', 'blocks');
+      let blocksExists = true;
+      try {
+        readdirSync(blocksDir);
+      } catch {
+        blocksExists = false;
+      }
+      expect(blocksExists).toBe(false);
+    });
+
+    it('preserves other data fields when filling in htmlPath', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const res = await post(app, `/api/demos/${reg.id}/nodes`, {
+        type: 'htmlNode',
+        position: { x: 0, y: 0 },
+        data: { label: 'Pricing card', width: 280, height: 160 },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        id: string;
+        node: { data: { htmlPath: string; label: string; width: number; height: number } };
+      };
+      expect(body.node.data.label).toBe('Pricing card');
+      expect(body.node.data.width).toBe(280);
+      expect(body.node.data.height).toBe(160);
+      expect(body.node.data.htmlPath).toBe(`blocks/${body.id}.html`);
+    });
+  });
 });
 
 describe('DELETE /api/demos/:id/nodes/:nodeId', () => {

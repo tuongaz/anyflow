@@ -271,7 +271,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
       const result = await addNodeImpl(deps, demoId, node);
       switch (result.kind) {
         case 'ok':
-          return okResult({ ok: true, id: result.data.id });
+          return okResult({ ok: true, id: result.data.id, node: result.data.node });
         case 'demoNotFound':
           return errorResult('unknown demo');
         case 'fileNotFound':

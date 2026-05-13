@@ -8,7 +8,7 @@
 // Future stories add patch_node + connector helpers alongside these.
 
 import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { type ZodIssue, z } from 'zod';
 import type { Registry } from './registry.ts';
 import {
@@ -239,7 +239,7 @@ export type CreateProjectOutcome =
 // an existing REST error response so api.ts can translate them back to the
 // same status code + JSON body it used to emit directly.
 export type AddNodeOutcome =
-  | { kind: 'ok'; data: { id: string } }
+  | { kind: 'ok'; data: { id: string; node: Record<string, unknown> } }
   | { kind: 'demoNotFound' }
   | { kind: 'fileNotFound'; path: string }
   | { kind: 'badJson'; message: string }
@@ -700,6 +700,34 @@ export async function addNodeImpl(
   }
   const newId = newNode.id as string;
 
+  // US-015: for htmlNode without a client-supplied htmlPath, allocate the
+  // studio-managed `blocks/<id>.html` path and queue a starter-file write.
+  // Client-supplied htmlPath wins and we skip the starter file (symmetric
+  // with US-016's hand-edited-path leave-alone rule).
+  let starterFile: { absPath: string; content: string } | undefined;
+  if (newNode.type === 'htmlNode') {
+    const dataIsRecord =
+      newNode.data !== null && typeof newNode.data === 'object' && !Array.isArray(newNode.data);
+    const existingData: Record<string, unknown> = dataIsRecord
+      ? { ...(newNode.data as Record<string, unknown>) }
+      : {};
+    const clientProvidedHtmlPath =
+      typeof existingData.htmlPath === 'string' && existingData.htmlPath.length > 0;
+    if (!clientProvidedHtmlPath) {
+      const htmlPath = `blocks/${newId}.html`;
+      existingData.htmlPath = htmlPath;
+      newNode.data = existingData;
+      starterFile = {
+        absPath: join(entry.repoPath, '.anydemo', htmlPath),
+        content: buildHtmlNodeStarter(newId),
+      };
+    } else if (!dataIsRecord) {
+      // Coerce non-object data into the spread'd record so the schema parse
+      // sees the right shape — shouldn't happen in practice but keeps types honest.
+      newNode.data = existingData;
+    }
+  }
+
   const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
   if (!existsSync(fullPath)) return { kind: 'fileNotFound', path: fullPath };
 
@@ -725,6 +753,15 @@ export async function addNodeImpl(
     const finalParse = DemoSchema.safeParse(raw);
     if (!finalParse.success) return { kind: 'badSchema', issues: finalParse.error.issues };
 
+    if (starterFile) {
+      try {
+        mkdirSync(dirname(starterFile.absPath), { recursive: true });
+        writeFileAtomic(starterFile.absPath, starterFile.content);
+      } catch (err) {
+        return { kind: 'writeFailed', message: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
     try {
       writeFileAtomic(fullPath, `${JSON.stringify(raw, null, 2)}\n`);
     } catch (err) {
@@ -733,9 +770,22 @@ export async function addNodeImpl(
     return { kind: 'ok' };
   });
 
-  if (result.kind === 'ok') return { kind: 'ok', data: { id: newId } };
+  if (result.kind === 'ok') return { kind: 'ok', data: { id: newId, node: newNode } };
   return result;
 }
+
+// US-015: starter HTML content for studio-created htmlNodes. Centered 'Edit me'
+// card with a `blocks/<id>.html` subtitle — matches the design's Section 6
+// markup exactly so the renderer paints a useful first impression while the
+// author hasn't yet edited the file.
+const buildHtmlNodeStarter = (nodeId: string): string =>
+  `<div class="flex h-full w-full items-center justify-center rounded-lg border border-slate-300 bg-white p-4 text-slate-900">
+  <div class="text-center">
+    <div class="font-semibold">Edit me</div>
+    <div class="text-xs text-slate-500">blocks/${nodeId}.html</div>
+  </div>
+</div>
+`;
 
 // Remove a node and cascade-delete every connector touching it in a single
 // atomic write. Final DemoSchema parse stays in place so a pre-existing
