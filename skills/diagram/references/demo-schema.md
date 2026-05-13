@@ -85,7 +85,10 @@ type Node = PlayNode | StateNode | ShapeNode | ImageNode;
 }
 ```
 
-**ImageNode** — decorative; embeds a base64 data URL:
+**ImageNode** — decorative; references a file under `<project>/.anydemo/`
+by relative path. The renderer fetches via
+`GET /api/projects/:id/files/:path` and the studio's watcher tracks the file
+for hot-reload (`file:changed` SSE).
 
 ```ts
 {
@@ -93,12 +96,17 @@ type Node = PlayNode | StateNode | ShapeNode | ImageNode;
   type: 'imageNode';
   position: { x: number; y: number };
   data: {
-    image: string;                // MUST start with "data:image/"
+    path: string;                 // relative to <project>/.anydemo/, e.g. "assets/logo.png"
+                                  // NO leading slash, NO ".." segments, NOT a data: URL
     alt?: string;
     // visual fields (same as PlayNode)
   };
 }
 ```
+
+The image file MUST already exist under `<project>/.anydemo/<path>` before the
+demo loads — author it by hand into `.anydemo/assets/<name>.<ext>`, or upload
+via the canvas (drag-and-drop) which writes through `POST /api/projects/:id/files/upload`.
 
 ## Connector — discriminated union on `kind`
 
@@ -233,7 +241,7 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 - `EventConnector` without `eventName` (or empty) → reject.
 - `QueueConnector` without `queueName` → reject.
 - `PlayNode` without `playAction` → reject.
-- `imageNode.data.image` doesn't start with `data:image/` → reject.
+- `imageNode.data.path` is absolute, contains `..` segments, or is a `data:` URL → reject. Must be a clean relative path under `.anydemo/` (e.g. `assets/logo.png`).
 - `sourceHandle: 't'` / `targetHandle: 'r'` (wrong role) → reject.
 - Duplicate node ids or duplicate connector ids → undefined behavior; the
   studio's assemble endpoint dedupes, but author-side duplicates indicate a
