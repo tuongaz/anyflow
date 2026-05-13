@@ -471,6 +471,19 @@ button:disabled {
   z-index: -1;
 }
 
+/* Suppress xyflow's built-in multi-selection bounding rectangle. After a
+ * marquee gesture, xyflow renders `.react-flow__nodesselection-rect` (a
+ * dotted border around the union of all selected nodes) by default. Each
+ * individual node already shows its own selection ring via the
+ * `.react-flow__node.selected::after` rule above, and the multi-resize
+ * affordance lives on `<SelectionResizeOverlay>` — the extra wrapping rect
+ * just adds visual noise. Keep the element interactive (no `display: none`)
+ * so xyflow's drag-to-move-selection gesture inside it still works. */
+.react-flow__nodesselection-rect {
+  background: transparent;
+  border: none;
+}
+
 /* US-011: group node — a container that wraps a multi-selection. Chrome
  * lives here (not in JSX) so the GroupNode component stays minimal and a
  * future style story can re-theme without touching React. Default: 1px

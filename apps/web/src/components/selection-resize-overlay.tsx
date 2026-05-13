@@ -414,55 +414,15 @@ export function SelectionResizeOverlay({
     shiftHeldRef.current = false;
   };
 
-  const rectStyle: CSSProperties = {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: paddedRect.width,
-    height: paddedRect.height,
-    transform: `translate(${paddedRect.x}px, ${paddedRect.y}px)`,
-    pointerEvents: 'none',
-    border: '1px dashed hsl(var(--primary) / 0.6)',
-    borderRadius: 4,
-    boxSizing: 'border-box',
-    zIndex: 1500,
-  };
-
-  return (
-    <ViewportPortal>
-      <div data-testid="selection-resize-overlay" aria-hidden style={rectStyle}>
-        {ALL_ANCHORS.map((anchor) => {
-          const offset = ANCHOR_OFFSET[anchor];
-          const handleStyle: CSSProperties = {
-            position: 'absolute',
-            left: offset.left,
-            top: offset.top,
-            width: HANDLE_BOX_PX,
-            height: HANDLE_BOX_PX,
-            transform: 'translate(-50%, -50%)',
-            background: 'hsl(var(--background))',
-            border: '1px solid hsl(var(--primary) / 0.6)',
-            borderRadius: 2,
-            cursor: ANCHOR_CURSOR[anchor],
-            pointerEvents: 'auto',
-            touchAction: 'none',
-          };
-          return (
-            <div
-              key={anchor}
-              data-testid={`selection-resize-handle-${anchor}`}
-              data-anchor={anchor}
-              role="button"
-              tabIndex={-1}
-              style={handleStyle}
-              onPointerDown={onHandlePointerDown(anchor)}
-              onPointerMove={onHandlePointerMove}
-              onPointerUp={onHandlePointerUp}
-              onPointerCancel={onHandlePointerCancel}
-            />
-          );
-        })}
-      </div>
-    </ViewportPortal>
-  );
+  // Visual chrome (dashed bounding rect + 8 corner/edge resize handles) was
+  // removed — marquee selection no longer paints any wrapper around the union
+  // of selected nodes. The component still mounts so its prop wiring (and the
+  // exported pure helpers below) remain available; the rendered output is
+  // empty.
+  void paddedRect;
+  void onHandlePointerDown;
+  void onHandlePointerMove;
+  void onHandlePointerUp;
+  void onHandlePointerCancel;
+  return null;
 }

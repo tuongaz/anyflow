@@ -6,8 +6,8 @@
       "id": "create-order",
       "type": "playNode",
       "position": {
-        "x": -2520.1914384513707,
-        "y": -1363.109783876673
+        "x": -2470.0627392800616,
+        "y": -1427.749422281782
       },
       "data": {
         "name": "POST /orders",
@@ -44,8 +44,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": -2134.518027693298,
-        "y": -1883.3906579618856
+        "x": -1537.530224880864,
+        "y": -1963.4398620493325
       },
       "data": {
         "name": "POST /payments/charge!",
@@ -61,8 +61,8 @@
           "body": {}
         },
         "description": "Charges the most recently-created order (or pass {orderId} explicitly). Synchronous HTTP leg — flips status pending → paid before responding!.",
-        "width": 252,
-        "height": 278,
+        "width": 237.87719332134293,
+        "height": 246.25361385493363,
         "detail": "This is the long form content that needs you to pay attention to"
       }
     },
@@ -70,8 +70,8 @@
       "id": "shipping-worker",
       "type": "stateNode",
       "position": {
-        "x": -2723.460960021649,
-        "y": -2260.9205729950177
+        "x": -2093.467096978919,
+        "y": -2297.8575092265082
       },
       "data": {
         "name": "shipping-worker",
@@ -81,16 +81,16 @@
         },
         "borderColor": "purple",
         "description": "Drains the shipments queue. Books a label (~400ms), marks the order shipped, emits running → done. A queue (vs. an event) so messages persist across consumer restarts in real deployments.",
-        "width": 258,
-        "height": 324
+        "width": 243.5409360194702,
+        "height": 287.0006147086277
       }
     },
     {
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": -2733.6746650158416,
-        "y": -1879.3479829834032
+        "x": -2103.108396492533,
+        "y": -1959.858842901519
       },
       "data": {
         "name": "inventory-worker",
@@ -99,8 +99,8 @@
           "kind": "event"
         },
         "description": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit. Why it failed ",
-        "width": 276,
-        "height": 363,
+        "width": 260.5321641138519,
+        "height": 321.54698499762924,
         "borderColor": "amber",
         "fontSize": 17,
         "borderSize": 3,
@@ -111,13 +111,13 @@
       "id": "node-6a4150ad-1d63-47ec-89af-df9fa80b4d72",
       "type": "shapeNode",
       "position": {
-        "x": -2357.705302537618,
-        "y": -2180.9772385728343
+        "x": -1748.2094412499364,
+        "y": -2227.04335453199
       },
       "data": {
         "shape": "text",
-        "width": 136.0250390171309,
-        "height": 87.70440893583054,
+        "width": 128.40180358262407,
+        "height": 77.68894838654391,
         "fontSize": 17,
         "name": "Thi sis good one",
         "locked": false
@@ -127,8 +127,8 @@
       "id": "node-e7e0418c-d9e8-4689-abab-232d87965938",
       "type": "iconNode",
       "position": {
-        "x": -3080.938972053443,
-        "y": -1974.8189469787574
+        "x": -3030.810272882134,
+        "y": -2039.4585853838664
       },
       "data": {
         "icon": "air-vent",
@@ -174,8 +174,8 @@
         "t": 0.5499332350872366
       },
       "targetPin": {
-        "side": "left",
-        "t": 0.5782401765615085
+        "side": "bottom",
+        "t": 0.5852406272345565
       },
       "kind": "default",
       "path": "step"
