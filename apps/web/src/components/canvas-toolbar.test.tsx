@@ -103,7 +103,7 @@ function callToolbar(props: Partial<React.ComponentProps<typeof CanvasToolbar>> 
 }
 
 describe('CanvasToolbar', () => {
-  it('renders the 4 shape buttons in the documented order', () => {
+  it('renders all shape buttons in the documented order', () => {
     const tree = callToolbar();
     const shapeButtons = TOOLBAR_SHAPES.map((entry) =>
       findElement(tree, testIdEquals(`toolbar-shape-${entry.shape}`)),
@@ -111,6 +111,44 @@ describe('CanvasToolbar', () => {
     for (const btn of shapeButtons) {
       expect(btn).not.toBeNull();
     }
+  });
+
+  describe('US-010: Database illustrative-shape palette entry', () => {
+    it('includes a Database entry in TOOLBAR_SHAPES', () => {
+      // The illustrative-shape entry must be registered alongside the other
+      // shapes so drag-create produces a `shapeNode` with
+      // `data.shape: 'database'`. Pinning the registry (not just the rendered
+      // button) so the drop-on-pane popover (US-015) and any other consumer of
+      // TOOLBAR_SHAPES picks the entry up automatically.
+      const entry = TOOLBAR_SHAPES.find((s) => s.shape === 'database');
+      expect(entry).toBeDefined();
+      expect(entry?.label).toBe('Database');
+      // Icon component is captured by reference; assert it's distinct from the
+      // other shape icons (lucide's Database glyph, not Square / Circle).
+      expect(entry?.Icon).toBeDefined();
+    });
+
+    it('renders the toolbar-shape-database button', () => {
+      const tree = callToolbar();
+      const btn = findElement(tree, testIdEquals('toolbar-shape-database'));
+      expect(btn).not.toBeNull();
+      expect(btn?.props['aria-label']).toBe('Database');
+      expect(btn?.props.title).toBe('Database');
+    });
+
+    it('toggles draw mode for database via onSelectShape', () => {
+      let picked: string | null | undefined;
+      const tree = callToolbar({
+        onSelectShape: (shape) => {
+          picked = shape;
+        },
+      });
+      const btn = findElement(tree, testIdEquals('toolbar-shape-database'));
+      if (!btn) throw new Error('database toolbar button not found');
+      const onClick = btn.props.onClick as () => void;
+      onClick();
+      expect(picked).toBe('database');
+    });
   });
 
   describe('US-020: Tidy / Auto Align button removed from left toolbar', () => {

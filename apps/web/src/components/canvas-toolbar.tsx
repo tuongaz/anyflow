@@ -1,7 +1,7 @@
 import { IconPickerPopover } from '@/components/icon-picker-popover';
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import { Circle, Database, Square, Sticker, StickyNote, Type } from 'lucide-react';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
@@ -39,6 +39,11 @@ export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'ellipse', label: 'Ellipse', Icon: Circle },
   { shape: 'sticky', label: 'Sticky note', Icon: StickyNote },
   { shape: 'text', label: 'Text', Icon: Type },
+  // US-010: first illustrative shape entry. Drag-create commits a shapeNode
+  // with `data.shape: 'database'`; the ghost preview in demo-canvas.tsx
+  // renders <DatabaseShape> directly (not the wrapper chrome) so the preview
+  // matches the committed cylinder visual.
+  { shape: 'database', label: 'Database', Icon: Database },
 ];
 
 const INSERT_ICON_LABEL = 'Insert icon';

@@ -10,6 +10,7 @@ import {
   shapeChromeClass,
   shapeChromeStyle,
 } from '@/components/nodes/shape-node';
+import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import {
@@ -35,8 +36,10 @@ import type { NodeRuns } from '@/hooks/use-node-runs';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, EdgePin, ReorderOp, ShapeKind } from '@/lib/api';
 import { computeImageDims, handleCanvasFileDrop } from '@/lib/canvas-drop';
+import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { connectorToEdge } from '@/lib/connector-to-edge';
 import { type GroupableNode, planGroupShortcutAction, selectUngroupableSet } from '@/lib/group-ops';
+import { NEW_NODE_BORDER_WIDTH } from '@/lib/node-defaults';
 import { scaleNodesWithinRect } from '@/lib/scale-nodes';
 import { cn } from '@/lib/utils';
 import {
@@ -3209,7 +3212,26 @@ export function DemoCanvas({
             width: ghostRect.width,
             height: ghostRect.height,
           }}
-        />
+        >
+          {/* US-010: illustrative shapes have no wrapper chrome — the SVG owns
+              the visuals. Render <DatabaseShape> directly inside the ghost so
+              the drag preview matches the committed cylinder byte-for-byte.
+              The committed node (ShapeNodeImpl) calls `resolveIllustrativeColors`
+              on its `data` to fill defaults; the ghost has no `data`, so we
+              inline the same default resolution here: `borderColor` →
+              `colorTokenStyle(undefined, 'node').borderColor` (theme-aware
+              border via `hsl(var(--border))`), `backgroundColor` →
+              `NODE_DEFAULT_BG_WHITE` (US-021 white fallback). */}
+          {drawShape === 'database' ? (
+            <DatabaseShape
+              width={ghostRect.width}
+              height={ghostRect.height}
+              borderColor={colorTokenStyle(undefined, 'node').borderColor}
+              backgroundColor={NODE_DEFAULT_BG_WHITE}
+              borderSize={NEW_NODE_BORDER_WIDTH}
+            />
+          ) : null}
+        </div>
       ) : null}
       {contextEnabled ? (
         <ContextMenu

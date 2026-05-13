@@ -9,6 +9,7 @@ import {
   handleClipboardShortcut,
   handleGroupShortcut,
 } from '@/components/demo-canvas';
+import { DatabaseShape } from '@/components/nodes/shapes/database';
 import {
   type MultiResizeUpdate,
   SelectionResizeOverlay,
@@ -746,6 +747,95 @@ describe('DemoCanvas', () => {
       expect(refAt(refs, REF.drawing).current).toBe(false);
       (wrapper.props.onPointerUp as (e: unknown) => void)(evt);
       expect(captured.length).toBe(0);
+    });
+  });
+
+  describe('US-010: database drag-create ghost renders DatabaseShape', () => {
+    // The drag-create ghost (`canvas-draw-ghost`) must render <DatabaseShape>
+    // INSIDE the ghost wrapper when drawShape='database' so the user sees the
+    // cylinder preview during the drag — matching the committed node's
+    // illustrative-shape visuals. The wrapper itself stays chrome-less
+    // (shapeChromeStyle('database') already returns {} per US-009 / AC #4).
+    //
+    // useState slot order (see `useState` audit at the top of US-016 tests):
+    //   slot 0 = drawShape   slot 4 = drawStart   slot 5 = drawCurrent
+    // ghostRect is computed from drawStart + drawCurrent so both must be set
+    // for the ghost JSX branch to render.
+
+    it('renders <DatabaseShape> inside the ghost when drawShape="database"', () => {
+      const overrides: unknown[] = [];
+      overrides[0] = 'database';
+      overrides[4] = { x: 100, y: 100 };
+      overrides[5] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({}, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      expect((ghost.props as { 'data-ghost-shape'?: unknown })['data-ghost-shape']).toBe(
+        'database',
+      );
+      // DatabaseShape is rendered directly inside the ghost wrapper — find it
+      // among ghost.props.children.
+      const dbShape = findElement(ghost, (el) => el.type === DatabaseShape);
+      expect(dbShape).not.toBeNull();
+    });
+
+    it('passes width/height from ghostRect to DatabaseShape so the preview scales with the drag', () => {
+      const overrides: unknown[] = [];
+      overrides[0] = 'database';
+      overrides[4] = { x: 100, y: 100 };
+      // 200 wide, 140 tall (matches database SHAPE_DEFAULT_SIZE for an at-
+      // template ghost — the cylinder reads proportional).
+      overrides[5] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({}, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const dbShape = findElement(ghost, (el) => el.type === DatabaseShape);
+      if (!dbShape) throw new Error('DatabaseShape not found inside ghost');
+      const props = dbShape.props as {
+        width?: number;
+        height?: number;
+        borderColor?: string;
+        backgroundColor?: string;
+      };
+      // wrapperRef is null under the hook-shim, so ghostRect's offset falls
+      // back to {0, 0} and width/height come straight from |drawCurrent - drawStart|.
+      expect(props.width).toBe(200);
+      expect(props.height).toBe(140);
+      // Defaults mirror what the committed node resolves to via
+      // resolveIllustrativeColors with empty data: theme-aware border via the
+      // shadcn --border CSS var and the US-021 white-fallback background.
+      expect(props.borderColor).toBe('hsl(var(--border))');
+      expect(props.backgroundColor).toBe('#ffffff');
+    });
+
+    it('does NOT render DatabaseShape in the ghost for non-database shapes', () => {
+      const overrides: unknown[] = [];
+      overrides[0] = 'rectangle';
+      overrides[4] = { x: 100, y: 100 };
+      overrides[5] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({}, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const dbShape = findElement(ghost, (el) => el.type === DatabaseShape);
+      // Rectangle ghost uses the wrapper chrome (shapeChromeClass / Style) —
+      // the DatabaseShape SVG must NOT appear when the user is drawing a
+      // non-database shape.
+      expect(dbShape).toBeNull();
     });
   });
 
