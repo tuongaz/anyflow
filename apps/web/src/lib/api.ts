@@ -687,6 +687,78 @@ export interface UploadImageResult {
 }
 
 /**
+ * US-018: response shape for the two project-file shell-out endpoints
+ * (`/files/open` and `/files/reveal`). The backend always returns the
+ * resolved absolute path so the frontend can copy-to-clipboard when the
+ * spawn failed or `$EDITOR` is unset — both success and soft-fail include
+ * `absPath`. `ok: false` is NOT thrown; the helper resolves with the
+ * envelope so the caller can branch on the fallback.
+ */
+export interface FileActionResult {
+  ok: boolean;
+  absPath: string;
+  error?: string;
+}
+
+const requestFileAction = async (
+  projectId: string,
+  action: 'open' | 'reveal',
+  path: string,
+): Promise<FileActionResult> => {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files/${action}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  // 200 OK with `ok: false` is the spawn-failure / EDITOR-unset fallback —
+  // resolve so the caller can show the clipboard-copy affordance. 404 is the
+  // file-missing soft-fail which also includes `absPath`; resolve as
+  // `{ ok: false }` so the UI can surface the same fallback. Anything else
+  // (400 traversal/absolute reject, 404 unknown project, 500) throws.
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = (await res.json()) as Record<string, unknown>;
+  } catch {
+    // ignore
+  }
+  if (res.ok) {
+    return {
+      ok: body?.ok === true,
+      absPath: typeof body?.absPath === 'string' ? body.absPath : '',
+      error: typeof body?.error === 'string' ? body.error : undefined,
+    };
+  }
+  if (res.status === 404 && typeof body?.absPath === 'string') {
+    return {
+      ok: false,
+      absPath: body.absPath,
+      error: typeof body?.error === 'string' ? body.error : 'file not found',
+    };
+  }
+  const errMsg = typeof body?.error === 'string' ? body.error : undefined;
+  throw new Error(errMsg ?? `POST /api/projects/${projectId}/files/${action} → ${res.status}`);
+};
+
+/**
+ * US-018: ask the backend to open the given project-scoped file in `$EDITOR`.
+ * Always resolves with the absolute path so the caller can copy-to-clipboard
+ * on the fallback case (ok:false). Throws only on transport / path-validation
+ * errors.
+ */
+export const openProjectFile = async (projectId: string, path: string): Promise<FileActionResult> =>
+  requestFileAction(projectId, 'open', path);
+
+/**
+ * US-018: ask the backend to reveal the given project-scoped file in the OS
+ * file manager (Finder on macOS, Explorer on Windows, xdg-open on Linux).
+ * Same fallback shape as `openProjectFile`.
+ */
+export const revealProjectFile = async (
+  projectId: string,
+  path: string,
+): Promise<FileActionResult> => requestFileAction(projectId, 'reveal', path);
+
+/**
  * US-008: POST a single image File to the project's upload endpoint (US-007).
  * `filename` overrides the File's own `.name` for the server-side slugging.
  * The browser sets the multipart boundary automatically — never pass an

@@ -5,14 +5,14 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 import { useNodeDetail } from '@/hooks/use-node-detail';
 import type { NodeEventLogEntry } from '@/hooks/use-node-events';
 import type { NodeRunState } from '@/hooks/use-node-runs';
-import type { Connector, DemoNode } from '@/lib/api';
+import { type Connector, type DemoNode, openProjectFile, revealProjectFile } from '@/lib/api';
 import {
   getStoredDetailPanelWidth,
   setStoredDetailPanelWidth,
   startResizeGesture,
 } from '@/lib/detail-panel-width';
 import { cn } from '@/lib/utils';
-import { Check, Pencil, RefreshCw } from 'lucide-react';
+import { Check, FolderOpen, Pencil, PencilLine, RefreshCw } from 'lucide-react';
 import {
   type CSSProperties,
   type ChangeEvent as ReactChangeEvent,
@@ -197,23 +197,35 @@ export function DetailPanel({
             <div className="mt-0 flex flex-col gap-3">
               <NodeMetadataEditor
                 nodeId={inspectableNode.id}
-                // US-013: Label input is gated to group nodes — that's the only
-                // variant where the side-panel surfaces a label control (the
-                // shape/play/state/icon label live in StyleStrip or on-node
-                // editors). Passing `label={undefined}` from the other branches
-                // omits the row entirely. Routing `onLabelChange` to the same
-                // dispatcher the inline-edit path uses keeps the coalesce key
-                // `node:<id>:label` shared so both paths collapse into one undo
-                // entry per typing session.
+                // US-013 / US-018: Label input is surfaced for group nodes AND
+                // htmlNodes — neither has a canvas-side label affordance (group
+                // has the inline-on-frame editor too, but the panel is the
+                // primary surface; htmlNode has no on-canvas label at all). All
+                // other variants (play/state/shape/image/icon) edit labels via
+                // inline editors / StyleStrip and pass `label={undefined}` to
+                // collapse the row. Routing `onLabelChange` through the SAME
+                // dispatcher both surfaces use keeps the
+                // `node:<id>:label` coalesce key shared so panel + inline edits
+                // collapse into one undo entry per typing session.
                 label={
-                  inspectableNode.type === 'group' ? (inspectableNode.data.label ?? '') : undefined
+                  inspectableNode.type === 'group' || inspectableNode.type === 'htmlNode'
+                    ? (inspectableNode.data.label ?? '')
+                    : undefined
                 }
-                onLabelChange={inspectableNode.type === 'group' ? onLabelChange : undefined}
+                onLabelChange={
+                  inspectableNode.type === 'group' || inspectableNode.type === 'htmlNode'
+                    ? onLabelChange
+                    : undefined
+                }
                 shortDescription={inspectableNode.data.shortDescription ?? ''}
                 description={inspectableNode.data.description ?? ''}
                 onShortDescriptionChange={onShortDescriptionChange}
                 onMetaDescriptionChange={onMetaDescriptionChange}
               />
+
+              {inspectableNode.type === 'htmlNode' && demoId ? (
+                <HtmlNodeSection projectId={demoId} htmlPath={inspectableNode.data.htmlPath} />
+              ) : null}
 
               {detail?.description || detail?.summary ? (
                 <EditableDescription
@@ -672,6 +684,126 @@ export function NodeMetadataEditor({
           style={{ maxHeight: `${NODE_DESCRIPTION_TEXTAREA_MAX_PX}px` }}
         />
       </label>
+    </div>
+  );
+}
+
+// US-018: htmlNode detail section — surfaces the relative `data.htmlPath`
+// and provides Open-in-editor + Reveal-in-file-manager shellout buttons.
+// Both buttons POST to the project-scoped /files endpoint (US-003); on
+// `ok: false` (EDITOR-unset, spawn failure, file missing) the helper falls
+// back to copying the absolute path to the clipboard and surfacing an inline
+// status line, so the user can paste it into their editor manually. No toast
+// library is wired up — the inline status mirrors EmptyState's copy
+// affordance (1.2s "Copied" indicator).
+export function HtmlNodeSection({
+  projectId,
+  htmlPath,
+}: {
+  projectId: string;
+  htmlPath: string;
+}) {
+  // status: idle (default), pending (spawn in flight), copied (path on
+  // clipboard, ~1.2s), error (network/transport failure — distinct from the
+  // soft-fail spawn case, which lands as `copied`).
+  const [status, setStatus] = useState<{
+    kind: 'idle' | 'pending' | 'copied' | 'error';
+    message?: string;
+  }>({ kind: 'idle' });
+
+  const fallbackCopy = async (absPath: string, hint: string) => {
+    try {
+      await navigator.clipboard.writeText(absPath);
+      setStatus({ kind: 'copied', message: hint });
+      setTimeout(() => setStatus({ kind: 'idle' }), 1200);
+    } catch (err) {
+      setStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Clipboard write failed',
+      });
+    }
+  };
+
+  const dispatch = async (action: 'open' | 'reveal') => {
+    setStatus({ kind: 'pending' });
+    try {
+      const result =
+        action === 'open'
+          ? await openProjectFile(projectId, htmlPath)
+          : await revealProjectFile(projectId, htmlPath);
+      if (result.ok) {
+        setStatus({ kind: 'idle' });
+        return;
+      }
+      const hint =
+        action === 'open' ? 'Copied path — paste into your editor' : 'Copied path to clipboard';
+      await fallbackCopy(result.absPath, hint);
+    } catch (err) {
+      setStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border bg-card px-3 py-2 text-xs"
+      data-testid="detail-panel-html-node"
+    >
+      <div className="flex flex-col gap-1">
+        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">Path</span>
+        <code
+          data-testid="detail-panel-html-path"
+          className="block break-all rounded bg-muted/40 px-2 py-1 font-mono text-[11px]"
+        >
+          {htmlPath}
+        </code>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 gap-1.5 px-2"
+          onClick={() => {
+            void dispatch('open');
+          }}
+          disabled={status.kind === 'pending'}
+          data-testid="detail-panel-html-open"
+          aria-label="Open in editor"
+        >
+          <PencilLine className="h-3.5 w-3.5" />
+          Open in editor
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 gap-1.5 px-2"
+          onClick={() => {
+            void dispatch('reveal');
+          }}
+          disabled={status.kind === 'pending'}
+          data-testid="detail-panel-html-reveal"
+          aria-label="Reveal in Finder/Explorer"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          Reveal
+        </Button>
+      </div>
+      {status.kind === 'copied' || status.kind === 'error' ? (
+        <div
+          data-testid="detail-panel-html-status"
+          data-status={status.kind}
+          className={cn(
+            'text-[11px]',
+            status.kind === 'copied' ? 'text-muted-foreground' : 'text-destructive',
+          )}
+        >
+          {status.message ?? ''}
+        </div>
+      ) : null}
     </div>
   );
 }

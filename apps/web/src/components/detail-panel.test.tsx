@@ -41,6 +41,7 @@ const {
   DescriptionMarkdown,
   DetailPanel,
   EditableDescription,
+  HtmlNodeSection,
   NodeMetadataEditor,
   NODE_DESCRIPTION_TEXTAREA_MAX_PX,
   NODE_SHORT_DESCRIPTION_MAX_LENGTH,
@@ -1093,5 +1094,225 @@ describe('DetailPanel — Label input is gated to group nodes (US-013)', () => {
     // is what the canvas hands to group-node.tsx as `onLabelChange` on the
     // node data (verified in demo-canvas.tsx wiring tests).
     expect(editor.props.onLabelChange).toBe(onNodeLabelChange);
+  });
+});
+
+// US-018: HtmlNodeSection — read-only path display + Open + Reveal buttons.
+// Renders only for `type === 'htmlNode'` when a demoId is set. The dispatch
+// path (button onClick → openProjectFile/revealProjectFile → optional
+// fallback copy-to-clipboard) is exercised in apps/web/src/lib/api.test.ts;
+// here we pin the wiring (testids, aria-labels, disabled state, props that
+// reach the section) so the panel surface is well-defined.
+describe('HtmlNodeSection (US-018)', () => {
+  type SectionProps = Parameters<typeof HtmlNodeSection>[0];
+  const callSection = (overrides: Partial<SectionProps> = {}) => {
+    const props: SectionProps = {
+      projectId: 'demo-1',
+      htmlPath: 'blocks/hero.html',
+      ...overrides,
+    } as SectionProps;
+    return renderWithHooks(() =>
+      (HtmlNodeSection as unknown as (p: SectionProps) => unknown)(props),
+    );
+  };
+
+  it('renders the section wrapper with the documented testid', () => {
+    const tree = callSection();
+    const section = findElement(tree, testIdEquals('detail-panel-html-node'));
+    expect(section).not.toBeNull();
+  });
+
+  it('renders the htmlPath as a read-only <code> block', () => {
+    const tree = callSection({ htmlPath: 'blocks/hero.html' });
+    const pathEl = findElement(tree, testIdEquals('detail-panel-html-path'));
+    if (!pathEl) throw new Error('path display not found');
+    expect(pathEl.type).toBe('code');
+    expect(pathEl.props.children).toBe('blocks/hero.html');
+  });
+
+  it('renders Open + Reveal buttons with aria-labels and onClick wired', () => {
+    const tree = callSection();
+    const openBtn = findElement(tree, testIdEquals('detail-panel-html-open'));
+    if (!openBtn) throw new Error('open button not found');
+    expect(openBtn.props['aria-label']).toBe('Open in editor');
+    expect(typeof openBtn.props.onClick).toBe('function');
+    // Idle status — buttons are enabled by default.
+    expect(openBtn.props.disabled).toBe(false);
+
+    const revealBtn = findElement(tree, testIdEquals('detail-panel-html-reveal'));
+    if (!revealBtn) throw new Error('reveal button not found');
+    expect(revealBtn.props['aria-label']).toBe('Reveal in Finder/Explorer');
+    expect(typeof revealBtn.props.onClick).toBe('function');
+    expect(revealBtn.props.disabled).toBe(false);
+  });
+
+  it('does not surface the status line in idle state', () => {
+    const tree = callSection();
+    expect(findElement(tree, testIdEquals('detail-panel-html-status'))).toBeNull();
+  });
+
+  it('renders the copied status line when status is forced to `copied`', () => {
+    // useStateOverrides[0] = the status state slot. Force it to `copied` so
+    // the status line is in the tree without running the async dispatch.
+    const tree = renderWithHooks(
+      () =>
+        (HtmlNodeSection as unknown as (p: Parameters<typeof HtmlNodeSection>[0]) => unknown)({
+          projectId: 'demo-1',
+          htmlPath: 'blocks/hero.html',
+        }),
+      [{ kind: 'copied', message: 'Copied path — paste into your editor' }],
+    );
+    const status = findElement(tree, testIdEquals('detail-panel-html-status'));
+    if (!status) throw new Error('status line not found');
+    expect(status.props['data-status']).toBe('copied');
+    expect(status.props.children).toBe('Copied path — paste into your editor');
+    // Muted styling for the copied affordance — destructive is reserved for
+    // transport errors below.
+    const className = status.props.className as string;
+    expect(className).toContain('text-muted-foreground');
+  });
+
+  it('renders the error status line with destructive styling when status is forced to `error`', () => {
+    const tree = renderWithHooks(
+      () =>
+        (HtmlNodeSection as unknown as (p: Parameters<typeof HtmlNodeSection>[0]) => unknown)({
+          projectId: 'demo-1',
+          htmlPath: 'blocks/hero.html',
+        }),
+      [{ kind: 'error', message: 'network down' }],
+    );
+    const status = findElement(tree, testIdEquals('detail-panel-html-status'));
+    if (!status) throw new Error('status line not found');
+    expect(status.props['data-status']).toBe('error');
+    expect(status.props.children).toBe('network down');
+    const className = status.props.className as string;
+    expect(className).toContain('text-destructive');
+  });
+
+  it('disables both buttons while status is `pending`', () => {
+    const tree = renderWithHooks(
+      () =>
+        (HtmlNodeSection as unknown as (p: Parameters<typeof HtmlNodeSection>[0]) => unknown)({
+          projectId: 'demo-1',
+          htmlPath: 'blocks/hero.html',
+        }),
+      [{ kind: 'pending' }],
+    );
+    const openBtn = findElement(tree, testIdEquals('detail-panel-html-open'));
+    const revealBtn = findElement(tree, testIdEquals('detail-panel-html-reveal'));
+    if (!openBtn || !revealBtn) throw new Error('buttons not found');
+    expect(openBtn.props.disabled).toBe(true);
+    expect(revealBtn.props.disabled).toBe(true);
+  });
+});
+
+// US-018: DetailPanel-level wiring — for a selected htmlNode, the
+// HtmlNodeSection is rendered and seeded with the projectId (demoId) + the
+// node's data.htmlPath. The Label row is also surfaced (parity with group).
+// Non-htmlNode variants must NOT render the section.
+describe('DetailPanel — htmlNode section + Label wiring (US-018)', () => {
+  type PanelProps = Parameters<typeof DetailPanel>[0];
+  const callPanel = (node: DemoNode | null, overrides: Partial<PanelProps> = {}) => {
+    const props: PanelProps = {
+      demoId: 'demo-1',
+      node,
+      connector: null,
+      onClose: () => {},
+      ...overrides,
+    } as PanelProps;
+    return renderWithHooks(() => (DetailPanel as unknown as (p: PanelProps) => unknown)(props));
+  };
+
+  it('renders HtmlNodeSection with the htmlPath when an htmlNode is selected', () => {
+    const node: DemoNode = {
+      id: 'h1',
+      type: 'htmlNode',
+      position: { x: 0, y: 0 },
+      data: { htmlPath: 'blocks/h1.html' },
+    };
+    const tree = callPanel(node);
+    const section = findElement(tree, (el) => el.type === (HtmlNodeSection as unknown));
+    if (!section) throw new Error('html-node section placeholder not found');
+    expect(section.props.projectId).toBe('demo-1');
+    expect(section.props.htmlPath).toBe('blocks/h1.html');
+  });
+
+  it('omits HtmlNodeSection for every non-htmlNode variant', () => {
+    const variants: DemoNode[] = [
+      {
+        id: 'p',
+        type: 'playNode',
+        position: { x: 0, y: 0 },
+        data: {
+          label: 'p',
+          kind: 'svc',
+          stateSource: { kind: 'request' },
+          playAction: { kind: 'http', method: 'GET', url: '/p' },
+        },
+      },
+      {
+        id: 'sh',
+        type: 'shapeNode',
+        position: { x: 0, y: 0 },
+        data: { shape: 'rectangle' },
+      },
+      {
+        id: 'g',
+        type: 'group',
+        position: { x: 0, y: 0 },
+        data: { label: 'g' },
+      },
+    ];
+    for (const node of variants) {
+      const tree = callPanel(node);
+      const section = findElement(tree, (el) => el.type === (HtmlNodeSection as unknown));
+      expect(section).toBeNull();
+    }
+  });
+
+  it('omits HtmlNodeSection when demoId is null (no project context)', () => {
+    // The section is meaningless without a projectId — the open/reveal
+    // endpoints are project-scoped. Skip rendering rather than passing null
+    // through to the helpers.
+    const node: DemoNode = {
+      id: 'h1',
+      type: 'htmlNode',
+      position: { x: 0, y: 0 },
+      data: { htmlPath: 'blocks/h1.html' },
+    };
+    const tree = callPanel(node, { demoId: null });
+    const section = findElement(tree, (el) => el.type === (HtmlNodeSection as unknown));
+    expect(section).toBeNull();
+  });
+
+  it('forwards label + onLabelChange into the NodeMetadataEditor when an htmlNode is selected', () => {
+    const onLabelChange = () => {};
+    const node: DemoNode = {
+      id: 'h1',
+      type: 'htmlNode',
+      position: { x: 0, y: 0 },
+      data: { htmlPath: 'blocks/h1.html', label: 'Hero block' },
+    };
+    const tree = callPanel(node, { onLabelChange });
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.label).toBe('Hero block');
+    // Identity check — the panel must thread the SAME function reference
+    // through to the editor so the `node:<id>:label` coalesce key is shared
+    // between the panel input and any future inline-label affordance.
+    expect(editor.props.onLabelChange).toBe(onLabelChange);
+  });
+
+  it('seeds an empty label when the htmlNode has no label set yet', () => {
+    const node: DemoNode = {
+      id: 'h1',
+      type: 'htmlNode',
+      position: { x: 0, y: 0 },
+      data: { htmlPath: 'blocks/h1.html' },
+    };
+    const tree = callPanel(node, { onLabelChange: () => {} });
+    const editor = findElement(tree, (el) => el.type === (NodeMetadataEditor as unknown));
+    if (!editor) throw new Error('metadata editor placeholder not found');
+    expect(editor.props.label).toBe('');
   });
 });
