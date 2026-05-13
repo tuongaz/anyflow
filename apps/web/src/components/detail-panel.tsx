@@ -15,9 +15,7 @@ import { cn } from '@/lib/utils';
 import { Check, FolderOpen, Pencil, PencilLine, RefreshCw } from 'lucide-react';
 import {
   type CSSProperties,
-  type ChangeEvent as ReactChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
-  type FocusEvent as ReactFocusEvent,
   type FormEvent as ReactFormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -516,28 +514,252 @@ export function EditableDescription({
   );
 }
 
-// US-011 (text-and-group-resize): side-panel metadata block — a short-text
-// input + auto-grow textarea for the two free-text fields. Each control is
-// uncontrolled-then-controlled: seeded from props on mount / nodeId change,
-// the user types into local state, and the value commits on blur (one PATCH
-// per typing session → one undo entry per coalesceKey, see
-// `onNodeShortDescriptionChange` / `onNodeMetaDescriptionChange` in
-// demo-view.tsx). The textarea uses imperative `scrollHeight` growth so the
-// height tracks the content up to ~10 line-heights, then scrolls.
-export const NODE_DESCRIPTION_TEXTAREA_MAX_PX = 240; // ~10 lines at ~24px/line
 export const NODE_SHORT_DESCRIPTION_MAX_LENGTH = 200;
 
-// Imperative auto-grow for the description textarea — sets `.style.height`
-// to track `scrollHeight` up to the documented ceiling, then unlocks vertical
-// scroll. Module-scoped so the useEffect/onInput dep lists stay clean.
-function autosizeTextarea(el: HTMLTextAreaElement | null): void {
-  if (!el) return;
-  el.style.height = 'auto';
-  const next = Math.min(el.scrollHeight, NODE_DESCRIPTION_TEXTAREA_MAX_PX);
-  el.style.height = `${next}px`;
-  el.style.overflowY = el.scrollHeight > NODE_DESCRIPTION_TEXTAREA_MAX_PX ? 'auto' : 'hidden';
+// US-020: rendered-text + hover-pencil + contentEditable editor for a single
+// metadata field. Mirrors EditableDescription's state machine — the input/
+// textarea form controls are gone; this is the universal surface used by
+// NodeMetadataEditor below for Label, Short description, and Description.
+//
+// Default view renders the value as plain text (or a muted-italic placeholder
+// when empty). Hovering reveals the pencil in the top-right corner; clicking
+// it swaps to a contentEditable div seeded from `value` and focuses with the
+// full content selected so the user can immediately overtype. Save (check
+// icon, same corner) commits via `onSave(nodeId, value)`; blur or Escape
+// cancels. `suppressBlurRef` keeps the save click from being eaten by blur.
+//
+// `multiline: false` (Label, Short description) — Enter commits.
+// `multiline: true` (Description) — Enter inserts a literal '\n' via
+// execCommand so contentEditable on Firefox doesn't insert <br>/<div>.
+//
+// `maxLength` truncates inside `onInput` and re-collapses the caret to the
+// end. The editor is uncontrolled (textContent is the source of truth) —
+// React doesn't write children on every keystroke, so caret positioning and
+// IME composition stay stable.
+export function EditableMetadataField({
+  nodeId,
+  value,
+  placeholder,
+  multiline,
+  maxLength,
+  ariaLabel,
+  testIdBase,
+  onSave,
+}: {
+  nodeId: string;
+  value: string;
+  placeholder: string;
+  multiline: boolean;
+  maxLength?: number;
+  ariaLabel: string;
+  testIdBase: string;
+  onSave?: (nodeId: string, value: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  // Suppress the editor's onBlur cancel when focus is moving to the save
+  // button (save's onClick fires AFTER blur). Mirrors EditableDescription.
+  const suppressBlurRef = useRef(false);
+
+  // When not editing, track external `value` changes (SSE echo, undo). When
+  // editing, leave draft alone so an in-flight typing session isn't clobbered.
+  useEffect(() => {
+    if (!isEditing) setDraft(value);
+  }, [value, isEditing]);
+
+  // On enter-edit: seed textContent imperatively, focus, select-all. We seed
+  // via DOM (not JSX children) because contentEditable + React children
+  // fights React's reconciliation — see EditableDescription for the same
+  // rationale.
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = editorRef.current;
+    if (!el) return;
+    el.textContent = value;
+    el.focus();
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }, [isEditing, value]);
+
+  const isEmpty = value === '';
+
+  // Read-only mode: render plain text (or placeholder when empty) with no
+  // pencil. Preserves the prior `readOnly={!callback}` UX of the input.
+  if (!onSave) {
+    return (
+      <div
+        data-testid={testIdBase}
+        aria-label={ariaLabel}
+        className={cn(
+          'w-full whitespace-pre-wrap break-words rounded-md px-2 py-1.5 text-sm',
+          isEmpty ? 'italic text-muted-foreground/50' : 'text-foreground',
+        )}
+      >
+        {isEmpty ? placeholder : value}
+      </div>
+    );
+  }
+
+  const enterEdit = () => {
+    setDraft(value);
+    setIsEditing(true);
+  };
+
+  const commit = () => {
+    // textContent is authoritative when the editor is mounted; `draft` is a
+    // mirror updated via onInput (and the source of truth in test renderers
+    // that don't have a real DOM).
+    const text = editorRef.current?.textContent ?? draft;
+    onSave(nodeId, text);
+    setIsEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(value);
+    setIsEditing(false);
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Stop the keystroke from bubbling to the canvas — Backspace/Delete on
+    // the canvas would otherwise trigger node deletion (US-027). Cover the
+    // native side too: window-level shortcuts listen for native events.
+    e.stopPropagation();
+    e.nativeEvent.stopPropagation();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancel();
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (multiline) {
+        // Firefox doesn't honor contentEditable='plaintext-only' — forcing
+        // '\n' via execCommand keeps textContent free of stray <br>/<div>.
+        document.execCommand('insertText', false, '\n');
+      } else {
+        commit();
+      }
+    }
+  };
+
+  const onPaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
+    // plaintext-only forces paste-as-text on Chromium/Safari; Firefox needs
+    // explicit preventDefault + insertText to strip rich-text from the
+    // clipboard payload.
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+  };
+
+  const onInput = (e: ReactFormEvent<HTMLDivElement>) => {
+    const el = e.currentTarget as HTMLDivElement;
+    const text = el.textContent ?? '';
+    if (maxLength !== undefined && text.length > maxLength) {
+      const truncated = text.slice(0, maxLength);
+      el.textContent = truncated;
+      // Restore caret to the end so the next keystroke continues at the cap.
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      setDraft(truncated);
+      return;
+    }
+    setDraft(text);
+  };
+
+  const onBlur = () => {
+    if (suppressBlurRef.current) {
+      suppressBlurRef.current = false;
+      return;
+    }
+    cancel();
+  };
+
+  return (
+    <div
+      className="group relative"
+      data-testid={testIdBase}
+      data-editing={isEditing ? 'true' : 'false'}
+    >
+      {isEditing ? (
+        <>
+          <div
+            ref={editorRef}
+            contentEditable="plaintext-only"
+            suppressContentEditableWarning
+            spellCheck={false}
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onInput={onInput}
+            onBlur={onBlur}
+            data-testid={`${testIdBase}-editor`}
+            className={cn(
+              'block w-full whitespace-pre-wrap break-words rounded-md border bg-background px-2 py-1.5 pr-8 text-sm outline-none focus:ring-1 focus:ring-ring',
+              multiline ? 'min-h-[3.5rem] leading-relaxed' : 'leading-normal',
+            )}
+            role="textbox"
+            aria-multiline={multiline ? 'true' : 'false'}
+            aria-label={ariaLabel}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="absolute right-0.5 top-0.5 h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+            onMouseDown={() => {
+              suppressBlurRef.current = true;
+            }}
+            onClick={commit}
+            data-testid={`${testIdBase}-save`}
+            aria-label={`Save ${ariaLabel.toLowerCase()}`}
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      ) : (
+        <>
+          <div
+            aria-label={ariaLabel}
+            className={cn(
+              'w-full whitespace-pre-wrap break-words rounded-md px-2 py-1.5 pr-8 text-sm',
+              isEmpty ? 'italic text-muted-foreground/50' : 'text-foreground',
+            )}
+          >
+            {isEmpty ? placeholder : value}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="absolute right-0.5 top-0.5 h-6 w-6 p-0 text-muted-foreground opacity-30 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+            onClick={enterEdit}
+            data-testid={`${testIdBase}-edit`}
+            aria-label={`Edit ${ariaLabel.toLowerCase()}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
+    </div>
+  );
 }
 
+// US-020: side-panel metadata block. Pure layout shell — every editable field
+// is an EditableMetadataField (rendered-text + hover-pencil + contentEditable).
+// The input/textarea form controls and their *Draft / autosize / onBlur
+// plumbing are gone; EditableMetadataField owns that state.
 export function NodeMetadataEditor({
   nodeId,
   label,
@@ -549,141 +771,69 @@ export function NodeMetadataEditor({
 }: {
   nodeId: string;
   /**
-   * US-013: optional Label row, surfaced ONLY when this prop is a defined
-   * string. `undefined` (the default for shape/play/state/image/icon nodes
-   * today) hides the row entirely; an empty string still renders the input
-   * (gives the user a place to type for unlabeled groups).
+   * Optional Label row, surfaced ONLY when this prop is a defined string.
+   * `undefined` (the default for shape/play/state/image/icon nodes today)
+   * hides the row entirely; an empty string still renders the field with a
+   * muted "Group label" placeholder so unlabeled groups have a place to
+   * click.
    */
   label?: string;
   shortDescription: string;
   description: string;
   /**
-   * US-013: dispatch a new `data.label` value. When omitted, the label input
-   * is read-only. Empty string clears the label on disk (parity with the
-   * inline editor in group-node.tsx).
+   * Dispatch a new `data.label` value. When omitted, the label field is
+   * read-only (rendered text + no pencil). Empty string clears the label on
+   * disk (parity with the inline editor in group-node.tsx).
    */
   onLabelChange?: (nodeId: string, value: string) => void;
   onShortDescriptionChange?: (nodeId: string, value: string) => void;
   onMetaDescriptionChange?: (nodeId: string, value: string) => void;
 }) {
-  // Local drafts decouple typing from the parent's commit cycle so the input
-  // is responsive even when the SSE echo bounces the prop value back. On
-  // nodeId switch we re-seed from props so switching nodes mid-typing in the
-  // OTHER node doesn't bleed across — the deps below cover that case via
-  // `label` / `shortDescription` / `description` (all derive from `node.data`
-  // in the parent, so they change when the selected node does).
-  const [labelDraft, setLabelDraft] = useState(label ?? '');
-  const [shortDraft, setShortDraft] = useState(shortDescription);
-  const [longDraft, setLongDraft] = useState(description);
-  useEffect(() => {
-    setLabelDraft(label ?? '');
-    setShortDraft(shortDescription);
-    setLongDraft(description);
-  }, [label, shortDescription, description]);
-
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    autosizeTextarea(textareaRef.current);
-    // Re-fire when the seeded value changes so switching to a node with a
-    // taller description grows the textarea on mount.
-  }, []);
-
-  const onLabelInput = (e: ReactChangeEvent<HTMLInputElement>) => {
-    setLabelDraft(e.target.value);
-  };
-  const onLabelBlur = (e: ReactFocusEvent<HTMLInputElement>) => {
-    if (!onLabelChange) return;
-    const next = e.target.value;
-    // Diff against the seed prop, not the draft — guards against creating an
-    // empty undo entry on focus-then-blur with no typing. Same pattern as the
-    // short/long inputs below.
-    if (next === (label ?? '')) return;
-    onLabelChange(nodeId, next);
-  };
-  const onShortInput = (e: ReactChangeEvent<HTMLInputElement>) => {
-    setShortDraft(e.target.value);
-  };
-  const onShortBlur = (e: ReactFocusEvent<HTMLInputElement>) => {
-    if (!onShortDescriptionChange) return;
-    const next = e.target.value;
-    if (next === shortDescription) return;
-    onShortDescriptionChange(nodeId, next);
-  };
-  const onLongInput = (e: ReactChangeEvent<HTMLTextAreaElement>) => {
-    setLongDraft(e.target.value);
-    autosizeTextarea(e.target);
-  };
-  const onLongBlur = (e: ReactFocusEvent<HTMLTextAreaElement>) => {
-    if (!onMetaDescriptionChange) return;
-    const next = e.target.value;
-    if (next === description) return;
-    onMetaDescriptionChange(nodeId, next);
-  };
-  // Keyboard events inside the inputs would otherwise bubble up to the
-  // canvas-level Backspace/Delete listeners (US-027 node deletion). Stop both
-  // the React synthetic and native side so typing here never deletes the
-  // selected node. Mirrors the same defensive pattern in EditableDescription.
-  const stopKey = (e: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    e.stopPropagation();
-    e.nativeEvent.stopPropagation();
-  };
-
   return (
     <div className="flex flex-col gap-2" data-testid="detail-panel-metadata">
       {label !== undefined ? (
-        <label className="flex flex-col gap-1 text-xs">
+        <div className="flex flex-col gap-1 text-xs">
           <span className="font-medium tracking-wide text-[10px] text-muted-foreground">Label</span>
-          <input
-            type="text"
-            value={labelDraft}
+          <EditableMetadataField
+            nodeId={nodeId}
+            value={label}
             placeholder="Group label"
-            onChange={onLabelInput}
-            onBlur={onLabelBlur}
-            onKeyDown={stopKey}
-            readOnly={!onLabelChange}
-            data-testid="detail-panel-label"
-            aria-label="Label"
-            className="block w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring read-only:bg-muted/30 read-only:cursor-default"
+            multiline={false}
+            ariaLabel="Label"
+            testIdBase="detail-panel-label"
+            onSave={onLabelChange}
           />
-        </label>
+        </div>
       ) : null}
-      <label className="flex flex-col gap-1 text-xs">
+      <div className="flex flex-col gap-1 text-xs">
         <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
           Short description
         </span>
-        <input
-          type="text"
-          value={shortDraft}
+        <EditableMetadataField
+          nodeId={nodeId}
+          value={shortDescription}
           placeholder="One-line caption"
+          multiline={false}
           maxLength={NODE_SHORT_DESCRIPTION_MAX_LENGTH}
-          onChange={onShortInput}
-          onBlur={onShortBlur}
-          onKeyDown={stopKey}
-          readOnly={!onShortDescriptionChange}
-          data-testid="detail-panel-short-description"
-          aria-label="Short description"
-          className="block w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring read-only:bg-muted/30 read-only:cursor-default"
+          ariaLabel="Short description"
+          testIdBase="detail-panel-short-description"
+          onSave={onShortDescriptionChange}
         />
-      </label>
-      <label className="flex flex-col gap-1 text-xs">
+      </div>
+      <div className="flex flex-col gap-1 text-xs">
         <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
           Description
         </span>
-        <textarea
-          ref={textareaRef}
-          value={longDraft}
+        <EditableMetadataField
+          nodeId={nodeId}
+          value={description}
           placeholder="Notes, context, anything…"
-          onChange={onLongInput}
-          onBlur={onLongBlur}
-          onKeyDown={stopKey}
-          readOnly={!onMetaDescriptionChange}
-          rows={3}
-          data-testid="detail-panel-description-meta"
-          aria-label="Description"
-          className="block w-full resize-none rounded-md border bg-background px-2 py-1.5 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-ring read-only:bg-muted/30 read-only:cursor-default"
-          style={{ maxHeight: `${NODE_DESCRIPTION_TEXTAREA_MAX_PX}px` }}
+          multiline={true}
+          ariaLabel="Description"
+          testIdBase="detail-panel-description-meta"
+          onSave={onMetaDescriptionChange}
         />
-      </label>
+      </div>
     </div>
   );
 }

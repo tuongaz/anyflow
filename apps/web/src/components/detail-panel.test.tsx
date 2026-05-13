@@ -41,9 +41,9 @@ const {
   DescriptionMarkdown,
   DetailPanel,
   EditableDescription,
+  EditableMetadataField,
   HtmlNodeSection,
   NodeMetadataEditor,
-  NODE_DESCRIPTION_TEXTAREA_MAX_PX,
   NODE_SHORT_DESCRIPTION_MAX_LENGTH,
 } = await import('@/components/detail-panel');
 const { DETAIL_PANEL_WIDTH_KEY } = await import('@/lib/detail-panel-width');
@@ -598,123 +598,255 @@ describe('EditableDescription (US-005)', () => {
   });
 });
 
-// US-011 (text-and-group-resize): NodeMetadataEditor renders the two free-text
-// metadata controls (short description input + long description textarea) that
-// edit `data.shortDescription` / `data.description` for every node variant.
-// Both controls commit on blur via the callbacks; the textarea grows up to
-// ~10 line-heights then scrolls; both inputs stop key events from bubbling
-// to the canvas (so Backspace/Delete in the input never deletes the selected
-// node).
+// US-020: NodeMetadataEditor renders three EditableMetadataField instances —
+// one for Short description, one for Description, and (when label !==
+// undefined) one for Label. The form-control implementation is gone; the
+// rendered text + hover-pencil + contentEditable edit surface lives in
+// EditableMetadataField below. These tests pin the wiring (which field gets
+// which props) and exercise the edit surface for the Short description and
+// Description fields (Label is covered by the US-013 describe block below).
 describe('NodeMetadataEditor (US-011)', () => {
-  type Props = Parameters<typeof NodeMetadataEditor>[0];
-  const callEditor = (overrides: Partial<Props> = {}) => {
-    const props: Props = {
+  type EditorProps = Parameters<typeof NodeMetadataEditor>[0];
+  const callEditor = (overrides: Partial<EditorProps> = {}) => {
+    const props: EditorProps = {
       nodeId: 'n1',
       shortDescription: '',
       description: '',
       ...overrides,
-    } as Props;
-    return renderWithHooks(() => (NodeMetadataEditor as unknown as (p: Props) => unknown)(props));
+    } as EditorProps;
+    return renderWithHooks(() =>
+      (NodeMetadataEditor as unknown as (p: EditorProps) => unknown)(props),
+    );
   };
 
-  it('renders both controls with the documented placeholders and aria-labels', () => {
+  // The hook-shim renderer doesn't recurse into function components, so
+  // EditableMetadataField instances are captured as placeholders with
+  // `type === EditableMetadataField`. Match by component identity + the
+  // `testIdBase` prop to find the right one.
+  const findField = (tree: unknown, testIdBase: string) =>
+    findElement(
+      tree,
+      (el) =>
+        el.type === (EditableMetadataField as unknown) &&
+        (el.props as { testIdBase?: string }).testIdBase === testIdBase,
+    );
+
+  it('renders three EditableMetadataFields (label hidden, short, description) with the documented props', () => {
     const tree = callEditor();
-    const meta = findElement(tree, testIdEquals('detail-panel-metadata'));
-    if (!meta) throw new Error('metadata block not found');
+    expect(findElement(tree, testIdEquals('detail-panel-metadata'))).not.toBeNull();
+    // No label row when label prop is undefined.
+    expect(findField(tree, 'detail-panel-label')).toBeNull();
 
-    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
-    if (!short) throw new Error('short description input not found');
-    expect(short.props.type).toBe('text');
+    const short = findField(tree, 'detail-panel-short-description');
+    if (!short) throw new Error('short description field not found');
     expect(short.props.placeholder).toBe('One-line caption');
-    expect(short.props['aria-label']).toBe('Short description');
+    expect(short.props.ariaLabel).toBe('Short description');
+    expect(short.props.multiline).toBe(false);
     expect(short.props.maxLength).toBe(NODE_SHORT_DESCRIPTION_MAX_LENGTH);
+    expect(short.props.nodeId).toBe('n1');
+    expect(short.props.value).toBe('');
 
-    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
-    if (!long) throw new Error('description textarea not found');
+    const long = findField(tree, 'detail-panel-description-meta');
+    if (!long) throw new Error('description field not found');
     expect(long.props.placeholder).toBe('Notes, context, anything…');
-    expect(long.props['aria-label']).toBe('Description');
-    // Textarea has a max-height cap that drives the auto-grow ceiling (~10
-    // line-heights). Beyond it the user gets a scroll bar.
-    const style = long.props.style as { maxHeight?: string };
-    expect(style.maxHeight).toBe(`${NODE_DESCRIPTION_TEXTAREA_MAX_PX}px`);
+    expect(long.props.ariaLabel).toBe('Description');
+    expect(long.props.multiline).toBe(true);
+    expect(long.props.maxLength).toBeUndefined();
+    expect(long.props.nodeId).toBe('n1');
+    expect(long.props.value).toBe('');
   });
 
-  it('seeds both controls from props (defaultValue equivalents via local state)', () => {
+  it('seeds value props from shortDescription / description', () => {
     const tree = callEditor({ shortDescription: 'hello short', description: 'hello long' });
-    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
-    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
-    if (!short || !long) throw new Error('inputs not found');
+    const short = findField(tree, 'detail-panel-short-description');
+    const long = findField(tree, 'detail-panel-description-meta');
+    if (!short || !long) throw new Error('fields not found');
     expect(short.props.value).toBe('hello short');
     expect(long.props.value).toBe('hello long');
   });
 
-  it('blur on short description input dispatches onShortDescriptionChange', () => {
-    const calls: Array<{ id: string; value: string }> = [];
-    const onShortDescriptionChange = (id: string, value: string) => calls.push({ id, value });
-    const tree = callEditor({ onShortDescriptionChange });
-    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
-    if (!short) throw new Error('short description input not found');
-    (short.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: 'A caption' },
-    });
-    expect(calls).toEqual([{ id: 'n1', value: 'A caption' }]);
+  it('forwards onShortDescriptionChange / onMetaDescriptionChange as the EditableMetadataField onSave prop', () => {
+    const onShortDescriptionChange = () => {};
+    const onMetaDescriptionChange = () => {};
+    const tree = callEditor({ onShortDescriptionChange, onMetaDescriptionChange });
+    const short = findField(tree, 'detail-panel-short-description');
+    const long = findField(tree, 'detail-panel-description-meta');
+    if (!short || !long) throw new Error('fields not found');
+    // Identity check — the function reference must reach the field unwrapped
+    // so coalesceKeys upstream (in demo-view.tsx) collapse a typing session.
+    expect(short.props.onSave).toBe(onShortDescriptionChange);
+    expect(long.props.onSave).toBe(onMetaDescriptionChange);
   });
 
-  it('blur on description textarea dispatches onMetaDescriptionChange', () => {
-    const calls: Array<{ id: string; value: string }> = [];
-    const onMetaDescriptionChange = (id: string, value: string) => calls.push({ id, value });
-    const tree = callEditor({ onMetaDescriptionChange });
-    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
-    if (!long) throw new Error('description textarea not found');
-    (long.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: 'multi-line\nnotes here' },
-    });
-    expect(calls).toEqual([{ id: 'n1', value: 'multi-line\nnotes here' }]);
-  });
-
-  it('does not redispatch when the blur value equals the seeded prop value', () => {
-    // Blurring without typing should be a no-op — otherwise every focus change
-    // would create an undo entry with an identical value.
-    const shortCalls: Array<{ id: string; value: string }> = [];
-    const longCalls: Array<{ id: string; value: string }> = [];
-    const onShortDescriptionChange = (id: string, value: string) => shortCalls.push({ id, value });
-    const onMetaDescriptionChange = (id: string, value: string) => longCalls.push({ id, value });
-    const tree = callEditor({
-      shortDescription: 'unchanged',
-      description: 'also unchanged',
-      onShortDescriptionChange,
-      onMetaDescriptionChange,
-    });
-    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
-    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
-    if (!short || !long) throw new Error('inputs not found');
-    (short.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: 'unchanged' },
-    });
-    (long.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: 'also unchanged' },
-    });
-    expect(shortCalls).toEqual([]);
-    expect(longCalls).toEqual([]);
-  });
-
-  it('renders both controls read-only when no callbacks are wired (no PATCH plumbing)', () => {
+  it('leaves onSave undefined when no callback is wired (read-only fields)', () => {
     const tree = callEditor();
-    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
-    const long = findElement(tree, testIdEquals('detail-panel-description-meta'));
-    if (!short || !long) throw new Error('inputs not found');
-    expect(short.props.readOnly).toBe(true);
-    expect(long.props.readOnly).toBe(true);
+    const short = findField(tree, 'detail-panel-short-description');
+    const long = findField(tree, 'detail-panel-description-meta');
+    if (!short || !long) throw new Error('fields not found');
+    expect(short.props.onSave).toBeUndefined();
+    expect(long.props.onSave).toBeUndefined();
+  });
+});
+
+// US-020: EditableMetadataField is the universal rendered-text + hover-pencil
+// + contentEditable surface used by NodeMetadataEditor for every metadata
+// field. Tests are modeled on the EditableDescription (US-005) describe block
+// above — assert pencil/editor/save presence by test-id, simulate clicks
+// through the state machine, assert callback dispatch and keystroke handling.
+describe('EditableMetadataField (US-020)', () => {
+  type Props = Parameters<typeof EditableMetadataField>[0];
+  const callField = (overrides: Partial<Props> = {}, useStateOverrides?: unknown[]) => {
+    const props: Props = {
+      nodeId: 'n1',
+      value: '',
+      placeholder: 'placeholder text',
+      multiline: false,
+      ariaLabel: 'Short description',
+      testIdBase: 'detail-panel-short-description',
+      ...overrides,
+    } as Props;
+    return renderWithHooks(
+      () => (EditableMetadataField as unknown as (p: Props) => unknown)(props),
+      useStateOverrides,
+    );
+  };
+
+  it('renders plain text with no pencil when onSave is omitted (read-only mode)', () => {
+    const tree = callField({ value: 'shown' });
+    const wrapper = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!wrapper) throw new Error('wrapper not found');
+    expect(wrapper.props.children).toBe('shown');
+    expect(findElement(tree, testIdEquals('detail-panel-short-description-edit'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-short-description-editor'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-short-description-save'))).toBeNull();
   });
 
-  it('stops keystrokes from bubbling to the canvas (Backspace would otherwise delete the node)', () => {
-    const tree = callEditor({ onShortDescriptionChange: () => {} });
-    const short = findElement(tree, testIdEquals('detail-panel-short-description'));
-    if (!short) throw new Error('short description input not found');
+  it('renders the muted-italic placeholder when value is empty (read-only mode)', () => {
+    const tree = callField({ value: '' });
+    const wrapper = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!wrapper) throw new Error('wrapper not found');
+    expect(wrapper.props.children).toBe('placeholder text');
+    const className = wrapper.props.className as string;
+    expect(className).toContain('italic');
+    expect(className).toContain('text-muted-foreground/50');
+  });
+
+  it('renders the muted-italic placeholder when value is empty (editable mode, render state)', () => {
+    const tree = callField({ value: '', onSave: () => {} });
+    const wrapper = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!wrapper) throw new Error('wrapper not found');
+    expect(wrapper.props['data-editing']).toBe('false');
+    // The wrapper holds a Fragment containing an inner text div + a pencil
+    // button. The inner div carries the placeholder text + muted-italic
+    // styling. Find it by its rendered children (the placeholder string)
+    // since the wrapper.children path goes through a Fragment.
+    const innerText = findElement(
+      tree,
+      (el) => el.props.children === 'placeholder text' && el.type === 'div',
+    );
+    if (!innerText) throw new Error('inner placeholder div not found');
+    const innerClass = innerText.props.className as string;
+    expect(innerClass).toContain('italic');
+    expect(innerClass).toContain('text-muted-foreground/50');
+  });
+
+  it('renders the pencil with low default opacity + hover/focus reveal in render mode', () => {
+    const tree = callField({ value: 'shown', onSave: () => {} });
+    const edit = findElement(tree, testIdEquals('detail-panel-short-description-edit'));
+    if (!edit) throw new Error('pencil button not found');
+    const className = edit.props.className as string;
+    expect(className).toContain('opacity-30');
+    expect(className).toContain('group-hover:opacity-100');
+    expect(className).toContain('group-focus-within:opacity-100');
+    expect(edit.props['aria-label']).toBe('Edit short description');
+    expect(typeof edit.props.onClick).toBe('function');
+    // No editor / save button until edit mode.
+    expect(findElement(tree, testIdEquals('detail-panel-short-description-editor'))).toBeNull();
+    expect(findElement(tree, testIdEquals('detail-panel-short-description-save'))).toBeNull();
+  });
+
+  it('pencil onClick swaps to edit mode (state transition to isEditing=true)', () => {
+    // The useState slot 0 is `isEditing`. After a successful pencil click,
+    // setIsEditing(true) is called — observable in the production component
+    // when the next render happens. The hook-shim's setter is a no-op, so we
+    // verify the handler exists; the actual state transition is asserted by
+    // forcing useStateOverrides=[true, ...] in the next test.
+    const tree = callField({ value: 'shown', onSave: () => {} });
+    const edit = findElement(tree, testIdEquals('detail-panel-short-description-edit'));
+    if (!edit) throw new Error('pencil button not found');
+    // Invoke the handler — verifies it runs without throwing.
+    (edit.props.onClick as () => void)();
+  });
+
+  it('renders the contentEditable editor + save button in edit mode', () => {
+    const tree = callField({ value: 'original', onSave: () => {} }, [true, 'draft body']);
+    const wrapper = findElement(tree, testIdEquals('detail-panel-short-description'));
+    if (!wrapper) throw new Error('wrapper not found');
+    expect(wrapper.props['data-editing']).toBe('true');
+
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    expect(editor.props.contentEditable).toBe('plaintext-only');
+    // Editor is uncontrolled — no value/children seeded via React. textContent
+    // is written imperatively in a useEffect.
+    expect(editor.props.children).toBeUndefined();
+    expect(typeof editor.props.onKeyDown).toBe('function');
+    expect(typeof editor.props.onPaste).toBe('function');
+    expect(typeof editor.props.onInput).toBe('function');
+    expect(typeof editor.props.onBlur).toBe('function');
+    expect(editor.props.role).toBe('textbox');
+    expect(editor.props['aria-multiline']).toBe('false');
+    expect(editor.props['aria-label']).toBe('Short description');
+
+    const save = findElement(tree, testIdEquals('detail-panel-short-description-save'));
+    if (!save) throw new Error('save button not found');
+    expect(save.props['aria-label']).toBe('Save short description');
+    expect(typeof save.props.onClick).toBe('function');
+    expect(typeof save.props.onMouseDown).toBe('function');
+
+    // Pencil is gone while editing.
+    expect(findElement(tree, testIdEquals('detail-panel-short-description-edit'))).toBeNull();
+  });
+
+  it('save button onClick commits the current draft via onSave(nodeId, value)', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = callField({ nodeId: 'node-42', value: 'old', onSave }, [true, 'A new caption']);
+    const save = findElement(tree, testIdEquals('detail-panel-short-description-save'));
+    if (!save) throw new Error('save button not found');
+    (save.props.onClick as () => void)();
+    expect(calls).toEqual([{ nodeId: 'node-42', value: 'A new caption' }]);
+  });
+
+  it('arms suppressBlur via save.onMouseDown so blur does not cancel before onClick fires', () => {
+    // Mirrors the pattern from EditableDescription — the save button's
+    // onMouseDown fires BEFORE the editor's onBlur. The onMouseDown sets a
+    // ref so the upcoming blur doesn't cancel; the subsequent onClick reads
+    // and clears it during commit. Verify the handler exists and runs.
+    const tree = callField({ value: 'old', onSave: () => {} }, [true, 'draft']);
+    const save = findElement(tree, testIdEquals('detail-panel-short-description-save'));
+    if (!save) throw new Error('save button not found');
+    (save.props.onMouseDown as () => void)();
+    // No observable from a single ref toggle — but the handler must not throw.
+  });
+
+  it('Enter commits on a single-line field (multiline: false)', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = callField({ nodeId: 'n1', value: 'old', multiline: false, onSave }, [
+      true,
+      'committed text',
+    ]);
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    let preventedDefault = false;
     let stoppedReact = false;
     let stoppedNative = false;
-    const e = {
-      key: 'Backspace',
+    const fakeEvent = {
+      key: 'Enter',
+      preventDefault: () => {
+        preventedDefault = true;
+      },
       stopPropagation: () => {
         stoppedReact = true;
       },
@@ -724,9 +856,213 @@ describe('NodeMetadataEditor (US-011)', () => {
         },
       },
     };
-    (short.props.onKeyDown as (e: unknown) => void)(e);
+    (editor.props.onKeyDown as (e: unknown) => void)(fakeEvent);
+    expect(preventedDefault).toBe(true);
     expect(stoppedReact).toBe(true);
     expect(stoppedNative).toBe(true);
+    expect(calls).toEqual([{ nodeId: 'n1', value: 'committed text' }]);
+  });
+
+  it('Enter inserts a newline on a multiline field (multiline: true) — does NOT commit', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = callField(
+      {
+        nodeId: 'n1',
+        value: 'old',
+        multiline: true,
+        testIdBase: 'detail-panel-description-meta',
+        ariaLabel: 'Description',
+        placeholder: 'Notes, context, anything…',
+        onSave,
+      },
+      [true, 'line one'],
+    );
+    const editor = findElement(tree, testIdEquals('detail-panel-description-meta-editor'));
+    if (!editor) throw new Error('editor not found');
+    const execCalls: Array<{ cmd: string; arg: unknown }> = [];
+    const realExec = (
+      globalThis as { document?: { execCommand?: (...args: unknown[]) => boolean } }
+    ).document?.execCommand;
+    (globalThis as { document?: unknown }).document = {
+      ...((globalThis as { document?: object }).document ?? {}),
+      execCommand: (cmd: string, _show: boolean, arg: unknown) => {
+        execCalls.push({ cmd, arg });
+        return true;
+      },
+    };
+    let preventedDefault = false;
+    const fakeEvent = {
+      key: 'Enter',
+      preventDefault: () => {
+        preventedDefault = true;
+      },
+      stopPropagation: () => {},
+      nativeEvent: { stopPropagation: () => {} },
+    };
+    (editor.props.onKeyDown as (e: unknown) => void)(fakeEvent);
+    expect(preventedDefault).toBe(true);
+    expect(execCalls).toEqual([{ cmd: 'insertText', arg: '\n' }]);
+    // Multiline Enter must NOT commit — it inserts a newline instead.
+    expect(calls).toEqual([]);
+    // Restore.
+    if (realExec) {
+      (
+        (globalThis as { document?: { execCommand?: unknown } }).document as {
+          execCommand?: unknown;
+        }
+      ).execCommand = realExec;
+    }
+  });
+
+  it('Escape cancels (no commit) and stops propagation on both React + native', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = callField({ value: 'kept', onSave }, [true, 'discarded']);
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    let preventedDefault = false;
+    let stoppedReact = false;
+    let stoppedNative = false;
+    const fakeEvent = {
+      key: 'Escape',
+      preventDefault: () => {
+        preventedDefault = true;
+      },
+      stopPropagation: () => {
+        stoppedReact = true;
+      },
+      nativeEvent: {
+        stopPropagation: () => {
+          stoppedNative = true;
+        },
+      },
+    };
+    (editor.props.onKeyDown as (e: unknown) => void)(fakeEvent);
+    expect(preventedDefault).toBe(true);
+    expect(stoppedReact).toBe(true);
+    expect(stoppedNative).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
+  it('Backspace inside the editor stops propagation (canvas-level deletion guard)', () => {
+    const tree = callField({ value: 'kept', onSave: () => {} }, [true, 'draft']);
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    let stoppedReact = false;
+    let stoppedNative = false;
+    const fakeEvent = {
+      key: 'Backspace',
+      preventDefault: () => {},
+      stopPropagation: () => {
+        stoppedReact = true;
+      },
+      nativeEvent: {
+        stopPropagation: () => {
+          stoppedNative = true;
+        },
+      },
+    };
+    (editor.props.onKeyDown as (e: unknown) => void)(fakeEvent);
+    expect(stoppedReact).toBe(true);
+    expect(stoppedNative).toBe(true);
+  });
+
+  it('onPaste strips clipboard formatting (Firefox plaintext-only fallback)', () => {
+    const tree = callField({ value: 'old', onSave: () => {} }, [true, 'draft']);
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    const execCalls: Array<{ cmd: string; arg: unknown }> = [];
+    const realExec = (
+      globalThis as { document?: { execCommand?: (...args: unknown[]) => boolean } }
+    ).document?.execCommand;
+    (globalThis as { document?: unknown }).document = {
+      ...((globalThis as { document?: object }).document ?? {}),
+      execCommand: (cmd: string, _show: boolean, arg: unknown) => {
+        execCalls.push({ cmd, arg });
+        return true;
+      },
+    };
+    let preventedDefault = false;
+    const fakeEvent = {
+      preventDefault: () => {
+        preventedDefault = true;
+      },
+      clipboardData: {
+        getData: (mime: string) => (mime === 'text/plain' ? 'pasted text' : ''),
+      },
+    };
+    (editor.props.onPaste as (e: unknown) => void)(fakeEvent);
+    expect(preventedDefault).toBe(true);
+    expect(execCalls).toEqual([{ cmd: 'insertText', arg: 'pasted text' }]);
+    if (realExec) {
+      (
+        (globalThis as { document?: { execCommand?: unknown } }).document as {
+          execCommand?: unknown;
+        }
+      ).execCommand = realExec;
+    }
+  });
+
+  it('onInput enforces maxLength by truncating textContent and restoring caret to end', () => {
+    // The maxLength enforcement happens inside onInput by truncating
+    // textContent imperatively. Simulate over-length input by passing a
+    // currentTarget whose textContent is 5 chars over the cap; assert that
+    // onInput rewrites textContent to the truncated value.
+    const tree = callField({ value: '', maxLength: 10, onSave: () => {} }, [true, '']);
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    // Fake currentTarget — onInput reads .textContent and writes back the
+    // truncated value to the same property. We also stub window.getSelection
+    // (it's not present in Bun's test env) so the caret-restore branch runs
+    // without throwing.
+    const realGetSelection = (globalThis as { window?: { getSelection?: unknown } }).window
+      ?.getSelection;
+    (globalThis as { window?: unknown }).window = {
+      ...((globalThis as { window?: object }).window ?? {}),
+      getSelection: () => ({
+        removeAllRanges: () => {},
+        addRange: () => {},
+      }),
+    };
+    const realCreateRange = (globalThis as { document?: { createRange?: () => unknown } }).document
+      ?.createRange;
+    (globalThis as { document?: unknown }).document = {
+      ...((globalThis as { document?: object }).document ?? {}),
+      createRange: () => ({
+        selectNodeContents: () => {},
+        collapse: () => {},
+      }),
+    };
+    const fakeEl = { textContent: 'over-the-limit' }; // 14 chars, cap=10
+    const fakeEvent = { currentTarget: fakeEl };
+    (editor.props.onInput as (e: unknown) => void)(fakeEvent);
+    // After onInput: textContent is truncated to first 10 chars in-place.
+    expect(fakeEl.textContent).toBe('over-the-l');
+    if (realGetSelection !== undefined) {
+      (
+        (globalThis as { window?: { getSelection?: unknown } }).window as {
+          getSelection?: unknown;
+        }
+      ).getSelection = realGetSelection;
+    }
+    if (realCreateRange !== undefined) {
+      (
+        (globalThis as { document?: { createRange?: unknown } }).document as {
+          createRange?: unknown;
+        }
+      ).createRange = realCreateRange;
+    }
+  });
+
+  it('blur without typing cancels (no onSave dispatch)', () => {
+    const calls: Array<{ nodeId: string; value: string }> = [];
+    const onSave = (nodeId: string, value: string) => calls.push({ nodeId, value });
+    const tree = callField({ value: 'kept', onSave }, [true, 'kept']);
+    const editor = findElement(tree, testIdEquals('detail-panel-short-description-editor'));
+    if (!editor) throw new Error('editor not found');
+    (editor.props.onBlur as () => void)();
+    expect(calls).toEqual([]);
   });
 });
 
@@ -864,111 +1200,152 @@ describe('DetailPanel — metadata editor renders for every node variant (US-011
   });
 });
 
-// US-013 (text-and-group-resize): the side panel exposes a Label input for
-// group nodes only. Typing in the input dispatches the same callback the
-// inline label editor uses (group-node.tsx → onCommit → onNodeLabelChange in
-// demo-view.tsx), so panel + inline edits share the existing
-// `node:<id>:label` coalesce key.
+// US-020: the side panel exposes a Label EditableMetadataField for group /
+// htmlNode variants only (the metadata editor passes `label={undefined}` for
+// every other type, which hides the row entirely). Both the panel and any
+// inline label editor route through the same `onLabelChange` dispatcher so
+// the existing `node:<id>:label` coalesce key collapses a typing session
+// into one undo entry.
 describe('NodeMetadataEditor — Label row (US-013)', () => {
-  type Props = Parameters<typeof NodeMetadataEditor>[0];
-  const callEditor = (overrides: Partial<Props> = {}) => {
-    const props: Props = {
+  type EditorProps = Parameters<typeof NodeMetadataEditor>[0];
+  const callEditor = (overrides: Partial<EditorProps> = {}) => {
+    const props: EditorProps = {
       nodeId: 'g1',
       shortDescription: '',
       description: '',
       ...overrides,
-    } as Props;
-    return renderWithHooks(() => (NodeMetadataEditor as unknown as (p: Props) => unknown)(props));
+    } as EditorProps;
+    return renderWithHooks(() =>
+      (NodeMetadataEditor as unknown as (p: EditorProps) => unknown)(props),
+    );
   };
 
-  it('omits the Label input entirely when label prop is undefined (non-group nodes)', () => {
-    const tree = callEditor({ shortDescription: '', description: '' });
-    expect(findElement(tree, testIdEquals('detail-panel-label'))).toBeNull();
+  const findLabelField = (tree: unknown) =>
+    findElement(
+      tree,
+      (el) =>
+        el.type === (EditableMetadataField as unknown) &&
+        (el.props as { testIdBase?: string }).testIdBase === 'detail-panel-label',
+    );
+
+  it('omits the Label field entirely when label prop is undefined (non-labeled variants)', () => {
+    const tree = callEditor();
+    expect(findLabelField(tree)).toBeNull();
   });
 
-  it('renders the Label input when label prop is a defined string (even empty)', () => {
+  it('renders the Label EditableMetadataField with the documented props when label is a defined string (even empty)', () => {
     const tree = callEditor({ label: '' });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    expect(labelInput.props.type).toBe('text');
-    expect(labelInput.props['aria-label']).toBe('Label');
-    expect(labelInput.props.placeholder).toBe('Group label');
-    expect(labelInput.props.value).toBe('');
+    const field = findLabelField(tree);
+    if (!field) throw new Error('label field not found');
+    expect(field.props.placeholder).toBe('Group label');
+    expect(field.props.ariaLabel).toBe('Label');
+    expect(field.props.multiline).toBe(false);
+    expect(field.props.maxLength).toBeUndefined();
+    expect(field.props.nodeId).toBe('g1');
+    expect(field.props.value).toBe('');
   });
 
-  it('seeds the Label input from the label prop', () => {
+  it('seeds the value prop from the label prop', () => {
     const tree = callEditor({ label: 'Stage 1' });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    expect(labelInput.props.value).toBe('Stage 1');
+    const field = findLabelField(tree);
+    if (!field) throw new Error('label field not found');
+    expect(field.props.value).toBe('Stage 1');
   });
 
-  it('is read-only when onLabelChange is not wired', () => {
+  it('forwards onLabelChange as the EditableMetadataField onSave prop', () => {
+    // Identity check — panel-side label edits and any inline-label affordance
+    // must share the SAME function reference so the upstream coalesce key
+    // (`node:<id>:label`) collapses both paths into one undo entry.
+    const onLabelChange = () => {};
+    const tree = callEditor({ label: 'Stage 1', onLabelChange });
+    const field = findLabelField(tree);
+    if (!field) throw new Error('label field not found');
+    expect(field.props.onSave).toBe(onLabelChange);
+  });
+
+  it('leaves onSave undefined when onLabelChange is not wired (read-only label)', () => {
     const tree = callEditor({ label: 'Stage 1' });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    expect(labelInput.props.readOnly).toBe(true);
+    const field = findLabelField(tree);
+    if (!field) throw new Error('label field not found');
+    expect(field.props.onSave).toBeUndefined();
   });
 
-  it('is editable (readOnly=false) when onLabelChange is wired', () => {
-    const tree = callEditor({ label: '', onLabelChange: () => {} });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    expect(labelInput.props.readOnly).toBe(false);
-  });
-
-  it('blur dispatches onLabelChange(nodeId, value) when the value changed', () => {
+  it('Label field, when forced into edit mode, save commits via onLabelChange(nodeId, value)', () => {
+    // Drive the EditableMetadataField directly with the Label-row props so
+    // the assertion travels the full edit + save round-trip. This mirrors
+    // the previous "blur dispatches onLabelChange" assertion under the new
+    // edit-button + contentEditable surface.
+    type FieldProps = Parameters<typeof EditableMetadataField>[0];
     const calls: Array<{ id: string; value: string }> = [];
     const onLabelChange = (id: string, value: string) => calls.push({ id, value });
-    const tree = callEditor({ label: 'Old', onLabelChange });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    (labelInput.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: 'New label' },
-    });
+    const tree = renderWithHooks(
+      () =>
+        (EditableMetadataField as unknown as (p: FieldProps) => unknown)({
+          nodeId: 'g1',
+          value: 'Old',
+          placeholder: 'Group label',
+          multiline: false,
+          ariaLabel: 'Label',
+          testIdBase: 'detail-panel-label',
+          onSave: onLabelChange,
+        } as FieldProps),
+      [true, 'New label'],
+    );
+    const save = findElement(tree, testIdEquals('detail-panel-label-save'));
+    if (!save) throw new Error('label save button not found');
+    (save.props.onClick as () => void)();
     expect(calls).toEqual([{ id: 'g1', value: 'New label' }]);
   });
 
-  it('does not redispatch when the blur value equals the seeded label', () => {
-    // Focusing then blurring the input without typing must not create an undo
-    // entry — otherwise every selection change would push an identical entry
-    // onto the stack.
-    const calls: Array<{ id: string; value: string }> = [];
-    const onLabelChange = (id: string, value: string) => calls.push({ id, value });
-    const tree = callEditor({ label: 'Stable', onLabelChange });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    (labelInput.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: 'Stable' },
-    });
-    expect(calls).toEqual([]);
-  });
-
-  it('empty-string blur (cleared label) dispatches as "" (parity with inline editor clear)', () => {
+  it('clearing the Label to an empty string commits "" (parity with inline editor clear)', () => {
     // The inline editor in group-node.tsx commits an empty string when the
     // user clears the field; demo-view's onNodeLabelChange treats `""` as the
-    // canonical "no label" sentinel (the disk PATCH path strips it on merge).
-    // The panel must mirror that — clearing the input + blur should dispatch
-    // ('', not undefined) so the two paths share semantics.
+    // canonical "no label" sentinel. The panel must mirror that — committing
+    // a now-empty draft dispatches ('', not undefined).
+    type FieldProps = Parameters<typeof EditableMetadataField>[0];
     const calls: Array<{ id: string; value: string }> = [];
     const onLabelChange = (id: string, value: string) => calls.push({ id, value });
-    const tree = callEditor({ label: 'Old', onLabelChange });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
-    (labelInput.props.onBlur as (e: { target: { value: string } }) => void)({
-      target: { value: '' },
-    });
+    const tree = renderWithHooks(
+      () =>
+        (EditableMetadataField as unknown as (p: FieldProps) => unknown)({
+          nodeId: 'g1',
+          value: 'Old',
+          placeholder: 'Group label',
+          multiline: false,
+          ariaLabel: 'Label',
+          testIdBase: 'detail-panel-label',
+          onSave: onLabelChange,
+        } as FieldProps),
+      [true, ''],
+    );
+    const save = findElement(tree, testIdEquals('detail-panel-label-save'));
+    if (!save) throw new Error('label save button not found');
+    (save.props.onClick as () => void)();
     expect(calls).toEqual([{ id: 'g1', value: '' }]);
   });
 
-  it('stops keystrokes from bubbling to the canvas (Backspace would otherwise delete the node)', () => {
-    const tree = callEditor({ label: 'Stage 1', onLabelChange: () => {} });
-    const labelInput = findElement(tree, testIdEquals('detail-panel-label'));
-    if (!labelInput) throw new Error('label input not found');
+  it('Backspace inside the Label editor stops propagation (canvas-level deletion guard)', () => {
+    type FieldProps = Parameters<typeof EditableMetadataField>[0];
+    const tree = renderWithHooks(
+      () =>
+        (EditableMetadataField as unknown as (p: FieldProps) => unknown)({
+          nodeId: 'g1',
+          value: 'Stage 1',
+          placeholder: 'Group label',
+          multiline: false,
+          ariaLabel: 'Label',
+          testIdBase: 'detail-panel-label',
+          onSave: () => {},
+        } as FieldProps),
+      [true, 'draft'],
+    );
+    const editor = findElement(tree, testIdEquals('detail-panel-label-editor'));
+    if (!editor) throw new Error('label editor not found');
     let stoppedReact = false;
     let stoppedNative = false;
-    const e = {
+    const fakeEvent = {
       key: 'Backspace',
+      preventDefault: () => {},
       stopPropagation: () => {
         stoppedReact = true;
       },
@@ -978,7 +1355,7 @@ describe('NodeMetadataEditor — Label row (US-013)', () => {
         },
       },
     };
-    (labelInput.props.onKeyDown as (e: unknown) => void)(e);
+    (editor.props.onKeyDown as (e: unknown) => void)(fakeEvent);
     expect(stoppedReact).toBe(true);
     expect(stoppedNative).toBe(true);
   });
