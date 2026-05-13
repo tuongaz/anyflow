@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
@@ -45,6 +46,22 @@ const EmitBodySchema = z.object({
   runId: z.string().optional(),
   payload: z.unknown().optional(),
 });
+
+type RelativePathCheck = { kind: 'ok' } | { kind: 'invalid'; reason: string };
+
+// Reject absolute paths and `..` traversal before any filesystem touch.
+// Realpath verification is layered on top by the caller for symlink defense.
+const validateRelativePath = (path: string): RelativePathCheck => {
+  if (path.length === 0) return { kind: 'invalid', reason: 'path is empty' };
+  if (isAbsolute(path) || path.startsWith('/') || path.startsWith('\\')) {
+    return { kind: 'invalid', reason: 'absolute paths are not allowed' };
+  }
+  const segments = path.split(/[\\/]/);
+  if (segments.some((s) => s === '..')) {
+    return { kind: 'invalid', reason: 'path traversal is not allowed' };
+  }
+  return { kind: 'ok' };
+};
 
 const EMIT_STATUS_TO_EVENT = {
   running: 'node:running',
@@ -214,6 +231,62 @@ export function createApi(options: ApiOptions): Hono {
       case 'fileNotFound':
         return c.json({ error: `Demo file not found: ${result.path}` }, 404);
     }
+  });
+
+  // GET /api/projects/:id/files/<path> — stream a project-scoped file from
+  // <repoPath>/.anydemo/<path>. Path safety is layered: textual rejection
+  // (absolute / traversal), then realpath check that the resolved file stays
+  // inside the project's .anydemo root (defends against symlink escapes).
+  api.get('/projects/:id/files/:path{.+}', async (c) => {
+    const projectId = c.req.param('id');
+    const entry = registry.getById(projectId);
+    if (!entry) return c.json({ error: 'unknown project' }, 404);
+
+    const rawPath = c.req.param('path');
+    let relPath: string;
+    try {
+      relPath = decodeURIComponent(rawPath);
+    } catch {
+      return c.json({ error: 'invalid path encoding' }, 400);
+    }
+
+    const guard = validateRelativePath(relPath);
+    if (guard.kind === 'invalid') {
+      return c.json({ error: guard.reason }, 400);
+    }
+
+    const anydemoRoot = join(entry.repoPath, '.anydemo');
+    let realRoot: string;
+    try {
+      realRoot = realpathSync(anydemoRoot);
+    } catch {
+      return c.json({ error: 'file not found' }, 404);
+    }
+
+    const target = resolve(anydemoRoot, relPath);
+    let realTarget: string;
+    try {
+      realTarget = realpathSync(target);
+    } catch {
+      return c.json({ error: 'file not found' }, 404);
+    }
+
+    const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+    if (realTarget !== realRoot && !realTarget.startsWith(rootWithSep)) {
+      return c.json({ error: 'path escapes project root' }, 400);
+    }
+
+    const file = Bun.file(realTarget);
+    if (!(await file.exists())) {
+      return c.json({ error: 'file not found' }, 404);
+    }
+
+    return new Response(file.stream(), {
+      headers: {
+        'content-type': file.type || 'application/octet-stream',
+        'content-length': String(file.size),
+      },
+    });
   });
 
   api.delete('/demos/:id', (c) => {
