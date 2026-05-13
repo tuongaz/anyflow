@@ -39,6 +39,13 @@ import type { Connector, DemoNode, EdgePin, ReorderOp, ShapeKind } from '@/lib/a
 import { computeImageDims, handleCanvasFileDrop } from '@/lib/canvas-drop';
 import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { connectorToEdge } from '@/lib/connector-to-edge';
+import {
+  type Side,
+  endpointFromPin,
+  endpointToPin,
+  getNodeIntersection,
+  projectCursorToPerimeter,
+} from '@/lib/floating-edge-geometry';
 import { type GroupableNode, planGroupShortcutAction, selectUngroupableSet } from '@/lib/group-ops';
 import { NEW_NODE_BORDER_WIDTH } from '@/lib/node-defaults';
 import { scaleNodesWithinRect } from '@/lib/scale-nodes';
@@ -56,6 +63,7 @@ import {
   type Node,
   type NodeChange,
   Panel,
+  Position,
   ReactFlow,
   type ReactFlowInstance,
   SelectionMode,
@@ -234,12 +242,14 @@ export interface DemoCanvasProps {
    * read-only. Self-connections (source === target) are rejected here so the
    * parent never sees them.
    *
-   * US-025: new connectors are always floating — the parent persists them
-   * with `sourceHandleAutoPicked: true` / `targetHandleAutoPicked: true` and
-   * no handle ids. A user pins an endpoint by dragging it onto a specific
-   * handle dot via reconnect.
+   * `options.targetPin` (when set) anchors the new connector's target end at
+   * a specific perimeter `(side, t)` on the target node — the body-drop
+   * fallback fills it in by projecting the cursor onto the target node's
+   * perimeter (user rule: "cursor over node → closest perimeter point"). The
+   * source stays floating (no pin) since the source node was fixed by where
+   * the drag started, not chosen by cursor position.
    */
-  onCreateConnector?: (source: string, target: string) => void;
+  onCreateConnector?: (source: string, target: string, options?: { targetPin?: EdgePin }) => void;
   /**
    * Reattach an existing connector's source or target to a different node, or
    * to a different handle on the same node. Wired enables React Flow's edge
@@ -430,11 +440,12 @@ export interface DemoCanvasProps {
    */
   onRequestIconReplace?: (nodeId: string) => void;
   /**
-   * US-007: persist a new perimeter pin for the named endpoint. Wired enables
-   * the pin-drag affordance on the visible endpoint dots: dragging clamps
-   * the cursor onto the perimeter, pointer-up calls this with the final
-   * `(side, t)`. Parent owns the optimistic override, PATCH, and undo entry.
-   * Absent → dragging the dot is inert.
+   * US-007: persist a new perimeter pin for the named endpoint. Called when
+   * a reconnect drag releases the endpoint on its OWN node (the one the
+   * endpoint was already attached to) — onReconnectEndCb projects the
+   * cursor onto that node's perimeter and forwards the resulting `(side, t)`.
+   * Parent owns the optimistic override, PATCH, and undo entry. Absent →
+   * same-node releases are a no-op.
    */
   onPinEndpoint?: (
     connectorId: string,
@@ -493,25 +504,183 @@ const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
 };
 
 /**
- * US-023: classify why a connection drop landed in the
- * `connectionState.isValid === false` state.
+ * Drop-buffer (in CSS pixels) for "near-miss" connect/reconnect releases.
+ * The user explicitly asked for this: "When moving the outlet and release
+ * the mouse, give some buffer, so that even you drop the mouse out of a
+ * node, if it is still close, then still connect to it." 50 pixels is wide
+ * enough to forgive overshoots and make the snap visibly auto-engage when
+ * the outlet approaches a perimeter, without trapping intentional empty-
+ * space drops.
+ */
+const RECONNECT_BUFFER_PX = 50;
+
+/**
+ * Hit-test for connect/reconnect body drops. Returns the topmost
+ * `.react-flow__node` directly under the cursor; if none, falls back to
+ * the nearest `.react-flow__node` whose getBoundingClientRect lies within
+ * `RECONNECT_BUFFER_PX` of the cursor in screen-space. Returns null if no
+ * node is within range.
  *
- *  • `'flash'` — the target handle is fully connectable at the node level
- *    (no `connectable: false` on the node) but xyflow refused the drop
- *    because of strict-mode type-direction mismatch OR our isValidConnection
- *    callback rejected (e.g. text-shape gate from US-004). The caller
- *    should call flashInvalidHandle and bail — this is the US-022 invariant
- *    "give the user red feedback when they release on the wrong handle".
+ * Why screen pixels (not flow units): the buffer is a UX affordance about
+ * what the user can see and aim at. Defining it in flow units would make
+ * the forgiveness zone shrink at high zoom and balloon at low zoom — not
+ * what the user means by "if it is still close."
  *
- *  • `'fall-through'` — the target node has `connectable: false` (US-025:
- *    unselected node, INCLUDING a freshly-created one whose selection
- *    hasn't propagated). xyflow rejected the handle drop, but our body-
- *    drop fallback still wants to land the connector on the node. The
- *    caller should NOT flash red and SHOULD continue to the body-drop path.
+ * Why iterate `wrapper.querySelectorAll('.react-flow__node')` not
+ * `rfInstance.getNodes()`: we need each node's CURRENT bounding rect in
+ * screen space, which `getBoundingClientRect` gives us directly. Going
+ * through the node lookup would require composing positionAbsolute +
+ * measured + the viewport transform, all of which the DOM already does
+ * for us.
+ */
+const nodeElNearPoint = (
+  wrapper: HTMLElement | null,
+  clientX: number,
+  clientY: number,
+): Element | null => {
+  const direct = nodeElAtPoint(clientX, clientY);
+  if (direct) return direct;
+  if (!wrapper) return null;
+  let nearest: Element | null = null;
+  let nearestDist = RECONNECT_BUFFER_PX;
+  const nodes = wrapper.querySelectorAll('.react-flow__node');
+  for (const node of nodes) {
+    const rect = node.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
+    const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+    const dist = Math.hypot(dx, dy);
+    if (dist <= nearestDist) {
+      nearest = node;
+      nearestDist = dist;
+    }
+  }
+  return nearest;
+};
+
+/**
+ * Compute the lock-pin for the un-moved endpoint of a cross-node reconnect,
+ * IF and ONLY IF that endpoint is currently floating. Returns `undefined`
+ * when the un-moved side is already locked (has a pin OR autoPicked === false),
+ * when either node hasn't been measured yet, or when an InternalNode lookup
+ * fails. Shared by both the precise-handle (`onReconnect`) and body-drop
+ * (`onReconnectEndCb`) reconnect paths so the "NEVER move the other outlet"
+ * invariant holds regardless of how the user lands the drop.
+ *
+ * Math: the un-moved endpoint's CURRENT visible position is the perimeter
+ * intersection of the line through OLD source/target centers, restricted
+ * to the un-moved node's bbox (`getNodeIntersection`). We convert that
+ * intersection back into a `(side, t)` pin (`endpointToPin`) so the
+ * persisted state freezes the endpoint at its visible location.
+ *
+ * `rfGetInternalNode` is passed as a function rather than the React Flow
+ * instance so this helper can be unit-tested with a stub map and stays
+ * agnostic of the xyflow contract.
+ */
+export function computeUnmovedLockPin(
+  movingSide: 'source' | 'target',
+  oldEdgeSource: string,
+  oldEdgeTarget: string,
+  edgeData:
+    | {
+        sourcePin?: { side: 'top' | 'right' | 'bottom' | 'left'; t: number };
+        targetPin?: { side: 'top' | 'right' | 'bottom' | 'left'; t: number };
+        sourceHandleAutoPicked?: boolean;
+        targetHandleAutoPicked?: boolean;
+      }
+    | undefined,
+  rfGetInternalNode: (id: string) =>
+    | {
+        internals: { positionAbsolute: { x: number; y: number } };
+        measured: { width?: number; height?: number };
+        width?: number;
+        height?: number;
+      }
+    | null
+    | undefined,
+): EdgePin | undefined {
+  const unmovedAlreadyLocked =
+    movingSide === 'source'
+      ? edgeData?.targetPin !== undefined || edgeData?.targetHandleAutoPicked === false
+      : edgeData?.sourcePin !== undefined || edgeData?.sourceHandleAutoPicked === false;
+  if (unmovedAlreadyLocked) return undefined;
+  const unmovedNodeId = movingSide === 'source' ? oldEdgeTarget : oldEdgeSource;
+  const movedOldNodeId = movingSide === 'source' ? oldEdgeSource : oldEdgeTarget;
+  const unmovedNode = rfGetInternalNode(unmovedNodeId);
+  const movedOldNode = rfGetInternalNode(movedOldNodeId);
+  if (!unmovedNode || !movedOldNode) return undefined;
+  const uW = unmovedNode.measured.width ?? unmovedNode.width ?? 0;
+  const uH = unmovedNode.measured.height ?? unmovedNode.height ?? 0;
+  const mW = movedOldNode.measured.width ?? movedOldNode.width ?? 0;
+  const mH = movedOldNode.measured.height ?? movedOldNode.height ?? 0;
+  if (uW === 0 || uH === 0 || mW === 0 || mH === 0) return undefined;
+  const unmovedBox = {
+    x: unmovedNode.internals.positionAbsolute.x,
+    y: unmovedNode.internals.positionAbsolute.y,
+    w: uW,
+    h: uH,
+  };
+  const movedOldCenter = {
+    x: movedOldNode.internals.positionAbsolute.x + mW / 2,
+    y: movedOldNode.internals.positionAbsolute.y + mH / 2,
+  };
+  return endpointToPin(unmovedBox, getNodeIntersection(unmovedBox, movedOldCenter));
+}
+
+/**
+ * Decide what action a reconnect body-drop should commit, given the node the
+ * cursor was released over (or null for empty space) and the edge's current
+ * endpoints. Pure dispatch so the precedence rules are exhaustively unit-
+ * testable.
+ *
+ *  • `'no-op'` — drop landed on empty space (no node under cursor). The
+ *    gesture is abandoned and the edge restores. The user explicitly
+ *    requested this UX: cursor outside any node + drop = nothing happens.
+ *  • `'self-loop'` — drop landed on the OTHER endpoint's node. Connecting
+ *    source-and-target to the same node would be a self-loop; bail.
+ *  • `'pin-own'` — drop landed on the moving endpoint's OWN node. The user
+ *    dragged the endpoint dot around its own node to choose a specific
+ *    attachment point; the caller projects the cursor onto that node's
+ *    perimeter (closest side + t) and commits via onPinEndpoint.
+ *  • `'reconnect-and-pin'` — drop landed on a THIRD node. Per the "cursor
+ *    over a node finds the closest perimeter point and uses that" rule,
+ *    the caller reconnects to the new node AND pins at the projected
+ *    perimeter point in a single onReconnectConnector patch so the new
+ *    endpoint lands on the specific point the user aimed at.
+ *
+ * `movingSide` is the endpoint the user dragged. React Flow's onReconnectEnd
+ * passes `handleType` as the FIXED end, so callers invert:
+ * `movingSide = 'source' if handleType === 'target' else 'target'`.
+ */
+export function classifyReconnectBodyDrop(
+  movingSide: 'source' | 'target',
+  oldEdgeSource: string,
+  oldEdgeTarget: string,
+  droppedNodeId: string | null,
+): 'no-op' | 'self-loop' | 'pin-own' | 'reconnect-and-pin' {
+  if (droppedNodeId === null) return 'no-op';
+  const ownNodeId = movingSide === 'source' ? oldEdgeSource : oldEdgeTarget;
+  const otherNodeId = movingSide === 'source' ? oldEdgeTarget : oldEdgeSource;
+  if (droppedNodeId === otherNodeId) return 'self-loop';
+  if (droppedNodeId === ownNodeId) return 'pin-own';
+  return 'reconnect-and-pin';
+}
+
+/**
+ * Classify the outcome of a connection-drop's `isValid === false` state.
+ *
+ *  • `'fall-through'` — a handle was hit but xyflow refused the drop (either
+ *    strict-mode type-direction mismatch, our isValidConnection callback
+ *    rejected, or the node renders `connectable: false`). The caller MUST
+ *    continue to the body-drop fallback, which hit-tests the node under the
+ *    cursor and pins the endpoint at the closest perimeter point. User rule:
+ *    "must allow to connect the outlet to any location on the border" — so
+ *    a wrong-type handle dead-center on a border is not an error, it's a
+ *    valid border-drop that the body-drop path will land correctly.
  *
  *  • `'no-flash-no-fall-through'` — there's no `toHandle` (cursor wasn't
  *    near any handle at drop) or `isValid` is null/true. Caller proceeds
- *    to the body-drop path without flashing.
+ *    to the body-drop path normally.
  *
  * Pure function so the dispatch logic is testable without a DOM
  * (the production gate lives inside onConnectEndCb).
@@ -519,39 +688,11 @@ const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
 export function classifyHandleDropFailure(
   toHandle: { nodeId: string } | null,
   isValid: boolean | null,
-  nodes: ReadonlyArray<{ id: string; connectable?: boolean }>,
-): 'flash' | 'fall-through' | 'no-flash-no-fall-through' {
+  _nodes: ReadonlyArray<{ id: string; connectable?: boolean }>,
+): 'fall-through' | 'no-flash-no-fall-through' {
   if (!toHandle || isValid !== false) return 'no-flash-no-fall-through';
-  const target = nodes.find((n) => n.id === toHandle.nodeId);
-  if (target?.connectable === false) return 'fall-through';
-  return 'flash';
+  return 'fall-through';
 }
-
-/**
- * Imperatively flash a handle's `data-invalid-flash` attribute for ~250ms so
- * a wrong-type drop (e.g. dragging a target endpoint onto a source-only
- * handle) gives the user a brief red feedback before the edge restores
- * (US-022). DOM-driven so the React tree doesn't have to know about each
- * handle's per-flash state.
- */
-const FLASH_DURATION_MS = 250;
-const flashInvalidHandle = (
-  wrapper: HTMLElement | null,
-  nodeId: string | null | undefined,
-  handleId: string | null | undefined,
-): void => {
-  if (!wrapper || !nodeId || !handleId) return;
-  const nodeEl = wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`);
-  if (!nodeEl) return;
-  const handleEl = nodeEl.querySelector<HTMLElement>(
-    `.react-flow__handle[data-handleid="${CSS.escape(handleId)}"]`,
-  );
-  if (!handleEl) return;
-  handleEl.setAttribute('data-invalid-flash', 'true');
-  window.setTimeout(() => {
-    handleEl.removeAttribute('data-invalid-flash');
-  }, FLASH_DURATION_MS);
-};
 
 const mergeNodeOverride = (node: DemoNode, override: Partial<DemoNode> | undefined): DemoNode => {
   if (!override) return node;
@@ -595,6 +736,16 @@ const edgeTypes = { editableEdge: EditableEdge };
 // defaultEdgeOptions would change identity every render and force xyflow's
 // edge merging to recompute.
 const DEFAULT_EDGE_OPTIONS = { zIndex: 1 };
+
+// When the user selects a connector, the edge body AND its visible
+// endpoint dots need to layer above every node and other edge so the user
+// can drag the dots without a sibling node covering them. Selected nodes
+// elevate to z-index 1000 (CSS rule); we elevate the selected edge to
+// 1500 so it sits cleanly between selected nodes (1000) and the endpoint
+// dots (2000). Bumping per-edge inline `zIndex` is the React-Flow-
+// idiomatic way: xyflow stamps the value onto the wrapping `<svg>` which
+// owns its own stacking context.
+const SELECTED_EDGE_Z_INDEX = 1500;
 
 // US-010: walk up from `target` and return true when the closest
 // `.react-flow__node` ancestor's `data-id` is set AND not equal to `nodeId`.
@@ -660,28 +811,231 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
       isReconnectingRef.current ? (s.edges.find((e) => e.reconnectable === true) ?? null) : null,
     );
     const data = reconnectingEdge?.data as EditableEdgeData | undefined;
+    // "NEVER move the other outlet" — during the reconnect drag itself.
+    // React Flow's stored `fromX, fromY` for the fixed end is the handle's
+    // cardinal position (top/right/bottom/left center), not the floating-
+    // perimeter intersection we render the static edge at. Without this
+    // override the fixed end visually JUMPS from its rendered position to
+    // the handle's center the moment the drag starts, then jumps back on
+    // release — even though we lock the position in the patch.
+    //
+    // Critically, for a FLOATING fixed end, the override must use the OLD
+    // line-through-centers (not the cursor). Using the cursor would make
+    // the fixed endpoint orbit toward the moving cursor — exactly the "the
+    // other outlet moves" bug the user reported. The fixed end must stay
+    // at its pre-drag visible position throughout the gesture.
+    //
+    // Recompute the fixed end's true visible position from edge state:
+    //   - If the fixed end has a `pin`, use that (pin position is static).
+    //   - Else if `autoPicked === false`, the React-Flow-supplied fromX/Y
+    //     IS the handle position — already correct, fall through.
+    //   - Else (floating), compute the perimeter intersection of the line
+    //     between the source center and target center (the OLD geometry
+    //     before the drag); the result is independent of cursor position.
+    const fixedNodeId = useStore((s) => {
+      const conn = s.connection;
+      // `connection.fromHandle.nodeId` is the FIXED end of the gesture:
+      //   - reconnect drag → the anchored side of the edge
+      //   - new connect drag → the source node where the drag started
+      // When the drag isn't yet a real connection (initial mousedown
+      // frame) fall back to null.
+      return conn?.fromHandle?.nodeId ?? null;
+    });
+    const sourceNode = useStore((s) =>
+      reconnectingEdge?.source ? (s.nodeLookup.get(reconnectingEdge.source) ?? null) : null,
+    );
+    const targetNode = useStore((s) =>
+      reconnectingEdge?.target ? (s.nodeLookup.get(reconnectingEdge.target) ?? null) : null,
+    );
+    // Resolve the fixed-end node both for reconnect (via the edge's
+    // source/target lookup above) AND for new-connect (directly from the
+    // store via the fromHandle's nodeId). Either way the snap-target loop
+    // below needs to know which node is "the source" so it doesn't snap
+    // there.
+    const fromNodeFromStore = useStore((s) =>
+      fixedNodeId ? (s.nodeLookup.get(fixedNodeId) ?? null) : null,
+    );
+    const fixedNodeIsSource = reconnectingEdge?.source === fixedNodeId;
+    const fixedNode = reconnectingEdge
+      ? fixedNodeIsSource
+        ? sourceNode
+        : targetNode
+      : fromNodeFromStore;
+    const otherNode = fixedNodeIsSource ? targetNode : sourceNode;
+    const fixedHasPin = fixedNodeIsSource ? data?.sourcePin : data?.targetPin;
+    const fixedAutoPicked = fixedNodeIsSource
+      ? data?.sourceHandleAutoPicked
+      : data?.targetHandleAutoPicked;
+    let effectiveFromX = fromX;
+    let effectiveFromY = fromY;
+    let effectiveFromPosition = fromPosition;
+    if (fixedNode) {
+      const fW = fixedNode.measured.width ?? fixedNode.width ?? 0;
+      const fH = fixedNode.measured.height ?? fixedNode.height ?? 0;
+      if (fW > 0 && fH > 0) {
+        const fixedBox = {
+          x: fixedNode.internals.positionAbsolute.x,
+          y: fixedNode.internals.positionAbsolute.y,
+          w: fW,
+          h: fH,
+        };
+        let overrideEndpoint: { x: number; y: number; side: Side } | null = null;
+        if (fixedHasPin) {
+          overrideEndpoint = endpointFromPin(fixedBox, fixedHasPin);
+        } else if (fixedAutoPicked !== false && otherNode) {
+          // Floating fixed end + we have the other node's geometry → use
+          // line-through-CENTERS (not the cursor). This keeps the fixed
+          // endpoint visually anchored at its pre-drag perimeter position
+          // for the entire duration of the gesture.
+          const oW = otherNode.measured.width ?? otherNode.width ?? 0;
+          const oH = otherNode.measured.height ?? otherNode.height ?? 0;
+          if (oW > 0 && oH > 0) {
+            const otherCenter = {
+              x: otherNode.internals.positionAbsolute.x + oW / 2,
+              y: otherNode.internals.positionAbsolute.y + oH / 2,
+            };
+            overrideEndpoint = getNodeIntersection(fixedBox, otherCenter);
+          }
+        }
+        if (overrideEndpoint) {
+          effectiveFromX = overrideEndpoint.x;
+          effectiveFromY = overrideEndpoint.y;
+          effectiveFromPosition = POSITION_BY_SIDE_LINE[overrideEndpoint.side];
+        }
+      }
+    }
+    // Live snap for the MOVING end: scan all nodes in the store and find
+    // the nearest one whose bbox is within `RECONNECT_BUFFER_PX / zoom` of
+    // the cursor in FLOW units (which equals `RECONNECT_BUFFER_PX` in
+    // screen pixels). If found, snap the line's destination onto that
+    // node's perimeter so the user SEES the projection that will commit
+    // on release.
+    //
+    // Works for BOTH reconnect drags (when `reconnectingEdge` is set) and
+    // NEW connection drags (no edge yet; we still want the moving end to
+    // snap as the user approaches a target node).
+    //
+    // Exclusion rules:
+    //   - In reconnect: skip the other-endpoint's node (a drop there
+    //     would be a self-loop and the body-drop fallback bails).
+    //   - In new connect: skip the source node (a node can't connect to
+    //     itself).
+    //   - In both: allow snap onto the fixed end's own node (the user
+    //     dragged back to set a pin-own / a same-node connector). The
+    //     fixed-end override above places `effectiveFromX/Y` at the fixed
+    //     perimeter; the line's `to` should snap to the same node's
+    //     perimeter at the cursor projection.
+    const zoom = useStore((s) => s.transform[2]);
+    const nodeMap = useStore((s) => s.nodeLookup);
+    let effectiveToX = toX;
+    let effectiveToY = toY;
+    let effectiveToPosition = toPosition;
+    if (zoom > 0) {
+      const bufferFlow = RECONNECT_BUFFER_PX / zoom;
+      // Node id to exclude from the snap targets:
+      //   - reconnect: the other endpoint's node (self-loop guard)
+      //   - new connect: nothing extra beyond the source itself, which is
+      //     fixedNode (handled by the snap-onto-own-fixed branch below)
+      const excludeNodeId = reconnectingEdge
+        ? fixedNodeIsSource
+          ? reconnectingEdge.target
+          : reconnectingEdge.source
+        : null;
+      let bestNode: typeof fixedNode = null;
+      let bestDist = bufferFlow;
+      for (const node of nodeMap.values()) {
+        if (excludeNodeId && node.id === excludeNodeId) continue;
+        if (fixedNode && node.id === fixedNode.id) continue;
+        const w = node.measured.width ?? node.width ?? 0;
+        const h = node.measured.height ?? node.height ?? 0;
+        if (w === 0 || h === 0) continue;
+        const x = node.internals.positionAbsolute.x;
+        const y = node.internals.positionAbsolute.y;
+        const dx = Math.max(x - toX, 0, toX - (x + w));
+        const dy = Math.max(y - toY, 0, toY - (y + h));
+        const dist = Math.hypot(dx, dy);
+        if (dist <= bestDist) {
+          bestDist = dist;
+          bestNode = node;
+        }
+      }
+      // Snap onto fixed-end's own node is allowed for reconnect drag
+      // (pin-own gesture). For new connect, dropping back on the source
+      // is rejected by onConnectEndCb so we deliberately don't preview
+      // such a snap.
+      if (!bestNode && reconnectingEdge && fixedNode) {
+        const w = fixedNode.measured.width ?? fixedNode.width ?? 0;
+        const h = fixedNode.measured.height ?? fixedNode.height ?? 0;
+        if (w > 0 && h > 0) {
+          const x = fixedNode.internals.positionAbsolute.x;
+          const y = fixedNode.internals.positionAbsolute.y;
+          const dx = Math.max(x - toX, 0, toX - (x + w));
+          const dy = Math.max(y - toY, 0, toY - (y + h));
+          const dist = Math.hypot(dx, dy);
+          if (dist <= bufferFlow) bestNode = fixedNode;
+        }
+      }
+      if (bestNode) {
+        const w = bestNode.measured.width ?? bestNode.width ?? 0;
+        const h = bestNode.measured.height ?? bestNode.height ?? 0;
+        if (w > 0 && h > 0) {
+          const projectedPin = projectCursorToPerimeter(
+            {
+              x: bestNode.internals.positionAbsolute.x,
+              y: bestNode.internals.positionAbsolute.y,
+              w,
+              h,
+            },
+            { x: toX, y: toY },
+          );
+          const projectedEndpoint = endpointFromPin(
+            {
+              x: bestNode.internals.positionAbsolute.x,
+              y: bestNode.internals.positionAbsolute.y,
+              w,
+              h,
+            },
+            projectedPin,
+          );
+          effectiveToX = projectedEndpoint.x;
+          effectiveToY = projectedEndpoint.y;
+          effectiveToPosition = POSITION_BY_SIDE_LINE[projectedEndpoint.side];
+        }
+      }
+    }
     const isStep = data?.path === 'step';
     const [path] = isStep
       ? getSmoothStepPath({
-          sourceX: fromX,
-          sourceY: fromY,
-          sourcePosition: fromPosition,
-          targetX: toX,
-          targetY: toY,
-          targetPosition: toPosition,
+          sourceX: effectiveFromX,
+          sourceY: effectiveFromY,
+          sourcePosition: effectiveFromPosition,
+          targetX: effectiveToX,
+          targetY: effectiveToY,
+          targetPosition: effectiveToPosition,
           borderRadius: SMOOTHSTEP_BORDER_RADIUS,
         })
       : getBezierPath({
-          sourceX: fromX,
-          sourceY: fromY,
-          sourcePosition: fromPosition,
-          targetX: toX,
-          targetY: toY,
-          targetPosition: toPosition,
+          sourceX: effectiveFromX,
+          sourceY: effectiveFromY,
+          sourcePosition: effectiveFromPosition,
+          targetX: effectiveToX,
+          targetY: effectiveToY,
+          targetPosition: effectiveToPosition,
         });
     const style = reconnectingEdge?.style ?? connectionLineStyle ?? undefined;
     return <path d={path} fill="none" className="react-flow__connection-path" style={style} />;
   };
+};
+
+// Map from our floating-edge Side type to React Flow's Position enum,
+// local to the connection-line component so it doesn't have to import
+// editable-edge's symbol. Kept tiny — the runtime values match xyflow's
+// Position enum verbatim ('top' | 'right' | 'bottom' | 'left').
+const POSITION_BY_SIDE_LINE: Record<Side, Position> = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
 };
 
 /**
@@ -1094,7 +1448,12 @@ export function DemoCanvas({
       return;
     }
     const onMove = (e: globalThis.PointerEvent) => {
-      const nodeEl = nodeElAtPoint(e.clientX, e.clientY);
+      // Buffer-aware: a node within RECONNECT_BUFFER_PX of the cursor
+      // counts as the candidate target, mirroring the snap behavior of
+      // the connection line. Direct-hit cursor-over-node still wins (the
+      // buffered helper falls back to nearest-in-buffer only when no
+      // node is directly under the cursor).
+      const nodeEl = nodeElNearPoint(wrapperRef.current, e.clientX, e.clientY);
       const id = nodeEl?.getAttribute('data-id') ?? null;
       // The source node should not also be highlighted as a target — dropping
       // back on the source is rejected by both onConnect (same-node guard at
@@ -2312,7 +2671,12 @@ export function DemoCanvas({
       // sole selected connector — multi-select disables reconnect to avoid
       // ambiguous gestures.
       const enableReconnect = reconnectableEdges && c.id === onlySelectedConnectorId;
-      const next: Edge = enableReconnect ? { ...edge, reconnectable: true } : edge;
+      // Elevate the selected edge above other nodes/edges so the connector
+      // and its endpoint dots are unobstructed by overlapping nodes —
+      // critical for the dot drag affordance. Unselected edges keep the
+      // default z-index from DEFAULT_EDGE_OPTIONS (1).
+      const elevatedEdge: Edge = isSelected ? { ...edge, zIndex: SELECTED_EDGE_Z_INDEX } : edge;
+      const next: Edge = enableReconnect ? { ...elevatedEdge, reconnectable: true } : elevatedEdge;
       // Group enter/exit gate for edges: when both endpoints live inside the
       // same group AND that group is not active, the edge is not directly
       // selectable. `handleEdgeClickWithGroupGate` (the wrapped onEdgeClick)
@@ -2452,13 +2816,19 @@ export function DemoCanvas({
     return !isTextShape(conn.source) && !isTextShape(conn.target);
   }, []);
 
-  // Body-drop fallback for NEW connections (US-014). When the user drags from
-  // a source handle and releases over a node's BODY (not precisely on one of
-  // its four handles), React Flow's connectionRadius isn't enough to snap and
-  // onConnect doesn't fire. We catch that here, hit-test elementsFromPoint
-  // for the topmost `.react-flow__node`, and call onCreateConnector with
-  // drag-from as source and the body-drop node as target. US-025: no handle
-  // ids — the new connector is floating.
+  // Body-drop fallback for NEW connections. When the user drags from a
+  // source handle and releases over a node's BODY (not precisely on one of
+  // its four handles), React Flow's connectionRadius isn't enough to snap
+  // and onConnect doesn't fire. We catch that here, hit-test
+  // elementsFromPoint for the topmost `.react-flow__node`, and either:
+  //
+  //   - cursor over a node (not the source) → call onCreateConnector with
+  //     the target node id AND a perimeter pin computed from the cursor
+  //     (user rule: "cursor over a node → find closest point on the
+  //     perimeter and use that")
+  //   - cursor in empty space → no-op (user rule: "cursor outside any
+  //     node + drop → won't do anything"). The previous US-015 create-and-
+  //     connect popover is no longer triggered from this fallback.
   const onConnectEndCb = useCallback(
     (e: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
       setConnecting(false);
@@ -2490,78 +2860,86 @@ export function DemoCanvas({
         return;
       }
       if (!onCreateConnector) return;
-      // Wrong-type handle drop: the user released precisely on a handle whose
-      // role doesn't match the moving endpoint. React Flow refuses the drop
-      // (no onConnect), so we flash the handle red and bail without falling
-      // through to the body-drop fallback (US-022).
-      //
-      // US-023: see `classifyHandleDropFailure` for the gate's full
-      // semantics. In short: flash red only when the target handle is fully
-      // connectable (US-022 invariant); otherwise fall through to the
-      // body-drop fallback so drops on freshly-created (unselected) nodes
-      // still land.
-      const toHandle = connectionState.toHandle;
-      const dropFailure = classifyHandleDropFailure(
-        toHandle,
-        connectionState.isValid,
-        rfNodesRef.current,
-      );
-      if (dropFailure === 'flash' && toHandle) {
-        flashInvalidHandle(wrapperRef.current, toHandle.nodeId, toHandle.id);
-        return;
-      }
+      // User rule: "must allow to connect the outlet to any location on the
+      // border." When the cursor lands on a wrong-type handle dead-center on
+      // a border, xyflow sets `connectionState.isValid === false` and skips
+      // onConnect — but the user's intent is clearly a border-drop, so we
+      // fall through to the body-drop fallback below, which hit-tests the
+      // node under the cursor and pins the endpoint at the closest perimeter
+      // point. Same path handles freshly-created (unselected) nodes whose
+      // handles render `connectable: false`.
       const fromNodeId = connectionState.fromNode?.id;
       const fromHandle = connectionState.fromHandle;
       if (!fromNodeId || !fromHandle) return;
       const cursor = cursorFromConnectEvent(e);
       if (!cursor) return;
-      const targetEl = nodeElAtPoint(cursor.clientX, cursor.clientY);
-      if (targetEl) {
-        const targetNodeId = targetEl.getAttribute('data-id');
-        if (!targetNodeId || targetNodeId === fromNodeId) return;
-        // US-023: re-run isValidConnection on the body-drop fallback path to
-        // preserve US-004's text-shape rejection invariant — without this,
-        // dropping onto a text node's body would create a connector that
-        // bypassed the validator (xyflow only calls isValidConnection on the
-        // handle-drop path, never on a body drop). The connection shape
-        // matches xyflow's strict-mode Connection: floating drops have null
-        // handle ids per US-025.
-        if (
-          !isValidConnection({
-            source: fromNodeId,
-            target: targetNodeId,
-            sourceHandle: null,
-            targetHandle: null,
-          })
-        ) {
-          return;
-        }
-        // US-023 + US-025: drag-from is always source, drop-node is always
-        // target — including when the user drags from a target-type handle.
-        // No handle ids are persisted; the resulting connector is floating.
-        onCreateConnector(fromNodeId, targetNodeId);
+      // Buffered hit-test: cursor directly over a node, OR within
+      // `RECONNECT_BUFFER_PX` of a node's bbox in screen space. The buffer
+      // forgives near-miss drops the user clearly aimed at a node.
+      const targetEl = nodeElNearPoint(wrapperRef.current, cursor.clientX, cursor.clientY);
+      // User rule: "cursor outside any node + drop → won't do anything."
+      // Empty-pane drops no longer open the US-015 create-and-connect
+      // popover; the connection drag simply dissolves. The popover-bound
+      // `onCreateAndConnectFromPane` prop and `setDropPopover` state stay
+      // wired in case a future explicit invocation re-introduces the flow,
+      // but the body-drop fallback never triggers them anymore.
+      if (!targetEl) return;
+      const targetNodeId = targetEl.getAttribute('data-id');
+      if (!targetNodeId || targetNodeId === fromNodeId) return;
+      // US-023: re-run isValidConnection on the body-drop fallback path to
+      // preserve US-004's text-shape rejection invariant — without this,
+      // dropping onto a text node's body would create a connector that
+      // bypassed the validator (xyflow only calls isValidConnection on the
+      // handle-drop path, never on a body drop). The connection shape
+      // matches xyflow's strict-mode Connection: floating drops have null
+      // handle ids per US-025.
+      if (
+        !isValidConnection({
+          source: fromNodeId,
+          target: targetNodeId,
+          sourceHandle: null,
+          targetHandle: null,
+        })
+      ) {
         return;
       }
-      // US-015: drop on empty canvas → open the create-and-connect popover at
-      // the cursor. The picked shape becomes a new node at the drop position,
-      // wired from the source. Skipped when the parent didn't wire the
-      // callback (preserves the legacy "drop on pane → no-op" behaviour).
-      if (!onCreateAndConnectFromPane) return;
+      // User rule: "cursor over a node → find closest point on the
+      // perimeter and use that." Compute the perimeter projection on the
+      // target node and pass it as `targetPin` so the new connector lands
+      // at the specific point the user aimed at instead of floating
+      // between centers.
+      let targetPin: EdgePin | undefined;
       const rfInstance = rfInstanceRef.current;
-      if (!rfInstance) return;
-      const flowPos = rfInstance.screenToFlowPosition({
-        x: cursor.clientX,
-        y: cursor.clientY,
-      });
-      setDropPopover({
-        clientX: cursor.clientX,
-        clientY: cursor.clientY,
-        flowX: flowPos.x,
-        flowY: flowPos.y,
-        sourceNodeId: fromNodeId,
-      });
+      if (rfInstance) {
+        const targetNode = rfInstance.getInternalNode(targetNodeId);
+        if (targetNode) {
+          const w = targetNode.measured.width ?? targetNode.width ?? 0;
+          const h = targetNode.measured.height ?? targetNode.height ?? 0;
+          if (w > 0 && h > 0) {
+            const flow = rfInstance.screenToFlowPosition({
+              x: cursor.clientX,
+              y: cursor.clientY,
+            });
+            targetPin = projectCursorToPerimeter(
+              {
+                x: targetNode.internals.positionAbsolute.x,
+                y: targetNode.internals.positionAbsolute.y,
+                w,
+                h,
+              },
+              flow,
+            );
+          }
+        }
+      }
+      // US-023 + US-025: drag-from is always source, drop-node is always
+      // target — including when the user drags from a target-type handle.
+      // No handle ids are persisted; only the target end is pinned (the
+      // source stays floating since the source node was fixed by where the
+      // drag started, not chosen by cursor position).
+      onCreateConnector(fromNodeId, targetNodeId, targetPin ? { targetPin } : undefined);
     },
-    [onCreateConnector, onCreateAndConnectFromPane, clearConnectMarkers, isValidConnection],
+    [onCreateConnector, clearConnectMarkers, isValidConnection],
   );
 
   // Drag an edge endpoint onto another handle to reattach it. React Flow
@@ -2585,6 +2963,8 @@ export function DemoCanvas({
         targetHandle?: string | null;
         sourceHandleAutoPicked?: boolean;
         targetHandleAutoPicked?: boolean;
+        sourcePin?: EdgePin | null;
+        targetPin?: EdgePin | null;
       } = {};
       if (source !== oldEdge.source) patch.source = source;
       if (target !== oldEdge.target) patch.target = target;
@@ -2615,6 +2995,32 @@ export function DemoCanvas({
       if (patch.target !== undefined || patch.targetHandle !== undefined) {
         patch.targetHandleAutoPicked = false;
       }
+      // "NEVER move the other outlet": when the moved side jumps to a new
+      // node, the un-moved side's floating perimeter intersection would
+      // swing because the line-through-centers changed. Lock the un-moved
+      // side at its current visible position. The helper returns undefined
+      // for handle-only changes (no node id changed) since the un-moved
+      // floating endpoint depends on node centers, not handle positions —
+      // so a same-node handle reattach doesn't shift the other end.
+      const rfInstance = rfInstanceRef.current;
+      const onlyHandleChanged = patch.source === undefined && patch.target === undefined;
+      if (!onlyHandleChanged && rfInstance) {
+        const movingSide: 'source' | 'target' = patch.source !== undefined ? 'source' : 'target';
+        const lockPin = computeUnmovedLockPin(
+          movingSide,
+          oldEdge.source,
+          oldEdge.target,
+          oldEdge.data as EditableEdgeData | undefined,
+          (id) => rfInstance.getInternalNode(id) ?? null,
+        );
+        if (lockPin) {
+          if (movingSide === 'source') {
+            patch.targetPin = lockPin;
+          } else {
+            patch.sourcePin = lockPin;
+          }
+        }
+      }
       reconnectSucceededRef.current = true;
       onReconnectConnector(oldEdge.id, patch);
     },
@@ -2624,10 +3030,17 @@ export function DemoCanvas({
   // Body-drop fallback: when the user releases the reconnect drag on a node's
   // body (rather than precisely on one of its four handles), React Flow's
   // connectionRadius isn't enough to snap to a handle and onReconnect doesn't
-  // fire. We catch that here, look at the cursor's screen-space pointer and
-  // hit-test which `.react-flow__node` is under it, and persist it as the new
-  // endpoint for whichever side (source/target) was being dragged. Empty-space
-  // drops resolve to no node and we no-op (the edge restores).
+  // fire. We catch that here, look at the cursor's screen-space pointer, and
+  // dispatch via classifyReconnectBodyDrop:
+  //
+  //   - drop on EMPTY SPACE (no node under cursor) → no-op; bail
+  //   - drop on the OTHER endpoint's node → self-loop; bail
+  //   - drop on the OWN node → perimeter pin on the OWN node (closest
+  //     side + t under the cursor)
+  //   - drop on a THIRD node → reconnect to that node AND pin at the
+  //     projected perimeter point in a single onReconnectConnector patch,
+  //     so the new endpoint lands on the specific point the user aimed at
+  //     instead of floating between centers.
   //
   // We use elementsFromPoint(pointer) rather than connectionState.toNode
   // because React Flow only populates toNode when a handle is within
@@ -2658,16 +3071,12 @@ export function DemoCanvas({
         return;
       }
       if (!onReconnectConnector) return;
-      // Wrong-type handle drop (US-022): the user dropped precisely on a
-      // handle whose role doesn't match the moving endpoint (e.g. dragged a
-      // target endpoint onto a source-only handle). React Flow refuses the
-      // reconnect; flash the handle red and bail so the edge restores
-      // unchanged.
-      const toHandle = connectionState.toHandle;
-      if (toHandle && connectionState.isValid === false) {
-        flashInvalidHandle(wrapperRef.current, toHandle.nodeId, toHandle.id);
-        return;
-      }
+      // User rule: "must allow to connect the outlet to any location on the
+      // border." A wrong-type handle hit (xyflow's `isValid === false`) used
+      // to bail with a red flash here; now it falls through to the body-drop
+      // dispatch below so the perimeter pin lands wherever the user aimed
+      // on the border, regardless of which handle their cursor coincided
+      // with.
       // Resolve the cursor's screen coordinates from either branch of the
       // event union (mouse vs. final touch). FinalConnectionState.pointer
       // would be nice but it's in flow space and it's also null when toHandle
@@ -2675,37 +3084,101 @@ export function DemoCanvas({
       const cursor = cursorFromConnectEvent(e);
       let droppedNodeId: string | null = connectionState.toNode?.id ?? null;
       if (!droppedNodeId && cursor) {
-        const nodeEl = nodeElAtPoint(cursor.clientX, cursor.clientY);
+        // Buffered hit-test: prefer cursor directly over a node, but also
+        // catch near-miss drops within `RECONNECT_BUFFER_PX`. User rule:
+        // "give some buffer, so that even you drop the mouse out of a
+        // node, if it is still close, then still connect to it."
+        const nodeEl = nodeElNearPoint(wrapperRef.current, cursor.clientX, cursor.clientY);
         droppedNodeId = nodeEl?.getAttribute('data-id') ?? null;
       }
-      if (!droppedNodeId) return;
       // React Flow passes the type of the FIXED (anchored) end, not the
       // moving one — e.g. dragging the target endpoint anchors the source,
       // so handleType === 'source'. Invert to determine which side moved.
       const movingSide: 'source' | 'target' = handleType === 'source' ? 'target' : 'source';
+      const action = classifyReconnectBodyDrop(
+        movingSide,
+        oldEdge.source,
+        oldEdge.target,
+        droppedNodeId,
+      );
+      if (action === 'no-op' || action === 'self-loop') return;
+      if (!cursor) return;
+      const rfInstance = rfInstanceRef.current;
+      if (!rfInstance) return;
+      // The node we project the cursor onto: own node for 'pin-own',
+      // dropped node for 'reconnect-and-pin'. droppedNodeId is non-null
+      // here (null routes to 'no-op' above).
+      const projectNodeId =
+        action === 'pin-own'
+          ? movingSide === 'source'
+            ? oldEdge.source
+            : oldEdge.target
+          : (droppedNodeId as string);
+      const projectNode = rfInstance.getInternalNode(projectNodeId);
+      if (!projectNode) return;
+      const w = projectNode.measured.width ?? projectNode.width ?? 0;
+      const h = projectNode.measured.height ?? projectNode.height ?? 0;
+      if (w === 0 || h === 0) return;
+      const flow = rfInstance.screenToFlowPosition({
+        x: cursor.clientX,
+        y: cursor.clientY,
+      });
+      const pin = projectCursorToPerimeter(
+        {
+          x: projectNode.internals.positionAbsolute.x,
+          y: projectNode.internals.positionAbsolute.y,
+          w,
+          h,
+        },
+        flow,
+      );
+      if (action === 'pin-own') {
+        // Same-node drop → onPinEndpoint owns optimistic override + PATCH
+        // + undo for the single-field pin write. The un-moved endpoint
+        // doesn't need locking here: its position is computed from
+        // line-through-CENTERS (not endpoints), and pinning the moved
+        // side at a perimeter point doesn't change either node's center.
+        if (!onPinEndpoint) return;
+        onPinEndpoint(oldEdge.id, movingSide, pin);
+        return;
+      }
+      // action === 'reconnect-and-pin': cross-node drop. Bundle source/
+      // target swap + handle clear + autoPicked false + pin into a single
+      // onReconnectConnector patch so the new endpoint lands on the
+      // specific perimeter point the user aimed at, in one undo entry.
+      //
+      // User rule: "When moving outlet and drop to another location,
+      // NEVER move the other outlet." If the un-moved endpoint is
+      // currently floating, capture its CURRENT position (against the OLD
+      // line-through-centers) and include it as a pin in the same patch
+      // so it doesn't slide when the moved side switches nodes. See
+      // computeUnmovedLockPin for the math + precedence.
+      const unmovedLockPin = computeUnmovedLockPin(
+        movingSide,
+        oldEdge.source,
+        oldEdge.target,
+        oldEdge.data as EditableEdgeData | undefined,
+        (id) => rfInstance.getInternalNode(id) ?? null,
+      );
       if (movingSide === 'source') {
-        if (droppedNodeId === oldEdge.source) return;
-        if (droppedNodeId === oldEdge.target) return;
-        // US-025: body-drop reconnect → floating endpoint. Clear any
-        // previously-pinned sourceHandle by sending null (the API treats
-        // null as "delete this field on disk") and set the autoPicked
-        // flag so the renderer floats this end.
         onReconnectConnector(oldEdge.id, {
-          source: droppedNodeId,
+          source: droppedNodeId as string,
           sourceHandle: null,
-          sourceHandleAutoPicked: true,
+          sourceHandleAutoPicked: false,
+          sourcePin: pin,
+          ...(unmovedLockPin ? { targetPin: unmovedLockPin } : {}),
         });
       } else {
-        if (droppedNodeId === oldEdge.target) return;
-        if (droppedNodeId === oldEdge.source) return;
         onReconnectConnector(oldEdge.id, {
-          target: droppedNodeId,
+          target: droppedNodeId as string,
           targetHandle: null,
-          targetHandleAutoPicked: true,
+          targetHandleAutoPicked: false,
+          targetPin: pin,
+          ...(unmovedLockPin ? { sourcePin: unmovedLockPin } : {}),
         });
       }
     },
-    [onReconnectConnector, clearConnectMarkers],
+    [onReconnectConnector, clearConnectMarkers, onPinEndpoint],
   );
 
   const ghostRect = useMemo(() => {

@@ -6,6 +6,8 @@ import {
   type DemoCanvasProps,
   type GroupShortcutEventLike,
   classifyHandleDropFailure,
+  classifyReconnectBodyDrop,
+  computeUnmovedLockPin,
   eventTargetIsOtherNode,
   handleClipboardShortcut,
   handleGroupShortcut,
@@ -320,14 +322,14 @@ describe('DemoCanvas', () => {
     // falling through to the body-drop fallback. Result: edge never lands
     // on the new node when the cursor releases near one of its handles.
     //
-    // The fix has three layers — each independently tested:
+    // The fix has two layers — each independently tested:
     //  1. isValidConnection reads from rfNodesRef (post-merge xyflow node
     //     list including optimistic overrides), so a freshly-created text
     //     node is STILL rejected per US-004.
-    //  2. The red-flash gate distinguishes "handle is non-connectable" from
-    //     "handle is connectable but invalid" via `classifyHandleDropFailure`.
-    //  3. The body-drop fallback re-runs isValidConnection so US-004 holds
-    //     on the fall-through path too.
+    //  2. The body-drop fallback ALWAYS runs when xyflow refuses a handle
+    //     drop (`classifyHandleDropFailure` returns 'fall-through' for any
+    //     `isValid === false`), and re-runs isValidConnection so US-004
+    //     still holds on the fall-through path.
 
     function makeShapeNodeOverride(id: string): Partial<DemoNode> {
       return {
@@ -415,6 +417,13 @@ describe('DemoCanvas', () => {
     });
 
     describe('classifyHandleDropFailure (pure gate predicate)', () => {
+      // User rule: "must allow to connect the outlet to any location on the
+      // border." Dropping a reconnect/connect drag anywhere on a node's
+      // border — including on a wrong-type handle dead-center — must fall
+      // through to the body-drop fallback, which pins the perimeter at the
+      // cursor. The red "wrong handle" flash from US-022 is removed entirely:
+      // the only two outcomes are now "fall through to body-drop" or "no
+      // flash, no fall-through" (toHandle was never hit / drop is valid).
       it('returns "no-flash-no-fall-through" when toHandle is null', () => {
         expect(classifyHandleDropFailure(null, false, [])).toBe('no-flash-no-fall-through');
       });
@@ -431,20 +440,24 @@ describe('DemoCanvas', () => {
         );
       });
 
-      it('returns "flash" when the target handle is fully connectable but isValid is false', () => {
-        // Case (a): handle is connectable at the node level but xyflow
-        // refused (strict-mode type mismatch, isValidConnection rejection).
-        // The user picked a wrong handle — flash red feedback.
-        expect(classifyHandleDropFailure({ nodeId: 'a' }, false, [{ id: 'a' }])).toBe('flash');
+      it('returns "fall-through" when the handle is fully connectable but isValid is false', () => {
+        // Type-direction mismatch case (e.g. dragging a target endpoint onto
+        // a source-type handle at the center of a node's border). Pre-fix
+        // this returned 'flash' and the gesture aborted; post-fix we fall
+        // through to the body-drop fallback so the endpoint pins to the
+        // perimeter at the cursor.
+        expect(classifyHandleDropFailure({ nodeId: 'a' }, false, [{ id: 'a' }])).toBe(
+          'fall-through',
+        );
         expect(
           classifyHandleDropFailure({ nodeId: 'a' }, false, [{ id: 'a', connectable: true }]),
-        ).toBe('flash');
+        ).toBe('fall-through');
       });
 
       it('returns "fall-through" when the target node has connectable: false', () => {
-        // Case (b): handle's node is non-connectable (US-025 for unselected
-        // nodes, including freshly-created ones). xyflow refused but the
-        // body-drop fallback should still land the connector on the node.
+        // Freshly-created (unselected) node case: handles render with
+        // `connectable: false`, xyflow refuses the handle drop, body-drop
+        // fallback still lands the connector on the node.
         expect(
           classifyHandleDropFailure({ nodeId: 'fresh' }, false, [
             { id: 'fresh', connectable: false },
@@ -452,11 +465,135 @@ describe('DemoCanvas', () => {
         ).toBe('fall-through');
       });
 
-      it('returns "flash" when the target node is missing from the node list', () => {
-        // Defensive: an unknown nodeId means we can't make the
-        // non-connectable claim — default to flashing (preserves US-022
-        // intent of "if in doubt, give the user red feedback").
-        expect(classifyHandleDropFailure({ nodeId: 'phantom' }, false, [])).toBe('flash');
+      it('returns "fall-through" when the target node is missing from the node list', () => {
+        // Defensive: an unknown nodeId means we can't even verify the
+        // node's connectable state, but the body-drop fallback re-runs
+        // isValidConnection and hit-tests the DOM directly so it's the
+        // right place to handle the gesture.
+        expect(classifyHandleDropFailure({ nodeId: 'phantom' }, false, [])).toBe('fall-through');
+      });
+    });
+
+    describe('classifyReconnectBodyDrop (pure pin/reconnect dispatch)', () => {
+      // User rule: cursor over a node → use the closest perimeter point on
+      // that node; cursor outside any node + drop → no-op. This dispatch
+      // gate is the single point that decides which arm fires.
+      it('drops on EMPTY SPACE (no node under cursor) → "no-op"', () => {
+        // User explicitly requested: "When move the cursor outside of a
+        // node, and drop, it won't do anything." The gesture is abandoned;
+        // the edge restores.
+        expect(classifyReconnectBodyDrop('source', 'a', 'b', null)).toBe('no-op');
+        expect(classifyReconnectBodyDrop('target', 'a', 'b', null)).toBe('no-op');
+      });
+
+      it('drops on the OTHER endpoint node → "self-loop" (bail; would create A↔A)', () => {
+        expect(classifyReconnectBodyDrop('source', 'a', 'b', 'b')).toBe('self-loop');
+        expect(classifyReconnectBodyDrop('target', 'a', 'b', 'a')).toBe('self-loop');
+      });
+
+      it('drops on the moving endpoint OWN node → "pin-own"', () => {
+        // Source endpoint moved back onto its own node — caller projects
+        // the cursor onto a's perimeter and commits a pin via onPinEndpoint.
+        expect(classifyReconnectBodyDrop('source', 'a', 'b', 'a')).toBe('pin-own');
+        // Target endpoint moved back onto its own node — symmetric path.
+        expect(classifyReconnectBodyDrop('target', 'a', 'b', 'b')).toBe('pin-own');
+      });
+
+      it('drops on a THIRD node → "reconnect-and-pin"', () => {
+        // Cross-node drag: source endpoint moved from a to c. Caller
+        // projects the cursor onto c's perimeter and dispatches a single
+        // onReconnectConnector patch with the new source AND the pin.
+        expect(classifyReconnectBodyDrop('source', 'a', 'b', 'c')).toBe('reconnect-and-pin');
+        expect(classifyReconnectBodyDrop('target', 'a', 'b', 'c')).toBe('reconnect-and-pin');
+      });
+    });
+
+    describe('computeUnmovedLockPin (un-moved endpoint freeze)', () => {
+      // User rule: "When moving outlet and drop to another location, NEVER
+      // move the other outlet." When the moved side jumps to a new node,
+      // the un-moved floating endpoint would shift along its perimeter
+      // because the line-through-centers swung. This helper produces a pin
+      // that pins the un-moved endpoint at its CURRENT visible position so
+      // it doesn't move post-reconnect.
+      //
+      // Geometry: source node A at (0, 0, 100, 60), target node B at
+      // (300, 0, 100, 60). Both floating. A center = (50, 30),
+      // B center = (350, 30). Line-through-centers exits A at right side
+      // y=30 → A endpoint at (100, 30); enters B at left side y=30 →
+      // B endpoint at (300, 30). B's left side spans (300, 0) to (300, 60),
+      // so t = 30/60 = 0.5.
+      const nodes = {
+        a: {
+          internals: { positionAbsolute: { x: 0, y: 0 } },
+          measured: { width: 100, height: 60 },
+        },
+        b: {
+          internals: { positionAbsolute: { x: 300, y: 0 } },
+          measured: { width: 100, height: 60 },
+        },
+      };
+      const get = (id: string) => nodes[id as keyof typeof nodes];
+
+      it('returns undefined when the un-moved side already has a pin', () => {
+        // Moving source; target already pinned. Nothing to lock — target's
+        // pin already keeps it in place across any source change.
+        expect(
+          computeUnmovedLockPin('source', 'a', 'b', { targetPin: { side: 'top', t: 0.25 } }, get),
+        ).toBeUndefined();
+      });
+
+      it('returns undefined when the un-moved side is handle-pinned (autoPicked: false)', () => {
+        // autoPicked === false → endpoint uses React Flow's handle
+        // position, which doesn't drift with line-through-centers.
+        expect(
+          computeUnmovedLockPin('source', 'a', 'b', { targetHandleAutoPicked: false }, get),
+        ).toBeUndefined();
+      });
+
+      it('returns the current floating intersection pin when the target is floating', () => {
+        // Source moves; target is floating (no pin, no autoPicked). The
+        // helper captures B's current floating intersection (left side,
+        // t=0.5) so a downstream reconnect to a new source doesn't shift
+        // B's endpoint.
+        expect(computeUnmovedLockPin('source', 'a', 'b', {}, get)).toEqual({
+          side: 'left',
+          t: 0.5,
+        });
+      });
+
+      it('returns the source pin when the moving side is the target', () => {
+        // Symmetric: target moves; source A floats. A's current floating
+        // intersection is right side at y=30 → t = 30/60 = 0.5.
+        expect(computeUnmovedLockPin('target', 'a', 'b', {}, get)).toEqual({
+          side: 'right',
+          t: 0.5,
+        });
+      });
+
+      it('returns undefined when either node lookup fails', () => {
+        const partial = (id: string) => (id === 'a' ? nodes.a : null);
+        expect(computeUnmovedLockPin('source', 'a', 'b', {}, partial)).toBeUndefined();
+      });
+
+      it('returns undefined when either node has zero measured dimensions', () => {
+        const unmeasured = (id: string) =>
+          id === 'a'
+            ? nodes.a
+            : {
+                internals: { positionAbsolute: { x: 300, y: 0 } },
+                measured: {},
+              };
+        expect(computeUnmovedLockPin('source', 'a', 'b', {}, unmeasured)).toBeUndefined();
+      });
+
+      it('treats edgeData=undefined as fully floating (no locks)', () => {
+        // Defensive: a connector built before US-021 has no autoPicked
+        // flags and no pins. The helper should still treat both sides as
+        // floating and produce a lock pin for the un-moved side.
+        expect(computeUnmovedLockPin('source', 'a', 'b', undefined, get)).toEqual({
+          side: 'left',
+          t: 0.5,
+        });
       });
     });
 

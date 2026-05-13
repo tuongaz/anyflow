@@ -228,16 +228,16 @@ button:disabled {
  * normal cascade specificity (so they're not de-prioritized below the
  * library defaults).
  *
- * `.react-flow__node.connectingto` is toggled by React Flow on a node that
- * the user is currently dragging a connection toward (drop target). The
- * dashed outline makes the active drop target unambiguous.
- * `.connectingfrom` fades the source slightly so the user's eye follows the
- * cursor rather than the origin handle. */
-.react-flow__node.connectingto {
-  outline: 2px dashed hsl(var(--ring));
-  outline-offset: 3px;
-  border-radius: 8px;
-}
+ * `.react-flow__node.connectingto` (the xyflow class applied on a drop-
+ * target node during a connection drag) used to paint a 2px dashed ring in
+ * `hsl(var(--ring))` — which is near-black in the light theme. Removed by
+ * user request: a black ring on the hovered node during the drag felt
+ * noisy. The floating connection line itself is the authoritative aiming
+ * feedback; on release, the new endpoint snaps to the projected perimeter
+ * point (see onReconnectEndCb / classifyReconnectBodyDrop in demo-canvas).
+ *
+ * `.connectingfrom` fades the source slightly so the user's eye follows
+ * the cursor rather than the origin handle. */
 .react-flow__node.connectingfrom {
   opacity: 0.85;
 }
@@ -350,13 +350,13 @@ button:disabled {
  * `bg-background` plate (US-018). Raise the entire label container above
  * the per-edge layer so labels paint cleanly on top.
  *
- * `z-index: 1001` matches xyflow's own elevated layer for
- * `svg.react-flow__connectionline` — keeps labels above selected nodes
- * (z-index: 1000, US-023) and below the connector endpoint dots
- * (z-index: 2000, US-024) so the dot affordance still wins on the rare
- * mid-line overlap. */
+ * `z-index: 1700` sits above the elevated SELECTED edge body
+ * (SELECTED_EDGE_Z_INDEX = 1500 in demo-canvas.tsx) so labels of a
+ * selected connector aren't covered by their own edge path, while
+ * remaining below the connector endpoint dots (z-index: 2000) so the dot
+ * affordance still wins on the rare mid-line overlap. */
 .react-flow__edgelabel-renderer {
-  z-index: 1001;
+  z-index: 1700;
 }
 
 /* US-024: visible connector endpoint dot rendered via <ViewportPortal>
@@ -367,13 +367,20 @@ button:disabled {
  * keeps the dot visible even when a sibling node overlaps the endpoint.
  *
  * Uses the shared --anydemo-handle-* tokens so visuals stay identical to
- * the node outlet dots — same diameter, fill, and border.
+ * the node outlet dots — same diameter, fill, and border. A simple gray
+ * circle outline on the theme background, matching the outlets that
+ * appear on a selected node.
  *
  * The dot is purely visual: `pointer-events: none` lets clicks pass
  * through to React Flow's native EdgeUpdateAnchors that sit at the same
- * position and drive the free-floating reconnect drag. Pinned dots get a
- * primary-color fill so the user can tell pinned and unpinned endpoints
- * apart at a glance. */
+ * position and drive the free-floating reconnect drag.
+ *
+ * Pinned and floating endpoints render identically. Earlier the pinned
+ * variant filled with `hsl(var(--primary))` to differentiate; once we
+ * started writing pins on most reconnects (lock pin for the unmoved side,
+ * perimeter pin for the moved side), that fill meant the dot looked solid
+ * black for every reconnected connector — too heavy a visual for what's
+ * really just an interaction affordance. */
 .anydemo-connector-endpoint-dot {
   position: absolute;
   width: var(--anydemo-handle-size);
@@ -384,58 +391,45 @@ button:disabled {
   pointer-events: none;
   z-index: 2000;
 }
-.anydemo-connector-endpoint-dot[data-pinned="true"] {
-  background: hsl(var(--primary));
-}
 
 /* Connection-in-progress overrides (US-017).
  *
- *   1. Hide outlet dots on every NON-source node so the user isn't
- *      distracted by handles on candidates while aiming. The source's own
- *      handles are unaffected — its `data-connect-source="true"` attribute
- *      excludes it from this rule, and selected-source handles continue to
- *      show via their per-Handle `selected && '!opacity-100'` class.
- *   2. Highlight the candidate target node (the topmost `.react-flow__node`
- *      under the cursor mid-drag) with a thicker outline on its inner shape
- *      element so the user clearly sees which node will receive the drop.
- *      Targets the inner `> div` (where each node renderer paints its own
- *      selection outline) so the highlight follows the shape's rounding —
- *      ellipses get an oval ring, sticky/rect get a rectangular ring, etc.
- *      The 3px width clearly dominates the 1px selection outline so the
- *      candidate-target highlight remains distinct even on a selected node.
+ * Hide outlet dots on every NON-source node so the user isn't distracted
+ * by handles on candidates while aiming. The source's own handles are
+ * unaffected — its `data-connect-source="true"` attribute excludes it
+ * from this rule, and selected-source handles continue to show via their
+ * per-Handle `selected && '!opacity-100'` class.
  *
  * `data-connect-source` is set on the source node element in onConnectStart
  * and cleared in onConnectEnd. `data-connect-target` is set/cleared
- * imperatively from the document-level pointermove tracker we install while
- * `connecting` is true — same pattern as `data-invalid-flash` above, but
- * lifecycle-bound rather than time-bound. */
+ * imperatively from the document-level pointermove tracker while a
+ * connection drag is in flight (covers both direct cursor-over-node AND
+ * near-miss within RECONNECT_BUFFER_PX so the snap target the user
+ * actually gets matches the visual cue). */
 .react-flow.anydemo-connecting
   .react-flow__node:not([data-connect-source="true"])
   .react-flow__handle {
   opacity: 0 !important;
 }
+/* Candidate-target node chrome: when the cursor is over (or near, via
+ * snap buffer) a node during a connection drag, change the node's
+ * existing border to dashed gray. We don't add a new outline — we mutate
+ * the node's own border style + color so the visual cue lives in the
+ * node's body, exactly where the connection will land. Border WIDTH and
+ * RADIUS are preserved (those come from the node's own className/style),
+ * so e.g. a shape's 3px border stays 3px — only style and color change.
+ *
+ * `> div` is the conventional border-carrying element across our node
+ * types (shape, play, state, image, icon, html); the group node renders
+ * its border on the outer `.react-flow__node-group` wrapper itself, so
+ * that gets a sibling rule below. */
 .react-flow.anydemo-connecting .react-flow__node[data-connect-target="true"] > div {
-  outline-width: 3px !important;
-  outline-style: solid !important;
-  outline-color: hsl(var(--primary)) !important;
-  outline-offset: 4px !important;
+  border-color: hsl(var(--muted-foreground)) !important;
+  border-style: dashed !important;
 }
-/* Suppress xyflow's built-in snap-target dashed outline (rule above) while
- * a connection drag is in flight — the new candidate-target highlight on
- * `data-connect-target` covers both the body-drop and handle-snap cases,
- * so layering the two outlines just makes the indicator noisy. */
-.react-flow.anydemo-connecting .react-flow__node.connectingto {
-  outline: none;
-}
-
-/* Wrong-type handle drop (US-022): a connect/reconnect release on a handle
- * whose role doesn't match the dragged endpoint. demo-canvas.tsx flips
- * data-invalid-flash for ~250ms; the resulting red dot + halo gives the
- * user a brief "rejected" cue before the edge restores. */
-.react-flow__handle[data-invalid-flash="true"] {
-  background-color: hsl(var(--destructive)) !important;
-  box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.35);
-  opacity: 1 !important;
+.react-flow.anydemo-connecting .react-flow__node-group[data-connect-target="true"] {
+  border-color: hsl(var(--muted-foreground)) !important;
+  border-style: dashed !important;
 }
 
 /* Selection rectangle: a TRUE rectangle (border-radius: 0) drawn 4px outside
