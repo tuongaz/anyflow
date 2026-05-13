@@ -202,11 +202,18 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // needs a visible affordance — handled below by the unified outer-rect
   // outline so text and chromed shapes share the exact same selection chrome.
   const isText = shape === 'text';
-  // For text shapes, `borderColor` is repurposed as the text color (the field
-  // is hidden as a border in the renderer, so reusing it avoids a redundant
-  // schema field). `colorTokenStyle(_, 'text')` returns {} for the default
+  // Text color: explicit `textColor` field wins for every shape variant.
+  // For text shapes (no border to draw), `borderColor` is the legacy text-color
+  // field — kept as a fallback so older demo files still render with their
+  // chosen text color. `colorTokenStyle(_, 'text')` returns {} for the default
   // token so unset values fall through to the theme foreground.
-  const textColorStyle = isText ? colorTokenStyle(data.borderColor, 'text') : {};
+  const explicitTextColor = data.textColor;
+  const textColorStyle =
+    explicitTextColor !== undefined
+      ? colorTokenStyle(explicitTextColor, 'text')
+      : isText
+        ? colorTokenStyle(data.borderColor, 'text')
+        : {};
   // US-010: selection outline moved to CSS (`.react-flow__node.selected > div`
   // in index.css) so the inline style is stable across renders — necessary
   // for `React.memo`'s prop-equality on this renderer. Text shapes (no
@@ -294,8 +301,10 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
 
   const description = data.description ?? '';
   const hasDescription = description !== '';
-  const descriptionFontStyle: CSSProperties =
-    data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
+  const descriptionFontStyle: CSSProperties = {
+    ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
+    ...textColorStyle,
+  };
 
   // Single-label content variants:
   //   - Ellipse: renders `description` as the centered label. No Name concept;

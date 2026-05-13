@@ -59,6 +59,7 @@ function HtmlNodeImpl({ id, data, selected, isConnectable }: NodeProps<HtmlNodeT
     ...(data.borderStyle !== undefined ? { borderStyle: data.borderStyle } : {}),
     ...(data.cornerRadius !== undefined ? { borderRadius: data.cornerRadius } : {}),
     ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
+    ...colorTokenStyle(data.textColor, 'text'),
     ...(sized ? {} : { width: HTML_DEFAULT_SIZE.width, height: HTML_DEFAULT_SIZE.height }),
   };
 

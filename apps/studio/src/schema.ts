@@ -34,6 +34,7 @@ const NodeVisualBaseShape = {
   borderSize: z.number().positive().optional(),
   borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
   fontSize: z.number().positive().optional(),
+  textColor: ColorTokenSchema.optional(),
   cornerRadius: z.number().min(0).optional(),
   locked: z.boolean().optional(),
 };

@@ -6,8 +6,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": -2646.5785522636065,
-        "y": -1746.7497251092282
+        "x": -2745.4336708810756,
+        "y": -2042.4824575479972
       },
       "data": {
         "name": "inventory-worker",
@@ -21,53 +21,16 @@
         "borderColor": "amber",
         "fontSize": 17,
         "borderSize": 3,
-        "borderStyle": "solid"
-      }
-    },
-    {
-      "id": "create-order",
-      "type": "playNode",
-      "position": {
-        "x": -2021.2236168251966,
-        "y": -1656.7314046078839
-      },
-      "data": {
-        "name": "POST /orders",
-        "kind": "service",
-        "stateSource": {
-          "kind": "request"
-        },
-        "borderColor": "blue",
-        "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3040/orders",
-          "body": {
-            "customerId": "cust-1",
-            "items": [
-              {
-                "sku": "sku-shirt",
-                "qty": 1
-              },
-              {
-                "sku": "sku-mug",
-                "qty": 2
-              }
-            ]
-          }
-        },
-        "width": 301,
-        "height": 351,
-        "description": "Creates an order, publishes order.created on the in-process bus, AND enqueues a shipment request on the shipments queue. The single click drives all three downstream nodes.",
-        "detail": "Thi sis another good one"
+        "borderStyle": "solid",
+        "backgroundColor": "green"
       }
     },
     {
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": -1472.2903832446277,
-        "y": -2318.5712459651268
+        "x": -1561.693203155371,
+        "y": -2382.094302217497
       },
       "data": {
         "name": "POST /payments/charge!",
@@ -92,8 +55,8 @@
       "id": "shipping-worker",
       "type": "stateNode",
       "position": {
-        "x": -2321.467096978919,
-        "y": -2248.2744978647165
+        "x": -2095.350192953931,
+        "y": -2167.093705541441
       },
       "data": {
         "name": "shipping-worker",
@@ -108,31 +71,11 @@
       }
     },
     {
-      "id": "node-3f6e8e6c-382b-40bb-87bd-5bfd0bfb017a",
-      "type": "shapeNode",
-      "position": {
-        "x": -3255.408497110813,
-        "y": -2252.348379992388
-      },
-      "data": {
-        "shape": "rectangle",
-        "width": 232.60605778576655,
-        "height": 159.74126587487558,
-        "borderSize": 3,
-        "fontSize": 17,
-        "name": "AAA",
-        "description": "Thi sis nice and awesome. Thank youf or doing that",
-        "borderColor": "slate",
-        "backgroundColor": "red",
-        "cornerRadius": 0
-      }
-    },
-    {
       "id": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
       "type": "shapeNode",
       "position": {
-        "x": -2746.0262130813167,
-        "y": -2275.192750242756
+        "x": -2693.011529310378,
+        "y": -2452.5446685839197
       },
       "data": {
         "shape": "ellipse",
@@ -149,17 +92,112 @@
       "id": "node-b184a4ba-2555-4e35-ae50-7a33c4dd0e6b",
       "type": "shapeNode",
       "position": {
-        "x": -2995.361792844028,
-        "y": -1803.9809285117253
+        "x": -3178.2102706148535,
+        "y": -1897.6210038421164
       },
       "data": {
         "shape": "database",
-        "width": 162,
-        "height": 246,
+        "width": 172,
+        "height": 243,
         "borderSize": 3,
         "fontSize": 17,
         "borderColor": "green",
         "backgroundColor": "red"
+      }
+    },
+    {
+      "id": "create-order",
+      "type": "playNode",
+      "position": {
+        "x": -2110.62643673594,
+        "y": -1720.2544608602545
+      },
+      "data": {
+        "name": "POST /orders",
+        "kind": "service",
+        "stateSource": {
+          "kind": "request"
+        },
+        "width": 301,
+        "height": 351,
+        "borderColor": "blue",
+        "description": "Creates an order, publishes order.created on the in-process bus, AND enqueues a shipment request on the shipments queue. The single click drives all three downstream nodes.",
+        "detail": "Thi sis another good one",
+        "playAction": {
+          "kind": "http",
+          "method": "POST",
+          "url": "http://localhost:3040/orders",
+          "body": {
+            "customerId": "cust-1",
+            "items": [
+              {
+                "sku": "sku-shirt",
+                "qty": 1
+              },
+              {
+                "sku": "sku-mug",
+                "qty": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "node-3f6e8e6c-382b-40bb-87bd-5bfd0bfb017a",
+      "type": "shapeNode",
+      "position": {
+        "x": -3216.588851623253,
+        "y": -2286.462613905698
+      },
+      "data": {
+        "shape": "rectangle",
+        "name": "AAA",
+        "width": 232.60605778576655,
+        "height": 159.74126587487558,
+        "borderColor": "slate",
+        "backgroundColor": "red",
+        "borderSize": 3,
+        "fontSize": 17,
+        "cornerRadius": 0,
+        "description": "Thi sis nice and awesome. Thank youf or doing that"
+      }
+    },
+    {
+      "id": "node-39e27467-2b17-4be9-9f02-d2160a80d5ee",
+      "type": "shapeNode",
+      "position": {
+        "x": -3657.2653524570537,
+        "y": -2221.646434778405
+      },
+      "data": {
+        "shape": "rectangle",
+        "name": "AAA",
+        "width": 232.60605778576655,
+        "height": 159.74126587487558,
+        "borderColor": "slate",
+        "backgroundColor": "red",
+        "borderSize": 3,
+        "fontSize": 17,
+        "cornerRadius": 0,
+        "description": "Thi sis nice and awesome. Thank youf or doing that"
+      }
+    },
+    {
+      "id": "node-e3344a88-3b98-4223-ac3a-0749e5654371",
+      "type": "shapeNode",
+      "position": {
+        "x": -3851.8004523834634,
+        "y": -1808.9217462245958
+      },
+      "data": {
+        "shape": "sticky",
+        "width": 300,
+        "height": 232,
+        "borderSize": 2,
+        "fontSize": 17,
+        "name": "AAA",
+        "description": "BBB"
       }
     }
   ],
@@ -189,23 +227,6 @@
       "fontSize": 18
     },
     {
-      "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
-      "source": "shipping-worker",
-      "target": "create-order",
-      "sourceHandleAutoPicked": false,
-      "targetHandleAutoPicked": false,
-      "sourcePin": {
-        "side": "bottom",
-        "t": 0.5271989923561105
-      },
-      "targetPin": {
-        "side": "top",
-        "t": 0.732202903591922
-      },
-      "kind": "default",
-      "path": "step"
-    },
-    {
       "id": "conn-c4ded279-4086-4ff8-8a3a-de9796ab1067",
       "source": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
       "target": "inventory-worker",
@@ -231,6 +252,23 @@
         "side": "right",
         "t": 0.4612233231707317
       },
+      "kind": "default"
+    },
+    {
+      "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
+      "source": "shipping-worker",
+      "target": "create-order",
+      "sourceHandleAutoPicked": false,
+      "targetHandleAutoPicked": false,
+      "sourcePin": {
+        "side": "bottom",
+        "t": 0.5271989923561105
+      },
+      "targetPin": {
+        "side": "top",
+        "t": 0.732202903591922
+      },
+      "path": "step",
       "kind": "default"
     }
   ]

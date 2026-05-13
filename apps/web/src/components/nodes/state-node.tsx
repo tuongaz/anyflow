@@ -51,8 +51,10 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
   // US-008: title and body now share the same font size — title is bolded
   // instead of larger. The Style-tab fontSize override applies equally to
   // both, so a user-set 28px bumps the title AND the body to 28px.
-  const labelFontStyle: CSSProperties =
-    data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
+  const labelFontStyle: CSSProperties = {
+    ...(data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {}),
+    ...colorTokenStyle(data.textColor, 'text'),
+  };
   const descriptionFontStyle: CSSProperties = labelFontStyle;
 
   // Border + background tokens are independent — picking a border color

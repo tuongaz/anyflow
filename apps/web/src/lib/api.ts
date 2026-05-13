@@ -35,6 +35,7 @@ export interface NodeVisual {
   borderSize?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
+  textColor?: ColorToken;
   cornerRadius?: number;
   /**
    * US-019: when true the node is frozen — cannot be dragged, resized, or
@@ -331,6 +332,7 @@ export interface UpdateNodeBody {
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
+  textColor?: ColorToken;
   cornerRadius?: number;
   width?: number;
   height?: number;

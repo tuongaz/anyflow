@@ -39,6 +39,10 @@ export interface NodeStylePatch {
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
+  /** Optional explicit label/text color for the node. Falls back to theme
+   * foreground when unset. Text shapes also fall back to `borderColor` for
+   * backward compat with older demos that stored their text color there. */
+  textColor?: ColorToken;
   cornerRadius?: number;
   /** iconNode-only: stroke color token. Lands at data.color. */
   color?: ColorToken;
@@ -285,6 +289,22 @@ export function StyleStrip({
   const fontSizeIndeterminate =
     visualNodes.length > 1 &&
     new Set(visualNodes.map((n) => n.data.fontSize ?? NODE_FONT_SIZE_DEFAULT)).size > 1;
+  // Text color: explicit `textColor` field on the first visual node; for text
+  // shapes (no chrome) we fall back to `borderColor` since older demos stored
+  // text color there. Mirrors the renderer fallback in shape-node.tsx.
+  const applyTextColor = (token: ColorToken) => {
+    if (nodes.length > 1 && onStyleNodes) {
+      onStyleNodes(
+        nodes.map((node) => node.id),
+        { textColor: token },
+      );
+    } else {
+      for (const node of nodes) onStyleNode(node.id, { textColor: token });
+    }
+  };
+  const textColorActive: ColorToken =
+    firstVisualNode?.data.textColor ??
+    (isTextShape ? (firstVisualNode?.data.borderColor ?? 'default') : 'default');
   // US-018: per-connector label font size. Fan-out + indeterminate handling
   // mirror the node fontSize fan-out above.
   const applyConnectorFontSize = (n: number) => {
@@ -590,41 +610,90 @@ export function StyleStrip({
     );
   }
 
+  // Three consolidated popover triggers:
+  //   • Colors: border color + fill (fill section hidden for text shapes and
+  //     pure-connector selections where there's no fill concept).
+  //   • Border: line style + width (hidden for text shapes — chromeless).
+  //   • Text:   font size + text color (text color hidden for pure-connector,
+  //     since a connector has no separate text color — its label tracks the
+  //     edge color).
+  const showFillSection = pureNode && !isTextShape;
+  const showBorderSection = !isTextShape;
+  const showTextColorSection = !pureConnector;
+  // Trigger glyph for the Colors popover. For node selections that have a fill
+  // section, render a small box showing both border + fill; otherwise (text
+  // shape / pure connector) just show the current color as a filled circle so
+  // the trigger conveys what the popover edits.
+  const renderColorsTrigger = () => {
+    if (pureConnector) {
+      const edge = COLOR_TOKENS[borderColorActive].edge;
+      return (
+        <span
+          className="inline-block h-5 w-5 rounded-full ring-1 ring-border"
+          style={{ backgroundColor: edge }}
+        />
+      );
+    }
+    const borderHex = COLOR_TOKENS[borderColorActive].border;
+    const fillHex = COLOR_TOKENS[backgroundActive].background;
+    return (
+      <span
+        className="inline-block h-5 w-5 rounded-md ring-1 ring-border"
+        style={{ backgroundColor: fillHex, border: `2px solid ${borderHex}` }}
+      />
+    );
+  };
+
+  // For text shapes the user request collapses everything into one Text tool
+  // — there's no chrome to color or border-ify, so Colors + Border + Corners
+  // buttons are hidden.
   return (
     <TooltipProvider delayDuration={300}>
       <div
         data-testid="canvas-style-strip"
         className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
       >
-        <SwatchButton
-          testId="style-strip-border-color"
-          tooltip={colorTooltip}
-          ariaLabel={colorAriaLabel}
-          activeToken={borderColorActive}
-          previewKind={colorTriggerKind}
-          tokenTestIdPrefix={colorTokenPrefix}
-          innerTestId={colorInnerTestId}
-          onSelect={applyBorderColor}
-        />
-
-        {pureNode && !isTextShape ? (
-          <SwatchButton
-            testId="style-strip-fill"
-            tooltip="Fill"
-            ariaLabel="fill"
-            activeToken={backgroundActive}
-            previewKind="background"
-            tokenTestIdPrefix="style-tab-background-color"
-            innerTestId="style-tab-background-color-trigger"
-            onSelect={applyBackgroundColor}
-          />
-        ) : null}
-
         {!isTextShape ? (
           <PopoverButton
-            testId="style-strip-border-style"
-            tooltip={pureConnector ? 'Connector style' : 'Border style'}
-            ariaLabel={pureConnector ? 'connector style' : 'border style'}
+            testId="style-strip-colors"
+            tooltip="Colors"
+            ariaLabel="colors"
+            renderIcon={renderColorsTrigger}
+          >
+            <div className="flex w-56 flex-col gap-3">
+              <PopoverSection label={colorTooltip}>
+                <ColorSwatchGrid
+                  testId="style-strip-border-color"
+                  activeToken={borderColorActive}
+                  previewKind={colorTriggerKind}
+                  tokenTestIdPrefix={colorTokenPrefix}
+                  innerTestId={colorInnerTestId}
+                  ariaLabel={colorAriaLabel}
+                  onSelect={applyBorderColor}
+                />
+              </PopoverSection>
+              {showFillSection ? (
+                <PopoverSection label="Fill">
+                  <ColorSwatchGrid
+                    testId="style-strip-fill"
+                    activeToken={backgroundActive}
+                    previewKind="background"
+                    tokenTestIdPrefix="style-tab-background-color"
+                    innerTestId="style-tab-background-color-trigger"
+                    ariaLabel="fill"
+                    onSelect={applyBackgroundColor}
+                  />
+                </PopoverSection>
+              ) : null}
+            </div>
+          </PopoverButton>
+        ) : null}
+
+        {showBorderSection ? (
+          <PopoverButton
+            testId="style-strip-border"
+            tooltip={pureConnector ? 'Connector' : 'Border'}
+            ariaLabel={pureConnector ? 'connector' : 'border'}
             renderIcon={() => {
               const Icon =
                 (pureConnector
@@ -634,87 +703,88 @@ export function StyleStrip({
               return <Icon className="h-4 w-4" />;
             }}
           >
-            {pureConnector ? (
-              <IconToggleGroup<ConnectorStyle>
-                ariaLabel="Connector style"
-                value={connectorStyleActive}
-                onChange={(s) => applyBorderStyle(s)}
-                options={CONNECTOR_STYLE_OPTIONS}
-              />
-            ) : (
-              <IconToggleGroup<'solid' | 'dashed' | 'dotted'>
-                ariaLabel="Border style"
-                value={borderStyleActiveNode}
-                onChange={(s) => applyBorderStyle(s)}
-                options={BORDER_STYLE_OPTIONS}
-              />
-            )}
+            <div className="flex w-56 flex-col gap-3">
+              <PopoverSection label="Style" testId="style-strip-border-style">
+                {pureConnector ? (
+                  <IconToggleGroup<ConnectorStyle>
+                    ariaLabel="Connector style"
+                    value={connectorStyleActive}
+                    onChange={(s) => applyBorderStyle(s)}
+                    options={CONNECTOR_STYLE_OPTIONS}
+                  />
+                ) : (
+                  <IconToggleGroup<'solid' | 'dashed' | 'dotted'>
+                    ariaLabel="Border style"
+                    value={borderStyleActiveNode}
+                    onChange={(s) => applyBorderStyle(s)}
+                    options={BORDER_STYLE_OPTIONS}
+                  />
+                )}
+              </PopoverSection>
+              <PopoverSection label="Width" testId="style-strip-border-size">
+                <SliderControl
+                  value={widthCurrent}
+                  defaultValue={widthDefault}
+                  min={1}
+                  max={8}
+                  suffix="px"
+                  onPreview={previewBorderSize}
+                  onCommit={applyBorderSize}
+                  testId={
+                    pureConnector ? 'style-tab-stroke-width-slider' : 'style-tab-border-size-slider'
+                  }
+                />
+              </PopoverSection>
+            </div>
           </PopoverButton>
         ) : null}
 
-        {!isTextShape ? (
+        {hasNodes || pureConnector ? (
           <PopoverButton
-            testId="style-strip-border-size"
-            tooltip={pureConnector ? 'Connector width' : 'Border width'}
-            ariaLabel={pureConnector ? 'connector width' : 'border width'}
-            renderIcon={() => (
-              <span className="font-mono text-[10px] tabular-nums">{widthCurrent}</span>
-            )}
-          >
-            <SliderControl
-              value={widthCurrent}
-              defaultValue={widthDefault}
-              min={1}
-              max={8}
-              suffix="px"
-              onPreview={previewBorderSize}
-              onCommit={applyBorderSize}
-              testId={
-                pureConnector ? 'style-tab-stroke-width-slider' : 'style-tab-border-size-slider'
-              }
-            />
-          </PopoverButton>
-        ) : null}
-
-        {pureNode ? (
-          <PopoverButton
-            testId="style-strip-font-size"
-            tooltip="Font size"
-            ariaLabel="font size"
+            testId="style-strip-text"
+            tooltip="Text"
+            ariaLabel="text"
             renderIcon={() => <Type className="h-4 w-4" />}
           >
-            <SliderControl
-              value={firstVisualNode?.data.fontSize}
-              defaultValue={NODE_FONT_SIZE_DEFAULT}
-              min={10}
-              max={32}
-              suffix="px"
-              indeterminate={fontSizeIndeterminate}
-              onPreview={previewFontSize}
-              onCommit={applyFontSize}
-              testId="style-tab-font-size-slider"
-            />
-          </PopoverButton>
-        ) : null}
-
-        {pureConnector ? (
-          <PopoverButton
-            testId="style-strip-connector-font-size"
-            tooltip="Label font size"
-            ariaLabel="connector label font size"
-            renderIcon={() => <Type className="h-4 w-4" />}
-          >
-            <SliderControl
-              value={firstConnector?.fontSize}
-              defaultValue={CONNECTOR_FONT_SIZE_DEFAULT}
-              min={8}
-              max={32}
-              suffix="px"
-              indeterminate={connectorFontSizeIndeterminate}
-              onPreview={previewConnectorFontSize}
-              onCommit={applyConnectorFontSize}
-              testId="style-tab-connector-font-size-slider"
-            />
+            <div className="flex w-56 flex-col gap-3">
+              <PopoverSection
+                label="Size"
+                testId={pureConnector ? 'style-strip-connector-font-size' : 'style-strip-font-size'}
+              >
+                <SliderControl
+                  value={pureConnector ? firstConnector?.fontSize : firstVisualNode?.data.fontSize}
+                  defaultValue={
+                    pureConnector ? CONNECTOR_FONT_SIZE_DEFAULT : NODE_FONT_SIZE_DEFAULT
+                  }
+                  min={pureConnector ? 8 : 10}
+                  max={32}
+                  suffix="px"
+                  indeterminate={
+                    pureConnector ? connectorFontSizeIndeterminate : fontSizeIndeterminate
+                  }
+                  onPreview={pureConnector ? previewConnectorFontSize : previewFontSize}
+                  onCommit={pureConnector ? applyConnectorFontSize : applyFontSize}
+                  testId={
+                    pureConnector
+                      ? 'style-tab-connector-font-size-slider'
+                      : 'style-tab-font-size-slider'
+                  }
+                />
+              </PopoverSection>
+              {showTextColorSection ? (
+                <PopoverSection label="Color">
+                  <ColorSwatchGrid
+                    testId="style-strip-text-color"
+                    activeToken={textColorActive}
+                    previewKind="edge"
+                    tokenTestIdPrefix="style-tab-text-color"
+                    innerTestId="style-tab-text-color-trigger"
+                    ariaLabel="text color"
+                    onSelect={applyTextColor}
+                  />
+                </PopoverSection>
+              ) : null}
+            </div>
           </PopoverButton>
         ) : null}
 
@@ -910,6 +980,86 @@ function SwatchButton({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// Color swatch grid — same swatch markup as SwatchButton's popover content but
+// without the wrapping button/popover. Used inside the consolidated Colors and
+// Text popovers so a single trigger can surface multiple color rows.
+function ColorSwatchGrid({
+  testId,
+  activeToken,
+  previewKind,
+  tokenTestIdPrefix,
+  innerTestId,
+  ariaLabel,
+  onSelect,
+}: {
+  testId: string;
+  activeToken: ColorToken;
+  previewKind: SwatchPreviewKind;
+  tokenTestIdPrefix: string;
+  innerTestId: string;
+  ariaLabel: string;
+  onSelect: (token: ColorToken) => void;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      data-active-token={activeToken}
+      data-inner-testid={innerTestId}
+      className="grid grid-cols-4 gap-1.5"
+    >
+      {PALETTE_TOKENS.map((token) => {
+        const isActive = activeToken === token;
+        return (
+          <button
+            key={token}
+            type="button"
+            onClick={() => onSelect(token)}
+            data-testid={`${tokenTestIdPrefix}-${token}`}
+            data-active={isActive}
+            aria-label={`${ariaLabel} ${token}`}
+            aria-pressed={isActive}
+            title={token}
+            className={cn(
+              'relative flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all',
+              isActive ? 'ring-2 ring-ring ring-offset-2 ring-offset-popover' : 'hover:scale-110',
+            )}
+            style={swatchPreviewStyle(token, previewKind)}
+          >
+            {isActive ? (
+              <Check
+                className="h-3 w-3 drop-shadow-sm"
+                style={{ color: 'hsl(var(--foreground))' }}
+              />
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Labelled subsection inside a consolidated popover. Accepts an optional
+// `testId` so legacy element-tree lookups (e.g. style-strip-border-style) still
+// resolve when their controls move under a parent popover.
+function PopoverSection({
+  label,
+  testId,
+  children,
+}: {
+  label: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5" data-testid={testId}>
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      {children}
+    </div>
   );
 }
 
