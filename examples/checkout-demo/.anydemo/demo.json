@@ -6,8 +6,8 @@
       "id": "api-checkout",
       "type": "playNode",
       "position": {
-        "x": 100,
-        "y": 100
+        "x": 60.64426052668625,
+        "y": -55.225323104613494
       },
       "data": {
         "label": "POST /checkout",
@@ -50,8 +50,8 @@
       "id": "worker-fulfillment",
       "type": "stateNode",
       "position": {
-        "x": 680.0817995037266,
-        "y": -176.75875679324187
+        "x": 401.64426052668625,
+        "y": -20.725323104613494
       },
       "data": {
         "label": "Fulfillment worker",
