@@ -14,7 +14,7 @@ const REQUEST_DEMO: Demo = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'POST /checkout',
+        name: 'POST /checkout',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://localhost:3001/checkout' },
@@ -34,7 +34,7 @@ const EVENT_DEMO: Demo = {
       type: 'stateNode',
       position: { x: 200, y: 0 },
       data: {
-        label: 'Worker',
+        name: 'Worker',
         kind: 'worker',
         stateSource: { kind: 'event' },
       },

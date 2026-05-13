@@ -189,10 +189,10 @@ export interface DemoCanvasProps {
    * substitute for a multi-node scale).
    */
   onMultiResize?: (updates: MultiResizeUpdate[]) => void;
-  /** Persist a new node label (PATCH /nodes/:id { label }). */
-  onNodeLabelChange?: (nodeId: string, label: string) => void;
-  /** Persist a new node description on detail.summary. */
-  onNodeDescriptionChange?: (nodeId: string, summary: string) => void;
+  /** Persist a new node name (PATCH /nodes/:id { name }). */
+  onNodeNameChange?: (nodeId: string, name: string) => void;
+  /** Persist a new node description (PATCH /nodes/:id { description }). */
+  onNodeDescriptionChange?: (nodeId: string, description: string) => void;
   /** Persist a new connector label (PATCH /connectors/:id { label }). */
   onConnectorLabelChange?: (connId: string, label: string) => void;
   /**
@@ -296,16 +296,6 @@ export interface DemoCanvasProps {
    * keyboard-driven deletes.
    */
   onDeleteNode?: (nodeId: string) => void;
-  /**
-   * US-019: toggle the lock state of one or more nodes. Wiring this enables
-   * the right-click context menu's Lock / Unlock entry and the style-strip's
-   * Lock toggle. Single-node right-clicks pass `[nodeId]`; multi-selection
-   * right-clicks pass every selected node id; the style-strip passes every
-   * selected node. The parent owns the optimistic override, PATCH fan-out,
-   * and single-undo-entry push. Mixed selections follow a lock-if-any-
-   * unlocked, otherwise unlock-all policy.
-   */
-  onToggleNodeLock?: (nodeIds: string[]) => void;
   /**
    * Copy a node into the in-app clipboard. Wiring this enables the
    * right-click context menu's Copy entry. The canvas hands the right-clicked
@@ -1251,7 +1241,7 @@ export function DemoCanvas({
   onNodeResize,
   onGroupResizeWithChildren,
   onMultiResize,
-  onNodeLabelChange,
+  onNodeNameChange,
   onNodeDescriptionChange,
   onConnectorLabelChange,
   onCreateShapeNode,
@@ -1262,7 +1252,6 @@ export function DemoCanvas({
   onReconnectConnector,
   onReorderNode,
   onDeleteNode,
-  onToggleNodeLock,
   onCopyNode,
   onPasteAt,
   hasClipboard,
@@ -1731,8 +1720,7 @@ export function DemoCanvas({
     !!onCopyNode ||
     !!onPasteAt ||
     !!onUnpinEndpoint ||
-    !!onUngroupSelection ||
-    !!onToggleNodeLock;
+    !!onUngroupSelection;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Whether the most recent right-click landed on a node (true) vs. the empty
   // pane (false). Used to gate per-node items (Copy / reorder / Delete) which
@@ -1788,22 +1776,6 @@ export function DemoCanvas({
     if (!id || !onDeleteNode) return;
     onDeleteNode(id);
   }, [onDeleteNode]);
-
-  // US-019: dispatch the toggle-lock op for either the right-clicked node
-  // (single) or every selected node when the right-click landed on a
-  // multi-selection (mirrors the Group / Ungroup pick handlers above).
-  // The parent owns the lock-if-any-unlocked vs unlock-all policy.
-  const handleToggleLockPick = useCallback(() => {
-    if (!onToggleNodeLock) return;
-    const ids = selectedNodeIds.length >= 2 ? [...selectedNodeIds] : [];
-    if (ids.length > 0) {
-      onToggleNodeLock(ids);
-      return;
-    }
-    const id = contextNodeIdRef.current;
-    if (!id) return;
-    onToggleNodeLock([id]);
-  }, [onToggleNodeLock, selectedNodeIds]);
 
   const handleCopyPick = useCallback(() => {
     const id = contextNodeIdRef.current;
@@ -2107,7 +2079,7 @@ export function DemoCanvas({
           onResize: merged.type === 'group' ? onGroupNodeResize : onNodeResize,
           onResizeFinal: merged.type === 'group' ? onGroupNodeResizeFinal : undefined,
           setResizing,
-          onLabelChange: gatedByGroup ? undefined : onNodeLabelChange,
+          onNameChange: gatedByGroup ? undefined : onNodeNameChange,
           onDescriptionChange:
             merged.type === 'shapeNode' || merged.type === 'imageNode' || merged.type === 'iconNode'
               ? undefined
@@ -2229,7 +2201,7 @@ export function DemoCanvas({
     onGroupNodeResizeFinal,
     setResizing,
     nodeOverrides,
-    onNodeLabelChange,
+    onNodeNameChange,
     onNodeDescriptionChange,
     onRetryImageUpload,
     pendingEditNodeId,
@@ -3701,7 +3673,6 @@ export function DemoCanvas({
                   onStyleConnector={onStyleConnector}
                   onStyleConnectorPreview={onStyleConnectorPreview}
                   onRequestIconReplace={onRequestIconReplace}
-                  onToggleNodeLock={onToggleNodeLock}
                 />
               ) : null}
             </div>
@@ -3798,14 +3769,12 @@ export function DemoCanvas({
             ) : null}
             {contextOnNode &&
             (onCopyNode || onPasteAt) &&
-            // US-003 / US-013 / US-019: include 'Change icon', any-group
-            // 'Ungroup', and Lock/Unlock in the "has-following-section" check
-            // so the Copy/Paste → following-section separator renders for any
-            // of them.
+            // US-003 / US-013: include 'Change icon' and any-group 'Ungroup'
+            // in the "has-following-section" check so the Copy/Paste →
+            // following-section separator renders for any of them.
             ((ungroupableCount >= 1 && !!onUngroupSelection) ||
               (contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
-              onToggleNodeLock ||
               onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
@@ -3824,7 +3793,6 @@ export function DemoCanvas({
             onUngroupSelection &&
             ((contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
-              onToggleNodeLock ||
               onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
@@ -3839,7 +3807,7 @@ export function DemoCanvas({
             {contextOnNode &&
             contextNodeType === 'iconNode' &&
             onRequestIconReplace &&
-            (onReorderNode || onToggleNodeLock || onDeleteNode) ? (
+            (onReorderNode || onDeleteNode) ? (
               <ContextMenuSeparator />
             ) : null}
             {contextOnNode && onReorderNode ? (
@@ -3870,38 +3838,7 @@ export function DemoCanvas({
                 </ContextMenuItem>
               </>
             ) : null}
-            {/* US-019: Lock / Unlock the right-clicked node (or every selected
-                node when the right-click landed on a multi-selection). Label
-                switches based on the current state of the target set: "Lock"
-                if any are unlocked, "Unlock" only when every target is
-                already locked. The data-testid stays stable across labels
-                so tests don't churn. */}
-            {contextOnNode && onToggleNodeLock
-              ? (() => {
-                  const isMulti = selectedNodeIds.length >= 2;
-                  const targetIds: readonly string[] = isMulti
-                    ? selectedNodeIds
-                    : contextNodeIdRef.current
-                      ? [contextNodeIdRef.current]
-                      : [];
-                  if (targetIds.length === 0) return null;
-                  const allLocked = targetIds.every((id) => lockedNodeIdSet.has(id));
-                  return (
-                    <>
-                      {onReorderNode ? <ContextMenuSeparator /> : null}
-                      <ContextMenuItem
-                        data-testid="node-context-menu-lock"
-                        onSelect={handleToggleLockPick}
-                      >
-                        {allLocked ? 'Unlock' : 'Lock'}
-                      </ContextMenuItem>
-                    </>
-                  );
-                })()
-              : null}
-            {contextOnNode && (onReorderNode || onToggleNodeLock) && onDeleteNode ? (
-              <ContextMenuSeparator />
-            ) : null}
+            {contextOnNode && onReorderNode && onDeleteNode ? <ContextMenuSeparator /> : null}
             {contextOnNode && onDeleteNode ? (
               <ContextMenuItem
                 data-testid="node-context-menu-delete"

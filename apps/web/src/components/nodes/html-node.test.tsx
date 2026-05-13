@@ -313,12 +313,12 @@ describe('HtmlNode wrapper style (US-014)', () => {
 });
 
 describe('HtmlNode label (US-014)', () => {
-  it('renders a label element below the content when data.label is set', () => {
+  it('renders a label element below the content when data.name is set', () => {
     _setHtmlContentForTest(SAMPLE_PROJECT_ID, SAMPLE_PATH, {
       kind: 'loaded',
       html: '<p>ok</p>',
     });
-    const tree = callHtmlNode({ label: 'Welcome card' });
+    const tree = callHtmlNode({ name: 'Welcome card' });
     const label = findElement(tree, (el) => {
       const p = el.props as { 'data-testid'?: string };
       return p['data-testid'] === 'html-node-label';
@@ -327,7 +327,7 @@ describe('HtmlNode label (US-014)', () => {
     expect((label?.props as { children?: unknown }).children).toBe('Welcome card');
   });
 
-  it('omits the label element when data.label is absent', () => {
+  it('omits the label element when data.name is absent', () => {
     _setHtmlContentForTest(SAMPLE_PROJECT_ID, SAMPLE_PATH, {
       kind: 'loaded',
       html: '<p>ok</p>',

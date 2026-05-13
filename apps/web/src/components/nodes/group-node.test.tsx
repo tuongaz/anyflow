@@ -123,7 +123,7 @@ const findLabel = (tree: unknown) =>
   );
 
 describe('GroupNode (US-011)', () => {
-  it('renders an empty label slot when data.label is absent', () => {
+  it('renders an empty label slot when data.name is absent', () => {
     const tree = callGroupNode({});
     const labels = findLabel(tree);
     expect(labels).toHaveLength(1);
@@ -136,8 +136,8 @@ describe('GroupNode (US-011)', () => {
     expect((slot.props.style as { height?: number })?.height).toBe(28);
   });
 
-  it('renders the label text in the slot when data.label is set', () => {
-    const tree = callGroupNode({ label: 'Auth flow' });
+  it('renders the label text in the slot when data.name is set', () => {
+    const tree = callGroupNode({ name: 'Auth flow' });
     const labels = findLabel(tree);
     expect(labels).toHaveLength(1);
     const slot = labels[0];
@@ -146,7 +146,7 @@ describe('GroupNode (US-011)', () => {
   });
 
   it('treats an empty-string label as no label (parity with US-002 sentinel)', () => {
-    const tree = callGroupNode({ label: '' });
+    const tree = callGroupNode({ name: '' });
     const labels = findLabel(tree);
     expect(labels).toHaveLength(1);
     expect(labels[0]?.props.children).toBeNull();
@@ -346,8 +346,8 @@ describe('GroupNode label editing (US-014)', () => {
   // force the edit-mode branch in the renderer.
   const editingOverrides = [undefined, true] as const;
 
-  it('read mode: label slot renders the label text and no InlineEdit when onLabelChange is absent', () => {
-    const tree = callGroupNode({ label: 'Auth flow' });
+  it('read mode: label slot renders the label text and no InlineEdit when onNameChange is absent', () => {
+    const tree = callGroupNode({ name: 'Auth flow' });
     const slot = findLabel(tree)[0];
     if (!slot) throw new Error('label slot missing');
     expect(slot.props.children).toBe('Auth flow');
@@ -355,9 +355,9 @@ describe('GroupNode label editing (US-014)', () => {
     expect(inlineEditEls).toHaveLength(0);
   });
 
-  it('does NOT enter edit mode when onLabelChange is absent (readonly contexts)', () => {
-    // No onLabelChange → click on the slot is a no-op (still renders label text).
-    const tree = callGroupNode({ label: 'Read only' });
+  it('does NOT enter edit mode when onNameChange is absent (readonly contexts)', () => {
+    // No onNameChange → click on the slot is a no-op (still renders label text).
+    const tree = callGroupNode({ name: 'Read only' });
     const slot = findLabel(tree)[0];
     if (!slot) throw new Error('label slot missing');
     // Click handler is wired but the early return prevents setIsEditing.
@@ -370,9 +370,9 @@ describe('GroupNode label editing (US-014)', () => {
     expect(inlineEditEls).toHaveLength(0);
   });
 
-  it('exposes a click-to-edit affordance on the label slot when onLabelChange is wired', () => {
-    const onLabelChange = mock(() => {});
-    const tree = callGroupNode({ label: 'Pipeline', onLabelChange });
+  it('exposes a click-to-edit affordance on the label slot when onNameChange is wired', () => {
+    const onNameChange = mock(() => {});
+    const tree = callGroupNode({ name: 'Pipeline', onNameChange });
     const slot = findLabel(tree)[0];
     if (!slot) throw new Error('label slot missing');
     expect(typeof (slot.props as { onClick?: unknown }).onClick).toBe('function');
@@ -381,8 +381,8 @@ describe('GroupNode label editing (US-014)', () => {
   });
 
   it('edit mode: renders InlineEdit pre-populated with the current label', () => {
-    const onLabelChange = mock(() => {});
-    const tree = callGroupNode({ label: 'Pipeline', onLabelChange }, undefined, editingOverrides);
+    const onNameChange = mock(() => {});
+    const tree = callGroupNode({ name: 'Pipeline', onNameChange }, undefined, editingOverrides);
     const slot = findLabel(tree)[0];
     if (!slot) throw new Error('label slot missing');
     // The slot's data-editing flag flips true while editing.
@@ -393,42 +393,42 @@ describe('GroupNode label editing (US-014)', () => {
       | { initialValue?: string; field?: string; placeholder?: string }
       | undefined;
     expect(ieProps?.initialValue).toBe('Pipeline');
-    expect(ieProps?.field).toBe('group-node-label');
+    expect(ieProps?.field).toBe('group-node-name');
     expect(ieProps?.placeholder).toBe('Group label');
   });
 
-  it('edit mode with empty label: InlineEdit receives an empty initialValue', () => {
-    const onLabelChange = mock(() => {});
-    const tree = callGroupNode({ onLabelChange }, undefined, editingOverrides);
+  it('edit mode with empty name: InlineEdit receives an empty initialValue', () => {
+    const onNameChange = mock(() => {});
+    const tree = callGroupNode({ onNameChange }, undefined, editingOverrides);
     const inlineEditEls = findAll(tree, (el) => el.type === InlineEdit);
     expect(inlineEditEls).toHaveLength(1);
     const ieProps = inlineEditEls[0]?.props as { initialValue?: string };
     expect(ieProps.initialValue).toBe('');
   });
 
-  it('edit mode: InlineEdit onCommit calls data.onLabelChange with the node id and new value', () => {
-    const onLabelChange = mock((_id: string, _label: string) => {});
-    const tree = callGroupNode({ label: 'Old', onLabelChange }, undefined, editingOverrides);
+  it('edit mode: InlineEdit onCommit calls data.onNameChange with the node id and new value', () => {
+    const onNameChange = mock((_id: string, _label: string) => {});
+    const tree = callGroupNode({ name: 'Old', onNameChange }, undefined, editingOverrides);
     const ie = findAll(tree, (el) => el.type === InlineEdit)[0];
     if (!ie) throw new Error('InlineEdit not found');
     (ie.props as { onCommit: (v: string) => void }).onCommit('New label');
-    expect(onLabelChange).toHaveBeenCalledWith('group-1', 'New label');
+    expect(onNameChange).toHaveBeenCalledWith('group-1', 'New label');
   });
 
   it('edit mode: empty-string commit clears the label (parity with US-002 sentinel)', () => {
-    const onLabelChange = mock((_id: string, _label: string) => {});
-    const tree = callGroupNode({ label: 'Old', onLabelChange }, undefined, editingOverrides);
+    const onNameChange = mock((_id: string, _label: string) => {});
+    const tree = callGroupNode({ name: 'Old', onNameChange }, undefined, editingOverrides);
     const ie = findAll(tree, (el) => el.type === InlineEdit)[0];
     if (!ie) throw new Error('InlineEdit not found');
     (ie.props as { onCommit: (v: string) => void }).onCommit('');
-    expect(onLabelChange).toHaveBeenCalledWith('group-1', '');
+    expect(onNameChange).toHaveBeenCalledWith('group-1', '');
   });
 
   it('edit mode: ResizeControls are hidden while editing (mirrors icon-node US-004)', () => {
-    const onLabelChange = mock(() => {});
+    const onNameChange = mock(() => {});
     const onResize = mock(() => {});
     const tree = callGroupNode(
-      { onResize, onLabelChange },
+      { onResize, onNameChange },
       { selected: true } as Partial<NodeProps>,
       editingOverrides,
     );
@@ -438,8 +438,8 @@ describe('GroupNode label editing (US-014)', () => {
   });
 
   it('edit mode: the read-mode label text is replaced by the editor (no duplicate label DOM)', () => {
-    const onLabelChange = mock(() => {});
-    const tree = callGroupNode({ label: 'Pipeline', onLabelChange }, undefined, editingOverrides);
+    const onNameChange = mock(() => {});
+    const tree = callGroupNode({ name: 'Pipeline', onNameChange }, undefined, editingOverrides);
     const slot = findLabel(tree)[0];
     if (!slot) throw new Error('label slot missing');
     // The slot's only child should be the InlineEdit element, NOT the raw

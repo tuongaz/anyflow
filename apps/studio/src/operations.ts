@@ -59,9 +59,7 @@ export type ReorderBody = z.infer<typeof ReorderBodySchema>;
 // Partial node update body. Top-level `position` lands on node.position; every
 // other key lands inside node.data. Final validity is enforced by re-parsing
 // the whole demo through DemoSchema after the merge — this body schema just
-// rejects unknown top-level keys to catch typos. `detail` is loose here so
-// senders can swap the entire detail object; DemoSchema validates the shape
-// before we write.
+// rejects unknown top-level keys to catch typos.
 export const NodePatchBodySchema = z
   .object({
     position: PositionBodySchema.optional(),
@@ -71,8 +69,7 @@ export const NodePatchBodySchema = z
     // validity (reference resolves, no self-parent) is gated by DemoSchema's
     // superRefine on the post-merge reparse.
     parentId: z.string().min(1).nullable().optional(),
-    label: z.string().optional(),
-    detail: z.unknown().optional(),
+    name: z.string().optional(),
     borderColor: ColorTokenSchema.optional(),
     backgroundColor: ColorTokenSchema.optional(),
     borderSize: z.number().positive().optional(),
@@ -100,11 +97,11 @@ export const NodePatchBodySchema = z
     // US-019: lock state. Lands at data.locked; persists across save/reload.
     // Absent → unlocked default (no badge, all gestures work).
     locked: z.boolean().optional(),
-    // US-011 (text-and-group-resize): free-text metadata on every node variant.
-    // `shortDescription` caps at 200 chars (matches the schema); `description`
-    // has no cap. Both land at data.shortDescription / data.description.
-    shortDescription: z.string().max(200).optional(),
+    // Three-field consolidation: free-text metadata on every node variant.
+    // Empty string on `description` or `detail` is the documented clear-on-
+    // serialize signal — `mergeNodeUpdates` strips the key from disk.
     description: z.string().optional(),
+    detail: z.string().optional(),
   })
   .strict();
 export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
@@ -114,8 +111,7 @@ export type NodePatchBody = z.infer<typeof NodePatchBodySchema>;
 // JSON directly so unknown forward-compat fields the schema doesn't yet
 // recognize survive the round-trip untouched.
 const NODE_DATA_PATCH_KEYS = [
-  'label',
-  'detail',
+  'name',
   'borderColor',
   'backgroundColor',
   'borderSize',
@@ -131,8 +127,8 @@ const NODE_DATA_PATCH_KEYS = [
   'alt',
   'icon',
   'locked',
-  'shortDescription',
   'description',
+  'detail',
 ] as const satisfies ReadonlyArray<keyof NodePatchBody>;
 
 export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePatchBody): void => {
@@ -160,7 +156,7 @@ export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePat
     // metadata fields is the documented clear-on-serialize signal — strip the
     // key instead of writing "" to disk so demo.json stays compact and
     // round-tripping a cleared node doesn't reintroduce the field.
-    if ((key === 'shortDescription' || key === 'description') && updates[key] === '') {
+    if ((key === 'description' || key === 'detail') && updates[key] === '') {
       if (key in data) {
         delete data[key];
         touchedData = true;

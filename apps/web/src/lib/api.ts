@@ -15,22 +15,6 @@ export interface HttpAction {
   bodySchema?: unknown;
 }
 
-export interface DetailField {
-  label: string;
-  value: string;
-}
-
-// Mirrors DetailSchema in apps/studio/src/schema.ts — `summary` is the short
-// description rendered ON the node, `description` is the long one rendered
-// in the detail panel (falls back to `summary` when absent).
-export interface NodeDetail {
-  filePath?: string;
-  summary?: string;
-  description?: string;
-  fields?: DetailField[];
-  dynamicSource?: HttpAction;
-}
-
 export type ColorToken =
   | 'default'
   | 'slate'
@@ -61,24 +45,20 @@ export interface NodeVisual {
   locked?: boolean;
 }
 
-// US-011 (text-and-group-resize): free-text metadata fields available on every
-// node variant. `shortDescription` is a one-line caption (200-char cap);
-// `description` is open-ended notes (no cap). Both optional and metadata-only
-// — never rendered on the canvas. Distinct from `detail.summary` /
-// `detail.description` (play/state-only demo-runtime fields). Mirrors
-// `NodeDescriptionBaseShape` in apps/studio/src/schema.ts. Mirrored explicitly
-// into IconNodeData / GroupNodeData (those variants don't extend
-// NodeDescription via NodeVisual).
+// Three-field consolidation: free-text metadata fields available on every
+// node variant. `description` is the short body text rendered on the canvas
+// under the node header (and as light-bold text in the sidebar); `detail` is
+// the long-form body rendered only in the sidebar. Both optional. Mirrors
+// `NodeDescriptionBaseShape` in apps/studio/src/schema.ts.
 export interface NodeDescription {
-  shortDescription?: string;
   description?: string;
+  detail?: string;
 }
 
 export interface NodeData extends NodeVisual, NodeDescription {
-  label: string;
+  name: string;
   kind: string;
   stateSource: { kind: 'request' | 'event' };
-  detail?: NodeDetail;
   playAction?: HttpAction;
   handlerModule?: string;
 }
@@ -91,7 +71,7 @@ export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky' | 'text' | 'database'
 
 export interface ShapeNodeData extends NodeVisual, NodeDescription {
   shape: ShapeKind;
-  label?: string;
+  name?: string;
 }
 
 // Decorative image node — references a file under `<project>/.anydemo/` by
@@ -132,7 +112,7 @@ export interface IconNodeData extends NodeDescription {
   alt?: string;
   // US-002: optional visible caption rendered below the icon. Distinct from
   // `alt` (screen-reader text). Empty/absent → no caption rendered.
-  label?: string;
+  name?: string;
   /** US-019: lock state mirror — see NodeVisual.locked. */
   locked?: boolean;
 }
@@ -144,14 +124,14 @@ export interface IconNodeData extends NodeDescription {
 // `HtmlNodeDataSchema` in `apps/studio/src/schema.ts`.
 export interface HtmlNodeData extends NodeVisual, NodeDescription {
   htmlPath: string;
-  label?: string;
+  name?: string;
 }
 
 // US-011: container node grouping other nodes via their `parentId`. No
 // semantic payload; chrome (dashed border, transparent fill) lives in CSS.
 // `width`/`height` size the group's bounding box for the renderer.
 export interface GroupNodeData extends NodeDescription {
-  label?: string;
+  name?: string;
   width?: number;
   height?: number;
   /** US-019: lock state mirror — see NodeVisual.locked. */
@@ -304,35 +284,6 @@ export interface PlayResult {
   error?: string;
 }
 
-export interface NodeDetailResult {
-  status?: number;
-  body?: unknown;
-  error?: string;
-}
-
-export const fetchNodeDetail = async (
-  demoId: string,
-  nodeId: string,
-): Promise<NodeDetailResult> => {
-  const res = await fetch(`/api/demos/${demoId}/nodes/${nodeId}/detail`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: '{}',
-  });
-  if (!res.ok) {
-    let errorBody: { error?: string } | null = null;
-    try {
-      errorBody = (await res.json()) as { error?: string };
-    } catch {
-      // ignore
-    }
-    throw new Error(
-      errorBody?.error ?? `POST /api/demos/${demoId}/nodes/${nodeId}/detail → ${res.status}`,
-    );
-  }
-  return (await res.json()) as NodeDetailResult;
-};
-
 export interface UpdatePositionResult {
   ok: boolean;
   position: { x: number; y: number };
@@ -371,8 +322,7 @@ export interface UpdateNodeBody {
    * self-parent) is gated by DemoSchema's superRefine on the studio side.
    */
   parentId?: string | null;
-  label?: string;
-  detail?: NodeDetail;
+  name?: string;
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
@@ -395,13 +345,12 @@ export interface UpdateNodeBody {
   icon?: string;
   /** US-019: lock state. true freezes the node; false unlocks. */
   locked?: boolean;
-  /** US-011 (text-and-group-resize): one-line caption (max 200 chars). Lands
-   * at data.shortDescription. Empty string clears the field on disk. */
-  shortDescription?: string;
-  /** US-011 (text-and-group-resize): long-form free-text notes (no cap). Lands
-   * at data.description. Empty string clears the field on disk. Distinct from
-   * `detail.description` (play/state-only runtime payload markdown). */
+  /** Short body text rendered on the canvas and as light-bold in the sidebar.
+   * Lands at data.description. Empty string clears the field on disk. */
   description?: string;
+  /** Long-form sidebar-only body text. Lands at data.detail. Empty string
+   * clears the field on disk. */
+  detail?: string;
 }
 
 export const updateNode = async (

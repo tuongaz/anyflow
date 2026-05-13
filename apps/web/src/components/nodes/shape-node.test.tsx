@@ -228,7 +228,7 @@ function callShapeNode(data: Record<string, unknown>, overrides: Partial<NodePro
   const props = {
     id: 's1',
     type: 'shapeNode',
-    data: { label: 'Hello', ...data },
+    data: { name: 'Hello', ...data },
     selected: false,
     isConnectable: true,
     xPos: 0,
@@ -293,7 +293,7 @@ describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
     const tree = callShapeNode({
       shape: 'text',
       autoEditOnMount: true,
-      onLabelChange: () => {},
+      onNameChange: () => {},
     });
     const inlineEdits = findAll(tree, (el) => el.type === InlineEdit);
     expect(inlineEdits).toHaveLength(1);
@@ -302,7 +302,7 @@ describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
   it('text shape WITHOUT autoEditOnMount does NOT mount into InlineEdit', () => {
     const tree = callShapeNode({
       shape: 'text',
-      onLabelChange: () => {},
+      onNameChange: () => {},
     });
     const inlineEdits = findAll(tree, (el) => el.type === InlineEdit);
     expect(inlineEdits).toHaveLength(0);

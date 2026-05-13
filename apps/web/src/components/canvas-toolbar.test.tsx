@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { CanvasToolbar, HTML_BLOCK_DND_TYPE, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
+import type { ShapeKind } from '@/lib/api';
 import * as React from 'react';
 
 // Bun runs apps/web tests without a DOM. The hook-shim pattern (also used by
@@ -103,13 +104,12 @@ function callToolbar(props: Partial<React.ComponentProps<typeof CanvasToolbar>> 
 }
 
 describe('CanvasToolbar', () => {
-  it('renders all shape buttons in the documented order', () => {
+  it('renders every TOOLBAR_SHAPES entry either inline or inside the Shape picker', () => {
     const tree = callToolbar();
-    const shapeButtons = TOOLBAR_SHAPES.map((entry) =>
-      findElement(tree, testIdEquals(`toolbar-shape-${entry.shape}`)),
-    );
-    for (const btn of shapeButtons) {
-      expect(btn).not.toBeNull();
+    for (const entry of TOOLBAR_SHAPES) {
+      const inline = findElement(tree, testIdEquals(`toolbar-shape-${entry.shape}`));
+      const inPicker = findElement(tree, testIdEquals(`shape-picker-${entry.shape}`));
+      expect(inline ?? inPicker).not.toBeNull();
     }
   });
 
@@ -128,12 +128,10 @@ describe('CanvasToolbar', () => {
       expect(entry?.Icon).toBeDefined();
     });
 
-    it('renders the toolbar-shape-database button', () => {
+    it('renders the database tile inside the Shape picker popover', () => {
       const tree = callToolbar();
-      const btn = findElement(tree, testIdEquals('toolbar-shape-database'));
+      const btn = findElement(tree, testIdEquals('shape-picker-database'));
       expect(btn).not.toBeNull();
-      expect(btn?.props['aria-label']).toBe('Database');
-      expect(btn?.props.title).toBe('Database');
     });
 
     it('toggles draw mode for database via onSelectShape', () => {
@@ -143,8 +141,8 @@ describe('CanvasToolbar', () => {
           picked = shape;
         },
       });
-      const btn = findElement(tree, testIdEquals('toolbar-shape-database'));
-      if (!btn) throw new Error('database toolbar button not found');
+      const btn = findElement(tree, testIdEquals('shape-picker-database'));
+      if (!btn) throw new Error('database picker tile not found');
       const onClick = btn.props.onClick as () => void;
       onClick();
       expect(picked).toBe('database');
@@ -170,21 +168,31 @@ describe('CanvasToolbar', () => {
       const ids = allButtons
         .map((b) => b.props['data-testid'])
         .filter((id): id is string => typeof id === 'string');
-      const allowed = new Set(['toolbar-insert-icon', 'toolbar-html-block']);
+      const allowed = new Set([
+        'toolbar-insert-icon',
+        'toolbar-html-block',
+        'toolbar-shape-picker',
+      ]);
       for (const id of ids) {
-        expect(id.startsWith('toolbar-shape-') || allowed.has(id)).toBe(true);
+        expect(
+          id.startsWith('toolbar-shape-') || id.startsWith('shape-picker-') || allowed.has(id),
+        ).toBe(true);
       }
     });
 
-    it('keeps the 4 shape buttons after Tidy removal', () => {
+    it('renders every shape — primaries inline, illustratives in the Shape picker', () => {
       // The insert-icon button is captured INSIDE IconPickerPopover's `anchor`
       // prop, which lives outside the children tree the hook-shim walks —
       // asserting that it renders here would require walking arbitrary props.
-      // Pin the shape buttons (Tidy's siblings in the old layout) instead.
+      // Pin the shape tiles instead.
       const tree = callToolbar({ onPickIcon: () => {} });
-      for (const entry of TOOLBAR_SHAPES) {
-        expect(findElement(tree, testIdEquals(`toolbar-shape-${entry.shape}`))).not.toBeNull();
+      const primaryShapes: ShapeKind[] = ['rectangle', 'ellipse', 'sticky', 'text'];
+      for (const shape of primaryShapes) {
+        expect(findElement(tree, testIdEquals(`toolbar-shape-${shape}`))).not.toBeNull();
       }
+      // Illustrative shapes live behind the Shape picker.
+      expect(findElement(tree, testIdEquals('toolbar-shape-picker'))).not.toBeNull();
+      expect(findElement(tree, testIdEquals('shape-picker-database'))).not.toBeNull();
     });
   });
 

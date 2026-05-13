@@ -137,12 +137,12 @@ function HtmlNodeImpl({ id, data, selected, isConnectable }: NodeProps<HtmlNodeT
         isConnectable={isConnectable}
         className={cn(HANDLE_CLASS, selected && '!opacity-100')}
       />
-      {data.label !== undefined && data.label !== '' ? (
+      {data.name !== undefined && data.name !== '' ? (
         <div
           data-testid="html-node-label"
           className="-bottom-5 absolute right-0 left-0 truncate text-center text-[11px] text-muted-foreground"
         >
-          {data.label}
+          {data.name}
         </div>
       ) : null}
     </div>

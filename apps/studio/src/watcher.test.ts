@@ -15,7 +15,7 @@ const VALID_DEMO = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'A',
+        name: 'A',
         kind: 'svc',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'GET', url: 'http://x' },
@@ -161,7 +161,7 @@ describe('createWatcher', () => {
         type: 'playNode',
         position: { x: 0, y: 0 },
         data: {
-          label: 'A',
+          name: 'A',
           kind: 'svc',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'GET', url: 'http://x' },
@@ -181,7 +181,7 @@ describe('createWatcher', () => {
         type: 'playNode',
         position: { x: 0, y: 0 },
         data: {
-          label: 'I',
+          name: 'I',
           kind: 'svc',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'GET', url: 'http://x' },
@@ -312,7 +312,7 @@ describe('createWatcher', () => {
           type: 'playNode',
           position: { x: 0, y: 0 },
           data: {
-            label: 'A',
+            name: 'A',
             kind: 'svc',
             stateSource: { kind: 'request' },
             playAction: { kind: 'http', method: 'GET', url: 'http://x' },
@@ -324,7 +324,7 @@ describe('createWatcher', () => {
           type: 'playNode',
           position: { x: 0, y: 0 },
           data: {
-            label: 'B',
+            name: 'B',
             kind: 'svc',
             stateSource: { kind: 'request' },
             playAction: { kind: 'http', method: 'GET', url: 'http://x' },
@@ -336,7 +336,7 @@ describe('createWatcher', () => {
           type: 'playNode',
           position: { x: 0, y: 0 },
           data: {
-            label: 'C',
+            name: 'C',
             kind: 'svc',
             stateSource: { kind: 'request' },
             playAction: { kind: 'http', method: 'GET', url: 'http://x' },

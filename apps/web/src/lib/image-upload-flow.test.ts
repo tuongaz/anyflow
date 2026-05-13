@@ -6,6 +6,7 @@ import {
   buildUploadingOverride,
   performImageDropUpload,
 } from '@/lib/image-upload-flow';
+import { NEW_NODE_BORDER_WIDTH } from '@/lib/node-defaults';
 
 interface OverrideEvent {
   id: string;
@@ -156,8 +157,8 @@ describe('performImageDropUpload (US-008)', () => {
     expect(data.alt).toBe('Hero.png');
     expect(data.width).toBe(320);
     expect(data.height).toBe(180);
-    // US-024 default border width for new image nodes.
-    expect(data.borderWidth).toBe(1);
+    // Default border width for new image nodes — comes from node-defaults.
+    expect(data.borderWidth).toBe(NEW_NODE_BORDER_WIDTH);
     // Transient flags must not leak into the persisted payload.
     expect(data._uploading).toBeUndefined();
     expect(data._uploadError).toBeUndefined();
@@ -256,7 +257,7 @@ describe('override builders (US-008)', () => {
     expect(data._uploading).toBeUndefined();
     expect(data._uploadError).toBeUndefined();
     expect(data.path).toBe('assets/x.png');
-    expect(data.borderWidth).toBe(1);
+    expect(data.borderWidth).toBe(NEW_NODE_BORDER_WIDTH);
   });
 
   it('buildFailedOverride yields _uploadError with the message', () => {

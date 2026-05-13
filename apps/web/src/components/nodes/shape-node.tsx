@@ -32,8 +32,8 @@ export type ShapeNodeRuntimeData = ShapeNodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
-  /** Persist a new label (PATCH /nodes/:id { label }). Optional for shape nodes. */
-  onLabelChange?: (nodeId: string, label: string) => void;
+  /** Persist a new name (PATCH /nodes/:id { name }). Optional for shape nodes. */
+  onNameChange?: (nodeId: string, name: string) => void;
   /**
    * US-015: when true on the first mount, the node enters inline label-edit
    * mode automatically. Used by the drop-on-pane popover so the user can type
@@ -172,7 +172,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // local state regardless of whether the upstream injection clears the flag
   // (e.g. because the parent's pendingEditNodeId moved to a different node).
   const [isEditing, setIsEditing] = useState(() => Boolean(data.autoEditOnMount));
-  const labelEditable = !!data.onLabelChange;
+  const nameEditable = !!data.onNameChange;
   // While resizing OR once data.width/height are set, the React Flow wrapper
   // owns the dimensions; the inner fills via h-full w-full. Before any resize,
   // we still need an explicit size so the wrapper auto-sizes to it.
@@ -212,7 +212,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // wrapper handler bails out for handles + resize controls so connect/resize
   // gestures keep their drag semantics, and is a no-op when already editing or
   // when the node doesn't expose a label-change callback.
-  const handleWrapperDoubleClick = labelEditable
+  const handleWrapperDoubleClick = nameEditable
     ? (e: ReactMouseEvent<HTMLDivElement>) => {
         if (isEditing) return;
         const target = e.target as HTMLElement | null;
@@ -293,12 +293,12 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           className={cn(HANDLE_CLASS, selected && '!opacity-100')}
         />
       )}
-      {isEditing && labelEditable ? (
+      {isEditing && nameEditable ? (
         <InlineEdit
-          initialValue={data.label ?? ''}
+          initialValue={data.name ?? ''}
           field="node-label"
           commitMode="blur-only"
-          onCommit={(v) => data.onLabelChange?.(id, v)}
+          onCommit={(v) => data.onNameChange?.(id, v)}
           onExit={() => setIsEditing(false)}
           // US-009: `relative` keeps the label as a positioned sibling of the
           // illustrative overlay above, so DOM order alone is enough to stack
@@ -313,11 +313,11 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           className={cn(
             // US-009: `relative` — see the InlineEdit branch above.
             'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
-            data.label ? 'break-words' : 'text-muted-foreground/40 italic',
+            data.name ? 'break-words' : 'text-muted-foreground/40 italic',
           )}
           style={labelFontStyle}
         >
-          {data.label ?? (labelEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
+          {data.name ?? (nameEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
         </button>
       )}
       {!isText && (

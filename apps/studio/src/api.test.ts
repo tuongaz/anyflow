@@ -24,7 +24,7 @@ const VALID_DEMO = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'POST /checkout',
+        name: 'POST /checkout',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: {
@@ -97,7 +97,7 @@ describe('POST /api/demos/register', () => {
           type: 'stateNode',
           position: { x: 0, y: 0 },
           data: {
-            label: 'orders.created',
+            name: 'orders.created',
             kind: 'queue',
             stateSource: { kind: 'event' },
           },
@@ -306,7 +306,7 @@ describe('POST /api/diagram/assemble', () => {
             type: 'playNode',
             position: { x: 11, y: 23 },
             data: {
-              label: 'API',
+              name: 'API',
               kind: 'service',
               stateSource: { kind: 'request' },
               playAction: { kind: 'http', method: 'GET', url: 'http://x/y' },
@@ -316,7 +316,7 @@ describe('POST /api/diagram/assemble', () => {
             id: 'db',
             type: 'stateNode',
             position: { x: 100, y: 100 },
-            data: { label: 'DB', kind: 'store', stateSource: { kind: 'request' } },
+            data: { name: 'DB', kind: 'store', stateSource: { kind: 'request' } },
           },
         ],
         connectors: [
@@ -734,132 +734,6 @@ describe('POST /api/demos/:id/reset', () => {
   });
 });
 
-describe('POST /api/demos/:id/nodes/:nodeId/detail', () => {
-  const startStubServer = (
-    handler: (req: Request) => Response | Promise<Response>,
-  ): { url: string; stop: () => void } => {
-    const server = Bun.serve({ port: 0, fetch: handler });
-    return {
-      url: `http://${server.hostname}:${server.port}`,
-      stop: () => server.stop(true),
-    };
-  };
-
-  const demoWithDynamicSource = (url: string) => ({
-    ...VALID_DEMO,
-    nodes: [
-      {
-        ...VALID_DEMO.nodes[0],
-        data: {
-          ...VALID_DEMO.nodes[0]?.data,
-          detail: {
-            summary: 'Stats',
-            dynamicSource: {
-              kind: 'http',
-              method: 'GET',
-              url,
-            },
-          },
-        },
-      },
-    ],
-  });
-
-  it('proxies the dynamicSource request and returns status + body', async () => {
-    const stub = startStubServer((req) => {
-      expect(req.method).toBe('GET');
-      return Response.json({ orders: 12, lastOrderId: 'ord_42' });
-    });
-    try {
-      const { app } = buildApp();
-      const repoPath = tmpRepoWithDemo(demoWithDynamicSource(stub.url));
-      const reg = (await (
-        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-      ).json()) as { id: string };
-
-      const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: number; body: unknown };
-      expect(body.status).toBe(200);
-      expect(body.body).toEqual({ orders: 12, lastOrderId: 'ord_42' });
-    } finally {
-      stub.stop();
-    }
-  });
-
-  it('does not broadcast node:* events when fetching detail', async () => {
-    const stub = startStubServer(() => Response.json({ ok: true }));
-    try {
-      const bus = createEventBus();
-      const registry = createRegistry({ path: tmpRegistry() });
-      const app = createApp({
-        mode: 'prod',
-        staticRoot: './dist/web',
-        registry,
-        events: bus,
-        disableWatcher: true,
-      });
-      const repoPath = tmpRepoWithDemo(demoWithDynamicSource(stub.url));
-      const reg = (await (
-        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-      ).json()) as { id: string };
-
-      const captured: Array<{ type: string }> = [];
-      bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
-
-      const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
-      expect(res.status).toBe(200);
-      const nodeEvents = captured.filter((e) => e.type.startsWith('node:'));
-      expect(nodeEvents).toHaveLength(0);
-    } finally {
-      stub.stop();
-    }
-  });
-
-  it('returns 404 when the node has no dynamicSource', async () => {
-    const { app } = buildApp();
-    const repoPath = tmpRepoWithDemo();
-    const reg = (await (
-      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-    ).json()) as { id: string };
-
-    const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
-    expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain('dynamicSource');
-  });
-
-  it('returns 404 for unknown demoId', async () => {
-    const { app } = buildApp();
-    const res = await post(app, '/api/demos/nope/nodes/x/detail', {});
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 404 for unknown nodeId', async () => {
-    const { app } = buildApp();
-    const repoPath = tmpRepoWithDemo();
-    const reg = (await (
-      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-    ).json()) as { id: string };
-    const res = await post(app, `/api/demos/${reg.id}/nodes/missing/detail`, {});
-    expect(res.status).toBe(404);
-  });
-
-  it('returns body.error when the upstream is unreachable', async () => {
-    const { app } = buildApp();
-    const repoPath = tmpRepoWithDemo(demoWithDynamicSource('http://127.0.0.1:1'));
-    const reg = (await (
-      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-    ).json()) as { id: string };
-
-    const res = await post(app, `/api/demos/${reg.id}/nodes/api-checkout/detail`, {});
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { error?: string; status?: number };
-    expect(body.status).toBeUndefined();
-    expect(body.error).toBeTruthy();
-  });
-});
-
 describe('POST /api/emit', () => {
   const buildAppWithBus = () => {
     const bus = createEventBus();
@@ -1250,7 +1124,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     const demoFile = join(repoPath, '.anydemo', 'demo.json');
 
     const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
-      label: 'POST /checkout (renamed)',
+      name: 'POST /checkout (renamed)',
       borderColor: 'blue',
       backgroundColor: 'amber',
       width: 240,
@@ -1264,7 +1138,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
         id: string;
         position: { x: number; y: number };
         data: {
-          label: string;
+          name: string;
           borderColor?: string;
           backgroundColor?: string;
           width?: number;
@@ -1274,7 +1148,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
       }>;
     };
     const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
-    expect(node?.data.label).toBe('POST /checkout (renamed)');
+    expect(node?.data.name).toBe('POST /checkout (renamed)');
     expect(node?.data.borderColor).toBe('blue');
     expect(node?.data.backgroundColor).toBe('amber');
     expect(node?.data.width).toBe(240);
@@ -1325,7 +1199,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     expect(readFileSync(demoFile, 'utf8')).toBe(before);
   });
 
-  it('returns 400 when the resulting demo violates DemoSchema (empty label on functional node)', async () => {
+  it('returns 400 when the resulting demo violates DemoSchema (empty name on functional node)', async () => {
     const { app } = buildApp();
     const repoPath = tmpRepoWithDemo();
     const reg = (await (
@@ -1335,7 +1209,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     const demoFile = join(repoPath, '.anydemo', 'demo.json');
     const before = readFileSync(demoFile, 'utf8');
 
-    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, { label: '' });
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, { name: '' });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string; issues?: unknown };
     expect(body.error).toContain('schema');
@@ -1358,7 +1232,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
 
   it('returns 404 for unknown demoId', async () => {
     const { app } = buildApp();
-    const res = await patch(app, '/api/demos/nope/nodes/x', { label: 'x' });
+    const res = await patch(app, '/api/demos/nope/nodes/x', { name: 'x' });
     expect(res.status).toBe(404);
   });
 
@@ -1368,7 +1242,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     const reg = (await (
       await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
     ).json()) as { id: string };
-    const res = await patch(app, `/api/demos/${reg.id}/nodes/missing`, { label: 'x' });
+    const res = await patch(app, `/api/demos/${reg.id}/nodes/missing`, { name: 'x' });
     expect(res.status).toBe(404);
   });
 
@@ -1380,18 +1254,19 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     ).json()) as { id: string };
 
     const demoFile = join(repoPath, '.anydemo', 'demo.json');
-    await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, { label: 'Renamed' });
+    await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, { name: 'Renamed' });
 
     const text = readFileSync(demoFile, 'utf8');
     expect(text.endsWith('\n')).toBe(true);
     expect(text).toMatch(/^\{\n {2}"version": 1,/);
   });
 
-  // US-011 (text-and-group-resize): both metadata fields land at the top
-  // level of node.data and round-trip through DemoSchema unchanged. Empty
-  // string on either field is the documented clear-on-serialize signal —
-  // mergeNodeUpdates strips the key so the on-disk demo stays compact.
-  it('persists shortDescription + description fields to data on patch', async () => {
+  // Three-field consolidation: description (short body) + detail (long form)
+  // land at the top level of node.data and round-trip through DemoSchema
+  // unchanged. Empty string on either field is the documented clear-on-
+  // serialize signal — mergeNodeUpdates strips the key so the on-disk demo
+  // stays compact.
+  it('persists description + detail fields to data on patch', async () => {
     const { app } = buildApp();
     const repoPath = tmpRepoWithDemo();
     const reg = (await (
@@ -1400,20 +1275,20 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
 
     const demoFile = join(repoPath, '.anydemo', 'demo.json');
     const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
-      shortDescription: 'a caption',
-      description: 'multi-line\nnotes about the node',
+      description: 'short body',
+      detail: 'multi-line\nnotes about the node',
     });
     expect(res.status).toBe(200);
 
     const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
-      nodes: Array<{ id: string; data: { shortDescription?: string; description?: string } }>;
+      nodes: Array<{ id: string; data: { description?: string; detail?: string } }>;
     };
     const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
-    expect(node?.data.shortDescription).toBe('a caption');
-    expect(node?.data.description).toBe('multi-line\nnotes about the node');
+    expect(node?.data.description).toBe('short body');
+    expect(node?.data.detail).toBe('multi-line\nnotes about the node');
   });
 
-  it('strips shortDescription / description on disk when empty string is patched', async () => {
+  it('strips description / detail on disk when empty string is patched', async () => {
     const { app } = buildApp();
     const repoPath = tmpRepoWithDemo();
     const reg = (await (
@@ -1423,12 +1298,12 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     const demoFile = join(repoPath, '.anydemo', 'demo.json');
     // First set both fields, then clear them with empty strings.
     await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
-      shortDescription: 'tmp',
-      description: 'tmp notes',
+      description: 'tmp',
+      detail: 'tmp notes',
     });
     const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
-      shortDescription: '',
       description: '',
+      detail: '',
     });
     expect(res.status).toBe(200);
 
@@ -1436,24 +1311,10 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
       nodes: Array<{ id: string; data: Record<string, unknown> }>;
     };
     const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
-    expect(node?.data.shortDescription).toBeUndefined();
     expect(node?.data.description).toBeUndefined();
-    expect('shortDescription' in (node?.data ?? {})).toBe(false);
+    expect(node?.data.detail).toBeUndefined();
     expect('description' in (node?.data ?? {})).toBe(false);
-  });
-
-  it('rejects shortDescription longer than 200 characters at the body schema', async () => {
-    const { app } = buildApp();
-    const repoPath = tmpRepoWithDemo();
-    const reg = (await (
-      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-    ).json()) as { id: string };
-
-    const tooLong = 'x'.repeat(201);
-    const res = await patch(app, `/api/demos/${reg.id}/nodes/api-checkout`, {
-      shortDescription: tooLong,
-    });
-    expect(res.status).toBe(400);
+    expect('detail' in (node?.data ?? {})).toBe(false);
   });
 });
 
@@ -1470,7 +1331,7 @@ describe('POST /api/demos/:id/nodes', () => {
     const res = await post(app, `/api/demos/${reg.id}/nodes`, {
       type: 'shapeNode',
       position: { x: 100, y: 200 },
-      data: { shape: 'rectangle', label: 'Note A' },
+      data: { shape: 'rectangle', name: 'Note A' },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; id: string };
@@ -1635,14 +1496,14 @@ describe('POST /api/demos/:id/nodes', () => {
       const res = await post(app, `/api/demos/${reg.id}/nodes`, {
         type: 'htmlNode',
         position: { x: 0, y: 0 },
-        data: { label: 'Pricing card', width: 280, height: 160 },
+        data: { name: 'Pricing card', width: 280, height: 160 },
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         id: string;
-        node: { data: { htmlPath: string; label: string; width: number; height: number } };
+        node: { data: { htmlPath: string; name: string; width: number; height: number } };
       };
-      expect(body.node.data.label).toBe('Pricing card');
+      expect(body.node.data.name).toBe('Pricing card');
       expect(body.node.data.width).toBe(280);
       expect(body.node.data.height).toBe(160);
       expect(body.node.data.htmlPath).toBe(`blocks/${body.id}.html`);
@@ -1660,7 +1521,7 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
         type: 'playNode',
         position: { x: 0, y: 0 },
         data: {
-          label: 'A',
+          name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -1671,7 +1532,7 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
         type: 'playNode',
         position: { x: 200, y: 0 },
         data: {
-          label: 'B',
+          name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
@@ -1716,7 +1577,7 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
           type: 'playNode',
           position: { x: 400, y: 0 },
           data: {
-            label: 'C',
+            name: 'C',
             kind: 'service',
             stateSource: { kind: 'request' },
             playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
@@ -1897,7 +1758,7 @@ describe('PATCH /api/demos/:id/connectors/:connId', () => {
         type: 'playNode',
         position: { x: 0, y: 0 },
         data: {
-          label: 'A',
+          name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -1908,7 +1769,7 @@ describe('PATCH /api/demos/:id/connectors/:connId', () => {
         type: 'playNode',
         position: { x: 200, y: 0 },
         data: {
-          label: 'B',
+          name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
@@ -2176,7 +2037,7 @@ describe('POST /api/demos/:id/connectors', () => {
         type: 'playNode',
         position: { x: 0, y: 0 },
         data: {
-          label: 'A',
+          name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -2187,7 +2048,7 @@ describe('POST /api/demos/:id/connectors', () => {
         type: 'playNode',
         position: { x: 200, y: 0 },
         data: {
-          label: 'B',
+          name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
@@ -2321,7 +2182,7 @@ describe('POST /api/demos/:id/connectors', () => {
           id: 'svc',
           type: 'stateNode',
           position: { x: 0, y: 0 },
-          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' } },
+          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' } },
         },
         {
           id: 'icon-1',
@@ -2367,7 +2228,7 @@ describe('POST /api/demos/:id/connectors', () => {
           id: 'svc',
           type: 'stateNode',
           position: { x: 200, y: 0 },
-          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' } },
+          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' } },
         },
       ],
       connectors: [],
@@ -2437,7 +2298,7 @@ describe('DELETE /api/demos/:id/connectors/:connId', () => {
         type: 'playNode',
         position: { x: 0, y: 0 },
         data: {
-          label: 'A',
+          name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -2448,7 +2309,7 @@ describe('DELETE /api/demos/:id/connectors/:connId', () => {
         type: 'playNode',
         position: { x: 200, y: 0 },
         data: {
-          label: 'B',
+          name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
           playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },

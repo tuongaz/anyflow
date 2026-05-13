@@ -71,7 +71,7 @@ describe('DemoSchema', () => {
           type: 'playNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'A',
+            name: 'A',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
@@ -81,19 +81,19 @@ describe('DemoSchema', () => {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'c',
           type: 'stateNode' as const,
           position: { x: 200, y: 0 },
-          data: { label: 'C', kind: 'worker', stateSource: { kind: 'event' as const } },
+          data: { name: 'C', kind: 'worker', stateSource: { kind: 'event' as const } },
         },
         {
           id: 'd',
           type: 'stateNode' as const,
           position: { x: 300, y: 0 },
-          data: { label: 'D', kind: 'worker', stateSource: { kind: 'event' as const } },
+          data: { name: 'D', kind: 'worker', stateSource: { kind: 'event' as const } },
         },
       ],
       connectors: [
@@ -142,13 +142,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'whisper' }],
@@ -169,7 +169,7 @@ describe('DemoSchema', () => {
           id: `shape-${shape}`,
           type: 'shapeNode' as const,
           position: { x: 10, y: 20 },
-          data: { shape, label: `${shape} note` },
+          data: { shape, name: `${shape} note` },
         },
       ],
       connectors: [],
@@ -185,7 +185,7 @@ describe('DemoSchema', () => {
       const node = result.data.nodes[0];
       if (node?.type !== 'shapeNode') throw new Error('expected shapeNode');
       expect(node.data.shape).toBe(shape);
-      expect(node.data.label).toBe(`${shape} note`);
+      expect(node.data.name).toBe(`${shape} note`);
     }
   });
 
@@ -260,7 +260,7 @@ describe('DemoSchema', () => {
           type: 'playNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'P',
+            name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
@@ -275,7 +275,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
           data: {
-            label: 'S',
+            name: 'S',
             kind: 'worker',
             stateSource: { kind: 'event' as const },
             width: 160,
@@ -314,7 +314,7 @@ describe('DemoSchema', () => {
           type: 'playNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'P',
+            name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
@@ -326,7 +326,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 100 },
           data: {
-            label: 'S',
+            name: 'S',
             kind: 'worker',
             stateSource: { kind: 'event' as const },
             locked: false,
@@ -354,7 +354,7 @@ describe('DemoSchema', () => {
           id: 'g',
           type: 'group' as const,
           position: { x: 0, y: 500 },
-          data: { label: 'G', locked: true },
+          data: { name: 'G', locked: true },
         },
       ],
       connectors: [],
@@ -381,7 +381,7 @@ describe('DemoSchema', () => {
           id: 's',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [],
@@ -399,7 +399,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'S',
+            name: 'S',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             width,
@@ -424,7 +424,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'S',
+            name: 'S',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             borderColor: 'fuchsia',
@@ -451,13 +451,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -482,13 +482,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -538,13 +538,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -577,13 +577,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default' as const }],
@@ -607,13 +607,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -646,13 +646,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default' as const }],
@@ -676,13 +676,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -707,13 +707,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -741,13 +741,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default', style: 'wavy' }],
@@ -764,13 +764,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default', direction: 'sideways' }],
@@ -787,13 +787,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default', color: 'fuchsia' }],
@@ -811,7 +811,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'A',
+            name: 'A',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             borderSize: nodeBorderSize,
@@ -821,7 +821,7 @@ describe('DemoSchema', () => {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -860,7 +860,7 @@ describe('DemoSchema', () => {
           type: 'playNode' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'P',
+            name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
@@ -1069,7 +1069,7 @@ describe('DemoSchema', () => {
           id: 's',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'img-1',
@@ -1100,7 +1100,7 @@ describe('DemoSchema', () => {
           id: 's',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'icon-1',
@@ -1140,7 +1140,7 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [],
@@ -1164,7 +1164,7 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [],
@@ -1217,7 +1217,7 @@ describe('DemoSchema', () => {
             width: 64,
             height: 64,
             alt: 'help indicator',
-            label: 'Help',
+            name: 'Help',
           },
         },
       ],
@@ -1235,7 +1235,7 @@ describe('DemoSchema', () => {
     expect(node.data.width).toBe(64);
     expect(node.data.height).toBe(64);
     expect(node.data.alt).toBe('help indicator');
-    expect(node.data.label).toBe('Help');
+    expect(node.data.name).toBe('Help');
   });
 
   it('parses an iconNode with an empty label (US-002 backwards compat sentinel)', () => {
@@ -1250,7 +1250,7 @@ describe('DemoSchema', () => {
           id: 'icon-1',
           type: 'iconNode' as const,
           position: { x: 0, y: 0 },
-          data: { icon: 'shopping-cart', label: '' },
+          data: { icon: 'shopping-cart', name: '' },
         },
       ],
       connectors: [],
@@ -1261,7 +1261,7 @@ describe('DemoSchema', () => {
     }
     const node = result.data.nodes[0];
     if (node?.type !== 'iconNode') throw new Error('expected iconNode');
-    expect(node.data.label).toBe('');
+    expect(node.data.name).toBe('');
   });
 
   it('rejects an iconNode with an empty icon string (US-008)', () => {
@@ -1330,13 +1330,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [{ id: 'c1', source: 'a', target: 'b', kind: 'default' as const, fontSize: 16 }],
@@ -1359,13 +1359,13 @@ describe('DemoSchema', () => {
           id: 'a',
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'b',
           type: 'stateNode' as const,
           position: { x: 100, y: 0 },
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [
@@ -1389,7 +1389,7 @@ describe('DemoSchema', () => {
           id: 'group-1',
           type: 'group' as const,
           position: { x: 10, y: 20 },
-          data: { label: 'Auth flow', width: 320, height: 220 },
+          data: { name: 'Auth flow', width: 320, height: 220 },
         },
       ],
       connectors: [],
@@ -1400,7 +1400,7 @@ describe('DemoSchema', () => {
     }
     const node = result.data.nodes[0];
     if (node?.type !== 'group') throw new Error('expected group node');
-    expect(node.data.label).toBe('Auth flow');
+    expect(node.data.name).toBe('Auth flow');
     expect(node.data.width).toBe(320);
     expect(node.data.height).toBe(220);
   });
@@ -1424,21 +1424,21 @@ describe('DemoSchema', () => {
           id: 'group-1',
           type: 'group' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'API', width: 320, height: 220 },
+          data: { name: 'API', width: 320, height: 220 },
         },
         {
           id: 'child-a',
           type: 'stateNode' as const,
           position: { x: 20, y: 40 },
           parentId: 'group-1',
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'child-b',
           type: 'stateNode' as const,
           position: { x: 180, y: 40 },
           parentId: 'group-1',
-          data: { label: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [],
@@ -1462,7 +1462,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
           parentId: 'ghost-group',
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [],
@@ -1485,7 +1485,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
           parentId: 'n1',
-          data: { label: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
       ],
       connectors: [],
@@ -1503,7 +1503,7 @@ describe('DemoSchema', () => {
           id: 'group-1',
           type: 'group' as const,
           position: { x: 0, y: 0 },
-          data: { label: 'G' },
+          data: { name: 'G' },
         },
         {
           id: 'p1',
@@ -1511,7 +1511,7 @@ describe('DemoSchema', () => {
           position: { x: 0, y: 0 },
           parentId: 'group-1',
           data: {
-            label: 'P',
+            name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
             playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
@@ -1522,7 +1522,7 @@ describe('DemoSchema', () => {
           type: 'stateNode' as const,
           position: { x: 0, y: 0 },
           parentId: 'group-1',
-          data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
         },
         {
           id: 'sh1',
@@ -1572,7 +1572,7 @@ describe('DemoSchema', () => {
           type: 'group' as const,
           position: { x: 0, y: 0 },
           data: {
-            label: 'API',
+            name: 'API',
             width: 320,
             height: 220,
             backgroundColor: 'slate' as const,
@@ -1678,7 +1678,7 @@ describe('DemoSchema', () => {
     expect(result.data.nodes).toHaveLength(3);
     const group = result.data.nodes.find((n) => n.id === 'group-1');
     if (!group || group.type !== 'group') throw new Error('expected group node');
-    expect(group.data.label).toBe('Auth flow');
+    expect(group.data.name).toBe('Auth flow');
     const children = result.data.nodes.filter((n) => n.parentId === 'group-1');
     expect(children).toHaveLength(2);
     expect(children.map((c) => c.id).sort()).toEqual(['child-a', 'child-b']);
@@ -1711,7 +1711,7 @@ describe('DemoSchema', () => {
 
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {
     const baseData = {
-      label: 'worker',
+      name: 'worker',
       kind: 'worker',
       stateSource: { kind: 'event' as const },
     };
@@ -1729,12 +1729,10 @@ describe('DemoSchema', () => {
     ).toBe(true);
   });
 
-  // US-011 (text-and-group-resize): free-text metadata fields available on
-  // every node variant. Two top-level fields on `data`: shortDescription
-  // (max 200 chars) and description (no length cap). Both optional so older
-  // demos round-trip unchanged. Distinct from `detail.summary` /
-  // `detail.description` (play/state-only).
-  describe('shortDescription / description metadata (US-011 text-and-group-resize)', () => {
+  // Three-field consolidation: every node variant exposes optional
+  // `description` (short body text) and `detail` (long-form sidebar text)
+  // alongside `name`. Both string-typed, both optional, both no length cap.
+  describe('description / detail metadata', () => {
     const makeDemoWithNode = (node: Record<string, unknown>) => ({
       version: 1 as const,
       name: 'meta-demo',
@@ -1742,7 +1740,7 @@ describe('DemoSchema', () => {
       connectors: [],
     });
 
-    it('round-trips shortDescription + description on every node variant', () => {
+    it('round-trips description + detail on every node variant', () => {
       const variants: Array<{ id: string; node: Record<string, unknown> }> = [
         {
           id: 'play',
@@ -1751,12 +1749,12 @@ describe('DemoSchema', () => {
             type: 'playNode',
             position: { x: 0, y: 0 },
             data: {
-              label: 'p',
+              name: 'p',
               kind: 'svc',
               stateSource: { kind: 'request' },
               playAction: { kind: 'http', method: 'GET', url: '/p' },
-              shortDescription: 'a play caption',
-              description: 'multi-line\nplay notes',
+              description: 'short body',
+              detail: 'long-form\nnotes',
             },
           },
         },
@@ -1767,11 +1765,11 @@ describe('DemoSchema', () => {
             type: 'stateNode',
             position: { x: 0, y: 0 },
             data: {
-              label: 's',
+              name: 's',
               kind: 'svc',
               stateSource: { kind: 'event' },
-              shortDescription: 'a state caption',
-              description: 'state notes',
+              description: 'short body',
+              detail: 'long-form notes',
             },
           },
         },
@@ -1783,8 +1781,8 @@ describe('DemoSchema', () => {
             position: { x: 0, y: 0 },
             data: {
               shape: 'rectangle',
-              shortDescription: 'a shape caption',
-              description: 'shape notes\nline 2',
+              description: 'short body',
+              detail: 'long-form\nnotes',
             },
           },
         },
@@ -1796,8 +1794,8 @@ describe('DemoSchema', () => {
             position: { x: 0, y: 0 },
             data: {
               path: 'assets/captioned.png',
-              shortDescription: 'an image caption',
-              description: 'image notes',
+              description: 'short body',
+              detail: 'long-form notes',
             },
           },
         },
@@ -1809,8 +1807,8 @@ describe('DemoSchema', () => {
             position: { x: 0, y: 0 },
             data: {
               icon: 'shopping-cart',
-              shortDescription: 'an icon caption',
-              description: 'icon notes',
+              description: 'short body',
+              detail: 'long-form notes',
             },
           },
         },
@@ -1821,9 +1819,9 @@ describe('DemoSchema', () => {
             type: 'group',
             position: { x: 0, y: 0 },
             data: {
-              label: 'group label',
-              shortDescription: 'a group caption',
-              description: 'group notes',
+              name: 'group label',
+              description: 'short body',
+              detail: 'long-form notes',
             },
           },
         },
@@ -1844,34 +1842,12 @@ describe('DemoSchema', () => {
       }
     });
 
-    it('accepts nodes with NO shortDescription / description (back-compat)', () => {
+    it('accepts nodes with NO description / detail (back-compat)', () => {
       const demo = makeDemoWithNode({
         id: 'n1',
         type: 'shapeNode',
         position: { x: 0, y: 0 },
         data: { shape: 'rectangle' },
-      });
-      expect(DemoSchema.safeParse(demo).success).toBe(true);
-    });
-
-    it('rejects shortDescription longer than 200 characters', () => {
-      const tooLong = 'a'.repeat(201);
-      const demo = makeDemoWithNode({
-        id: 'n1',
-        type: 'shapeNode',
-        position: { x: 0, y: 0 },
-        data: { shape: 'rectangle', shortDescription: tooLong },
-      });
-      expect(DemoSchema.safeParse(demo).success).toBe(false);
-    });
-
-    it('accepts shortDescription at exactly 200 characters', () => {
-      const justFits = 'a'.repeat(200);
-      const demo = makeDemoWithNode({
-        id: 'n1',
-        type: 'shapeNode',
-        position: { x: 0, y: 0 },
-        data: { shape: 'rectangle', shortDescription: justFits },
       });
       expect(DemoSchema.safeParse(demo).success).toBe(true);
     });
@@ -1902,7 +1878,7 @@ describe('DemoSchema', () => {
         id: 'n1',
         type: 'shapeNode',
         position: { x: 0, y: 0 },
-        data: { shape: 'rectangle', shortDescription: '', description: '' },
+        data: { shape: 'rectangle', description: '', detail: '' },
       });
       expect(DemoSchema.safeParse(demo).success).toBe(true);
     });
@@ -1935,7 +1911,7 @@ describe('DemoSchema', () => {
       const node = result.data.nodes[0];
       if (node?.type !== 'htmlNode') throw new Error('expected htmlNode');
       expect(node.data.htmlPath).toBe('blocks/html-1.html');
-      expect(node.data.label).toBeUndefined();
+      expect(node.data.name).toBeUndefined();
     });
 
     it('round-trips an htmlNode with label + every NodeVisualBaseShape field', () => {
@@ -1949,7 +1925,7 @@ describe('DemoSchema', () => {
             position: { x: 0, y: 0 },
             data: {
               htmlPath: 'blocks/card.html',
-              label: 'Promo card',
+              name: 'Promo card',
               width: 320,
               height: 200,
               borderColor: 'blue' as const,
@@ -1971,7 +1947,7 @@ describe('DemoSchema', () => {
       const node = result.data.nodes[0];
       if (node?.type !== 'htmlNode') throw new Error('expected htmlNode');
       expect(node.data.htmlPath).toBe('blocks/card.html');
-      expect(node.data.label).toBe('Promo card');
+      expect(node.data.name).toBe('Promo card');
       expect(node.data.width).toBe(320);
       expect(node.data.height).toBe(200);
       expect(node.data.borderColor).toBe('blue');
@@ -1983,7 +1959,7 @@ describe('DemoSchema', () => {
       expect(node.data.locked).toBe(true);
     });
 
-    it('round-trips shortDescription / description on an htmlNode (US-011 metadata)', () => {
+    it('round-trips description / detail on an htmlNode', () => {
       const demo = {
         version: 1 as const,
         name: 'html-meta',
@@ -1994,8 +1970,8 @@ describe('DemoSchema', () => {
             position: { x: 0, y: 0 },
             data: {
               htmlPath: 'blocks/x.html',
-              shortDescription: 'a card with x',
-              description: 'multi-line\nnotes',
+              description: 'short body',
+              detail: 'multi-line\nnotes',
             },
           },
         ],
@@ -2114,7 +2090,7 @@ describe('DemoSchema', () => {
             id: 's',
             type: 'stateNode' as const,
             position: { x: 0, y: 0 },
-            data: { label: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
+            data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
           },
           {
             id: 'html-1',
@@ -2144,7 +2120,7 @@ describe('DemoSchema', () => {
             id: 'group-1',
             type: 'group' as const,
             position: { x: 0, y: 0 },
-            data: { label: 'G' },
+            data: { name: 'G' },
           },
           {
             id: 'html-1',

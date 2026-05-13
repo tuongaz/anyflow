@@ -1409,177 +1409,48 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, [undoFn, redoFn, canUndo, canRedo]);
 
-  // Inline label edit on a node (PlayNode/StateNode title or ShapeNode label).
-  // Empty value is filtered out by the InlineEdit's `required` flag for
-  // PlayNode/StateNode; ShapeNode labels are optional and pass through here.
-  const onNodeLabelChange = useCallback(
-    (nodeId: string, label: string) => {
+  // Three-field consolidation: name (canvas header + sidebar header),
+  // description (canvas body + sidebar light-bold), detail (sidebar long-form
+  // only). All three share an optimistic-override + undo + keep-visible
+  // failure pattern: text edits stay visible on PATCH error (the user
+  // shouldn't see their typing snap back when the server hiccups); the undo
+  // entry is dropped so Cmd+Z doesn't replay a never-persisted change; the
+  // error surfaces in the non-blocking banner. Empty string clears the field
+  // on disk via mergeNodeUpdates' '' → delete handling.
+  const onNodeNameChange = useCallback(
+    (nodeId: string, name: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
-      // ImageNodeData has no `label`; the union narrowing here keeps prevLabel
-      // typed as `string | undefined` so the undo entry can restore it.
-      const prevLabel = node && 'label' in node.data ? node.data.label : undefined;
-      // US-014: undo must restore the previous label including the "no label"
-      // case. Sending `label: undefined` would be JSON-stripped to an empty
-      // PATCH body and have no effect on disk; substitute the empty-string
-      // sentinel which optional-label nodes (iconNode / shapeNode / group)
-      // treat as "clear". Required-label nodes (playNode/stateNode) never
-      // reach this branch because their `label` is `.min(1)` so prevLabel is
-      // always a non-empty string.
-      const undoLabel = prevLabel ?? '';
-      setNodeOverride(nodeId, { data: { label } } as Partial<DemoNode>);
+      const prevName = node && 'name' in node.data ? node.data.name : undefined;
+      // Undo must restore the previous name including the "no name" case.
+      // Required-name nodes (playNode/stateNode) always have a non-empty
+      // prevName; optional-name variants (icon/shape/group/html) treat '' as
+      // clear.
+      const undoName = prevName ?? '';
+      setNodeOverride(nodeId, { data: { name } } as Partial<DemoNode>);
       setEditError(null);
       markMutation();
       if (node) {
         pushUndo({
           do: async () => {
-            await updateNode(demoId, nodeId, { label });
+            await updateNode(demoId, nodeId, { name });
           },
           undo: async () => {
-            await updateNode(demoId, nodeId, { label: undoLabel });
+            await updateNode(demoId, nodeId, { name: undoName });
           },
-          coalesceKey: `node:${nodeId}:label`,
+          coalesceKey: `node:${nodeId}:name`,
         });
       }
-      updateNode(demoId, nodeId, { label }).catch((err) => {
-        // US-021: text edits keep the optimistic visible on failure (the user
-        // shouldn't see their typed text snap back when the server hiccups).
-        // The undo entry is dropped so a stray Cmd+Z doesn't replay a never-
-        // persisted change; the error surfaces via the non-blocking banner so
-        // the user can retry by editing again.
+      updateNode(demoId, nodeId, { name }).catch((err) => {
         if (node) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
-        console.error('updateNode label failed', err);
+        console.error('updateNode name failed', err);
       });
     },
     [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
-  // Inline description edit reuses detail.summary; we splice the new summary
-  // into the existing detail object so unrelated fields (fields[],
-  // dynamicSource, filePath) survive the round-trip.
   const onNodeDescriptionChange = useCallback(
-    (nodeId: string, summary: string) => {
-      if (!demoId) return;
-      const node = demoNodes?.find((n) => n.id === nodeId);
-      if (
-        !node ||
-        node.type === 'shapeNode' ||
-        node.type === 'imageNode' ||
-        node.type === 'iconNode' ||
-        node.type === 'group' ||
-        node.type === 'htmlNode'
-      )
-        return;
-      const prevDetail = node.data.detail;
-      const nextDetail = { ...(prevDetail ?? {}), summary };
-      setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);
-      setEditError(null);
-      markMutation();
-      pushUndo({
-        do: async () => {
-          await updateNode(demoId, nodeId, { detail: nextDetail });
-        },
-        undo: async () => {
-          await updateNode(demoId, nodeId, { detail: prevDetail });
-        },
-        coalesceKey: `node:${nodeId}:description`,
-      });
-      updateNode(demoId, nodeId, { detail: nextDetail }).catch((err) => {
-        // US-021: keep optimistic visible — see `onNodeLabelChange` for the
-        // failure-mode rationale.
-        dropUndoTop();
-        setEditError(err instanceof Error ? err.message : String(err));
-        console.error('updateNode description failed', err);
-      });
-    },
-    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
-  );
-
-  // US-005: detail-panel inline edit of the long-form `detail.description`
-  // field (distinct from `detail.summary` which is the on-node short text).
-  // Same optimistic + undo + error pattern as onNodeDescriptionChange above.
-  const onDetailDescriptionChange = useCallback(
-    (nodeId: string, description: string) => {
-      if (!demoId) return;
-      const node = demoNodes?.find((n) => n.id === nodeId);
-      if (
-        !node ||
-        node.type === 'shapeNode' ||
-        node.type === 'imageNode' ||
-        node.type === 'iconNode' ||
-        node.type === 'group' ||
-        node.type === 'htmlNode'
-      )
-        return;
-      const prevDetail = node.data.detail;
-      // Empty string clears the field so the description block stops rendering
-      // (parity with the existing `detail?.description || detail?.summary`
-      // gate in detail-panel.tsx).
-      const nextDescription = description === '' ? undefined : description;
-      const nextDetail = { ...(prevDetail ?? {}), description: nextDescription };
-      setNodeOverride(nodeId, { data: { detail: nextDetail } } as Partial<DemoNode>);
-      setEditError(null);
-      markMutation();
-      pushUndo({
-        do: async () => {
-          await updateNode(demoId, nodeId, { detail: nextDetail });
-        },
-        undo: async () => {
-          await updateNode(demoId, nodeId, { detail: prevDetail });
-        },
-        coalesceKey: `node:${nodeId}:detail-description`,
-      });
-      updateNode(demoId, nodeId, { detail: nextDetail }).catch((err) => {
-        dropUndoTop();
-        setEditError(err instanceof Error ? err.message : String(err));
-        console.error('updateNode detail description failed', err);
-      });
-    },
-    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
-  );
-
-  // US-011 (text-and-group-resize): side-panel edit of the top-level
-  // `data.shortDescription` metadata field — works for every node variant
-  // (shape, play, state, image, icon, group). Distinct from
-  // `onNodeDescriptionChange` above which writes to `detail.summary` on
-  // play/state nodes only. Empty string clears the field on disk (the merge
-  // logic in apps/studio/src/operations.ts:mergeNodeUpdates drops the key
-  // entirely when '' arrives, so the demo.json stays compact).
-  const onNodeShortDescriptionChange = useCallback(
-    (nodeId: string, next: string) => {
-      if (!demoId) return;
-      const node = demoNodes?.find((n) => n.id === nodeId);
-      if (!node) return;
-      const prev = node.data.shortDescription ?? '';
-      setNodeOverride(nodeId, { data: { shortDescription: next } } as Partial<DemoNode>);
-      setEditError(null);
-      markMutation();
-      pushUndo({
-        do: async () => {
-          await updateNode(demoId, nodeId, { shortDescription: next });
-        },
-        undo: async () => {
-          await updateNode(demoId, nodeId, { shortDescription: prev });
-        },
-        coalesceKey: `node:${nodeId}:shortDescription`,
-      });
-      updateNode(demoId, nodeId, { shortDescription: next }).catch((err) => {
-        // US-021: keep optimistic visible — see `onNodeLabelChange` for the
-        // failure-mode rationale.
-        dropUndoTop();
-        setEditError(err instanceof Error ? err.message : String(err));
-        console.error('updateNode shortDescription failed', err);
-      });
-    },
-    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
-  );
-
-  // US-011 (text-and-group-resize): side-panel edit of the top-level
-  // `data.description` metadata field. Distinct from `onDetailDescriptionChange`
-  // above which writes to `detail.description` (play/state only). Empty string
-  // clears (see merge-logic note on `onNodeShortDescriptionChange`).
-  const onNodeMetaDescriptionChange = useCallback(
     (nodeId: string, next: string) => {
       if (!demoId) return;
       const node = demoNodes?.find((n) => n.id === nodeId);
@@ -1595,12 +1466,39 @@ export function DemoView({
         undo: async () => {
           await updateNode(demoId, nodeId, { description: prev });
         },
-        coalesceKey: `node:${nodeId}:description-meta`,
+        coalesceKey: `node:${nodeId}:description`,
       });
       updateNode(demoId, nodeId, { description: next }).catch((err) => {
         dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
         console.error('updateNode description failed', err);
+      });
+    },
+    [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
+  );
+
+  const onNodeDetailChange = useCallback(
+    (nodeId: string, next: string) => {
+      if (!demoId) return;
+      const node = demoNodes?.find((n) => n.id === nodeId);
+      if (!node) return;
+      const prev = node.data.detail ?? '';
+      setNodeOverride(nodeId, { data: { detail: next } } as Partial<DemoNode>);
+      setEditError(null);
+      markMutation();
+      pushUndo({
+        do: async () => {
+          await updateNode(demoId, nodeId, { detail: next });
+        },
+        undo: async () => {
+          await updateNode(demoId, nodeId, { detail: prev });
+        },
+        coalesceKey: `node:${nodeId}:detail`,
+      });
+      updateNode(demoId, nodeId, { detail: next }).catch((err) => {
+        dropUndoTop();
+        setEditError(err instanceof Error ? err.message : String(err));
+        console.error('updateNode detail failed', err);
       });
     },
     [demoId, demoNodes, setNodeOverride, pushUndo, dropUndoTop, markMutation],
@@ -2152,7 +2050,7 @@ export function DemoView({
         });
       }
       updateConnector(demoId, connId, { label }).catch((err) => {
-        // US-021: keep optimistic visible — see `onNodeLabelChange` for the
+        // US-021: keep optimistic visible — see `onNodeNameChange` for the
         // failure-mode rationale.
         if (conn) dropUndoTop();
         setEditError(err instanceof Error ? err.message : String(err));
@@ -3128,7 +3026,7 @@ export function DemoView({
           onNodeResize={onNodeResize}
           onGroupResizeWithChildren={onGroupResizeWithChildren}
           onMultiResize={onMultiResize}
-          onNodeLabelChange={onNodeLabelChange}
+          onNodeNameChange={onNodeNameChange}
           onNodeDescriptionChange={onNodeDescriptionChange}
           onConnectorLabelChange={onConnectorLabelChange}
           onCreateShapeNode={onCreateShapeNode}
@@ -3146,7 +3044,6 @@ export function DemoView({
           onUnpinEndpoint={demoId ? onUnpinEndpoint : undefined}
           onReorderNode={onReorderNode}
           onDeleteNode={onDeleteNode}
-          onToggleNodeLock={demoId ? onToggleNodeLock : undefined}
           onCopyNode={(nodeId) => onCopyNodes([nodeId])}
           onPasteAt={onPasteNodes}
           onCopySelection={demoId ? onCopyNodes : undefined}
@@ -3195,16 +3092,13 @@ export function DemoView({
         demoId={detail?.id ?? null}
         node={inspectedNode}
         connector={inspectedConnector}
-        run={inspectedRun}
-        recentEvents={inspectedEvents}
-        onDescriptionChange={onDetailDescriptionChange}
-        onShortDescriptionChange={onNodeShortDescriptionChange}
-        onMetaDescriptionChange={onNodeMetaDescriptionChange}
-        // US-013: side-panel Label input routes through the same dispatcher as
-        // the inline group-label editor (group-node.tsx), so the existing
-        // `node:<id>:label` coalesce key collapses panel + inline edits within
-        // a typing session into a single undo entry.
-        onLabelChange={onNodeLabelChange}
+        // Three-field consolidation: panel + canvas dispatchers share the
+        // same coalesce keys (`node:<id>:name|description|detail`) so a
+        // typing session across the canvas and sidebar produces a single
+        // undo entry.
+        onNameChange={onNodeNameChange}
+        onDescriptionChange={onNodeDescriptionChange}
+        onDetailChange={onNodeDetailChange}
         onClose={() => {
           // US-003: panel state is decoupled from selection — closing the
           // panel only clears the open-target. The user's selection ring

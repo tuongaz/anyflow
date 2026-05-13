@@ -14,7 +14,7 @@ const VALID_DEMO = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'POST /checkout',
+        name: 'POST /checkout',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: {
@@ -291,7 +291,7 @@ const VALID_DEMO_THREE_NODES = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'A',
+        name: 'A',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -302,7 +302,7 @@ const VALID_DEMO_THREE_NODES = {
       type: 'playNode',
       position: { x: 200, y: 0 },
       data: {
-        label: 'B',
+        name: 'B',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
@@ -313,7 +313,7 @@ const VALID_DEMO_THREE_NODES = {
       type: 'playNode',
       position: { x: 400, y: 0 },
       data: {
-        label: 'C',
+        name: 'C',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
@@ -354,7 +354,7 @@ describe('anydemo_add_node', () => {
       node: {
         type: 'shapeNode',
         position: { x: 100, y: 200 },
-        data: { shape: 'rectangle', label: 'Note A' },
+        data: { shape: 'rectangle', name: 'Note A' },
       },
     });
     const body = expectOk(envelope) as { ok: boolean; id: string };
@@ -524,7 +524,8 @@ describe('anydemo_patch_node', () => {
         'demoId',
         'nodeId',
         'position',
-        'label',
+        'name',
+        'description',
         'detail',
         'borderColor',
         'backgroundColor',
@@ -536,8 +537,6 @@ describe('anydemo_patch_node', () => {
         'width',
         'height',
         'shape',
-        'shortDescription',
-        'description',
       ]),
     );
     const required = tool?.inputSchema?.required as string[];
@@ -551,7 +550,7 @@ describe('anydemo_patch_node', () => {
     const envelope = await callTool(app, 'anydemo_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
-      label: 'POST /checkout (renamed)',
+      name: 'POST /checkout (renamed)',
     });
     expect(expectOk(envelope)).toEqual({ ok: true });
 
@@ -559,11 +558,11 @@ describe('anydemo_patch_node', () => {
       nodes: Array<{
         id: string;
         position: { x: number; y: number };
-        data: { label: string; playAction: { kind: string } };
+        data: { name: string; playAction: { kind: string } };
       }>;
     };
     const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
-    expect(node?.data.label).toBe('POST /checkout (renamed)');
+    expect(node?.data.name).toBe('POST /checkout (renamed)');
     // Untouched fields preserved.
     expect(node?.data.playAction.kind).toBe('http');
     expect(node?.position).toEqual({ x: 0, y: 0 });
@@ -576,7 +575,7 @@ describe('anydemo_patch_node', () => {
     const envelope = await callTool(app, 'anydemo_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
-      label: 'Multi-Edit',
+      name: 'Multi-Edit',
       borderColor: 'blue',
       backgroundColor: 'amber',
       width: 240,
@@ -588,7 +587,7 @@ describe('anydemo_patch_node', () => {
       nodes: Array<{
         id: string;
         data: {
-          label: string;
+          name: string;
           borderColor?: string;
           backgroundColor?: string;
           width?: number;
@@ -597,7 +596,7 @@ describe('anydemo_patch_node', () => {
       }>;
     };
     const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
-    expect(node?.data.label).toBe('Multi-Edit');
+    expect(node?.data.name).toBe('Multi-Edit');
     expect(node?.data.borderColor).toBe('blue');
     expect(node?.data.backgroundColor).toBe('amber');
     expect(node?.data.width).toBe(240);
@@ -653,7 +652,7 @@ describe('anydemo_patch_node', () => {
     const envelope = await callTool(app, 'anydemo_patch_node', {
       demoId: 'does-not-exist',
       nodeId: 'api-checkout',
-      label: 'x',
+      name: 'x',
     });
     expect(expectError(envelope)).toBe('unknown demo');
   });
@@ -665,7 +664,7 @@ describe('anydemo_patch_node', () => {
     const envelope = await callTool(app, 'anydemo_patch_node', {
       demoId: reg.id,
       nodeId: 'missing',
-      label: 'x',
+      name: 'x',
     });
     expect(expectError(envelope)).toBe('Unknown nodeId: missing');
   });
@@ -675,11 +674,11 @@ describe('anydemo_patch_node', () => {
     const { demoFile, reg } = await registerFixture(app);
     const before = readFileSync(demoFile, 'utf8');
 
-    // Empty label on a functional playNode trips DemoSchema after merge.
+    // Empty name on a functional playNode trips DemoSchema after merge.
     const envelope = await callTool(app, 'anydemo_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
-      label: '',
+      name: '',
     });
     expect(expectError(envelope)).toContain('Demo failed schema validation');
     expect(readFileSync(demoFile, 'utf8')).toBe(before);
@@ -700,7 +699,7 @@ describe('anydemo_patch_node', () => {
           position: { x: 0, y: 0 },
           futureField: 'survives',
           data: {
-            label: 'Future',
+            name: 'Future',
             kind: 'service',
             stateSource: { kind: 'request' },
             playAction: { kind: 'http', method: 'POST', url: 'http://example.test/fc' },
@@ -719,16 +718,16 @@ describe('anydemo_patch_node', () => {
     const envelope = await callTool(app, 'anydemo_patch_node', {
       demoId: reg.id,
       nodeId: 'fc',
-      label: 'After Patch',
+      name: 'After Patch',
     });
     expect(expectOk(envelope)).toEqual({ ok: true });
 
     const demoFile = join(repoPath, '.anydemo', 'demo.json');
     const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
-      nodes: Array<{ id: string; futureField?: string; data: { label: string } }>;
+      nodes: Array<{ id: string; futureField?: string; data: { name: string } }>;
     };
     expect(onDisk.nodes[0]?.futureField).toBe('survives');
-    expect(onDisk.nodes[0]?.data.label).toBe('After Patch');
+    expect(onDisk.nodes[0]?.data.name).toBe('After Patch');
   });
 });
 
@@ -743,7 +742,7 @@ const VALID_DEMO_TWO_NODES = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'A',
+        name: 'A',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -754,7 +753,7 @@ const VALID_DEMO_TWO_NODES = {
       type: 'playNode',
       position: { x: 200, y: 0 },
       data: {
-        label: 'B',
+        name: 'B',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },

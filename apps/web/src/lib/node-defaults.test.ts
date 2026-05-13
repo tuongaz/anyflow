@@ -17,19 +17,19 @@ describe('buildNewShapeData', () => {
     expect(data.fontSize).toBe(NEW_NODE_FONT_SIZE);
   });
 
-  it('ellipse gets borderSize=1 and fontSize=12', () => {
+  it('ellipse gets the default borderSize + fontSize', () => {
     const data = buildNewShapeData('ellipse', { width: 160, height: 100 });
-    expect(data.borderSize).toBe(1);
-    expect(data.fontSize).toBe(12);
+    expect(data.borderSize).toBe(NEW_NODE_BORDER_WIDTH);
+    expect(data.fontSize).toBe(NEW_NODE_FONT_SIZE);
   });
 
-  it('sticky gets borderSize=1 and fontSize=12', () => {
+  it('sticky gets the default borderSize + fontSize', () => {
     const data = buildNewShapeData('sticky', { width: 180, height: 180 });
-    expect(data.borderSize).toBe(1);
-    expect(data.fontSize).toBe(12);
+    expect(data.borderSize).toBe(NEW_NODE_BORDER_WIDTH);
+    expect(data.fontSize).toBe(NEW_NODE_FONT_SIZE);
   });
 
-  it('text variant gets fontSize=12 but NO borderSize (text stays chromeless)', () => {
+  it('text variant gets the default fontSize but NO borderSize (text stays chromeless)', () => {
     const data = buildNewShapeData('text', { width: 120, height: 36 });
     expect(data.shape).toBe('text');
     expect(data.fontSize).toBe(NEW_NODE_FONT_SIZE);
@@ -82,11 +82,11 @@ describe('buildNewGroupData', () => {
 });
 
 describe('constants', () => {
-  it('NEW_NODE_BORDER_WIDTH = 1 (wireframe-style thin border)', () => {
-    expect(NEW_NODE_BORDER_WIDTH).toBe(1);
+  it('NEW_NODE_BORDER_WIDTH = 3', () => {
+    expect(NEW_NODE_BORDER_WIDTH).toBe(3);
   });
 
-  it('NEW_NODE_FONT_SIZE = 12 (compact label size)', () => {
-    expect(NEW_NODE_FONT_SIZE).toBe(12);
+  it('NEW_NODE_FONT_SIZE = 17', () => {
+    expect(NEW_NODE_FONT_SIZE).toBe(17);
   });
 });

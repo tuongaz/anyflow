@@ -10,7 +10,7 @@
         "y": -55.225323104613494
       },
       "data": {
-        "label": "POST /checkout",
+        "name": "POST /checkout",
         "kind": "service",
         "stateSource": {
           "kind": "request"
@@ -24,24 +24,7 @@
             "customerId": "cust_1"
           }
         },
-        "detail": {
-          "summary": "Creates a checkout session and emits a fulfillment event.",
-          "fields": [
-            {
-              "label": "Service",
-              "value": "checkout-api"
-            },
-            {
-              "label": "Auth",
-              "value": "Bearer token"
-            }
-          ],
-          "dynamicSource": {
-            "kind": "http",
-            "method": "GET",
-            "url": "http://localhost:3019/admin/checkout-stats"
-          }
-        },
+        "description": "Creates a checkout session and emits a fulfillment event.",
         "width": 201,
         "height": 204
       }
@@ -54,20 +37,12 @@
         "y": -20.725323104613494
       },
       "data": {
-        "label": "Fulfillment worker",
+        "name": "Fulfillment worker",
         "kind": "worker",
         "stateSource": {
           "kind": "event"
         },
-        "detail": {
-          "summary": "Background worker that processes checkout events.",
-          "fields": [
-            {
-              "label": "Queue",
-              "value": "checkout.fulfillment"
-            }
-          ]
-        }
+        "description": "Background worker that processes checkout events."
       }
     }
   ],

@@ -1,7 +1,9 @@
 import { IconPickerPopover } from '@/components/icon-picker-popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, Code2, Database, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import { Circle, Code2, Database, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import { useState } from 'react';
 
 /**
  * US-017: dataTransfer MIME-like type used by the HTML block toolbar tile to
@@ -51,21 +53,31 @@ export interface ToolbarShapeEntry {
   Icon: typeof Square;
 }
 
-// Exported so US-015's drop-on-pane popover can list the same set of creatable
-// node types (matching icons + labels) without duplicating the registry.
-export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
+// Primary shapes get their own tile inline in the toolbar — these are the
+// generic building blocks every diagram needs.
+const PRIMARY_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'rectangle', label: 'Rectangle', Icon: Square },
   { shape: 'ellipse', label: 'Ellipse', Icon: Circle },
   { shape: 'sticky', label: 'Sticky note', Icon: StickyNote },
   { shape: 'text', label: 'Text', Icon: Type },
-  // US-010: first illustrative shape entry. Drag-create commits a shapeNode
-  // with `data.shape: 'database'`; the ghost preview in demo-canvas.tsx
-  // renders <DatabaseShape> directly (not the wrapper chrome) so the preview
-  // matches the committed cylinder visual.
+];
+
+// Illustrative shapes live behind a single "Shape" toolbar trigger that
+// opens a popover. Append-only as more illustrative shapes land.
+const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
+  // US-010: drag-create commits a shapeNode with `data.shape: 'database'`;
+  // the ghost preview in demo-canvas.tsx renders <DatabaseShape> directly
+  // (not the wrapper chrome) so the preview matches the committed visual.
   { shape: 'database', label: 'Database', Icon: Database },
 ];
 
+// Combined list, exported so US-015's drop-on-pane popover can list the same
+// set of creatable node types (matching icons + labels) without duplicating
+// the registry.
+export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [...PRIMARY_SHAPES, ...ILLUSTRATIVE_SHAPES];
+
 const INSERT_ICON_LABEL = 'Insert icon';
+const SHAPE_PICKER_LABEL = 'Shape';
 
 // US-020: the "Tidy layout" (Auto Align) button used to live here, between the
 // shapes and the icon picker. It moved to the bottom-left Controls cluster in
@@ -80,12 +92,19 @@ export function CanvasToolbar({
   onPickIcon,
   htmlBlockEnabled,
 }: CanvasToolbarProps) {
+  // The illustrative-shape picker is self-contained — open state lives in
+  // the toolbar since there's no insert/replace mode duality like the icon
+  // picker has.
+  const [shapePickerOpen, setShapePickerOpen] = useState(false);
+  const illustrativeActive =
+    activeShape !== null && ILLUSTRATIVE_SHAPES.some((s) => s.shape === activeShape);
+
   return (
     <div
       data-testid="canvas-toolbar"
       className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
     >
-      {TOOLBAR_SHAPES.map(({ shape, label, Icon }) => {
+      {PRIMARY_SHAPES.map(({ shape, label, Icon }) => {
         const active = activeShape === shape;
         return (
           <button
@@ -108,6 +127,67 @@ export function CanvasToolbar({
           </button>
         );
       })}
+      <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
+      <Popover open={shapePickerOpen} onOpenChange={setShapePickerOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            data-testid="toolbar-shape-picker"
+            aria-label={SHAPE_PICKER_LABEL}
+            aria-pressed={shapePickerOpen || illustrativeActive}
+            title={SHAPE_PICKER_LABEL}
+            className={cn(
+              'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+              shapePickerOpen || illustrativeActive
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
+            <Shapes className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="right"
+          sideOffset={6}
+          className="w-auto p-1"
+          data-testid="shape-picker-popover"
+          onOpenAutoFocus={(e) => {
+            // Keep keyboard focus on the canvas so the wrapper-level ESC
+            // handler still works — mirrors the drop-popover convention.
+            e.preventDefault();
+          }}
+        >
+          <div role="menu" aria-label="More shapes" className="flex flex-col gap-0.5">
+            {ILLUSTRATIVE_SHAPES.map(({ shape, label, Icon }) => {
+              const active = activeShape === shape;
+              return (
+                <button
+                  key={shape}
+                  type="button"
+                  role="menuitem"
+                  data-testid={`shape-picker-${shape}`}
+                  data-active={active ? 'true' : 'false'}
+                  aria-pressed={active}
+                  onClick={() => {
+                    onSelectShape(active ? null : shape);
+                    setShapePickerOpen(false);
+                  }}
+                  className={cn(
+                    'flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none',
+                  )}
+                >
+                  <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
       {onPickIcon ? (
         <>
           <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />

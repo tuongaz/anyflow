@@ -26,7 +26,7 @@ const VALID_DEMO_TWO_NODES = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'A',
+        name: 'A',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -37,7 +37,7 @@ const VALID_DEMO_TWO_NODES = {
       type: 'playNode',
       position: { x: 200, y: 0 },
       data: {
-        label: 'B',
+        name: 'B',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
@@ -62,7 +62,7 @@ const VALID_DEMO_THREE_NODES = {
       type: 'playNode',
       position: { x: 0, y: 0 },
       data: {
-        label: 'A',
+        name: 'A',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
@@ -73,7 +73,7 @@ const VALID_DEMO_THREE_NODES = {
       type: 'playNode',
       position: { x: 200, y: 0 },
       data: {
-        label: 'B',
+        name: 'B',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
@@ -84,7 +84,7 @@ const VALID_DEMO_THREE_NODES = {
       type: 'playNode',
       position: { x: 400, y: 0 },
       data: {
-        label: 'C',
+        name: 'C',
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
@@ -223,7 +223,7 @@ const SCENARIOS: ParityScenario[] = [
         id: 'parity-new',
         type: 'shapeNode',
         position: { x: 100, y: 100 },
-        data: { shape: 'rectangle', label: 'New' },
+        data: { shape: 'rectangle', name: 'New' },
       };
       return {
         demoFile: fix.demoFile,
@@ -237,7 +237,7 @@ const SCENARIOS: ParityScenario[] = [
     toolName: 'anydemo_patch_node',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_TWO_NODES);
-      const body = { label: 'Renamed', borderColor: 'blue' as const, width: 200 };
+      const body = { name: 'Renamed', borderColor: 'blue' as const, width: 200 };
       return {
         demoFile: fix.demoFile,
         runRest: () => restJson(fix.app, 'PATCH', `/api/demos/${fix.demoId}/nodes/a`, body),

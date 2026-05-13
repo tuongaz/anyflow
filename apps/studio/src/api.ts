@@ -34,7 +34,7 @@ import {
   reorderNodeImpl,
   resolveDemoPath,
 } from './operations.ts';
-import { fetchDynamicDetail, runPlay } from './proxy.ts';
+import { runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
 import { DemoSchema } from './schema.ts';
 import { type Spawner, defaultSpawner } from './shellout.ts';
@@ -649,52 +649,6 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: resetActionError, calledResetAction }, 502);
     }
     return c.json({ ok: true, calledResetAction });
-  });
-
-  api.post('/demos/:id/nodes/:nodeId/detail', async (c) => {
-    const id = c.req.param('id');
-    const nodeId = c.req.param('nodeId');
-    const entry = registry.getById(id);
-    if (!entry) return c.json({ error: 'unknown demo' }, 404);
-
-    // Re-read on each call so the user's latest edit drives the dynamic fetch.
-    const fullPath = resolveDemoPath(entry.repoPath, entry.demoPath);
-    if (!existsSync(fullPath)) {
-      return c.json({ error: `Demo file not found: ${fullPath}` }, 404);
-    }
-    let raw: unknown;
-    try {
-      raw = await Bun.file(fullPath).json();
-    } catch (err) {
-      return c.json(
-        {
-          error: `Demo file is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-        },
-        400,
-      );
-    }
-    const parsed = DemoSchema.safeParse(raw);
-    if (!parsed.success) {
-      return c.json({ error: 'Demo failed schema validation', issues: parsed.error.issues }, 400);
-    }
-
-    const node = parsed.data.nodes.find((n) => n.id === nodeId);
-    if (!node) return c.json({ error: `Unknown nodeId: ${nodeId}` }, 404);
-
-    const dynamicSource =
-      node.type === 'shapeNode' ||
-      node.type === 'imageNode' ||
-      node.type === 'iconNode' ||
-      node.type === 'group' ||
-      node.type === 'htmlNode'
-        ? undefined
-        : node.data.detail?.dynamicSource;
-    if (!dynamicSource) {
-      return c.json({ error: `Node ${nodeId} has no dynamicSource` }, 404);
-    }
-
-    const result = await fetchDynamicDetail(dynamicSource);
-    return c.json(result);
   });
 
   // PATCH a single node's position back into the on-disk demo.json. This is

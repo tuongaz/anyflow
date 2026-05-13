@@ -346,7 +346,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
   {
     name: 'anydemo_patch_node',
     description:
-      'Update fields on an existing node (position, label, detail, colors, border, font, shape, dimensions).',
+      'Update fields on an existing node (position, name, description, detail, colors, border, font, shape, dimensions).',
     inputSchema: inputSchemaFromZod(PatchNodeInputSchema),
     handler: async (args) => {
       const parsed = PatchNodeInputSchema.safeParse(args);

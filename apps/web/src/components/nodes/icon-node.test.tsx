@@ -143,18 +143,18 @@ describe('IconNode', () => {
     expect(lucide).not.toBeNull();
   });
 
-  it('renders no caption element when data.label is absent or empty (US-002)', () => {
+  it('renders no caption element when data.name is absent or empty (US-002)', () => {
     const hasLabel = (tree: unknown) =>
       findAll(
         tree,
         (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'icon-node-label',
       );
     expect(hasLabel(callIconNode({ icon: 'shopping-cart' }))).toHaveLength(0);
-    expect(hasLabel(callIconNode({ icon: 'shopping-cart', label: '' }))).toHaveLength(0);
+    expect(hasLabel(callIconNode({ icon: 'shopping-cart', name: '' }))).toHaveLength(0);
   });
 
-  it('renders the caption text below the icon when data.label is set (US-002)', () => {
-    const tree = callIconNode({ icon: 'shopping-cart', label: 'Cart' });
+  it('renders the caption text below the icon when data.name is set (US-002)', () => {
+    const tree = callIconNode({ icon: 'shopping-cart', name: 'Cart' });
     const labels = findAll(
       tree,
       (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'icon-node-label',
@@ -293,12 +293,12 @@ describe('IconNode', () => {
     expect(onResize).toHaveBeenCalledWith('n1', { width: 200, height: 120, x: 10, y: 20 });
   });
 
-  it('dblclick enters inline label-edit mode when onLabelChange is wired (US-004)', () => {
+  it('dblclick enters inline label-edit mode when onNameChange is wired (US-004)', () => {
     // US-004: dblclick now enters inline label-edit mode (replacing the
     // US-016 picker-on-dblclick binding; the picker is now reachable via
     // the US-003 right-click menu item).
-    const onLabelChange = mock(() => {});
-    const tree = callIconNode({ icon: 'shopping-cart', onLabelChange });
+    const onNameChange = mock(() => {});
+    const tree = callIconNode({ icon: 'shopping-cart', onNameChange });
     if (!isElement(tree)) throw new Error('IconNode did not return a React element');
     const onDoubleClick = tree.props.onDoubleClick as
       | ((e: { stopPropagation: () => void }) => void)
@@ -311,19 +311,19 @@ describe('IconNode', () => {
     const stopPropagation = mock(() => {});
     onDoubleClick?.({ stopPropagation });
     expect(stopPropagation).toHaveBeenCalledTimes(1);
-    // The handler does NOT call onLabelChange directly — it flips local
+    // The handler does NOT call onNameChange directly — it flips local
     // editing state, then the InlineEdit commits on Enter/blur.
-    expect(onLabelChange).not.toHaveBeenCalled();
+    expect(onNameChange).not.toHaveBeenCalled();
   });
 
   it('renders an InlineEdit positioned below the icon when editing (US-004)', () => {
     // Force isEditing=true via the useState override so the editing branch
     // renders. The InlineEdit wires the prior label as `initialValue`,
-    // forwards commits to `data.onLabelChange(id, ...)`, and clears the
+    // forwards commits to `data.onNameChange(id, ...)`, and clears the
     // editing flag via `onExit`.
-    const onLabelChange = mock(() => {});
+    const onNameChange = mock(() => {});
     const tree = callIconNode(
-      { icon: 'shopping-cart', label: 'Cart', onLabelChange },
+      { icon: 'shopping-cart', name: 'Cart', onNameChange },
       { id: 'icon-99' } as Partial<NodeProps>,
       // index 0 = useResizeGesture's `isResizing` (passthrough); index 1 =
       // the icon-node's own `isEditing` flag (force true to render the editor).
@@ -344,13 +344,13 @@ describe('IconNode', () => {
     expect(editorProps.field).toBe('icon-node-label');
     expect(editorProps.placeholder).toBe('Label');
     editorProps.onCommit('Basket');
-    expect(onLabelChange).toHaveBeenCalledTimes(1);
-    expect(onLabelChange).toHaveBeenCalledWith('icon-99', 'Basket');
+    expect(onNameChange).toHaveBeenCalledTimes(1);
+    expect(onNameChange).toHaveBeenCalledWith('icon-99', 'Basket');
 
     // Saving an empty string clears the label (US-002 hides the caption when
-    // data.label is empty); the icon-node simply forwards the value.
+    // data.name is empty); the icon-node simply forwards the value.
     editorProps.onCommit('');
-    expect(onLabelChange).toHaveBeenLastCalledWith('icon-99', '');
+    expect(onNameChange).toHaveBeenLastCalledWith('icon-99', '');
 
     // The read-mode caption is replaced by the editor while editing — no
     // duplicate label rendered.
@@ -371,8 +371,8 @@ describe('IconNode', () => {
   });
 
   it('empty label + editing: InlineEdit initialValue is empty (US-004)', () => {
-    const onLabelChange = mock(() => {});
-    const tree = callIconNode({ icon: 'shopping-cart', onLabelChange }, undefined, [
+    const onNameChange = mock(() => {});
+    const tree = callIconNode({ icon: 'shopping-cart', onNameChange }, undefined, [
       undefined,
       true,
     ]);
@@ -440,7 +440,7 @@ describe('IconNode', () => {
     ).toHaveLength(0);
   });
 
-  it('dblclick is a no-op (and does NOT stop propagation) when onLabelChange is absent (US-004)', () => {
+  it('dblclick is a no-op (and does NOT stop propagation) when onNameChange is absent (US-004)', () => {
     // Read-only / no-demo contexts don't wire the callback; the wrapper
     // should still render with an onDoubleClick handler, but the handler
     // bails before stopPropagation so a wrapping listener (e.g. the canvas

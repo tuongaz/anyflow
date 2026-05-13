@@ -10,7 +10,7 @@
         "y": -1223.232707637383
       },
       "data": {
-        "label": "POST /todos/:id/complete",
+        "name": "POST /todos/:id/complete",
         "kind": "service",
         "stateSource": {
           "kind": "request"
@@ -21,19 +21,7 @@
           "url": "http://localhost:3030/todos/seed-1/complete",
           "body": {}
         },
-        "detail": {
-          "summary": "Marks the seed todo (id: seed-1) complete and publishes a todo.completed event onto the in-memory bus, which the worker picks up.",
-          "fields": [
-            {
-              "label": "Target id",
-              "value": "seed-1"
-            },
-            {
-              "label": "Triggers",
-              "value": "todo.completed event"
-            }
-          ]
-        }
+        "description": "Marks the seed todo (id: seed-1) complete and publishes a todo.completed event onto the in-memory bus, which the worker picks up."
       }
     },
     {
@@ -44,21 +32,17 @@
         "y": -1064.9568891004728
       },
       "data": {
-        "label": "todo-worker",
+        "name": "todo-worker",
         "kind": "worker",
         "stateSource": {
           "kind": "event"
         },
-        "detail": {
-          "summary": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
-          "description": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done)."
-        },
+        "description": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
+        "detail": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
         "borderColor": "green",
         "width": 300,
         "height": 194,
-        "backgroundColor": "red",
-        "description": "sds This is good ",
-        "shortDescription": "asdsadsa"
+        "backgroundColor": "red"
       }
     },
     {
@@ -69,21 +53,17 @@
         "y": -643.9206911024411
       },
       "data": {
-        "label": "todo-worker",
+        "name": "todo-worker",
         "kind": "worker",
         "stateSource": {
           "kind": "event"
         },
-        "detail": {
-          "summary": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
-          "description": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done)."
-        },
+        "description": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
+        "detail": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
         "width": 300,
         "height": 194,
         "borderColor": "green",
-        "backgroundColor": "red",
-        "shortDescription": "asdsadsa",
-        "description": "sds This is good "
+        "backgroundColor": "red"
       }
     }
   ],

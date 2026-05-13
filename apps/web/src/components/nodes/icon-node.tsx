@@ -15,12 +15,12 @@ export type IconNodeRuntimeData = IconNodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
-  // US-004: persist the inline-edited label (PATCH /nodes/:id { label }).
-  // Mirrors the shape-node label-edit path; demo-view's onNodeLabelChange
+  // Persist the inline-edited name (PATCH /nodes/:id { name }).
+  // Mirrors the shape-node name-edit path; demo-view's onNodeNameChange
   // pushes a single coalesced undo entry per edit session (500ms window).
   // Absent → dblclick is a no-op (the no-demo / readonly contexts where
-  // label edits aren't wired).
-  onLabelChange?: (nodeId: string, label: string) => void;
+  // name edits aren't wired).
+  onNameChange?: (nodeId: string, name: string) => void;
 } & Record<string, unknown>;
 export type IconNodeType = Node<IconNodeRuntimeData, 'iconNode'>;
 
@@ -52,7 +52,7 @@ function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeT
     setResizing: data.setResizing,
   });
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
-  const labelEditable = !!data.onLabelChange;
+  const nameEditable = !!data.onNameChange;
   const [isEditing, setIsEditing] = useState(false);
 
   const requested = ICON_REGISTRY[data.icon];
@@ -77,7 +77,7 @@ function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeT
   // "Change icon" item). No-op when label edits aren't wired (e.g. readonly).
   // stopPropagation prevents React Flow's canvas dblclick handler from firing.
   const handleDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!labelEditable || isEditing) return;
+    if (!nameEditable || isEditing) return;
     e.stopPropagation();
     setIsEditing(true);
   };
@@ -122,21 +122,21 @@ function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeT
           className="block h-full w-full pointer-events-none select-none"
         />
       ) : null}
-      {isEditing && labelEditable ? (
+      {isEditing && nameEditable ? (
         // US-004: positioned where the read-mode caption would render (below
         // the icon, full node width, centered). Wrapped in an absolutely
         // positioned strip so the icon's bounding box (read by React Flow
         // for layout + edge geometry) stays identical to the read state.
         <div className="absolute left-0 right-0 top-full mt-1 text-center text-xs text-muted-foreground">
           <InlineEdit
-            initialValue={data.label ?? ''}
+            initialValue={data.name ?? ''}
             field="icon-node-label"
-            onCommit={(v) => data.onLabelChange?.(id, v)}
+            onCommit={(v) => data.onNameChange?.(id, v)}
             onExit={() => setIsEditing(false)}
             placeholder="Label"
           />
         </div>
-      ) : data.label ? (
+      ) : data.name ? (
         // US-002: caption below the icon. Absolutely positioned so the icon's
         // bounding box (read by React Flow for layout + edge geometry) is
         // identical whether or not a label is set. Width matches the node so
@@ -145,7 +145,7 @@ function IconNodeImpl({ id, data, selected, isConnectable }: NodeProps<IconNodeT
           data-testid="icon-node-label"
           className="pointer-events-none absolute left-0 right-0 top-full mt-1 truncate text-center text-xs text-muted-foreground select-none"
         >
-          {data.label}
+          {data.name}
         </span>
       ) : null}
       <Handle

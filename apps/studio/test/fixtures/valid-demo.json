@@ -7,7 +7,7 @@
       "type": "playNode",
       "position": { "x": 100, "y": 100 },
       "data": {
-        "label": "POST /checkout",
+        "name": "POST /checkout",
         "kind": "service",
         "stateSource": { "kind": "request" },
         "playAction": {
@@ -16,16 +16,7 @@
           "url": "http://localhost:3001/checkout",
           "body": { "items": [], "customerId": "cust_1" }
         },
-        "detail": {
-          "filePath": "src/api/checkout.ts",
-          "summary": "Creates an order, charges the card, enqueues fulfillment.",
-          "fields": [{ "label": "Owner", "value": "Payments team" }],
-          "dynamicSource": {
-            "kind": "http",
-            "method": "GET",
-            "url": "http://localhost:3001/admin/checkout-stats"
-          }
-        }
+        "description": "Creates an order, charges the card, enqueues fulfillment."
       }
     },
     {
@@ -33,7 +24,7 @@
       "type": "stateNode",
       "position": { "x": 400, "y": 100 },
       "data": {
-        "label": "Fulfillment worker",
+        "name": "Fulfillment worker",
         "kind": "worker",
         "stateSource": { "kind": "event" },
         "handlerModule": "src/workers/fulfillment.ts"

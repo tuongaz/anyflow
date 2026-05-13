@@ -38,17 +38,15 @@ const NodeVisualBaseShape = {
   locked: z.boolean().optional(),
 };
 
-// US-011 (text-and-group-resize): free-text metadata available on every node
-// variant. `shortDescription` is a one-line caption (200-char cap so the input
-// stays compact in the side panel); `description` is open-ended Markdown-ish
-// notes with no length cap. Distinct from `detail.summary`/`detail.description`
-// (which only exist on play/state nodes and drive demo-runtime payload display)
-// — these are general node metadata that the canvas never renders. Both
-// optional, so existing demo files round-trip unchanged. Spread into every
-// node-data schema below since Group / Icon don't share NodeVisualBaseShape.
+// Consolidated three-field metadata shared by every node variant. `description`
+// is the short body text rendered on the canvas under the node header (and as
+// light-bold text in the sidebar). `detail` is the long-form free-text body
+// rendered only in the sidebar. Both optional so unset fields round-trip
+// unchanged. Spread into every node-data schema below since Group / Icon don't
+// share NodeVisualBaseShape.
 const NodeDescriptionBaseShape = {
-  shortDescription: z.string().max(200).optional(),
   description: z.string().optional(),
+  detail: z.string().optional(),
 };
 
 const HttpActionSchema = z.object({
@@ -61,36 +59,15 @@ const HttpActionSchema = z.object({
 
 const PlayActionSchema = HttpActionSchema;
 
-const DynamicSourceSchema = HttpActionSchema;
-
-const DetailFieldSchema = z.object({
-  label: z.string(),
-  value: z.string(),
-});
-
-// Two free-text descriptions. `summary` is the short one rendered ON the
-// node itself (kept concise so it fits the box without wrapping into a wall
-// of text); `description` is the long one rendered in the detail panel when
-// a node is selected. Both are optional, so existing demos that only set
-// `summary` keep displaying the same text in the panel via fallback.
-const DetailSchema = z.object({
-  filePath: z.string().optional(),
-  summary: z.string().optional(),
-  description: z.string().optional(),
-  fields: z.array(DetailFieldSchema).optional(),
-  dynamicSource: DynamicSourceSchema.optional(),
-});
-
 const StateSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('request') }),
   z.object({ kind: z.literal('event') }),
 ]);
 
 const NodeDataBaseSchema = z.object({
-  label: z.string().min(1),
+  name: z.string().min(1),
   kind: z.string().min(1),
   stateSource: StateSourceSchema,
-  detail: DetailSchema.optional(),
   // Reserved for v2: a module path resolved by future skills runtime.
   // Schema-only at v1 — never read at runtime.
   handlerModule: z.string().optional(),
@@ -139,7 +116,7 @@ const ShapeKindSchema = z.enum(['rectangle', 'ellipse', 'sticky', 'text', 'datab
 
 const ShapeNodeDataSchema = z.object({
   shape: ShapeKindSchema,
-  label: z.string().optional(),
+  name: z.string().optional(),
   ...NodeVisualBaseShape,
   ...NodeDescriptionBaseShape,
 });
@@ -201,7 +178,7 @@ const HtmlNodeDataSchema = z.object({
   htmlPath: z.string().min(1).refine(isCleanRelativePath, {
     message: 'htmlPath must be a relative path under .anydemo/ (no absolute / traversal)',
   }),
-  label: z.string().optional(),
+  name: z.string().optional(),
   ...NodeVisualBaseShape,
   ...NodeDescriptionBaseShape,
 });
@@ -225,7 +202,7 @@ const IconNodeDataSchema = z.object({
   // US-002: optional visible caption rendered below the icon. Distinct from
   // `alt` (screen-reader text). Absent / empty → no caption rendered and the
   // node's bounding box is byte-identical to the unlabeled layout.
-  label: z.string().optional(),
+  name: z.string().optional(),
   // US-019: lock state mirror of NodeVisualBaseShape.locked. IconNode does
   // not spread the visual base so we declare it here explicitly.
   locked: z.boolean().optional(),
@@ -248,7 +225,7 @@ const IconNodeSchema = z.object({
 // Note: `borderWidth` (not `borderSize`) is the canonical field on groups
 // per the PRD — it constrains to 1–8 vs shape nodes' open-ended borderSize.
 const GroupNodeDataSchema = z.object({
-  label: z.string().optional(),
+  name: z.string().optional(),
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
   // US-019: lock state mirror of NodeVisualBaseShape.locked. GroupNode does
@@ -458,6 +435,5 @@ export type ConnectorPath = z.infer<typeof ConnectorPathSchema>;
 export type EdgePin = z.infer<typeof EdgePinSchema>;
 export type EdgePinSide = z.infer<typeof EdgePinSideSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
-export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
 export type ResetAction = z.infer<typeof HttpActionSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;

@@ -27,12 +27,12 @@ export type PlayNodeData = NodeData & {
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
-  onLabelChange?: (nodeId: string, label: string) => void;
-  onDescriptionChange?: (nodeId: string, summary: string) => void;
+  onNameChange?: (nodeId: string, name: string) => void;
+  onDescriptionChange?: (nodeId: string, description: string) => void;
 } & Record<string, unknown>;
 export type PlayNodeType = Node<PlayNodeData, 'playNode'>;
 
-type EditField = 'label' | 'description' | null;
+type EditField = 'name' | 'description' | null;
 
 const MIN_W = 100;
 const MIN_H = 44;
@@ -41,7 +41,7 @@ const DEFAULT_W = 200;
 function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeType>) {
   const status = data.status;
   const action = data.playAction;
-  const description = data.detail?.summary ?? data.kind;
+  const description = data.description ?? data.kind;
   const playable = !!action && !!data.onPlay;
   const isRunning = status === 'running';
   const isError = status === 'error';
@@ -60,7 +60,7 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
     setResizing: data.setResizing,
   });
   const [editing, setEditing] = useState<EditField>(null);
-  const labelEditable = !!data.onLabelChange;
+  const nameEditable = !!data.onNameChange;
   const descEditable = !!data.onDescriptionChange;
   // When data.width/height are unset and we're not mid-resize, the React Flow
   // wrapper has no explicit dims and we own sizing — pin a default width so a
@@ -97,15 +97,13 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
     ...(sized ? {} : { width: DEFAULT_W }),
   };
 
-  // US-020: region-aware double-click routing. Header → label edit; content
-  // body (including blank space below short text) → description edit; padding
-  // outside both falls back to description (when editable) so a tall node with
-  // an empty description still routes blank-area clicks to the description.
-  // Bails out for handles + resize controls so connect/resize gestures keep
-  // their drag semantics. No-op while ANY field is already editing — InlineEdit
-  // also stops propagation so a stray dblclick mid-edit doesn't switch fields.
+  // Region-aware double-click routing. Header → name edit; content body
+  // (including blank space below short text) → description edit; padding
+  // outside both falls back to description (when editable). Bails out for
+  // handles + resize controls so connect/resize gestures keep their drag
+  // semantics. No-op while ANY field is already editing.
   const handleWrapperDoubleClick =
-    labelEditable || descEditable
+    nameEditable || descEditable
       ? (e: ReactMouseEvent<HTMLDivElement>) => {
           if (editing !== null) return;
           const target = e.target as HTMLElement | null;
@@ -113,16 +111,16 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
           if (target?.closest('.react-flow__resize-control')) return;
           e.stopPropagation();
           if (target?.closest('[data-testid="node-header"]')) {
-            if (labelEditable) setEditing('label');
+            if (nameEditable) setEditing('name');
             return;
           }
           if (target?.closest('[data-testid="node-content"]')) {
             if (descEditable) setEditing('description');
-            else if (labelEditable) setEditing('label');
+            else if (nameEditable) setEditing('name');
             return;
           }
           if (descEditable) setEditing('description');
-          else if (labelEditable) setEditing('label');
+          else if (nameEditable) setEditing('name');
         }
       : undefined;
 
@@ -170,13 +168,13 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
           className="min-w-0 flex-1 text-[18px] font-semibold leading-tight"
           style={labelFontStyle}
         >
-          {editing === 'label' && labelEditable ? (
+          {editing === 'name' && nameEditable ? (
             <InlineEdit
-              initialValue={data.label}
-              field="node-label"
+              initialValue={data.name}
+              field="node-name"
               required
               commitMode="blur-only"
-              onCommit={(v) => data.onLabelChange?.(id, v)}
+              onCommit={(v) => data.onNameChange?.(id, v)}
               onExit={() => setEditing(null)}
               className="text-[18px] font-semibold"
               style={labelFontStyle}
@@ -186,11 +184,11 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
               type="button"
               className={cn(
                 'block w-full whitespace-pre-wrap break-words bg-transparent p-0 text-left text-[18px] font-semibold leading-tight',
-                labelEditable ? 'hover:opacity-80' : '',
+                nameEditable ? 'hover:opacity-80' : '',
               )}
               style={labelFontStyle}
             >
-              {data.label}
+              {data.name}
             </button>
           )}
         </div>
@@ -236,7 +234,7 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
       >
         {editing === 'description' && descEditable ? (
           <InlineEdit
-            initialValue={data.detail?.summary ?? ''}
+            initialValue={data.description ?? ''}
             field="node-description"
             multiline
             onCommit={(v) => data.onDescriptionChange?.(id, v)}

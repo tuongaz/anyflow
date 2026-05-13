@@ -19,10 +19,10 @@
  */
 import type { ShapeKind } from '@/lib/api';
 
-/** US-024 default border thickness for new nodes (1px = wireframe-style). */
-export const NEW_NODE_BORDER_WIDTH = 1;
-/** US-024 default label font size for new nodes (12px = compact). */
-export const NEW_NODE_FONT_SIZE = 12;
+/** Default border thickness for new nodes. */
+export const NEW_NODE_BORDER_WIDTH = 3;
+/** Default label font size for new nodes. */
+export const NEW_NODE_FONT_SIZE = 17;
 
 export interface ShapeDataDefaults {
   // Index signature lets the result satisfy `CreateNodeBody.data`

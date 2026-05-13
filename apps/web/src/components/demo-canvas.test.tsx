@@ -140,7 +140,7 @@ function makeShapeNode(id: string): DemoNode {
     id,
     type: 'shapeNode',
     position: { x: 0, y: 0 },
-    data: { label: id, shape: 'rectangle' },
+    data: { name: id, shape: 'rectangle' },
   };
 }
 
@@ -149,7 +149,7 @@ function makeTextNode(id: string): DemoNode {
     id,
     type: 'shapeNode',
     position: { x: 0, y: 0 },
-    data: { label: id, shape: 'text' },
+    data: { name: id, shape: 'text' },
   };
 }
 
@@ -1044,7 +1044,7 @@ describe('DemoCanvas', () => {
       const tree = callDemoCanvas({
         nodes: [makeGroupNode('g'), childOf('a', 'g')],
         selectedNodeIds: [],
-        onNodeLabelChange: () => {},
+        onNodeNameChange: () => {},
         onNodeDescriptionChange: () => {},
       });
       const rf = findElement(tree, (el) => el.type === ReactFlow);
@@ -1052,7 +1052,7 @@ describe('DemoCanvas', () => {
       const rfNodes = rf.props.nodes as Node[];
       const a = rfNodes.find((n) => n.id === 'a');
       const data = a?.data as Record<string, unknown> | undefined;
-      expect(data?.onLabelChange).toBeUndefined();
+      expect(data?.onNameChange).toBeUndefined();
       expect(data?.onDescriptionChange).toBeUndefined();
     });
 
@@ -1064,7 +1064,7 @@ describe('DemoCanvas', () => {
         {
           nodes: [makeGroupNode('g'), childOf('a', 'g')],
           selectedNodeIds: [],
-          onNodeLabelChange: () => {},
+          onNodeNameChange: () => {},
         },
         { useStateOverrides: [/* drawShape */ undefined, /* activeGroupId */ 'g'] },
       );
@@ -1078,7 +1078,7 @@ describe('DemoCanvas', () => {
       // get back the label-edit callback and are selectable + draggable.
       expect(a?.selectable).toBeUndefined();
       expect(a?.draggable).toBeUndefined();
-      expect((a?.data as { onLabelChange?: unknown }).onLabelChange).toBeDefined();
+      expect((a?.data as { onNameChange?: unknown }).onNameChange).toBeDefined();
     });
 
     it('onNodeDoubleClick on a group is wired (enters the group)', () => {
@@ -1245,7 +1245,7 @@ describe('DemoCanvas', () => {
         type: 'shapeNode',
         parentId,
         position: pos,
-        data: { label: id, shape: 'rectangle', ...dims, ...extra },
+        data: { name: id, shape: 'rectangle', ...dims, ...extra },
       };
     }
 
@@ -1646,7 +1646,7 @@ describe('DemoCanvas', () => {
         type: 'shapeNode',
         parentId,
         position: pos,
-        data: { label: id, shape: 'rectangle', ...dims },
+        data: { name: id, shape: 'rectangle', ...dims },
       };
     }
     function getGroupOnResize(props: Partial<DemoCanvasProps>) {
@@ -1713,7 +1713,7 @@ describe('DemoCanvas', () => {
         id,
         type: 'shapeNode',
         position: pos,
-        data: { label: id, shape: 'rectangle', width: dims.width, height: dims.height },
+        data: { name: id, shape: 'rectangle', width: dims.width, height: dims.height },
       };
       if (extra.locked !== undefined) {
         (node.data as { locked?: boolean }).locked = extra.locked;
@@ -2577,21 +2577,19 @@ describe('DemoCanvas', () => {
         id,
         type: 'shapeNode',
         position: { x: 0, y: 0 },
-        data: { label: id, shape: 'rectangle', locked: true },
+        data: { name: id, shape: 'rectangle', locked: true },
       };
     }
 
     it('wires onNodeContextMenu (NOT just onPaneContextMenu) when context callbacks are present', () => {
       // The contextEnabled gate requires at least one context-menu callback
       // before the canvas registers either handler on the ReactFlow root. With
-      // a lock-relevant callback wired (the locked-node Unlock case), BOTH
-      // handlers must be present — without onNodeContextMenu, right-clicks on
-      // any node fall through to the pane handler regardless of the LockBadge
-      // pointer-events fix.
+      // a callback wired, BOTH handlers must be present — without
+      // onNodeContextMenu, right-clicks on any node fall through to the pane
+      // handler regardless of the LockBadge pointer-events fix.
       const tree = callDemoCanvas({
         nodes: [lockedShape('a')],
         selectedNodeIds: ['a'],
-        onToggleNodeLock: () => {},
         onPasteAt: () => {},
         onCopyNode: () => {},
       });
@@ -2608,7 +2606,6 @@ describe('DemoCanvas', () => {
       const tree = callDemoCanvas({
         nodes: [lockedShape('a')],
         selectedNodeIds: ['a'],
-        onToggleNodeLock: () => {},
         onPasteAt: () => {},
         onCopyNode: () => {},
       });
@@ -2630,55 +2627,6 @@ describe('DemoCanvas', () => {
       expect(prevented).toBe(true);
     });
 
-    it('with contextOnNode + multi-selection of locked nodes, the menu item label resolves to "Unlock"', () => {
-      // The Lock/Unlock label flips based on whether every target id is in
-      // the locked set. Two locked nodes selected → label is "Unlock" so the
-      // user can release them in one click. The slot-7 useState override
-      // simulates the post-right-click state (contextOnNode === true) that the
-      // ReactFlow onNodeContextMenu handler would have produced — the hook
-      // shim doesn't actually call the setter, so we inject the post-click
-      // state directly.
-      const useStateOverrides: unknown[] = [];
-      useStateOverrides[6] = { x: 100, y: 100 }; // contextMenuPos
-      useStateOverrides[7] = true; // contextOnNode
-      const tree = callDemoCanvas(
-        {
-          nodes: [lockedShape('a'), lockedShape('b')],
-          selectedNodeIds: ['a', 'b'],
-          onToggleNodeLock: () => {},
-          onPasteAt: () => {},
-        },
-        { useStateOverrides },
-      );
-      const lockItem = findByTestId(tree, 'node-context-menu-lock');
-      expect(lockItem).not.toBeNull();
-      // ContextMenuItem children carry the visible label text.
-      const children = lockItem?.props.children;
-      const label = Array.isArray(children) ? children.join('') : String(children);
-      expect(label).toContain('Unlock');
-    });
-
-    it('with contextOnNode + multi-selection of unlocked nodes, the menu item label resolves to "Lock"', () => {
-      const useStateOverrides: unknown[] = [];
-      useStateOverrides[6] = { x: 100, y: 100 };
-      useStateOverrides[7] = true;
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeShapeNode('a'), makeShapeNode('b')],
-          selectedNodeIds: ['a', 'b'],
-          onToggleNodeLock: () => {},
-          onPasteAt: () => {},
-        },
-        { useStateOverrides },
-      );
-      const lockItem = findByTestId(tree, 'node-context-menu-lock');
-      expect(lockItem).not.toBeNull();
-      const children = lockItem?.props.children;
-      const label = Array.isArray(children) ? children.join('') : String(children);
-      expect(label).toContain('Lock');
-      expect(label).not.toContain('Unlock');
-    });
-
     it('Delete menu item is disabled when the right-clicked node id is locked', () => {
       // Regression: locked nodes must not be deletable via the menu's Delete
       // item. The item still renders (so the user sees the affordance), but is
@@ -2695,7 +2643,6 @@ describe('DemoCanvas', () => {
           nodes: [lockedShape('a')],
           selectedNodeIds: ['a'],
           onDeleteNode: () => {},
-          onToggleNodeLock: () => {},
           onPasteAt: () => {},
         },
         { useStateOverrides, refSink },
@@ -2718,7 +2665,6 @@ describe('DemoCanvas', () => {
           nodes: [lockedShape('a')],
           selectedNodeIds: ['a'],
           onDeleteNode: () => {},
-          onToggleNodeLock: () => {},
           onPasteAt: () => {},
         },
         { useStateOverrides: useStateOverrides2, refSink: refSink2 },
@@ -2763,17 +2709,15 @@ describe('DemoCanvas', () => {
           selectedNodeIds: ['a'],
           onCopyNode: () => {},
           onDeleteNode: () => {},
-          onToggleNodeLock: () => {},
           onPasteAt: () => {},
         },
         { useStateOverrides },
       );
       // Paste renders (pane menu has Paste).
       expect(findByTestId(tree, 'node-context-menu-paste')).not.toBeNull();
-      // Node-level items are HIDDEN — Copy, Lock/Unlock, Delete all gated on
+      // Node-level items are HIDDEN — Copy and Delete are both gated on
       // contextOnNode.
       expect(findByTestId(tree, 'node-context-menu-copy')).toBeNull();
-      expect(findByTestId(tree, 'node-context-menu-lock')).toBeNull();
       expect(findByTestId(tree, 'node-context-menu-delete')).toBeNull();
     });
   });

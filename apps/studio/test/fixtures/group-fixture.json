@@ -6,7 +6,7 @@
       "id": "group-1",
       "type": "group",
       "position": { "x": 100, "y": 100 },
-      "data": { "label": "Auth flow", "width": 320, "height": 220 }
+      "data": { "name": "Auth flow", "width": 320, "height": 220 }
     },
     {
       "id": "child-a",
@@ -14,7 +14,7 @@
       "position": { "x": 20, "y": 40 },
       "parentId": "group-1",
       "data": {
-        "label": "Sign in",
+        "name": "Sign in",
         "kind": "service",
         "stateSource": { "kind": "request" }
       }
@@ -25,7 +25,7 @@
       "position": { "x": 180, "y": 40 },
       "parentId": "group-1",
       "data": {
-        "label": "Token issuer",
+        "name": "Token issuer",
         "kind": "service",
         "stateSource": { "kind": "request" }
       }

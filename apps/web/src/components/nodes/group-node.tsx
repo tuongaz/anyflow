@@ -33,11 +33,11 @@ export type GroupNodeRuntimeData = GroupNodeData & {
     start: { width: number; height: number; x: number; y: number },
   ) => void;
   setResizing?: (on: boolean) => void;
-  // US-014: persist the inline-edited label via the shared PATCH path. Reuses
-  // demo-view.tsx's `onNodeLabelChange`, which coalesces under
-  // `node:<id>:label` so a typing session produces a single undo entry.
+  // Persist the inline-edited name via the shared PATCH path. Reuses
+  // demo-view.tsx's `onNodeNameChange`, which coalesces under
+  // `node:<id>:name` so a typing session produces a single undo entry.
   // Absent → clicks on the slot are a no-op (read-only contexts).
-  onLabelChange?: (nodeId: string, label: string) => void;
+  onNameChange?: (nodeId: string, name: string) => void;
   // True when the user has entered this group via double-click. CSS styles
   // `[data-active="true"]` to give the group a stronger chrome so the user
   // can tell which group is currently editable. Undefined / false → idle
@@ -92,7 +92,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   // owns dimensions and the inner fills via h-full w-full. Before any resize,
   // we pin a default size so the wrapper auto-sizes to it.
   const sized = isResizing || data.width !== undefined || data.height !== undefined;
-  const labelEditable = !!data.onLabelChange;
+  const nameEditable = !!data.onNameChange;
   const [isEditing, setIsEditing] = useState(false);
 
   // US-014: clicking the label slot enters inline-edit mode (mirrors US-004's
@@ -101,7 +101,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   // empty so click-to-edit doesn't collide with any other action). No-op when
   // label edits aren't wired (e.g. readonly demos).
   const handleLabelClick = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!labelEditable || isEditing) return;
+    if (!nameEditable || isEditing) return;
     e.stopPropagation();
     setIsEditing(true);
   };
@@ -109,7 +109,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
   // entry as a click. React Flow keeps the node container itself focusable;
   // the slot inherits focus through the wrapper's tabIndex.
   const handleLabelKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!labelEditable || isEditing) return;
+    if (!nameEditable || isEditing) return;
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     e.stopPropagation();
@@ -134,7 +134,7 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
     <div
       className={cn('relative', sized ? 'h-full w-full' : '')}
       data-testid="group-node"
-      data-label={data.label && data.label.length > 0 ? data.label : undefined}
+      data-label={data.name && data.name.length > 0 ? data.name : undefined}
       data-active={data.isActive ? 'true' : undefined}
       style={inlineStyle}
     >
@@ -151,26 +151,26 @@ function GroupNodeImpl({ id, data, selected }: NodeProps<GroupNodeType>) {
       <div
         className={cn(
           'react-flow__node-group-label',
-          labelEditable && !isEditing ? 'cursor-text' : '',
+          nameEditable && !isEditing ? 'cursor-text' : '',
         )}
         data-testid="group-node-label"
         data-editing={isEditing ? 'true' : undefined}
         style={{ height: LABEL_SLOT_HEIGHT }}
         onClick={handleLabelClick}
         onKeyDown={handleLabelKeyDown}
-        role={labelEditable && !isEditing ? 'button' : undefined}
-        tabIndex={labelEditable && !isEditing ? 0 : undefined}
+        role={nameEditable && !isEditing ? 'button' : undefined}
+        tabIndex={nameEditable && !isEditing ? 0 : undefined}
       >
-        {isEditing && labelEditable ? (
+        {isEditing && nameEditable ? (
           <InlineEdit
-            initialValue={data.label ?? ''}
-            field="group-node-label"
-            onCommit={(v) => data.onLabelChange?.(id, v)}
+            initialValue={data.name ?? ''}
+            field="group-node-name"
+            onCommit={(v) => data.onNameChange?.(id, v)}
             onExit={() => setIsEditing(false)}
             placeholder="Group label"
           />
-        ) : data.label && data.label.length > 0 ? (
-          data.label
+        ) : data.name && data.name.length > 0 ? (
+          data.name
         ) : null}
       </div>
     </div>
