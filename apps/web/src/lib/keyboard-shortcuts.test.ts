@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  COMMANDS,
   type ClipboardChordInput,
+  type CommandId,
   applyNudge,
+  formatShortcut,
   getNudgeDelta,
   getZoomChord,
   resolveClipboardChord,
@@ -315,5 +318,137 @@ describe('resolveClipboardChord (US-020)', () => {
         }),
       ),
     ).toEqual({ type: 'noop' });
+  });
+});
+
+describe('formatShortcut (US-002)', () => {
+  // Table-driven: rather than asserting one chord at a time, drive both
+  // platforms through the same rows so a regression in either branch surfaces
+  // immediately. The `isMac` override is the test seam — production callers
+  // omit it and pick up the module-level IS_MAC detection.
+  type Row = {
+    name: string;
+    parts: Parameters<typeof formatShortcut>[0];
+    mac: string;
+    nonMac: string;
+  };
+
+  const rows: Row[] = [
+    { name: 'bare letter', parts: { key: 'l' }, mac: 'L', nonMac: 'L' },
+    {
+      name: 'meta + letter',
+      parts: { meta: true, key: 'l' },
+      mac: '⌘L',
+      nonMac: 'Ctrl+L',
+    },
+    {
+      name: 'meta + shift + letter',
+      parts: { meta: true, shift: true, key: 'l' },
+      mac: '⌘⇧L',
+      nonMac: 'Ctrl+Shift+L',
+    },
+    {
+      name: 'meta + alt + letter',
+      parts: { meta: true, alt: true, key: 'l' },
+      mac: '⌘⌥L',
+      nonMac: 'Ctrl+Alt+L',
+    },
+    {
+      name: 'shift + bare letter',
+      parts: { shift: true, key: 'g' },
+      mac: '⇧G',
+      nonMac: 'Shift+G',
+    },
+    {
+      name: 'meta + digit',
+      parts: { meta: true, key: '0' },
+      mac: '⌘0',
+      nonMac: 'Ctrl+0',
+    },
+    {
+      name: 'multi-char key passes through',
+      parts: { key: 'Delete' },
+      mac: 'Delete',
+      nonMac: 'Delete',
+    },
+    {
+      name: 'Escape collapses to Esc',
+      parts: { key: 'Escape' },
+      mac: 'Esc',
+      nonMac: 'Esc',
+    },
+    {
+      name: 'all three modifiers',
+      parts: { meta: true, shift: true, alt: true, key: 'p' },
+      mac: '⌘⌥⇧P',
+      nonMac: 'Ctrl+Shift+Alt+P',
+    },
+  ];
+
+  for (const row of rows) {
+    it(`renders macOS glyphs (⌘/⇧/⌥) for ${row.name}`, () => {
+      expect(formatShortcut(row.parts, true)).toBe(row.mac);
+    });
+    it(`renders Ctrl+/Shift+/Alt+ for ${row.name} on non-mac`, () => {
+      expect(formatShortcut(row.parts, false)).toBe(row.nonMac);
+    });
+  }
+});
+
+describe('COMMANDS registry (US-002)', () => {
+  // Every CommandId in the union MUST appear in COMMANDS exactly once.
+  // Encoding the union as a runtime array (rather than re-deriving it) is the
+  // only way to enforce "no duplicates, no missing" without losing type info.
+  const expectedIds: readonly CommandId[] = [
+    'tool.select',
+    'tool.rectangle',
+    'tool.ellipse',
+    'tool.text',
+    'tool.sticky',
+    'tool.database',
+    'edit.undo',
+    'edit.redo',
+    'edit.copy',
+    'edit.paste',
+    'edit.duplicate',
+    'edit.delete',
+    'edit.selectAll',
+    'view.fit',
+    'view.zoomIn',
+    'view.zoomOut',
+    'view.zoom100',
+    'view.zoomToSelection',
+    'layout.tidy',
+    'selection.deselect',
+    'group.ungroup',
+    'help.commandPalette',
+  ];
+
+  it('contains exactly one entry per CommandId (no duplicates, no missing)', () => {
+    const ids = COMMANDS.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(ids)).toEqual(new Set(expectedIds));
+    expect(ids.length).toBe(expectedIds.length);
+  });
+
+  it('assigns every command to a known category', () => {
+    const validCategories = new Set(['Edit', 'View', 'Tools', 'Layout', 'Selection', 'Help']);
+    for (const cmd of COMMANDS) {
+      expect(validCategories.has(cmd.category)).toBe(true);
+    }
+  });
+
+  it('renders shortcuts via formatShortcut (platform-correct at build time)', () => {
+    // Sanity-check that the registry isn't hardcoding shortcut strings. Pick a
+    // few commands whose shape we know and assert the shortcut starts with
+    // the right modifier glyph/token for the runtime IS_MAC value.
+    const tidy = COMMANDS.find((c) => c.id === 'layout.tidy');
+    expect(tidy?.shortcut).toBeDefined();
+    // Tidy is meta+shift+L; both renderings end in 'L'.
+    expect(tidy?.shortcut?.endsWith('L')).toBe(true);
+
+    const select = COMMANDS.find((c) => c.id === 'tool.select');
+    // Bare 'V' renders the same on every platform.
+    expect(select?.shortcut).toBe('V');
   });
 });

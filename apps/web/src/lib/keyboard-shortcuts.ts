@@ -8,6 +8,252 @@ export type ModifierEvent = Pick<
   'key' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'
 >;
 
+// US-002: cross-platform display helpers + COMMANDS registry. Detection runs
+// once at module load — production wiring (and the COMMANDS array below) reads
+// the resolved boolean. Tests pass an explicit `isMac` to `formatShortcut` so
+// the rendering can be exercised on both platforms without monkey-patching
+// `navigator`.
+export const IS_MAC: boolean =
+  typeof navigator !== 'undefined' &&
+  typeof navigator.platform === 'string' &&
+  navigator.platform.toLowerCase().includes('mac');
+
+export type ShortcutParts = {
+  meta?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  key: string;
+};
+
+const formatKey = (key: string): string => {
+  if (key.length === 1) return key.toUpperCase();
+  if (key === 'Escape') return 'Esc';
+  return key;
+};
+
+/**
+ * Render a keyboard shortcut for display. On macOS: ⌘⇧⌥ glyphs are
+ * concatenated with the key (e.g. `⌘⇧L`). On Windows/Linux: `Ctrl+Shift+Alt+`
+ * tokens joined with `+` (e.g. `Ctrl+Shift+L`). The `meta` flag maps to ⌘ on
+ * mac and `Ctrl` elsewhere — callers pass the same shape regardless of OS.
+ *
+ * The optional `isMac` override exists for tests; production callers omit it
+ * and pick up the module-level `IS_MAC` detection.
+ */
+export const formatShortcut = (parts: ShortcutParts, isMac: boolean = IS_MAC): string => {
+  const keyLabel = formatKey(parts.key);
+  if (isMac) {
+    let out = '';
+    if (parts.meta) out += '⌘';
+    if (parts.alt) out += '⌥';
+    if (parts.shift) out += '⇧';
+    return `${out}${keyLabel}`;
+  }
+  const tokens: string[] = [];
+  if (parts.meta) tokens.push('Ctrl');
+  if (parts.shift) tokens.push('Shift');
+  if (parts.alt) tokens.push('Alt');
+  tokens.push(keyLabel);
+  return tokens.join('+');
+};
+
+export type CommandId =
+  | 'tool.select'
+  | 'tool.rectangle'
+  | 'tool.ellipse'
+  | 'tool.text'
+  | 'tool.sticky'
+  | 'tool.database'
+  | 'edit.undo'
+  | 'edit.redo'
+  | 'edit.copy'
+  | 'edit.paste'
+  | 'edit.duplicate'
+  | 'edit.delete'
+  | 'edit.selectAll'
+  | 'view.fit'
+  | 'view.zoomIn'
+  | 'view.zoomOut'
+  | 'view.zoom100'
+  | 'view.zoomToSelection'
+  | 'layout.tidy'
+  | 'selection.deselect'
+  | 'group.ungroup'
+  | 'help.commandPalette';
+
+export type CommandCategory = 'Edit' | 'View' | 'Tools' | 'Layout' | 'Selection' | 'Help';
+
+export type CommandContext = {
+  hasSelection: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  hasClipboard: boolean;
+};
+
+export type CommandDef = {
+  id: CommandId;
+  label: string;
+  description?: string;
+  category: CommandCategory;
+  shortcut?: string;
+  enabled?: (ctx: CommandContext) => boolean;
+};
+
+// Single source of truth: dispatcher (`runCommand` in demo-view.tsx) and UI
+// (command palette, toolbar tooltips) both read from this array so a label or
+// shortcut change propagates everywhere without hunting through call sites.
+export const COMMANDS: readonly CommandDef[] = [
+  {
+    id: 'tool.select',
+    label: 'Select tool',
+    description: 'Switch to the selection / pan tool',
+    category: 'Tools',
+    shortcut: formatShortcut({ key: 'V' }),
+  },
+  {
+    id: 'tool.rectangle',
+    label: 'Rectangle',
+    description: 'Draw rectangle nodes',
+    category: 'Tools',
+    shortcut: formatShortcut({ key: 'R' }),
+  },
+  {
+    id: 'tool.ellipse',
+    label: 'Ellipse',
+    description: 'Draw ellipse nodes',
+    category: 'Tools',
+    shortcut: formatShortcut({ key: 'O' }),
+  },
+  {
+    id: 'tool.text',
+    label: 'Text',
+    description: 'Add a text node',
+    category: 'Tools',
+    shortcut: formatShortcut({ key: 'T' }),
+  },
+  {
+    id: 'tool.sticky',
+    label: 'Sticky note',
+    description: 'Add a sticky note',
+    category: 'Tools',
+    shortcut: formatShortcut({ key: 'S' }),
+  },
+  {
+    id: 'tool.database',
+    label: 'Database',
+    description: 'Add a database node',
+    category: 'Tools',
+    shortcut: formatShortcut({ key: 'D' }),
+  },
+  {
+    id: 'edit.undo',
+    label: 'Undo',
+    category: 'Edit',
+    shortcut: formatShortcut({ meta: true, key: 'Z' }),
+    enabled: (ctx) => ctx.canUndo,
+  },
+  {
+    id: 'edit.redo',
+    label: 'Redo',
+    category: 'Edit',
+    shortcut: formatShortcut({ meta: true, shift: true, key: 'Z' }),
+    enabled: (ctx) => ctx.canRedo,
+  },
+  {
+    id: 'edit.copy',
+    label: 'Copy',
+    category: 'Edit',
+    shortcut: formatShortcut({ meta: true, key: 'C' }),
+    enabled: (ctx) => ctx.hasSelection,
+  },
+  {
+    id: 'edit.paste',
+    label: 'Paste',
+    category: 'Edit',
+    shortcut: formatShortcut({ meta: true, key: 'V' }),
+    enabled: (ctx) => ctx.hasClipboard,
+  },
+  {
+    id: 'edit.duplicate',
+    label: 'Duplicate',
+    category: 'Edit',
+    shortcut: formatShortcut({ meta: true, key: 'D' }),
+    enabled: (ctx) => ctx.hasSelection,
+  },
+  {
+    id: 'edit.delete',
+    label: 'Delete',
+    category: 'Edit',
+    shortcut: formatShortcut({ key: 'Delete' }),
+    enabled: (ctx) => ctx.hasSelection,
+  },
+  {
+    id: 'edit.selectAll',
+    label: 'Select all',
+    category: 'Edit',
+    shortcut: formatShortcut({ meta: true, key: 'A' }),
+  },
+  {
+    id: 'view.fit',
+    label: 'Fit view',
+    description: 'Fit everything in the viewport',
+    category: 'View',
+    shortcut: formatShortcut({ meta: true, key: '0' }),
+  },
+  {
+    id: 'view.zoomIn',
+    label: 'Zoom in',
+    category: 'View',
+    shortcut: formatShortcut({ meta: true, key: '=' }),
+  },
+  {
+    id: 'view.zoomOut',
+    label: 'Zoom out',
+    category: 'View',
+    shortcut: formatShortcut({ meta: true, key: '-' }),
+  },
+  {
+    id: 'view.zoom100',
+    label: 'Zoom to 100%',
+    category: 'View',
+    shortcut: formatShortcut({ key: '1' }),
+  },
+  {
+    id: 'view.zoomToSelection',
+    label: 'Zoom to selection',
+    category: 'View',
+    shortcut: formatShortcut({ key: 'F' }),
+    enabled: (ctx) => ctx.hasSelection,
+  },
+  {
+    id: 'layout.tidy',
+    label: 'Tidy layout',
+    description: 'Auto-layout the canvas or current selection',
+    category: 'Layout',
+    shortcut: formatShortcut({ meta: true, shift: true, key: 'L' }),
+  },
+  {
+    id: 'selection.deselect',
+    label: 'Deselect',
+    description: 'Clear selection and exit draw mode',
+    category: 'Selection',
+    shortcut: formatShortcut({ key: 'Escape' }),
+  },
+  {
+    id: 'group.ungroup',
+    label: 'Ungroup',
+    category: 'Selection',
+    shortcut: formatShortcut({ meta: true, key: 'G' }),
+    enabled: (ctx) => ctx.hasSelection,
+  },
+  {
+    id: 'help.commandPalette',
+    label: 'Open command palette',
+    category: 'Help',
+    shortcut: formatShortcut({ meta: true, key: 'P' }),
+  },
+];
+
 export type NudgeDelta = { dx: number; dy: number };
 
 const NUDGE_STEP_DEFAULT = 1;
