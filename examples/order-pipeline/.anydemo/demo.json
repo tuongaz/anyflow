@@ -6,8 +6,8 @@
       "id": "create-order",
       "type": "playNode",
       "position": {
-        "x": -2470.0627392800616,
-        "y": -1427.749422281782
+        "x": -2345.2236168251966,
+        "y": -1409.7314046078839
       },
       "data": {
         "name": "POST /orders",
@@ -45,7 +45,7 @@
       "type": "playNode",
       "position": {
         "x": -1496.3461844833826,
-        "y": -1960.86585952449
+        "y": -1949.2828481626982
       },
       "data": {
         "name": "POST /payments/charge!",
@@ -71,7 +71,7 @@
       "type": "stateNode",
       "position": {
         "x": -2093.467096978919,
-        "y": -2297.8575092265082
+        "y": -2286.2744978647165
       },
       "data": {
         "name": "shipping-worker",
@@ -90,7 +90,7 @@
       "type": "stateNode",
       "position": {
         "x": -2283.2885732315126,
-        "y": -1962.4328454263616
+        "y": -1950.84983406457
       },
       "data": {
         "name": "inventory-worker",
@@ -112,7 +112,7 @@
       "type": "shapeNode",
       "position": {
         "x": -1748.2094412499364,
-        "y": -2227.04335453199
+        "y": -2215.4603431701985
       },
       "data": {
         "shape": "text",
@@ -121,20 +121,6 @@
         "fontSize": 17,
         "name": "Thi sis good one",
         "locked": false
-      }
-    },
-    {
-      "id": "node-e7e0418c-d9e8-4689-abab-232d87965938",
-      "type": "iconNode",
-      "position": {
-        "x": -3030.810272882134,
-        "y": -2039.4585853838664
-      },
-      "data": {
-        "icon": "air-vent",
-        "width": 58,
-        "height": 52,
-        "color": "green"
       }
     }
   ],
