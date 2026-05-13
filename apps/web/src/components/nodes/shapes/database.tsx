@@ -45,9 +45,12 @@ export function DatabaseShape({
   const strokeWidth = borderSize ?? DEFAULT_STROKE_WIDTH;
   const dash = dashFor(borderStyle);
 
-  // Front-bottom arc: sweep-flag=1 traces the lower half of the bottom ellipse
-  // (the visible front curve when looking at the cylinder from the front).
-  const bottomArcPath = `M 0 ${height - ry} A ${rx} ${ry} 0 0 1 ${width} ${height - ry}`;
+  // Front-bottom arc: SVG sweep-flag=0 traces in the negative-angle direction.
+  // With y-down user space, that's the visually counter-clockwise sweep from
+  // left rim to right rim — i.e. the lower half of the bottom ellipse, which
+  // is the front-facing curve. sweep-flag=1 would draw the upper (back) half,
+  // which is occluded by the body rect and reads as "no bottom curve".
+  const bottomArcPath = `M 0 ${height - ry} A ${rx} ${ry} 0 0 0 ${width} ${height - ry}`;
 
   return (
     <svg
@@ -81,7 +84,7 @@ export function DatabaseShape({
       />
       <path
         d={bottomArcPath}
-        fill="none"
+        fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
         strokeDasharray={dash}

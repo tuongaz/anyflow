@@ -92,8 +92,8 @@
       "id": "node-b184a4ba-2555-4e35-ae50-7a33c4dd0e6b",
       "type": "shapeNode",
       "position": {
-        "x": -3178.2102706148535,
-        "y": -1897.6210038421164
+        "x": -3156.8212653520172,
+        "y": -2063.700338824142
       },
       "data": {
         "shape": "database",
@@ -175,20 +175,21 @@
         "name": "AAA",
         "width": 232.60605778576655,
         "height": 159.74126587487558,
-        "borderColor": "slate",
+        "borderColor": "green",
         "backgroundColor": "red",
         "borderSize": 3,
         "fontSize": 17,
         "cornerRadius": 0,
-        "description": "Thi sis nice and awesome. Thank youf or doing that"
+        "description": "Thi sis nice and awesome. Thank youf or doing that",
+        "borderStyle": "dashed"
       }
     },
     {
       "id": "node-e3344a88-3b98-4223-ac3a-0749e5654371",
       "type": "shapeNode",
       "position": {
-        "x": -3851.8004523834634,
-        "y": -1808.9217462245958
+        "x": -3724.7245975866103,
+        "y": -1966.1938437454533
       },
       "data": {
         "shape": "sticky",
@@ -198,6 +199,37 @@
         "fontSize": 17,
         "name": "AAA",
         "description": "BBB"
+      }
+    },
+    {
+      "id": "node-9df6490d-6db6-439d-ba14-fff9b9f3d9cf",
+      "type": "shapeNode",
+      "position": {
+        "x": -3999.44574888187,
+        "y": -2455.100340168634
+      },
+      "data": {
+        "shape": "rectangle",
+        "width": 232.5956027272532,
+        "height": 175.2699231809006,
+        "borderSize": 2,
+        "fontSize": 17,
+        "borderColor": "green",
+        "borderStyle": "dashed"
+      }
+    },
+    {
+      "id": "node-e7bca6aa-1f09-4fc3-8d28-669d649cf86c",
+      "type": "shapeNode",
+      "position": {
+        "x": -4192.394485770356,
+        "y": -2139.686565903886
+      },
+      "data": {
+        "shape": "text",
+        "width": 105.65048767880126,
+        "height": 135.34235384350086,
+        "fontSize": 17
       }
     }
   ],
