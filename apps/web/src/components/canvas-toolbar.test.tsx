@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
+import { CanvasToolbar, HTML_BLOCK_DND_TYPE, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import * as React from 'react';
 
 // Bun runs apps/web tests without a DOM. The hook-shim pattern (also used by
@@ -162,17 +162,17 @@ describe('CanvasToolbar', () => {
 
     it('does NOT accept an onTidy prop (compile-time guard via runtime shape)', () => {
       // Defensive: even if a caller wires onTidy, the toolbar must not
-      // forward it onto any rendered button. There must be zero buttons
-      // with a non-shape, non-icon-picker testid pattern. The trailing
-      // toolbar elements should be the shapes + (optionally) the insert
-      // icon — nothing else.
-      const tree = callToolbar({ onPickIcon: () => {} });
+      // forward it onto any rendered button. The set of permissible button
+      // testids is the shapes + the optional insert-icon entry + the optional
+      // US-017 HTML block entry — nothing else (Tidy must stay removed).
+      const tree = callToolbar({ onPickIcon: () => {}, htmlBlockEnabled: true });
       const allButtons = findAll(tree, (el) => el.type === 'button');
       const ids = allButtons
         .map((b) => b.props['data-testid'])
         .filter((id): id is string => typeof id === 'string');
+      const allowed = new Set(['toolbar-insert-icon', 'toolbar-html-block']);
       for (const id of ids) {
-        expect(id.startsWith('toolbar-shape-') || id === 'toolbar-insert-icon').toBe(true);
+        expect(id.startsWith('toolbar-shape-') || allowed.has(id)).toBe(true);
       }
     });
 
@@ -185,6 +185,79 @@ describe('CanvasToolbar', () => {
       for (const entry of TOOLBAR_SHAPES) {
         expect(findElement(tree, testIdEquals(`toolbar-shape-${entry.shape}`))).not.toBeNull();
       }
+    });
+  });
+
+  describe('US-017: HTML block toolbar tile', () => {
+    it('does NOT render the toolbar-html-block button when htmlBlockEnabled is unset', () => {
+      // The Custom section is hidden by default — only callers that wire the
+      // canvas-side onCreateHtmlNode handler opt in via htmlBlockEnabled.
+      const tree = callToolbar();
+      expect(findElement(tree, testIdEquals('toolbar-html-block'))).toBeNull();
+    });
+
+    it('renders the toolbar-html-block button when htmlBlockEnabled is true', () => {
+      const tree = callToolbar({ htmlBlockEnabled: true });
+      const btn = findElement(tree, testIdEquals('toolbar-html-block'));
+      expect(btn).not.toBeNull();
+      expect(btn?.props['aria-label']).toBe('HTML block');
+      expect(btn?.props.title).toBe('HTML block');
+      // The drag-create UX is HTML5 native DnD — the tile must be draggable.
+      expect(btn?.props.draggable).toBe(true);
+    });
+
+    it('exports a stable HTML_BLOCK_DND_TYPE marker the canvas drop handler reads', () => {
+      // The constant lives in canvas-toolbar.tsx and is consumed by
+      // demo-canvas.tsx's drop handler; the literal must stay grep-able and
+      // distinctive. Pin both the export and a sanity prefix so a typo can't
+      // silently disable the feature.
+      expect(typeof HTML_BLOCK_DND_TYPE).toBe('string');
+      expect(HTML_BLOCK_DND_TYPE).toMatch(/^application\//);
+      expect(HTML_BLOCK_DND_TYPE).toContain('html-block');
+    });
+
+    it('onDragStart sets the HTML_BLOCK_DND_TYPE marker and copy effectAllowed', () => {
+      const tree = callToolbar({ htmlBlockEnabled: true });
+      const btn = findElement(tree, testIdEquals('toolbar-html-block'));
+      if (!btn) throw new Error('html block button not found');
+      const onDragStart = btn.props.onDragStart as (e: unknown) => void;
+      expect(typeof onDragStart).toBe('function');
+      const setData: Array<{ type: string; value: string }> = [];
+      let effectAllowed = '';
+      const fakeEvent = {
+        dataTransfer: {
+          setData: (type: string, value: string) => {
+            setData.push({ type, value });
+          },
+          set effectAllowed(v: string) {
+            effectAllowed = v;
+          },
+          get effectAllowed() {
+            return effectAllowed;
+          },
+        },
+      };
+      onDragStart(fakeEvent);
+      expect(setData).toEqual([{ type: HTML_BLOCK_DND_TYPE, value: '1' }]);
+      expect(effectAllowed).toBe('copy');
+    });
+
+    it('onDragStart swallows DataTransfer write errors (Safari quirk)', () => {
+      // Safari can throw when dataTransfer is read-only mid-dispatch; the
+      // handler must not propagate so the user-visible drag still initiates.
+      const tree = callToolbar({ htmlBlockEnabled: true });
+      const btn = findElement(tree, testIdEquals('toolbar-html-block'));
+      if (!btn) throw new Error('html block button not found');
+      const onDragStart = btn.props.onDragStart as (e: unknown) => void;
+      const fakeEvent = {
+        dataTransfer: {
+          setData: () => {
+            throw new Error('SecurityError: read-only DataTransfer');
+          },
+          set effectAllowed(_v: string) {},
+        },
+      };
+      expect(() => onDragStart(fakeEvent)).not.toThrow();
     });
   });
 });

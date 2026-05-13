@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { CanvasToolbar, HTML_BLOCK_DND_TYPE } from '@/components/canvas-toolbar';
 import {
   type ClipboardShortcutEventLike,
   DemoCanvas,
@@ -2928,6 +2929,158 @@ describe('DemoCanvas', () => {
       expect(rfNodes).toHaveLength(1);
       const data = rfNodes[0]?.data as { onRetryUpload?: (id: string) => void };
       expect(data.onRetryUpload).toBe(onRetryImageUpload);
+    });
+  });
+
+  describe('US-017: HTML block drop wiring', () => {
+    function findCanvasWrapper(tree: unknown): ReactElementLike | null {
+      return findElement(tree, (el) => {
+        const p = el.props as { 'data-testid'?: string };
+        return p['data-testid'] === 'anydemo-canvas';
+      });
+    }
+
+    /**
+     * Synthesize a React DragEvent that carries the HTML block dataTransfer
+     * marker. Mirrors `dragEvent` in the US-008 suite — the only difference is
+     * that `types` defaults to the HTML_BLOCK_DND_TYPE marker (no Files in the
+     * payload), so this fixture exercises the htmlNode branch alone.
+     */
+    function htmlBlockDragEvent(args: {
+      types?: string[];
+      clientX?: number;
+      clientY?: number;
+    }): {
+      preventDefault: () => void;
+      dataTransfer: DataTransfer;
+      clientX: number;
+      clientY: number;
+      defaultPrevented: boolean;
+    } {
+      let defaultPrevented = false;
+      let dropEffectSet = '';
+      const dt = {
+        files: { length: 0, item: () => null },
+        types: args.types ?? [HTML_BLOCK_DND_TYPE],
+        set dropEffect(v: string) {
+          dropEffectSet = v;
+        },
+        get dropEffect() {
+          return dropEffectSet;
+        },
+      } as unknown as DataTransfer;
+      return {
+        preventDefault: () => {
+          defaultPrevented = true;
+        },
+        dataTransfer: dt,
+        clientX: args.clientX ?? 100,
+        clientY: args.clientY ?? 200,
+        get defaultPrevented() {
+          return defaultPrevented;
+        },
+      };
+    }
+
+    it('passes htmlBlockEnabled=true to CanvasToolbar when onCreateHtmlNode is wired', () => {
+      const tree = callDemoCanvas({
+        onCreateShapeNode: () => {},
+        onCreateHtmlNode: () => {},
+      });
+      const toolbar = findElement(tree, (el) => el.type === CanvasToolbar);
+      if (!toolbar) throw new Error('CanvasToolbar element not found');
+      expect((toolbar.props as { htmlBlockEnabled?: boolean }).htmlBlockEnabled).toBe(true);
+    });
+
+    it('passes htmlBlockEnabled=false to CanvasToolbar when onCreateHtmlNode is unwired', () => {
+      // Wiring onCreateShapeNode keeps the toolbar visible; absent
+      // onCreateHtmlNode should hide just the Custom section, not the whole
+      // toolbar (the CanvasToolbar tests pin the section-toggle behaviour).
+      const tree = callDemoCanvas({
+        onCreateShapeNode: () => {},
+      });
+      const toolbar = findElement(tree, (el) => el.type === CanvasToolbar);
+      if (!toolbar) throw new Error('CanvasToolbar element not found');
+      expect((toolbar.props as { htmlBlockEnabled?: boolean }).htmlBlockEnabled).toBe(false);
+    });
+
+    it('onDragOver preventDefault()s when the HTML block marker is present and handler is wired', () => {
+      const tree = callDemoCanvas({ onCreateHtmlNode: () => {} });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDragOver = (wrapper.props as { onDragOver?: (e: unknown) => void }).onDragOver;
+      if (typeof onDragOver !== 'function') throw new Error('onDragOver not wired');
+      const e = htmlBlockDragEvent({});
+      onDragOver(e);
+      expect(e.defaultPrevented).toBe(true);
+    });
+
+    it('onDragOver is a no-op when the HTML block marker is present but handler is NOT wired', () => {
+      // Wiring `onCreateImageFromFile` keeps the wrapper handlers attached,
+      // but the html-block branch must self-gate on `onCreateHtmlNode` so a
+      // read-only-for-blocks canvas doesn't accept a stray html block tile.
+      const tree = callDemoCanvas({ onCreateImageFromFile: () => {} });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDragOver = (wrapper.props as { onDragOver?: (e: unknown) => void }).onDragOver;
+      if (typeof onDragOver !== 'function') throw new Error('onDragOver not wired');
+      const e = htmlBlockDragEvent({});
+      onDragOver(e);
+      expect(e.defaultPrevented).toBe(false);
+    });
+
+    it('onDrop preventDefault()s on the HTML block marker even when no rfInstance is attached', () => {
+      // Drop before onRfInit ever fired: the html-block branch short-circuits
+      // on rfInstance===null but preventDefault still runs (we want to
+      // suppress browser default behaviour for the synthetic drop, even when
+      // we can't honor the position).
+      const dispatched: Array<{ position: { x: number; y: number } }> = [];
+      const tree = callDemoCanvas({
+        onCreateHtmlNode: (a) => dispatched.push(a),
+      });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDrop = (wrapper.props as { onDrop?: (e: unknown) => void }).onDrop;
+      if (typeof onDrop !== 'function') throw new Error('onDrop not wired');
+      const e = htmlBlockDragEvent({});
+      expect(() => onDrop(e)).not.toThrow();
+      expect(e.defaultPrevented).toBe(true);
+      // rfInstance is null in the hook-shim render → no dispatch fires.
+      expect(dispatched).toHaveLength(0);
+    });
+
+    it('onDrop does not dispatch the html branch when the handler is NOT wired', () => {
+      // With onCreateHtmlNode unwired, a marker-bearing, file-less drop must
+      // NOT dispatch onCreateImageFromFile (no Files in the payload —
+      // handleCanvasFileDrop short-circuits). The image branch may still
+      // preventDefault (it always does when wired), but the htmlNode-create
+      // path stays inert.
+      const imgDispatched: unknown[] = [];
+      const tree = callDemoCanvas({
+        onCreateImageFromFile: (a) => imgDispatched.push(a),
+      });
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDrop = (wrapper.props as { onDrop?: (e: unknown) => void }).onDrop;
+      if (typeof onDrop !== 'function') throw new Error('onDrop not wired');
+      const e = htmlBlockDragEvent({});
+      expect(() => onDrop(e)).not.toThrow();
+      // No Files in the payload → handleCanvasFileDrop short-circuits before
+      // dispatching onCreateImageFromFile.
+      expect(imgDispatched).toHaveLength(0);
+    });
+
+    it('onDrop is a complete no-op when neither image nor htmlNode handlers are wired', () => {
+      // Read-only canvas: drop fires but no preventDefault, no dispatch — the
+      // browser's native default still runs.
+      const tree = callDemoCanvas({});
+      const wrapper = findCanvasWrapper(tree);
+      if (!wrapper) throw new Error('canvas wrapper not found');
+      const onDrop = (wrapper.props as { onDrop?: (e: unknown) => void }).onDrop;
+      if (typeof onDrop !== 'function') throw new Error('onDrop not wired');
+      const e = htmlBlockDragEvent({});
+      expect(() => onDrop(e)).not.toThrow();
+      expect(e.defaultPrevented).toBe(false);
     });
   });
 });

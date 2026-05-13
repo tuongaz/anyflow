@@ -1709,6 +1709,63 @@ export function DemoView({
     [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
   );
 
+  // US-017: commit a new htmlNode at the drop position from the toolbar's
+  // HTML block tile. Mirrors `onCreateShapeNode`: client-side id, optimistic
+  // override so the node appears before the SSE echo arrives, single undo
+  // entry pushed from the .then so it binds to the server-issued id.
+  //
+  // Body sent is `{ id, type: 'htmlNode', position, data: {} }` — empty data
+  // signals to the server (US-015) that it should allocate
+  // `blocks/<id>.html` and write the starter file. Sending a client-supplied
+  // `data.htmlPath` would suppress the starter-write (US-015 contract), so
+  // the optimistic carries htmlPath OUT-OF-BAND only — never in the POST body.
+  //
+  // Optimistic data uses the same `blocks/<id>.html` path the server will
+  // fill so `pruneAgainst` deep-equals the SSE echo and drops the override
+  // cleanly. The renderer's `useHtmlContent` may briefly hit 404 before the
+  // file appears on disk, then refetches via the `file:changed` SSE — the
+  // visible "Loading…" → "Edit me" transition is the expected UX.
+  const onCreateHtmlNode = useCallback(
+    (args: { position: Position }) => {
+      if (!demoId) return;
+      setEditError(null);
+      const id = `node-${crypto.randomUUID()}`;
+      const htmlPath = `blocks/${id}.html`;
+      const payload = {
+        id,
+        type: 'htmlNode' as const,
+        position: args.position,
+        data: {},
+      };
+      const optimistic: DemoNode = {
+        id,
+        type: 'htmlNode',
+        position: args.position,
+        data: { htmlPath },
+      };
+      setNodeOverride(id, optimistic as Partial<DemoNode>);
+      setSelectedIds([id]);
+      markMutation();
+      createNode(demoId, payload)
+        .then(({ id: returnedId }) => {
+          pushUndo({
+            do: async () => {
+              await createNode(demoId, { ...payload, id: returnedId });
+            },
+            undo: async () => {
+              await deleteNode(demoId, returnedId);
+            },
+          });
+        })
+        .catch((err) => {
+          dropNodeOverride(id);
+          setEditError(err instanceof Error ? err.message : String(err));
+          console.error('createNode (htmlNode) failed', err);
+        });
+    },
+    [demoId, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
+  );
+
   // US-008: retry map for in-flight image uploads. Keyed by the optimistic
   // node id; entries are added when the canvas commits a drop and removed
   // once the upload + createNode pair succeeds. Persisted across renders
@@ -3071,6 +3128,7 @@ export function DemoView({
           onCreateShapeNode={onCreateShapeNode}
           onCreateImageFromFile={demoId ? onCreateImageFromFile : undefined}
           onRetryImageUpload={demoId ? onRetryImageUpload : undefined}
+          onCreateHtmlNode={demoId ? onCreateHtmlNode : undefined}
           iconPickerOpen={iconPicker.open}
           onOpenIconPicker={demoId ? handleOpenIconPickerInsert : undefined}
           onCloseIconPicker={demoId ? closeIconPicker : undefined}

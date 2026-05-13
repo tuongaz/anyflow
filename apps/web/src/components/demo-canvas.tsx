@@ -1,4 +1,4 @@
-import { CanvasToolbar, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
+import { CanvasToolbar, HTML_BLOCK_DND_TYPE, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
 import { GroupNode } from '@/components/nodes/group-node';
 import { HtmlNode } from '@/components/nodes/html-node';
@@ -217,6 +217,17 @@ export interface DemoCanvasProps {
    * renderer can call it on click.
    */
   onRetryImageUpload?: (nodeId: string) => void;
+  /**
+   * US-017: commit a new htmlNode at the drop position from the toolbar's
+   * HTML block tile (HTML5 drag-and-drop). The canvas detects the
+   * {@link HTML_BLOCK_DND_TYPE} dataTransfer marker on the wrapper drop
+   * handler, projects the drop clientX/Y into flow space, and dispatches
+   * here. The parent owns id allocation, optimistic override, and the
+   * createNode persistence (server fills `data.htmlPath` per US-015).
+   * Wiring this enables the HTML block toolbar tile; absent → the section
+   * is hidden and any stray drop is a no-op.
+   */
+  onCreateHtmlNode?: (args: { position: { x: number; y: number } }) => void;
   /**
    * Commit a new connector from a handle-drag gesture. Wiring this enables
    * `nodesConnectable` on the React Flow instance; absent → handles are
@@ -890,6 +901,7 @@ export function DemoCanvas({
   onCreateShapeNode,
   onCreateImageFromFile,
   onRetryImageUpload,
+  onCreateHtmlNode,
   onCreateConnector,
   onReconnectConnector,
   onReorderNode,
@@ -2205,22 +2217,24 @@ export function DemoCanvas({
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   }, []);
 
-  // US-008: OS file-drag enter. Surfaced as `onDragOver` rather than
-  // `onDragEnter` because the spec only fires `drop` for elements that called
-  // preventDefault() on the preceding dragover. We only opt in when an
-  // `onCreateImageFromFile` handler is wired (drop is otherwise a no-op).
+  // US-008 + US-017: drag-enter on the canvas wrapper. Two payload kinds:
+  // (1) OS image-file drag (US-008) — `DataTransfer.types` contains 'Files';
+  // (2) HTML block toolbar tile (US-017) — `DataTransfer.types` contains the
+  // {@link HTML_BLOCK_DND_TYPE} marker. The branch only opts-in to a drop
+  // when the corresponding callback is wired, so a read-only canvas keeps
+  // native file-drop affordances and never accepts a stray HTML block tile.
   // Setting `dropEffect = 'copy'` gives the OS cursor the canonical "drop a
   // copy here" affordance.
   const onWrapperDragOver = useCallback(
     (e: ReactDragEvent<HTMLDivElement>) => {
-      if (!onCreateImageFromFile) return;
       const dt = e.dataTransfer;
-      // Only intercept when the OS hints at file payload (DataTransfer.types
-      // contains 'Files' when files are being dragged). React Flow's own
-      // toolbar gestures don't set this, so we won't fight them.
       if (!dt) return;
-      const hasFiles = dt.types && Array.from(dt.types).includes('Files');
-      if (!hasFiles) return;
+      const types = dt.types ? Array.from(dt.types) : [];
+      const hasFiles = types.includes('Files');
+      const hasHtmlBlock = types.includes(HTML_BLOCK_DND_TYPE);
+      const acceptImage = hasFiles && !!onCreateImageFromFile;
+      const acceptHtmlBlock = hasHtmlBlock && !!onCreateHtmlNode;
+      if (!acceptImage && !acceptHtmlBlock) return;
       e.preventDefault();
       try {
         dt.dropEffect = 'copy';
@@ -2229,26 +2243,44 @@ export function DemoCanvas({
         // read-only mid-dispatch — ignore; the preventDefault is what counts.
       }
     },
-    [onCreateImageFromFile],
+    [onCreateImageFromFile, onCreateHtmlNode],
   );
 
-  // US-008: OS file drop on the canvas. Walks the dropped files for the first
-  // acceptable image, reads its natural dims via an in-memory `Image` element,
-  // projects the drop clientX/Y into flow space, and dispatches
-  // `onCreateImageFromFile`. The parent owns id allocation, optimistic
-  // override, upload POST, and createNode persistence. No-op when the handler
-  // is unwired, when the drop has no image, or when React Flow's instance
-  // isn't initialized (drop on a not-yet-mounted canvas). The composition is
-  // delegated to `handleCanvasFileDrop` so the pipeline is unit-testable
-  // without a DOM (computeDims + dispatch are injectable).
+  // US-008 + US-017: drop on the canvas wrapper. Two payload kinds, same
+  // priority order as `onWrapperDragOver`:
+  // (1) HTML block toolbar tile (US-017) — projects the drop clientX/Y into
+  //     flow space and dispatches `onCreateHtmlNode`. Checked first because
+  //     the marker is unambiguous; an OS-image drop will never carry it.
+  // (2) OS image file (US-008) — falls through to `handleCanvasFileDrop`,
+  //     which walks the dropped files for the first acceptable image and
+  //     dispatches `onCreateImageFromFile`. The parent owns id allocation,
+  //     upload POST, and createNode persistence. No-op when the handler is
+  //     unwired, when the drop has no image, or when React Flow's instance
+  //     isn't initialized (drop on a not-yet-mounted canvas).
   const onWrapperDrop = useCallback(
     (e: ReactDragEvent<HTMLDivElement>) => {
+      const dataTransfer = e.dataTransfer;
+      const types = dataTransfer?.types ? Array.from(dataTransfer.types) : [];
+      const isHtmlBlockDrop = types.includes(HTML_BLOCK_DND_TYPE);
+      // Only honor the HTML block drop when the parent wired the handler;
+      // otherwise fall through (the marker on its own shouldn't enable
+      // creation on a read-only canvas).
+      if (isHtmlBlockDrop && onCreateHtmlNode) {
+        e.preventDefault();
+        const rfInstance = rfInstanceRef.current;
+        if (!rfInstance) return;
+        const flowPos = rfInstance.screenToFlowPosition({
+          x: e.clientX,
+          y: e.clientY,
+        });
+        onCreateHtmlNode({ position: flowPos });
+        return;
+      }
       if (!onCreateImageFromFile) return;
       // Capture clientX/Y synchronously — the synthetic event is recycled by
       // React once the handler returns, so the awaited dims read would see
       // stale coordinates.
       const clientPos = { x: e.clientX, y: e.clientY };
-      const dataTransfer = e.dataTransfer;
       e.preventDefault();
       void handleCanvasFileDrop({
         dataTransfer,
@@ -2258,7 +2290,7 @@ export function DemoCanvas({
         dispatch: onCreateImageFromFile,
       });
     },
-    [onCreateImageFromFile],
+    [onCreateImageFromFile, onCreateHtmlNode],
   );
 
   const reconnectableEdges = !!onReconnectConnector;
@@ -3180,6 +3212,7 @@ export function DemoCanvas({
                   onOpenIconPicker={onOpenIconPicker}
                   onCloseIconPicker={onCloseIconPicker}
                   onPickIcon={onPickIcon}
+                  htmlBlockEnabled={!!onCreateHtmlNode}
                 />
               ) : null}
               {onStyleNode && onStyleConnector ? (
