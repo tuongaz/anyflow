@@ -183,12 +183,14 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   const isEditing = editing !== null;
   const nameEditable = !!data.onNameChange;
   const descEditable = !!data.onDescriptionChange;
-  // Rectangle and ellipse support a two-region layout (header + body) so a
-  // title in the panel surfaces as a header on the node. When the title is
-  // empty, the header collapses and the node renders only a body region with
-  // the description (or the centered single-label fallback for back-compat
-  // with the auto-edit-on-mount flow that types into the centered area).
-  const isHeaderShape = shape === 'rectangle' || shape === 'ellipse';
+  // Rectangle supports a two-region layout (header + body) so a title typed
+  // in the panel surfaces as a header on the node. Ellipse deliberately stays
+  // out of this layout — the rectangular header chrome reads poorly inside an
+  // elliptical clip, so ellipse drops the Name concept entirely and renders
+  // `description` as a centered label instead. The DetailPanel mirrors this:
+  // the Name field is hidden for ellipse shapes.
+  const isHeaderShape = shape === 'rectangle';
+  const isEllipse = shape === 'ellipse';
   const hasName = data.name !== undefined && data.name !== '';
   const useHeaderLayout = isHeaderShape && hasName;
   // While resizing OR once data.width/height are set, the React Flow wrapper
@@ -252,6 +254,12 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
               return;
             }
           }
+          // Ellipse renders description as its centered label and has no Name
+          // concept, so dblclick goes straight to description edit.
+          if (isEllipse) {
+            if (descEditable) setEditing('description');
+            return;
+          }
           if (nameEditable) setEditing('name');
         }
       : undefined;
@@ -289,38 +297,67 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   const descriptionFontStyle: CSSProperties =
     data.fontSize !== undefined ? { fontSize: `${data.fontSize}px` } : {};
 
-  // Single-label content (sticky/text/database + rect/ellipse with no title).
-  // The body owns the inline edit for `name` so a freshly created shape with
-  // autoEditOnMount lands on the label immediately, matching pre-header
-  // behaviour.
-  const singleLabelContent =
-    editing === 'name' && nameEditable ? (
-      <InlineEdit
-        initialValue={data.name ?? ''}
-        field="node-label"
-        commitMode="blur-only"
-        onCommit={(v) => data.onNameChange?.(id, v)}
-        onExit={() => setEditing(null)}
-        // US-009: `relative` keeps the label as a positioned sibling of the
-        // illustrative overlay above, so DOM order alone is enough to stack
-        // it over the SVG without juggling explicit z-index values.
-        className="relative text-[22px]"
-        style={labelFontStyle}
-        placeholder={isText ? 'Text' : 'Label'}
-      />
-    ) : (
-      <button
-        type="button"
-        className={cn(
-          // US-009: `relative` — see the InlineEdit branch above.
-          'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
-          data.name ? 'break-words' : 'text-muted-foreground/40 italic',
-        )}
-        style={labelFontStyle}
-      >
-        {data.name ?? (nameEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
-      </button>
-    );
+  // Single-label content variants:
+  //   - Ellipse: renders `description` as the centered label. No Name concept;
+  //     dblclick enters description edit directly.
+  //   - Other shapes (sticky/text/database + rect with no title): keep the
+  //     `name`-based label so the auto-edit-on-mount flow types into it.
+  let singleLabelContent: ReactNode;
+  if (isEllipse) {
+    singleLabelContent =
+      editing === 'description' && descEditable ? (
+        <InlineEdit
+          initialValue={description}
+          field="node-description"
+          commitMode="blur-only"
+          onCommit={(v) => data.onDescriptionChange?.(id, v)}
+          onExit={() => setEditing(null)}
+          className="relative text-[22px]"
+          style={descriptionFontStyle}
+          placeholder="Description"
+        />
+      ) : (
+        <button
+          type="button"
+          className={cn(
+            'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
+            hasDescription ? 'break-words' : 'italic text-muted-foreground/40',
+          )}
+          style={descriptionFontStyle}
+        >
+          {hasDescription ? description : descEditable ? 'Double-click to describe' : ''}
+        </button>
+      );
+  } else {
+    singleLabelContent =
+      editing === 'name' && nameEditable ? (
+        <InlineEdit
+          initialValue={data.name ?? ''}
+          field="node-label"
+          commitMode="blur-only"
+          onCommit={(v) => data.onNameChange?.(id, v)}
+          onExit={() => setEditing(null)}
+          // US-009: `relative` keeps the label as a positioned sibling of the
+          // illustrative overlay above, so DOM order alone is enough to stack
+          // it over the SVG without juggling explicit z-index values.
+          className="relative text-[22px]"
+          style={labelFontStyle}
+          placeholder={isText ? 'Text' : 'Label'}
+        />
+      ) : (
+        <button
+          type="button"
+          className={cn(
+            // US-009: `relative` — see the InlineEdit branch above.
+            'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
+            data.name ? 'break-words' : 'text-muted-foreground/40 italic',
+          )}
+          style={labelFontStyle}
+        >
+          {data.name ?? (nameEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
+        </button>
+      );
+  }
 
   // Header + body layout for rectangle/ellipse with a title set. The header
   // hosts the name (bold, bordered) and the body hosts the description so a

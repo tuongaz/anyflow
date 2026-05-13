@@ -304,22 +304,34 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     expect(bodies).toHaveLength(1);
   });
 
-  it('ellipse with name renders header + body regions', () => {
+  it('ellipse NEVER renders a header even when a name is set (description-only shape)', () => {
+    // The ellipse intentionally drops the Name concept — see DetailPanel,
+    // which hides the Name field for ellipses. The on-canvas label is
+    // `description`, not `name`.
     const tree = callShapeNode({
       shape: 'ellipse',
-      name: 'Cache',
+      name: 'IgnoredName',
       description: 'In-memory store',
     });
     const headers = findAll(
       tree,
       (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
     );
-    const bodies = findAll(
-      tree,
-      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-body',
+    expect(headers).toHaveLength(0);
+  });
+
+  it('ellipse renders description as the centered label', () => {
+    const tree = callShapeNode({
+      shape: 'ellipse',
+      description: 'Hot cache',
+    });
+    const buttons = findAll(tree, (el) => el.type === 'button');
+    const labels = buttons.map((b) =>
+      typeof (b.props as { children?: unknown }).children === 'string'
+        ? ((b.props as { children: string }).children as string)
+        : '',
     );
-    expect(headers).toHaveLength(1);
-    expect(bodies).toHaveLength(1);
+    expect(labels.some((t) => t === 'Hot cache')).toBe(true);
   });
 
   it('rectangle WITHOUT a name does NOT render a header (no title set yet)', () => {

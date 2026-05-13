@@ -48,12 +48,18 @@ export function DetailPanel({
   // canvas; double-click still opens inline edit.
   const isTextShapeNode =
     node?.type === 'shapeNode' && (node.data as { shape?: string }).shape === 'text';
+  // Ellipse shape nodes have no Name concept — their on-canvas label is the
+  // `description` field, so the panel suppresses the Name row entirely. The
+  // panel still opens to expose Description / Detail / style fields.
+  const isEllipseShapeNode =
+    node?.type === 'shapeNode' && (node.data as { shape?: string }).shape === 'ellipse';
   const inspectableNode = isTextShapeNode ? null : node;
   const open = inspectableNode !== null || connector !== null;
   const nodeName =
     inspectableNode && 'name' in inspectableNode.data ? (inspectableNode.data.name ?? '') : '';
   const description = inspectableNode?.data.description ?? '';
   const detail = inspectableNode?.data.detail ?? '';
+  const showNameField = inspectableNode !== null && !isEllipseShapeNode;
 
   // Panel width is user-resizable above the sm breakpoint via a left-edge
   // handle; persisted across sessions in localStorage. The CSS variable feeds
@@ -121,18 +127,27 @@ export function DetailPanel({
         {inspectableNode ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <SheetTitle data-testid="detail-panel-title">
-                <EditableField
-                  nodeId={inspectableNode.id}
-                  value={nodeName}
-                  placeholder="Name"
-                  multiline={false}
-                  ariaLabel="Name"
-                  testIdBase="detail-panel-name"
-                  onSave={onNameChange}
-                  textClassName="text-base font-semibold"
-                />
-              </SheetTitle>
+              {showNameField ? (
+                <SheetTitle data-testid="detail-panel-title">
+                  <EditableField
+                    nodeId={inspectableNode.id}
+                    value={nodeName}
+                    placeholder="Name"
+                    multiline={false}
+                    ariaLabel="Name"
+                    testIdBase="detail-panel-name"
+                    onSave={onNameChange}
+                    textClassName="text-base font-semibold"
+                  />
+                </SheetTitle>
+              ) : (
+                // Radix requires a SheetTitle for a11y; keep it sr-only for
+                // ellipse so the panel stops rendering a Name row visually but
+                // still announces the entity to screen readers.
+                <SheetTitle data-testid="detail-panel-title" className="sr-only">
+                  {inspectableNode.id}
+                </SheetTitle>
+              )}
               {/* Radix requires a Description for a11y; keep one as sr-only
                   so screen readers still announce what kind of entity the
                   panel describes without cluttering the visual header. */}

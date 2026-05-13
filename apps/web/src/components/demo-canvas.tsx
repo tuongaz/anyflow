@@ -2153,7 +2153,19 @@ export function DemoCanvas({
           onResize: merged.type === 'group' ? onGroupNodeResize : onNodeResize,
           onResizeFinal: merged.type === 'group' ? onGroupNodeResizeFinal : undefined,
           setResizing,
-          onNameChange: gatedByGroup ? undefined : onNodeNameChange,
+          onNameChange: (() => {
+            if (gatedByGroup) return undefined;
+            // Ellipse drops the Name concept entirely — its centered label
+            // renders `description`, and the detail panel hides the Name
+            // field. Suppressing the callback also makes
+            // `data.onNameChange === undefined`, which the shape-node uses to
+            // skip the dblclick-to-edit-name path.
+            if (merged.type === 'shapeNode') {
+              const shapeKind = (merged.data as { shape?: ShapeKind }).shape;
+              if (shapeKind === 'ellipse') return undefined;
+            }
+            return onNodeNameChange;
+          })(),
           onDescriptionChange: (() => {
             if (gatedByGroup) return undefined;
             // Rectangle and ellipse shapes render a description body — wire

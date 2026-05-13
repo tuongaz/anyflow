@@ -3,11 +3,33 @@
   "name": "Order Pipeline",
   "nodes": [
     {
+      "id": "inventory-worker",
+      "type": "stateNode",
+      "position": {
+        "x": -2646.5785522636065,
+        "y": -1746.7497251092282
+      },
+      "data": {
+        "name": "inventory-worker",
+        "kind": "worker",
+        "stateSource": {
+          "kind": "event"
+        },
+        "description": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit. Why it failed ",
+        "width": 260.5321641138519,
+        "height": 321.54698499762924,
+        "borderColor": "amber",
+        "fontSize": 17,
+        "borderSize": 3,
+        "borderStyle": "solid"
+      }
+    },
+    {
       "id": "create-order",
       "type": "playNode",
       "position": {
-        "x": -2345.2236168251966,
-        "y": -1522.7314046078839
+        "x": -2021.2236168251966,
+        "y": -1656.7314046078839
       },
       "data": {
         "name": "POST /orders",
@@ -44,8 +66,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": -1720.2903832446277,
-        "y": -1928.5712459651265
+        "x": -1472.2903832446277,
+        "y": -2318.5712459651268
       },
       "data": {
         "name": "POST /payments/charge!",
@@ -70,8 +92,8 @@
       "id": "shipping-worker",
       "type": "stateNode",
       "position": {
-        "x": -2093.467096978919,
-        "y": -2286.2744978647165
+        "x": -2321.467096978919,
+        "y": -2248.2744978647165
       },
       "data": {
         "name": "shipping-worker",
@@ -86,71 +108,58 @@
       }
     },
     {
-      "id": "inventory-worker",
-      "type": "stateNode",
-      "position": {
-        "x": -2605.612882431224,
-        "y": -1928.8437567296498
-      },
-      "data": {
-        "name": "inventory-worker",
-        "kind": "worker",
-        "stateSource": {
-          "kind": "event"
-        },
-        "description": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit. Why it failed ",
-        "width": 260.5321641138519,
-        "height": 321.54698499762924,
-        "borderColor": "amber",
-        "fontSize": 17,
-        "borderSize": 3,
-        "borderStyle": "solid"
-      }
-    },
-    {
-      "id": "node-6a4150ad-1d63-47ec-89af-df9fa80b4d72",
-      "type": "shapeNode",
-      "position": {
-        "x": -1748.2094412499364,
-        "y": -2215.4603431701985
-      },
-      "data": {
-        "shape": "text",
-        "width": 128.40180358262407,
-        "height": 77.68894838654391,
-        "fontSize": 17,
-        "name": "Thi sis good one",
-        "locked": false
-      }
-    },
-    {
       "id": "node-3f6e8e6c-382b-40bb-87bd-5bfd0bfb017a",
       "type": "shapeNode",
       "position": {
-        "x": -3051.408497110813,
-        "y": -2204.348379992388
+        "x": -3255.408497110813,
+        "y": -2252.348379992388
       },
       "data": {
         "shape": "rectangle",
         "width": 232.60605778576655,
         "height": 159.74126587487558,
         "borderSize": 3,
-        "fontSize": 17
+        "fontSize": 17,
+        "name": "AAA",
+        "description": "Thi sis nice and awesome. Thank youf or doing that",
+        "borderColor": "slate",
+        "backgroundColor": "red",
+        "cornerRadius": 0
       }
     },
     {
       "id": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
       "type": "shapeNode",
       "position": {
-        "x": -2683.4286566020505,
-        "y": -2258.2561903020346
+        "x": -2746.0262130813167,
+        "y": -2275.192750242756
       },
       "data": {
         "shape": "ellipse",
         "width": 224.06049926186643,
         "height": 176.53910339937102,
         "borderSize": 3,
-        "fontSize": 17
+        "fontSize": 18,
+        "name": "",
+        "cornerRadius": 6,
+        "description": "THi sis ok to show here\n\n"
+      }
+    },
+    {
+      "id": "node-b184a4ba-2555-4e35-ae50-7a33c4dd0e6b",
+      "type": "shapeNode",
+      "position": {
+        "x": -2995.361792844028,
+        "y": -1803.9809285117253
+      },
+      "data": {
+        "shape": "database",
+        "width": 162,
+        "height": 246,
+        "borderSize": 3,
+        "fontSize": 17,
+        "borderColor": "green",
+        "backgroundColor": "red"
       }
     }
   ],
@@ -169,11 +178,11 @@
       "targetHandleAutoPicked": false,
       "sourcePin": {
         "side": "right",
-        "t": 0.7624095165052462
+        "t": 0.20123521551564877
       },
       "targetPin": {
-        "side": "right",
-        "t": 0.6159979254075675
+        "side": "left",
+        "t": 0.6099644510300862
       },
       "sourceHandleAutoPicked": false,
       "direction": "none",
@@ -181,38 +190,48 @@
     },
     {
       "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
-      "source": "charge-payment",
+      "source": "shipping-worker",
       "target": "create-order",
       "sourceHandleAutoPicked": false,
       "targetHandleAutoPicked": false,
       "sourcePin": {
-        "side": "left",
-        "t": 0.42459261507513096
+        "side": "bottom",
+        "t": 0.5271989923561105
       },
       "targetPin": {
-        "side": "right",
-        "t": 0.19427231890432162
+        "side": "top",
+        "t": 0.732202903591922
       },
       "kind": "default",
       "path": "step"
     },
     {
-      "id": "conn-7364cf6a-0286-494f-91a2-9f6dbf27b13c",
-      "source": "charge-payment",
+      "id": "conn-c4ded279-4086-4ff8-8a3a-de9796ab1067",
+      "source": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
       "target": "inventory-worker",
-      "sourceHandleAutoPicked": false,
+      "sourceHandleAutoPicked": true,
       "targetHandleAutoPicked": false,
       "targetPin": {
-        "side": "right",
-        "t": 0.855800003193234
+        "side": "top",
+        "t": 0.6730366718873683
       },
       "kind": "default",
       "sourcePin": {
         "side": "bottom",
-        "t": 0.45057855815932135
+        "t": 0.6924028352453705
+      }
+    },
+    {
+      "id": "conn-f04ced82-d282-4bae-afc3-f4a95137d60e",
+      "source": "inventory-worker",
+      "target": "node-b184a4ba-2555-4e35-ae50-7a33c4dd0e6b",
+      "sourceHandleAutoPicked": true,
+      "targetHandleAutoPicked": true,
+      "targetPin": {
+        "side": "right",
+        "t": 0.4612233231707317
       },
-      "label": "This is ok to work with ",
-      "path": "step"
+      "kind": "default"
     }
   ]
 }
