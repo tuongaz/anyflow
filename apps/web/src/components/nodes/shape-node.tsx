@@ -396,7 +396,16 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   return (
     <div
       className={cn(
-        'group relative',
+        'group',
+        // `relative` only on layouts that need a positioned inner div for
+        // absolute children (illustrative SVG overlay, single-label edit
+        // surface). The header layout deliberately stays `position: static`
+        // so the outer React Flow wrapper acts as the containing block for
+        // the absolutely-positioned handles + NodeResizeControl — otherwise
+        // the inner div's `overflow-hidden` (needed for the header bg to
+        // respect the rounded corners) clips them, matching the state-node
+        // pattern.
+        useHeaderLayout ? '' : 'relative',
         useHeaderLayout
           ? 'flex flex-col overflow-hidden text-left'
           : 'flex items-center justify-center p-2 text-center text-[22px]',
