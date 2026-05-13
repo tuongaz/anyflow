@@ -790,6 +790,10 @@ const buildHtmlNodeStarter = (nodeId: string): string =>
 // Remove a node and cascade-delete every connector touching it in a single
 // atomic write. Final DemoSchema parse stays in place so a pre-existing
 // schema violation surfaces honestly instead of being silently papered over.
+// US-016: when the removed node is an htmlNode whose data.htmlPath matches the
+// studio-managed shape `blocks/<id>.html`, the companion file is removed AFTER
+// the demo.json write succeeds. Hand-edited paths are left alone (symmetric
+// with US-015's "client-supplied htmlPath wins, no starter file written").
 export async function deleteNodeImpl(
   deps: OperationsDeps,
   demoId: string,
@@ -802,7 +806,7 @@ export async function deleteNodeImpl(
   if (!existsSync(fullPath)) return { kind: 'fileNotFound', path: fullPath };
 
   type Inner =
-    | { kind: 'ok' }
+    | { kind: 'ok'; managedHtmlAbsPath?: string }
     | { kind: 'badJson'; message: string }
     | { kind: 'badSchema'; issues: ZodIssue[] }
     | { kind: 'unknownNode' }
@@ -819,11 +823,13 @@ export async function deleteNodeImpl(
     if (!demoParsed.success) return { kind: 'badSchema', issues: demoParsed.error.issues };
 
     const obj = raw as {
-      nodes: Array<{ id: string }>;
+      nodes: Array<Record<string, unknown>>;
       connectors: Array<{ source: string; target: string }>;
     };
     const idx = obj.nodes.findIndex((n) => n.id === nodeId);
     if (idx < 0) return { kind: 'unknownNode' };
+    const removed = obj.nodes[idx];
+    const managedHtmlAbsPath = managedHtmlNodePath(entry.repoPath, nodeId, removed);
     obj.nodes.splice(idx, 1);
     obj.connectors = obj.connectors.filter((cn) => cn.source !== nodeId && cn.target !== nodeId);
 
@@ -835,11 +841,44 @@ export async function deleteNodeImpl(
     } catch (err) {
       return { kind: 'writeFailed', message: err instanceof Error ? err.message : String(err) };
     }
-    return { kind: 'ok' };
+    return managedHtmlAbsPath ? { kind: 'ok', managedHtmlAbsPath } : { kind: 'ok' };
   });
+
+  if (result.kind === 'ok' && result.managedHtmlAbsPath) {
+    try {
+      unlinkSync(result.managedHtmlAbsPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== 'ENOENT') {
+        console.warn(
+          `[operations] failed to remove managed htmlNode file ${result.managedHtmlAbsPath}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    return { kind: 'ok' };
+  }
 
   return result;
 }
+
+// US-016: only delete the companion file when the htmlPath matches the
+// studio-managed shape `blocks/<id>.html` exactly. Hand-edited paths
+// (`custom/hero.html`, an absolute path, anything else) are left alone so
+// authors don't lose work they pointed the node at.
+const managedHtmlNodePath = (
+  repoPath: string,
+  nodeId: string,
+  removed: Record<string, unknown> | undefined,
+): string | undefined => {
+  if (!removed || removed.type !== 'htmlNode') return undefined;
+  const data = removed.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const htmlPath = (data as Record<string, unknown>).htmlPath;
+  if (htmlPath !== `blocks/${nodeId}.html`) return undefined;
+  return join(repoPath, '.anydemo', htmlPath);
+};
 
 // Move a single node by writing { x, y } back to its `position` on disk.
 // Mutates the *raw* parsed JSON so any unknown forward-compat fields the

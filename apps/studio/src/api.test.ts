@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEventBus } from './events.ts';
@@ -1752,6 +1761,129 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
     ).json()) as { id: string };
     const res = await app.request(`/api/demos/${reg.id}/nodes/missing`, { method: 'DELETE' });
     expect(res.status).toBe(404);
+  });
+
+  describe('htmlNode managed file delete (US-016)', () => {
+    it('removes blocks/<id>.html when the htmlPath matches the studio-managed shape', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const created = (await (
+        await post(app, `/api/demos/${reg.id}/nodes`, {
+          type: 'htmlNode',
+          position: { x: 0, y: 0 },
+          data: {},
+        })
+      ).json()) as { id: string; node: { data: { htmlPath: string } } };
+      const blockFile = join(repoPath, '.anydemo', 'blocks', `${created.id}.html`);
+      expect(existsSync(blockFile)).toBe(true);
+
+      const res = await app.request(`/api/demos/${reg.id}/nodes/${created.id}`, {
+        method: 'DELETE',
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(existsSync(blockFile)).toBe(false);
+
+      const onDisk = JSON.parse(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf8')) as {
+        nodes: Array<{ id: string }>;
+      };
+      expect(onDisk.nodes.find((n) => n.id === created.id)).toBeUndefined();
+    });
+
+    it('leaves a hand-edited htmlPath file alone when the path does not match blocks/<id>.html', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const customDir = join(repoPath, '.anydemo', 'custom');
+      mkdirSync(customDir, { recursive: true });
+      const customFile = join(customDir, 'hero.html');
+      writeFileSync(customFile, '<div>hand-edited</div>');
+
+      const created = (await (
+        await post(app, `/api/demos/${reg.id}/nodes`, {
+          type: 'htmlNode',
+          position: { x: 0, y: 0 },
+          data: { htmlPath: 'custom/hero.html' },
+        })
+      ).json()) as { id: string; node: { data: { htmlPath: string } } };
+      expect(created.node.data.htmlPath).toBe('custom/hero.html');
+
+      const res = await app.request(`/api/demos/${reg.id}/nodes/${created.id}`, {
+        method: 'DELETE',
+      });
+      expect(res.status).toBe(200);
+      expect(existsSync(customFile)).toBe(true);
+      expect(readFileSync(customFile, 'utf8')).toBe('<div>hand-edited</div>');
+    });
+
+    it('soft-fails when the managed file is already missing', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const created = (await (
+        await post(app, `/api/demos/${reg.id}/nodes`, {
+          type: 'htmlNode',
+          position: { x: 0, y: 0 },
+          data: {},
+        })
+      ).json()) as { id: string };
+      const blockFile = join(repoPath, '.anydemo', 'blocks', `${created.id}.html`);
+      unlinkSync(blockFile);
+      expect(existsSync(blockFile)).toBe(false);
+
+      const res = await app.request(`/api/demos/${reg.id}/nodes/${created.id}`, {
+        method: 'DELETE',
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+
+      const onDisk = JSON.parse(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf8')) as {
+        nodes: Array<{ id: string }>;
+      };
+      expect(onDisk.nodes.find((n) => n.id === created.id)).toBeUndefined();
+    });
+
+    it('does not touch other htmlNode-shaped files in blocks/ when an unrelated node is deleted', async () => {
+      const { app } = buildApp();
+      const repoPath = tmpRepoWithDemo();
+      const reg = (await (
+        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+      ).json()) as { id: string };
+
+      const first = (await (
+        await post(app, `/api/demos/${reg.id}/nodes`, {
+          type: 'htmlNode',
+          position: { x: 0, y: 0 },
+          data: {},
+        })
+      ).json()) as { id: string };
+      const second = (await (
+        await post(app, `/api/demos/${reg.id}/nodes`, {
+          type: 'htmlNode',
+          position: { x: 80, y: 80 },
+          data: {},
+        })
+      ).json()) as { id: string };
+      const firstFile = join(repoPath, '.anydemo', 'blocks', `${first.id}.html`);
+      const secondFile = join(repoPath, '.anydemo', 'blocks', `${second.id}.html`);
+      expect(existsSync(firstFile)).toBe(true);
+      expect(existsSync(secondFile)).toBe(true);
+
+      const res = await app.request(`/api/demos/${reg.id}/nodes/${first.id}`, { method: 'DELETE' });
+      expect(res.status).toBe(200);
+      expect(existsSync(firstFile)).toBe(false);
+      expect(existsSync(secondFile)).toBe(true);
+    });
   });
 });
 
