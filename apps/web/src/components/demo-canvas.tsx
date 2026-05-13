@@ -1066,9 +1066,27 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
     // <defs> are registered from the live edges array, so the original
     // edge's marker is already in the DOM during the reconnect drag — we
     // just need to re-derive the same id to point at it.
+    //
+    // Direction swap: xyflow's connection line always draws from the FIXED
+    // end (`fromX/Y`) to the MOVING end (`toX/Y`). For an edge with
+    // direction='forward' (markerEnd at the target), this matches the
+    // committed shape only when the user is dragging the TARGET endpoint
+    // (fixed = source, path goes source → cursor). When the user is
+    // dragging the SOURCE endpoint instead, the in-flight path runs target
+    // → cursor — i.e. reversed relative to the committed source→target
+    // direction — so what `connectorToEdge` stamped as markerEnd (target
+    // side, head of arrow) must paint at the path's `markerStart` end, and
+    // vice versa. `fixedNodeIsSource` already captures this: it's true iff
+    // the fixed end of the gesture is the edge's source.
     const rfId = useStore((s) => s.rfId);
-    const markerStartUrl = makeMarkerUrl(reconnectingEdge?.markerStart, rfId);
-    const markerEndUrl = makeMarkerUrl(reconnectingEdge?.markerEnd, rfId);
+    const orientedMarkerStart = fixedNodeIsSource
+      ? reconnectingEdge?.markerStart
+      : reconnectingEdge?.markerEnd;
+    const orientedMarkerEnd = fixedNodeIsSource
+      ? reconnectingEdge?.markerEnd
+      : reconnectingEdge?.markerStart;
+    const markerStartUrl = makeMarkerUrl(orientedMarkerStart, rfId);
+    const markerEndUrl = makeMarkerUrl(orientedMarkerEnd, rfId);
     return (
       <path
         d={path}
