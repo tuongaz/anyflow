@@ -3093,26 +3093,14 @@ describe('DemoCanvas', () => {
       };
     }
 
-    it('passes htmlBlockEnabled=true to CanvasToolbar when onCreateHtmlNode is wired', () => {
+    it('does NOT forward an htmlBlockEnabled prop to CanvasToolbar (toolbar tile removed)', () => {
       const tree = callDemoCanvas({
         onCreateShapeNode: () => {},
         onCreateHtmlNode: () => {},
       });
       const toolbar = findElement(tree, (el) => el.type === CanvasToolbar);
       if (!toolbar) throw new Error('CanvasToolbar element not found');
-      expect((toolbar.props as { htmlBlockEnabled?: boolean }).htmlBlockEnabled).toBe(true);
-    });
-
-    it('passes htmlBlockEnabled=false to CanvasToolbar when onCreateHtmlNode is unwired', () => {
-      // Wiring onCreateShapeNode keeps the toolbar visible; absent
-      // onCreateHtmlNode should hide just the Custom section, not the whole
-      // toolbar (the CanvasToolbar tests pin the section-toggle behaviour).
-      const tree = callDemoCanvas({
-        onCreateShapeNode: () => {},
-      });
-      const toolbar = findElement(tree, (el) => el.type === CanvasToolbar);
-      if (!toolbar) throw new Error('CanvasToolbar element not found');
-      expect((toolbar.props as { htmlBlockEnabled?: boolean }).htmlBlockEnabled).toBe(false);
+      expect('htmlBlockEnabled' in (toolbar.props as Record<string, unknown>)).toBe(false);
     });
 
     it('onDragOver preventDefault()s when the HTML block marker is present and handler is wired', () => {

@@ -44,8 +44,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": -1496.3461844833826,
-        "y": -1949.2828481626982
+        "x": -1669.8058528880465,
+        "y": -1969.99445036027
       },
       "data": {
         "name": "POST /payments/charge!",

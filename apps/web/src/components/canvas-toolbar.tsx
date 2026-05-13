@@ -2,19 +2,18 @@ import { IconPickerPopover } from '@/components/icon-picker-popover';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ShapeKind } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Circle, Code2, Database, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import { Circle, Database, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
 import { useState } from 'react';
 
 /**
- * US-017: dataTransfer MIME-like type used by the HTML block toolbar tile to
- * mark its HTML5 drag payload. The canvas drop handler reads this same key to
- * recognise the drop as an htmlNode-create gesture (vs. an OS image-file drop
- * from US-008). Exported so both ends share the literal — drift would silently
- * disable the feature.
+ * dataTransfer MIME-like type recognised by the canvas drop handler as an
+ * htmlNode-create gesture (vs. an OS image-file drop). The toolbar no longer
+ * surfaces a draggable tile for it — html nodes are now created via the
+ * programmatic createNode REST endpoint (API/LLM path). Kept so the existing
+ * drop branch in demo-canvas continues to compile against a single source of
+ * truth for the marker literal.
  */
 export const HTML_BLOCK_DND_TYPE = 'application/x-anydemo-create-html-block';
-
-const HTML_BLOCK_LABEL = 'HTML block';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
@@ -37,14 +36,6 @@ export interface CanvasToolbarProps {
    * the Insert icon button is hidden.
    */
   onPickIcon?: (name: string) => void;
-  /**
-   * US-017: when true, the toolbar renders a "Custom" section with an
-   * HTML block draggable tile. Dragging the tile onto the canvas commits a new
-   * htmlNode at the drop position via the canvas-side drop handler (which
-   * detects the {@link HTML_BLOCK_DND_TYPE} dataTransfer marker). The toolbar
-   * itself does not own the create call — it only initiates the drag.
-   */
-  htmlBlockEnabled?: boolean;
 }
 
 export interface ToolbarShapeEntry {
@@ -99,7 +90,6 @@ export function CanvasToolbar({
   onOpenIconPicker,
   onCloseIconPicker,
   onPickIcon,
-  htmlBlockEnabled,
 }: CanvasToolbarProps) {
   // The illustrative-shape picker is self-contained — open state lives in
   // the toolbar since there's no insert/replace mode duality like the icon
@@ -227,35 +217,6 @@ export function CanvasToolbar({
       ) : null}
       <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
       {SECONDARY_PRIMARY_SHAPES.map(renderShapeButton)}
-      {htmlBlockEnabled ? (
-        <>
-          <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
-          <button
-            type="button"
-            data-testid="toolbar-html-block"
-            aria-label={HTML_BLOCK_LABEL}
-            title={HTML_BLOCK_LABEL}
-            draggable
-            onDragStart={(e) => {
-              try {
-                e.dataTransfer.setData(HTML_BLOCK_DND_TYPE, '1');
-                e.dataTransfer.effectAllowed = 'copy';
-              } catch {
-                // Some browsers throw if dataTransfer is read-only mid-dispatch
-                // (Safari quirk). The drag still initiates without the marker
-                // — drop will simply no-op rather than create a stray node.
-              }
-            }}
-            className={cn(
-              'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-              'hover:bg-accent hover:text-accent-foreground',
-              'cursor-grab active:cursor-grabbing',
-            )}
-          >
-            <Code2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </>
-      ) : null}
     </div>
   );
 }

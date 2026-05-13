@@ -3750,7 +3750,6 @@ export function DemoCanvas({
                   onOpenIconPicker={onOpenIconPicker}
                   onCloseIconPicker={onCloseIconPicker}
                   onPickIcon={onPickIcon}
-                  htmlBlockEnabled={!!onCreateHtmlNode}
                 />
               ) : null}
               {onStyleNode && onStyleConnector ? (
