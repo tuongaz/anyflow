@@ -2,18 +2,25 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// US-015: connector label sits ABOVE the connector line.
+// Connector label sits ABOVE the connector line, BELOW nodes.
 //
-// Two invariants pin the fix in place across future refactors:
+// Invariants:
 //
-//   1. `.react-flow__edgelabel-renderer` (xyflow's portal container that
-//      receives every <EdgeLabelRenderer> child) MUST carry a z-index
-//      higher than the per-edge SVG inline z-index (1, set via
-//      DEFAULT_EDGE_OPTIONS in demo-canvas.tsx). Without this rule labels
-//      paint via DOM-order auto-stacking and the SVG path layers above
-//      the label, so the line visibly crosses through the text.
+//   1. The per-edge SVG inline zIndex (DEFAULT_EDGE_OPTIONS in
+//      demo-canvas.tsx) MUST be 0 so connectors paint under nodes (nodes
+//      naturally win via DOM order: xyflow renders NodeRenderer after
+//      EdgeRenderer in the viewport). Only the outlet endpoint dots
+//      (CSS z-index 2000 via <ViewportPortal>) stay above nodes.
 //
-//   2. The label markup in editable-edge.tsx MUST render an OPAQUE
+//   2. `.react-flow__edgelabel-renderer` (xyflow's portal container that
+//      receives every <EdgeLabelRenderer> child) MUST NOT carry an
+//      explicit z-index — letting it stack via natural DOM order keeps
+//      labels above the connector path (DOM later than EdgeRenderer)
+//      yet below nodes (DOM earlier than NodeRenderer), so the line never
+//      crosses the readable text AND the label still sits under any
+//      overlapping node.
+//
+//   3. The label markup in editable-edge.tsx MUST render an OPAQUE
 //      background plate when label text is present, so even if a future
 //      stacking change reintroduces overlap the line stays masked
 //      cleanly behind the text. `bg-background` (theme background token)
@@ -22,20 +29,21 @@ import { join } from 'node:path';
 const repoRoot = join(import.meta.dir, '..', '..', '..', '..', '..');
 const indexCssPath = join(repoRoot, 'apps/web/src/index.css');
 const editableEdgePath = join(repoRoot, 'apps/web/src/components/edges/editable-edge.tsx');
+const demoCanvasPath = join(repoRoot, 'apps/web/src/components/demo-canvas.tsx');
 
-describe('US-015: connector label paints above edge line', () => {
-  it('index.css raises .react-flow__edgelabel-renderer z-index above per-edge zIndex (1)', () => {
+describe('connectors paint under nodes; labels stack between edges and nodes', () => {
+  it('DEFAULT_EDGE_OPTIONS sets zIndex 0 so edges paint under nodes', () => {
+    const src = readFileSync(demoCanvasPath, 'utf-8');
+    const rule = src.match(/DEFAULT_EDGE_OPTIONS\s*=\s*\{\s*zIndex:\s*(\d+)\s*\}/);
+    expect(rule).not.toBeNull();
+    if (!rule) throw new Error('expected DEFAULT_EDGE_OPTIONS zIndex literal');
+    expect(Number(rule[1])).toBe(0);
+  });
+
+  it('index.css leaves .react-flow__edgelabel-renderer without an explicit z-index so DOM order layers labels between edges and nodes', () => {
     const css = readFileSync(indexCssPath, 'utf-8');
     const rule = css.match(/\.react-flow__edgelabel-renderer\s*\{[^}]*z-index:\s*(\d+)[^}]*\}/);
-    expect(rule).not.toBeNull();
-    if (!rule) throw new Error('expected .react-flow__edgelabel-renderer z-index rule');
-    const zIndex = Number(rule[1]);
-    // Per-edge SVG paints with inline `z-index: 1` (DEFAULT_EDGE_OPTIONS in
-    // demo-canvas.tsx). Label container must outrank that.
-    expect(zIndex).toBeGreaterThan(1);
-    // Sanity ceiling: must not exceed the connector endpoint dot z-index
-    // (2000, US-024) — those dots are a higher-priority affordance.
-    expect(zIndex).toBeLessThan(2000);
+    expect(rule).toBeNull();
   });
 
   it('label markup uses opaque bg-background plate when text is present', () => {

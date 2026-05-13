@@ -723,22 +723,15 @@ const nodeTypes = {
 };
 const edgeTypes = { editableEdge: EditableEdge };
 
-// US-010: edges render at zIndex 1 so they paint above sibling nodes but
-// below the group-label slot (zIndex 2 in CSS, see US-011+). Defined as a
-// module-level constant — passing an inline object literal to ReactFlow's
-// defaultEdgeOptions would change identity every render and force xyflow's
-// edge merging to recompute.
-const DEFAULT_EDGE_OPTIONS = { zIndex: 1 };
-
-// When the user selects a connector, the edge body AND its visible
-// endpoint dots need to layer above every node and other edge so the user
-// can drag the dots without a sibling node covering them. Selected nodes
-// elevate to z-index 1000 (CSS rule); we elevate the selected edge to
-// 1500 so it sits cleanly between selected nodes (1000) and the endpoint
-// dots (2000). Bumping per-edge inline `zIndex` is the React-Flow-
-// idiomatic way: xyflow stamps the value onto the wrapping `<svg>` which
-// owns its own stacking context.
-const SELECTED_EDGE_Z_INDEX = 1500;
+// Edges render at zIndex 0 so the connector line ALWAYS paints below every
+// node — nodes naturally win via DOM order (xyflow's NodeRenderer is wired
+// after EdgeRenderer in the viewport, so equal-z-index siblings layer with
+// the later one on top). Selected edges keep the same baseline; only the
+// outlet endpoint dots (rendered via <ViewportPortal> at CSS z-index 2000)
+// sit above nodes. Defined as a module-level constant — passing an inline
+// object literal to ReactFlow's defaultEdgeOptions would change identity
+// every render and force xyflow's edge merging to recompute.
+const DEFAULT_EDGE_OPTIONS = { zIndex: 0 };
 
 // US-010: walk up from `target` and return true when the closest
 // `.react-flow__node` ancestor's `data-id` is set AND not equal to `nodeId`.
@@ -2726,12 +2719,10 @@ export function DemoCanvas({
       // sole selected connector — multi-select disables reconnect to avoid
       // ambiguous gestures.
       const enableReconnect = reconnectableEdges && c.id === onlySelectedConnectorId;
-      // Elevate the selected edge above other nodes/edges so the connector
-      // and its endpoint dots are unobstructed by overlapping nodes —
-      // critical for the dot drag affordance. Unselected edges keep the
-      // default z-index from DEFAULT_EDGE_OPTIONS (1).
-      const elevatedEdge: Edge = isSelected ? { ...edge, zIndex: SELECTED_EDGE_Z_INDEX } : edge;
-      const next: Edge = enableReconnect ? { ...elevatedEdge, reconnectable: true } : elevatedEdge;
+      // Selected edges share the DEFAULT_EDGE_OPTIONS zIndex (0) — the
+      // connector line stays under nodes whether selected or not; only the
+      // visible endpoint-dot portal (CSS z-index 2000) sits on top.
+      const next: Edge = enableReconnect ? { ...edge, reconnectable: true } : edge;
       // Group enter/exit gate for edges: when both endpoints live inside the
       // same group AND that group is not active, the edge is not directly
       // selectable. `handleEdgeClickWithGroupGate` (the wrapped onEdgeClick)
@@ -3598,11 +3589,12 @@ export function DemoCanvas({
         // pointer-up.
         onSelectionStart={onSelectionStartCb}
         onSelectionEnd={onSelectionEndCb}
-        // US-010: keep edges above sibling nodes but below the future group
-        // label slot (US-014). Setting via defaultEdgeOptions is preferred to
-        // a per-edge zIndex because it doesn't churn edge identity through
-        // connectorToEdge — the option propagates through xyflow's default
-        // edge merging.
+        // Pin every edge at zIndex 0 so the connector line ALWAYS paints
+        // under nodes (only the outlet endpoint dots, drawn via
+        // <ViewportPortal> at CSS z-index 2000, sit on top). Setting via
+        // defaultEdgeOptions is preferred to a per-edge zIndex because it
+        // doesn't churn edge identity through connectorToEdge — the option
+        // propagates through xyflow's default edge merging.
         defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         zoomOnDoubleClick={false}
         onInit={(instance) => {

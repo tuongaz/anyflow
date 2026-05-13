@@ -339,25 +339,15 @@ button:disabled {
   cursor: default;
 }
 
-/* US-015: edge label container — every connector label rendered through
+/* Edge label container — every connector label rendered through
  * <EdgeLabelRenderer> in editable-edge.tsx lands inside the
- * `.react-flow__edgelabel-renderer` portal. xyflow's base.css gives the
- * container no z-index, so labels stack via DOM order — but every edge
- * SVG sets an inline `z-index: 1` (US-010 / DEFAULT_EDGE_OPTIONS in
- * demo-canvas.tsx) which paints the connector path ABOVE auto-stacked
- * sibling elements like the label container. Result: the line crossed
- * through the readable text even though the label has an opaque
- * `bg-background` plate (US-018). Raise the entire label container above
- * the per-edge layer so labels paint cleanly on top.
- *
- * `z-index: 1700` sits above the elevated SELECTED edge body
- * (SELECTED_EDGE_Z_INDEX = 1500 in demo-canvas.tsx) so labels of a
- * selected connector aren't covered by their own edge path, while
- * remaining below the connector endpoint dots (z-index: 2000) so the dot
- * affordance still wins on the rare mid-line overlap. */
-.react-flow__edgelabel-renderer {
-  z-index: 1700;
-}
+ * `.react-flow__edgelabel-renderer` portal. Labels stack via natural DOM
+ * order (xyflow renders the container AFTER `.react-flow__edges` but BEFORE
+ * `.react-flow__nodes` in the viewport): labels paint above the connector
+ * path (good — the line never crosses the readable text) but BELOW nodes
+ * (good — connectors and their labels are always under nodes, only the
+ * outlet endpoint dots in the viewport-portal sit on top). No explicit
+ * z-index needed. */
 
 /* US-024: visible connector endpoint dot rendered via <ViewportPortal>
  * (DOM order AFTER `.react-flow__nodes` inside `.react-flow__viewport`)
