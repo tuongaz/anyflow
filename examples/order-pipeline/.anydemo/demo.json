@@ -6,8 +6,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": -2745.4336708810756,
-        "y": -2042.4824575479972
+        "x": -2792.0960373554194,
+        "y": -1860.8775718100103
       },
       "data": {
         "name": "inventory-worker",
@@ -74,8 +74,8 @@
       "id": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
       "type": "shapeNode",
       "position": {
-        "x": -2693.011529310378,
-        "y": -2452.5446685839197
+        "x": -2467.2665671777418,
+        "y": -2408.40459218927
       },
       "data": {
         "shape": "ellipse",
@@ -92,17 +92,18 @@
       "id": "node-b184a4ba-2555-4e35-ae50-7a33c4dd0e6b",
       "type": "shapeNode",
       "position": {
-        "x": -3156.8212653520172,
-        "y": -2063.700338824142
+        "x": -3066.018822483024,
+        "y": -1990.5539265130083
       },
       "data": {
         "shape": "database",
-        "width": 172,
-        "height": 243,
+        "width": 122,
+        "height": 164,
         "borderSize": 3,
         "fontSize": 17,
         "borderColor": "green",
-        "backgroundColor": "red"
+        "backgroundColor": "red",
+        "name": "Good one"
       }
     },
     {
@@ -271,7 +272,7 @@
       "kind": "default",
       "sourcePin": {
         "side": "bottom",
-        "t": 0.6924028352453705
+        "t": 0.5091530379723537
       }
     },
     {
@@ -281,8 +282,8 @@
       "sourceHandleAutoPicked": true,
       "targetHandleAutoPicked": true,
       "targetPin": {
-        "side": "right",
-        "t": 0.4612233231707317
+        "side": "bottom",
+        "t": 0.7360400502180918
       },
       "kind": "default"
     },

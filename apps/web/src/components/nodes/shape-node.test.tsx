@@ -345,13 +345,36 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     expect(headers).toHaveLength(0);
   });
 
-  it('sticky with name does NOT switch to header layout (kept as centered label)', () => {
-    const tree = callShapeNode({ shape: 'sticky', name: 'Note' });
+  it('sticky NEVER renders a header even when a name is set (description-only shape)', () => {
+    // Sticky intentionally drops the Name concept — see DetailPanel,
+    // which hides the Name field for stickies. The on-canvas label is
+    // `description`, not `name`.
+    const tree = callShapeNode({
+      shape: 'sticky',
+      name: 'IgnoredName',
+      description: 'Quick note',
+    });
     const headers = findAll(
       tree,
       (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
     );
     expect(headers).toHaveLength(0);
+  });
+
+  it('sticky renders description as the centered label (ignores name)', () => {
+    const tree = callShapeNode({
+      shape: 'sticky',
+      name: 'IgnoredName',
+      description: 'Sticky body',
+    });
+    const buttons = findAll(tree, (el) => el.type === 'button');
+    const labels = buttons.map((b) =>
+      typeof (b.props as { children?: unknown }).children === 'string'
+        ? ((b.props as { children: string }).children as string)
+        : '',
+    );
+    expect(labels.some((t) => t === 'Sticky body')).toBe(true);
+    expect(labels.some((t) => t === 'IgnoredName')).toBe(false);
   });
 
   it('text with name does NOT render a header (chromeless annotation)', () => {

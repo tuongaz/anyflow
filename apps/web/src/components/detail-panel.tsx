@@ -48,18 +48,19 @@ export function DetailPanel({
   // canvas; double-click still opens inline edit.
   const isTextShapeNode =
     node?.type === 'shapeNode' && (node.data as { shape?: string }).shape === 'text';
-  // Ellipse shape nodes have no Name concept — their on-canvas label is the
-  // `description` field, so the panel suppresses the Name row entirely. The
-  // panel still opens to expose Description / Detail / style fields.
-  const isEllipseShapeNode =
-    node?.type === 'shapeNode' && (node.data as { shape?: string }).shape === 'ellipse';
+  // Ellipse + sticky shape nodes have no Name concept — their on-canvas label
+  // is the `description` field, so the panel suppresses the Name row entirely.
+  // The panel still opens to expose Description / Detail / style fields.
+  const shapeKind =
+    node?.type === 'shapeNode' ? (node.data as { shape?: string }).shape : undefined;
+  const isDescriptionLabelShapeNode = shapeKind === 'ellipse' || shapeKind === 'sticky';
   const inspectableNode = isTextShapeNode ? null : node;
   const open = inspectableNode !== null || connector !== null;
   const nodeName =
     inspectableNode && 'name' in inspectableNode.data ? (inspectableNode.data.name ?? '') : '';
   const description = inspectableNode?.data.description ?? '';
   const detail = inspectableNode?.data.detail ?? '';
-  const showNameField = inspectableNode !== null && !isEllipseShapeNode;
+  const showNameField = inspectableNode !== null && !isDescriptionLabelShapeNode;
 
   // Panel width is user-resizable above the sm breakpoint via a left-edge
   // handle; persisted across sessions in localStorage. The CSS variable feeds

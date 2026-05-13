@@ -184,13 +184,14 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   const nameEditable = !!data.onNameChange;
   const descEditable = !!data.onDescriptionChange;
   // Rectangle supports a two-region layout (header + body) so a title typed
-  // in the panel surfaces as a header on the node. Ellipse deliberately stays
-  // out of this layout — the rectangular header chrome reads poorly inside an
-  // elliptical clip, so ellipse drops the Name concept entirely and renders
-  // `description` as a centered label instead. The DetailPanel mirrors this:
-  // the Name field is hidden for ellipse shapes.
+  // in the panel surfaces as a header on the node. Ellipse and sticky
+  // deliberately stay out of this layout — the rectangular header chrome reads
+  // poorly inside an elliptical clip, and the sticky note metaphor is a single
+  // body of text. Both drop the Name concept entirely and render `description`
+  // as the centered label. The DetailPanel mirrors this: the Name field is
+  // hidden for ellipse and sticky shapes.
   const isHeaderShape = shape === 'rectangle';
-  const isEllipse = shape === 'ellipse';
+  const isDescriptionLabel = shape === 'ellipse' || shape === 'sticky';
   const hasName = data.name !== undefined && data.name !== '';
   const useHeaderLayout = isHeaderShape && hasName;
   // While resizing OR once data.width/height are set, the React Flow wrapper
@@ -261,9 +262,10 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
               return;
             }
           }
-          // Ellipse renders description as its centered label and has no Name
-          // concept, so dblclick goes straight to description edit.
-          if (isEllipse) {
+          // Ellipse + sticky render description as their centered label and
+          // have no Name concept, so dblclick goes straight to description
+          // edit.
+          if (isDescriptionLabel) {
             if (descEditable) setEditing('description');
             return;
           }
@@ -307,12 +309,12 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   };
 
   // Single-label content variants:
-  //   - Ellipse: renders `description` as the centered label. No Name concept;
-  //     dblclick enters description edit directly.
-  //   - Other shapes (sticky/text/database + rect with no title): keep the
+  //   - Ellipse + sticky: render `description` as the centered label. No Name
+  //     concept; dblclick enters description edit directly.
+  //   - Other shapes (text/database + rect with no title): keep the
   //     `name`-based label so the auto-edit-on-mount flow types into it.
   let singleLabelContent: ReactNode;
-  if (isEllipse) {
+  if (isDescriptionLabel) {
     singleLabelContent =
       editing === 'description' && descEditable ? (
         <InlineEdit
