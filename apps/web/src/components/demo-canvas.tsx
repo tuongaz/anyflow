@@ -918,12 +918,18 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
         }
       }
     }
-    // Live snap for the MOVING end: scan all nodes in the store and find
-    // the nearest one whose bbox is within `RECONNECT_BUFFER_PX / zoom` of
-    // the cursor in FLOW units (which equals `RECONNECT_BUFFER_PX` in
-    // screen pixels). If found, snap the line's destination onto that
-    // node's perimeter so the user SEES the projection that will commit
-    // on release.
+    // Live snap for the MOVING end. Two paths:
+    //   (a) xyflow already snapped to a handle (cursor within
+    //       `connectionRadius=32` of a handle) → `connection.toHandle.nodeId`
+    //       is set in the store. The body-drop fallback prefers this over
+    //       its own hit-test (see onReconnectEndCb), so the in-flight line
+    //       must follow suit — otherwise the line previews "no snap" while
+    //       release commits a snap, and the user sees the connector jump.
+    //   (b) No xyflow handle hit → scan all nodes and find the nearest
+    //       whose bbox is within `RECONNECT_BUFFER_PX / zoom` of the cursor
+    //       in FLOW units (= `RECONNECT_BUFFER_PX` screen px). If found,
+    //       snap to that node's perimeter so the user SEES the projection
+    //       that will commit on release.
     //
     // Works for BOTH reconnect drags (when `reconnectingEdge` is set) and
     // NEW connection drags (no edge yet; we still want the moving end to
@@ -941,6 +947,7 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
     //     perimeter at the cursor projection.
     const zoom = useStore((s) => s.transform[2]);
     const nodeMap = useStore((s) => s.nodeLookup);
+    const xyflowToNodeId = useStore((s) => s.connection.toHandle?.nodeId ?? null);
     let effectiveToX = toX;
     let effectiveToY = toY;
     let effectiveToPosition = toPosition;
@@ -956,21 +963,34 @@ const buildReconnectAwareConnectionLine = (isReconnectingRef: {
           : reconnectingEdge.source
         : null;
       let bestNode: typeof fixedNode = null;
-      let bestDist = bufferFlow;
-      for (const node of nodeMap.values()) {
-        if (excludeNodeId && node.id === excludeNodeId) continue;
-        if (fixedNode && node.id === fixedNode.id) continue;
-        const w = node.measured.width ?? node.width ?? 0;
-        const h = node.measured.height ?? node.height ?? 0;
-        if (w === 0 || h === 0) continue;
-        const x = node.internals.positionAbsolute.x;
-        const y = node.internals.positionAbsolute.y;
-        const dx = Math.max(x - toX, 0, toX - (x + w));
-        const dy = Math.max(y - toY, 0, toY - (y + h));
-        const dist = Math.hypot(dx, dy);
-        if (dist <= bestDist) {
-          bestDist = dist;
-          bestNode = node;
+      // Path (a): xyflow's own handle-proximity snap. Takes precedence
+      // over our bbox-buffer scan because the body-drop fallback also
+      // gives `connectionState.toNode` precedence over its hit-test —
+      // matching the two keeps the in-flight preview aligned with the
+      // shape that will commit on release.
+      if (xyflowToNodeId && xyflowToNodeId !== excludeNodeId) {
+        const candidate = nodeMap.get(xyflowToNodeId) ?? null;
+        if (candidate) bestNode = candidate;
+      }
+      // Path (b): bbox-buffer scan, only when xyflow didn't already pin a
+      // target via handle proximity.
+      if (!bestNode) {
+        let bestDist = bufferFlow;
+        for (const node of nodeMap.values()) {
+          if (excludeNodeId && node.id === excludeNodeId) continue;
+          if (fixedNode && node.id === fixedNode.id) continue;
+          const w = node.measured.width ?? node.width ?? 0;
+          const h = node.measured.height ?? node.height ?? 0;
+          if (w === 0 || h === 0) continue;
+          const x = node.internals.positionAbsolute.x;
+          const y = node.internals.positionAbsolute.y;
+          const dx = Math.max(x - toX, 0, toX - (x + w));
+          const dy = Math.max(y - toY, 0, toY - (y + h));
+          const dist = Math.hypot(dx, dy);
+          if (dist <= bestDist) {
+            bestDist = dist;
+            bestNode = node;
+          }
         }
       }
       // Snap onto fixed-end's own node is allowed for reconnect drag
