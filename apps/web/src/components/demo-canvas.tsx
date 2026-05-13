@@ -2773,7 +2773,25 @@ export function DemoCanvas({
         fromOverrides.push(decorate({ ...candidate, id } as Connector));
       }
     }
-    return [...fromServer, ...fromOverrides];
+    const all = [...fromServer, ...fromOverrides];
+    // Reorder so selected edges render LAST in xyflow's EdgeRenderer (DOM
+    // last). When two unselected edges share zIndex 0, DOM order decides
+    // hit-testing — and the EdgeUpdateAnchor circles that drive the outlet
+    // drag live inside the edge SVG. Without reordering, a sibling edge
+    // whose path crosses the selected edge's endpoint can swallow the click
+    // (its path has `pointer-events: visibleStroke` and renders later), so
+    // the user can't grab the outlet to reroute. Pushing the selected edge
+    // to the back of the array makes its SVG paint last among edges and
+    // catches the click first — while every edge stays at zIndex 0, so
+    // connectors still sit under every node (only the outlet-dot portal
+    // at z-index 2000 sits on top of nodes).
+    const unselected: Edge[] = [];
+    const selected: Edge[] = [];
+    for (const e of all) {
+      if (selectedConnectorIdSet.has(e.id)) selected.push(e);
+      else unselected.push(e);
+    }
+    return [...unselected, ...selected];
   }, [
     connectors,
     runs,

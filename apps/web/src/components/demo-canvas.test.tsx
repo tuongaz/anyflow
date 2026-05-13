@@ -1200,6 +1200,36 @@ describe('DemoCanvas', () => {
       // on the connector — onConnectorClick should NOT fire for a gated edge.
       expect(clicks).toEqual(['node:g']);
     });
+
+    it('selected connectors render LAST so their EdgeUpdateAnchor wins hit-testing over overlapping siblings', () => {
+      // Every edge sits at zIndex 0 (under nodes), so when two unselected
+      // edges overlap, DOM order decides which one catches a click on its
+      // path. The selected edge's outlet drag is driven by the
+      // EdgeUpdateAnchor circles inside its SVG; if a sibling edge's path
+      // crossed the selected endpoint and rendered LATER, the click would
+      // hit that sibling instead of the anchor and the user couldn't grab
+      // the outlet. rfEdges must therefore push selected edges to the end
+      // of the array so xyflow's EdgeRenderer outputs them last in DOM.
+      const tree = callDemoCanvas({
+        nodes: [makeShapeNode('a'), makeShapeNode('b')],
+        connectors: [
+          { id: 'e1', source: 'a', target: 'b', kind: 'default' },
+          { id: 'e2', source: 'a', target: 'b', kind: 'default' },
+          { id: 'e3', source: 'a', target: 'b', kind: 'default' },
+        ],
+        selectedConnectorIds: ['e2'],
+      });
+      const rf = findElement(tree, (el) => el.type === ReactFlow);
+      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
+      const rfEdges = rf.props.edges as Array<{ id: string }>;
+      // e2 (selected) MUST sit at the END of the array — that's what makes
+      // its SVG render last and win hit-testing among same-zIndex edges.
+      expect(rfEdges[rfEdges.length - 1]?.id).toBe('e2');
+      // The remaining server order is preserved among the unselected set so
+      // an arbitrary user-driven reorder doesn't shuffle non-selected edges.
+      const unselectedIds = rfEdges.slice(0, -1).map((e) => e.id);
+      expect(unselectedIds).toEqual(['e1', 'e3']);
+    });
   });
 
   describe('US-006: group onResize branches on data.isActive', () => {

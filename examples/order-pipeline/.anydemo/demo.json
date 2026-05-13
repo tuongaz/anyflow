@@ -44,8 +44,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": -1537.530224880864,
-        "y": -1963.4398620493325
+        "x": -1496.3461844833826,
+        "y": -1960.86585952449
       },
       "data": {
         "name": "POST /payments/charge!",
@@ -89,8 +89,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": -2103.108396492533,
-        "y": -1959.858842901519
+        "x": -2283.2885732315126,
+        "y": -1962.4328454263616
       },
       "data": {
         "name": "inventory-worker",
@@ -165,17 +165,17 @@
     },
     {
       "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
-      "source": "inventory-worker",
-      "target": "charge-payment",
+      "source": "charge-payment",
+      "target": "create-order",
       "sourceHandleAutoPicked": false,
       "targetHandleAutoPicked": false,
       "sourcePin": {
-        "side": "right",
-        "t": 0.5499332350872366
+        "side": "left",
+        "t": 0.42459261507513096
       },
       "targetPin": {
-        "side": "bottom",
-        "t": 0.5852406272345565
+        "side": "right",
+        "t": 0.19427231890432162
       },
       "kind": "default",
       "path": "step"
@@ -183,17 +183,17 @@
     {
       "id": "conn-7364cf6a-0286-494f-91a2-9f6dbf27b13c",
       "source": "charge-payment",
-      "target": "create-order",
+      "target": "inventory-worker",
       "sourceHandleAutoPicked": false,
       "targetHandleAutoPicked": false,
       "targetPin": {
-        "side": "top",
-        "t": 0.6257568544454583
+        "side": "right",
+        "t": 0.3212508282158736
       },
       "kind": "default",
       "sourcePin": {
-        "side": "left",
-        "t": 0.3173666119975855
+        "side": "bottom",
+        "t": 0.4938391047953309
       },
       "label": "This is ok to work with ",
       "path": "step"
