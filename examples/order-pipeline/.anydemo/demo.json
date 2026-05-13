@@ -7,7 +7,7 @@
       "type": "playNode",
       "position": {
         "x": -2345.2236168251966,
-        "y": -1409.7314046078839
+        "y": -1522.7314046078839
       },
       "data": {
         "name": "POST /orders",
@@ -34,8 +34,8 @@
             ]
           }
         },
-        "width": 268,
-        "height": 238,
+        "width": 301,
+        "height": 351,
         "description": "Creates an order, publishes order.created on the in-process bus, AND enqueues a shipment request on the shipments queue. The single click drives all three downstream nodes.",
         "detail": "Thi sis another good one"
       }
@@ -44,8 +44,8 @@
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": -1669.8058528880465,
-        "y": -1969.99445036027
+        "x": -1720.2903832446277,
+        "y": -1928.5712459651265
       },
       "data": {
         "name": "POST /payments/charge!",
@@ -89,8 +89,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": -2283.2885732315126,
-        "y": -1950.84983406457
+        "x": -2605.612882431224,
+        "y": -1928.8437567296498
       },
       "data": {
         "name": "inventory-worker",
@@ -121,6 +121,36 @@
         "fontSize": 17,
         "name": "Thi sis good one",
         "locked": false
+      }
+    },
+    {
+      "id": "node-3f6e8e6c-382b-40bb-87bd-5bfd0bfb017a",
+      "type": "shapeNode",
+      "position": {
+        "x": -3051.408497110813,
+        "y": -2204.348379992388
+      },
+      "data": {
+        "shape": "rectangle",
+        "width": 232.60605778576655,
+        "height": 159.74126587487558,
+        "borderSize": 3,
+        "fontSize": 17
+      }
+    },
+    {
+      "id": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
+      "type": "shapeNode",
+      "position": {
+        "x": -2683.4286566020505,
+        "y": -2258.2561903020346
+      },
+      "data": {
+        "shape": "ellipse",
+        "width": 224.06049926186643,
+        "height": 176.53910339937102,
+        "borderSize": 3,
+        "fontSize": 17
       }
     }
   ],
@@ -174,7 +204,7 @@
       "targetHandleAutoPicked": false,
       "targetPin": {
         "side": "right",
-        "t": 0.433163981469898
+        "t": 0.855800003193234
       },
       "kind": "default",
       "sourcePin": {
