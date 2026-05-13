@@ -266,7 +266,7 @@ const NodeSchema = z.discriminatedUnion('type', [
 // has no separate `edges[]` array — connectors are the sole source of truth
 // for inter-node connections.
 const ConnectorStyleSchema = z.enum(['solid', 'dashed', 'dotted']);
-const ConnectorDirectionSchema = z.enum(['forward', 'backward', 'both']);
+const ConnectorDirectionSchema = z.enum(['forward', 'backward', 'both', 'none']);
 // Path geometry — orthogonal to `style` (which means the dash pattern). Absent
 // → renders as today's smooth bezier curve. 'step' renders as a smoothstep
 // (right-angle / zigzag) path. (US-017)

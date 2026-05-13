@@ -19,7 +19,16 @@ import type {
 } from '@/lib/api';
 import { COLOR_TOKENS } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
-import { ArrowLeftRight, ArrowRight, Check, MoveLeft, Squircle, Sticker, Type } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  Check,
+  Minus,
+  MoveLeft,
+  Squircle,
+  Sticker,
+  Type,
+} from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 
 export interface NodeStylePatch {
@@ -136,6 +145,7 @@ const PATH_OPTIONS: IconToggleOption<ConnectorPath>[] = [
 ];
 
 const DIRECTION_OPTIONS: IconToggleOption<ConnectorDirection>[] = [
+  { value: 'none', icon: Minus, label: 'None', testId: 'style-tab-direction-none' },
   { value: 'backward', icon: MoveLeft, label: 'Backward', testId: 'style-tab-direction-backward' },
   { value: 'forward', icon: ArrowRight, label: 'Forward', testId: 'style-tab-direction-forward' },
   { value: 'both', icon: ArrowLeftRight, label: 'Both', testId: 'style-tab-direction-both' },

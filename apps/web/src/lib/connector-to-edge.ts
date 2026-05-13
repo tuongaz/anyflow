@@ -135,6 +135,7 @@ export const connectorToEdge = (
   // 'forward' (or absent) → arrow at target only (historical behavior).
   // 'backward' → arrow at source only.
   // 'both'     → arrows at both ends.
+  // 'none'     → no arrows (plain line).
   const direction = connector.direction ?? 'forward';
   const markerColor = colorStyle.stroke;
   const arrow = arrowMarker(markerColor);

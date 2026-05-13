@@ -287,7 +287,7 @@ export const ConnectorPatchBodySchema = z
     label: z.string().optional(),
     style: z.enum(['solid', 'dashed', 'dotted']).optional(),
     color: ColorTokenSchema.optional(),
-    direction: z.enum(['forward', 'backward', 'both']).optional(),
+    direction: z.enum(['forward', 'backward', 'both', 'none']).optional(),
     borderSize: z.number().positive().optional(),
     path: z.enum(['curve', 'step']).optional(),
     // US-018: per-connector label font size (mirrors NodeVisualBaseShape.fontSize).

@@ -172,7 +172,7 @@ export type DemoNode =
   | (NodeBase & { type: 'htmlNode'; data: HtmlNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
-export type ConnectorDirection = 'forward' | 'backward' | 'both';
+export type ConnectorDirection = 'forward' | 'backward' | 'both' | 'none';
 /** Path geometry — 'curve' (default bezier) vs 'step' (smoothstep / zigzag). */
 export type ConnectorPath = 'curve' | 'step';
 
