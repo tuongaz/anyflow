@@ -1,12 +1,30 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useState } from 'react';
+import {
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  memo,
+  useState,
+} from 'react';
+
+// US-009: illustrative shapes own their visuals via inline-SVG components
+// under `apps/web/src/components/nodes/shapes/`. The wrapper's Tailwind chrome
+// (border / bg / rotation) is suppressed for these shapes — see `SHAPE_CLASS`
+// + `shapeChromeStyle` below — so the SVG can draw the whole visual without
+// fighting CSS borders. Extend this set when adding a new illustrative shape.
+const ILLUSTRATIVE_SHAPES: ReadonlySet<ShapeKind> = new Set<ShapeKind>(['database']);
+
+function isIllustrativeShape(shape: ShapeKind): boolean {
+  return ILLUSTRATIVE_SHAPES.has(shape);
+}
 
 export type ShapeNodeRuntimeData = ShapeNodeData & {
   onResize?: (
@@ -32,6 +50,9 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
   ellipse: { width: 200, height: 120 },
   sticky: { width: 180, height: 180 },
   text: { width: 160, height: 40 },
+  // US-009: cylinder reads best in portrait — the rim disc looks proportional
+  // when the body is taller than wide.
+  database: { width: 120, height: 140 },
 };
 
 // `text` deliberately omits border + background so the shape reads as a free
@@ -48,6 +69,9 @@ export const SHAPE_CLASS: Record<ShapeKind, string> = {
   ellipse: 'rounded-full border-[3px] bg-transparent',
   sticky: 'rounded-md border-[3px] shadow-md -rotate-1',
   text: 'bg-transparent',
+  // US-009: illustrative shapes have no wrapper chrome — the inline SVG owns
+  // border + fill so the wrapper stays a transparent positioning host.
+  database: '',
 };
 
 /**
@@ -78,6 +102,11 @@ export function shapeChromeStyle(
   >,
 ): CSSProperties {
   if (shape === 'text') return {};
+  // US-009: illustrative shapes draw their own border + fill inside the SVG
+  // (see `apps/web/src/components/nodes/shapes/`), so the wrapper must stay
+  // chrome-free — otherwise CSS borders would overlap the SVG strokes and
+  // backgrounds would clip the rim.
+  if (isIllustrativeShape(shape)) return {};
   // US-021: rectangle + ellipse fall back to a literal white fill when the
   // author hasn't set `backgroundColor`, so the canvas reads as a clean diagram
   // on light AND dark themes (whiteboard-app convention). The field stays
@@ -100,6 +129,26 @@ export function shapeChromeStyle(
     borderStyle: data?.borderStyle,
     borderRadius:
       supportsCornerRadius && data?.cornerRadius !== undefined ? data.cornerRadius : undefined,
+  };
+}
+
+// US-009: resolve a shapeNode's ColorToken `borderColor` / `backgroundColor`
+// into concrete CSS values for the per-shape SVG. Unset `backgroundColor`
+// falls through to NODE_DEFAULT_BG_WHITE so cylinders read crisp on dark
+// themes, mirroring the US-021 white-default already applied to rectangle /
+// ellipse. Inline in `ShapeNodeImpl` (vs a nested component) so the test
+// suite's hook-shim renderer sees the per-shape SVG element directly in the
+// returned tree.
+function resolveIllustrativeColors(data: ShapeNodeData): {
+  borderColor: string | undefined;
+  backgroundColor: string | undefined;
+} {
+  return {
+    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
+    backgroundColor:
+      data.backgroundColor !== undefined
+        ? colorTokenStyle(data.backgroundColor, 'node').backgroundColor
+        : NODE_DEFAULT_BG_WHITE,
   };
 }
 
@@ -174,6 +223,34 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
       }
     : undefined;
 
+  // US-009: illustrative shape overlay. Renders BEFORE the label JSX so the
+  // label (positioned via the `relative` class below) stacks above by DOM
+  // order — no z-index gymnastics needed. The overlay is `pointer-events-none`
+  // so the label, handles, and resize controls keep their hit targets. The
+  // dispatch is inline (not behind a wrapper component) so the per-shape SVG
+  // sits directly in the returned tree — keeps `ShapeNodeImpl`'s shallow
+  // render visible to the hook-shim test renderer in `shape-node.test.tsx`.
+  let illustrativeOverlay: ReactNode = null;
+  if (isIllustrativeShape(shape)) {
+    const w = data.width ?? size.width;
+    const h = data.height ?? size.height;
+    const { borderColor, backgroundColor } = resolveIllustrativeColors(data);
+    illustrativeOverlay = (
+      <div className="pointer-events-none absolute inset-0">
+        {shape === 'database' ? (
+          <DatabaseShape
+            width={w}
+            height={h}
+            borderColor={borderColor}
+            backgroundColor={backgroundColor}
+            borderSize={data.borderSize}
+            borderStyle={data.borderStyle}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -186,6 +263,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
       data-shape={shape}
       onDoubleClick={handleWrapperDoubleClick}
     >
+      {illustrativeOverlay}
       <ResizeControls
         visible={!!selected && !!data.onResize && !isEditing && !data.locked}
         cornerVariant="visible"
@@ -222,7 +300,10 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           commitMode="blur-only"
           onCommit={(v) => data.onLabelChange?.(id, v)}
           onExit={() => setIsEditing(false)}
-          className="text-[22px]"
+          // US-009: `relative` keeps the label as a positioned sibling of the
+          // illustrative overlay above, so DOM order alone is enough to stack
+          // it over the SVG without juggling explicit z-index values.
+          className="relative text-[22px]"
           style={labelFontStyle}
           placeholder={isText ? 'Text' : 'Label'}
         />
@@ -230,7 +311,8 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
         <button
           type="button"
           className={cn(
-            'block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
+            // US-009: `relative` — see the InlineEdit branch above.
+            'relative block whitespace-pre-wrap bg-transparent p-0 font-medium leading-tight',
             data.label ? 'break-words' : 'text-muted-foreground/40 italic',
           )}
           style={labelFontStyle}

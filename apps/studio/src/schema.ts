@@ -131,7 +131,11 @@ const StateNodeSchema = z.object({
 // Decorative annotation node — rectangle / ellipse / sticky. No semantic
 // payload (no kind/stateSource/playAction); reuses NodeVisualBaseShape so
 // users can theme it the same way as functional nodes.
-const ShapeKindSchema = z.enum(['rectangle', 'ellipse', 'sticky', 'text']);
+// US-009 added `database` as the first illustrative shape (cylinder rendered
+// via inline SVG inside shape-node.tsx). Illustrative shapes share the same
+// shapeNode wrapper and color/border fields but own their own visuals via a
+// per-shape component under `apps/web/src/components/nodes/shapes/`.
+const ShapeKindSchema = z.enum(['rectangle', 'ellipse', 'sticky', 'text', 'database']);
 
 const ShapeNodeDataSchema = z.object({
   shape: ShapeKindSchema,

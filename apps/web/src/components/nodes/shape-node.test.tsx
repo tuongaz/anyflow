@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 import { InlineEdit } from '@/components/inline-edit';
+import { ResizeControls } from '@/components/nodes/resize-controls';
 import { ShapeNode } from '@/components/nodes/shape-node';
-import { SHAPE_CLASS, shapeChromeClass, shapeChromeStyle } from '@/components/nodes/shape-node';
+import {
+  SHAPE_CLASS,
+  SHAPE_DEFAULT_SIZE,
+  shapeChromeClass,
+  shapeChromeStyle,
+} from '@/components/nodes/shape-node';
+import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { COLOR_TOKENS, NODE_DEFAULT_BG_WHITE } from '@/lib/color-tokens';
 import { Handle, type NodeProps } from '@xyflow/react';
 import * as React from 'react';
@@ -115,6 +122,36 @@ describe('shape-node chrome helpers', () => {
         expect(shapeChromeStyle('text', { backgroundColor: 'blue' })).toEqual({});
         expect(shapeChromeStyle('text')).toEqual({});
       });
+    });
+  });
+
+  // US-009 illustrative shapes: the SVG inside <DatabaseShape> owns the
+  // border + fill, so the wrapper chrome (border / bg / corner-radius) must
+  // be suppressed — otherwise CSS borders overlap the SVG strokes and the
+  // wrapper background occludes the rim disc.
+  describe('illustrative shapes (US-009)', () => {
+    it('database returns empty Tailwind chrome class', () => {
+      expect(shapeChromeClass('database')).toBe('');
+      expect(SHAPE_CLASS.database).toBe('');
+    });
+
+    it('database returns {} from shapeChromeStyle regardless of author overrides', () => {
+      // The SVG owns the visuals; passing color / borderSize / borderStyle
+      // through the wrapper would visibly compete with the SVG strokes.
+      expect(shapeChromeStyle('database')).toEqual({});
+      expect(
+        shapeChromeStyle('database', {
+          borderColor: 'blue',
+          backgroundColor: 'green',
+          borderSize: 5,
+          borderStyle: 'dashed',
+          cornerRadius: 12,
+        }),
+      ).toEqual({});
+    });
+
+    it('SHAPE_DEFAULT_SIZE.database matches the PRD spec (120 x 140)', () => {
+      expect(SHAPE_DEFAULT_SIZE.database).toEqual({ width: 120, height: 140 });
     });
   });
 });
@@ -269,5 +306,147 @@ describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
     });
     const inlineEdits = findAll(tree, (el) => el.type === InlineEdit);
     expect(inlineEdits).toHaveLength(0);
+  });
+});
+
+// US-009: illustrative shapes own their visual via inline SVG. The renderer
+// must surface a <DatabaseShape> in the tree for shape='database' and keep
+// resize controls available when selected, just like the existing chromed
+// shapes.
+describe('ShapeNode database shape (US-009)', () => {
+  it('renders <DatabaseShape> in the tree when shape=database', () => {
+    const tree = callShapeNode({ shape: 'database' });
+    const shapes = findAll(tree, (el) => el.type === DatabaseShape);
+    expect(shapes).toHaveLength(1);
+  });
+
+  it('database shape still renders four connect handles (US-009: cylinder is wireable)', () => {
+    const tree = callShapeNode({ shape: 'database' });
+    const handles = findAll(tree, (el) => el.type === Handle);
+    expect(handles).toHaveLength(4);
+  });
+
+  it('renders ResizeControls with visible=true when selected with onResize callback', () => {
+    const tree = callShapeNode({ shape: 'database', onResize: () => {} }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findAll(tree, (el) => el.type === ResizeControls);
+    expect(controls).toHaveLength(1);
+    const props = controls[0]?.props as { visible?: boolean } | undefined;
+    expect(props?.visible).toBe(true);
+  });
+
+  it('renders ResizeControls with visible=false when not selected', () => {
+    const tree = callShapeNode({ shape: 'database', onResize: () => {} });
+    const controls = findAll(tree, (el) => el.type === ResizeControls);
+    const props = controls[0]?.props as { visible?: boolean } | undefined;
+    expect(props?.visible).toBe(false);
+  });
+
+  it('non-illustrative shapes do NOT render <DatabaseShape> in the tree', () => {
+    for (const shape of ['rectangle', 'ellipse', 'sticky', 'text'] as const) {
+      const tree = callShapeNode({ shape });
+      const shapes = findAll(tree, (el) => el.type === DatabaseShape);
+      expect(shapes).toHaveLength(0);
+    }
+  });
+});
+
+// US-009: the DatabaseShape component is a pure SVG renderer. These tests
+// pin the structural invariants — <svg> root, the three documented pieces
+// (body rect + top ellipse + bottom arc path), clamp on ellipseRy, and the
+// stroke-dasharray mapping for dashed / dotted borderStyles.
+describe('DatabaseShape (US-009)', () => {
+  it('returns an <svg> element with the expected viewBox', () => {
+    const el = DatabaseShape({ width: 120, height: 140 }) as {
+      type: string;
+      props: Record<string, unknown>;
+    };
+    expect(el.type).toBe('svg');
+    expect(el.props.viewBox).toBe('0 0 120 140');
+    expect(el.props['data-testid']).toBe('database-shape');
+  });
+
+  it('SVG body composition contains a <rect>, two <line>s, a <path>, and an <ellipse>', () => {
+    const el = DatabaseShape({ width: 120, height: 140 }) as {
+      props: { children?: unknown };
+    };
+    const types = (Array.isArray(el.props.children) ? el.props.children : [el.props.children])
+      .filter((c): c is { type: string } => !!c && typeof c === 'object' && 'type' in c)
+      .map((c) => c.type);
+    // a11y <title> first, then body rect + two side lines + bottom arc path + top ellipse rim.
+    expect(types).toEqual(['title', 'rect', 'line', 'line', 'path', 'ellipse']);
+  });
+
+  it('ellipseRy is clamped to [6, 28]', () => {
+    // height * 0.12 = 6 → at floor: stays 6.
+    const small = DatabaseShape({ width: 100, height: 50 }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const smallEllipse = small.props.children.find((c) => c.type === 'ellipse');
+    expect(smallEllipse?.props.ry).toBe(6);
+
+    // height * 0.12 = 60 → clamped down to 28.
+    const big = DatabaseShape({ width: 100, height: 500 }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const bigEllipse = big.props.children.find((c) => c.type === 'ellipse');
+    expect(bigEllipse?.props.ry).toBe(28);
+
+    // height * 0.12 = 16.8 → in band.
+    const mid = DatabaseShape({ width: 100, height: 140 }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const midEllipse = mid.props.children.find((c) => c.type === 'ellipse');
+    expect(midEllipse?.props.ry).toBeCloseTo(16.8);
+  });
+
+  it('borderStyle=dashed maps to stroke-dasharray "6 4"', () => {
+    const el = DatabaseShape({ width: 120, height: 140, borderStyle: 'dashed' }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const ellipse = el.props.children.find((c) => c.type === 'ellipse');
+    expect(ellipse?.props.strokeDasharray).toBe('6 4');
+  });
+
+  it('borderStyle=dotted maps to stroke-dasharray "2 4"', () => {
+    const el = DatabaseShape({ width: 120, height: 140, borderStyle: 'dotted' }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const ellipse = el.props.children.find((c) => c.type === 'ellipse');
+    expect(ellipse?.props.strokeDasharray).toBe('2 4');
+  });
+
+  it('borderStyle=solid maps to undefined dasharray (no stroke pattern)', () => {
+    const el = DatabaseShape({ width: 120, height: 140, borderStyle: 'solid' }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const ellipse = el.props.children.find((c) => c.type === 'ellipse');
+    expect(ellipse?.props.strokeDasharray).toBeUndefined();
+  });
+
+  it('uses var() fallbacks when borderColor / backgroundColor props are unset', () => {
+    const el = DatabaseShape({ width: 120, height: 140 }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const ellipse = el.props.children.find((c) => c.type === 'ellipse');
+    expect(ellipse?.props.stroke).toBe('var(--anydemo-node-border)');
+    expect(ellipse?.props.fill).toBe('var(--anydemo-node-bg)');
+  });
+
+  it('honours explicit stroke/fill props', () => {
+    const el = DatabaseShape({
+      width: 120,
+      height: 140,
+      borderColor: '#ff0000',
+      backgroundColor: '#00ff00',
+      borderSize: 4,
+    }) as {
+      props: { children: Array<{ type: string; props: Record<string, unknown> }> };
+    };
+    const ellipse = el.props.children.find((c) => c.type === 'ellipse');
+    expect(ellipse?.props.stroke).toBe('#ff0000');
+    expect(ellipse?.props.fill).toBe('#00ff00');
+    expect(ellipse?.props.strokeWidth).toBe(4);
   });
 });

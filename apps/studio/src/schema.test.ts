@@ -158,7 +158,10 @@ describe('DemoSchema', () => {
   });
 
   it('round-trips a shapeNode with each shape variant', () => {
-    const make = (shape: 'rectangle' | 'ellipse' | 'sticky') => ({
+    // US-009 extended ShapeKind with `database` — the first illustrative
+    // shape. The enum now drives both the schema validation here and the
+    // per-shape renderer dispatch in apps/web's shape-node.tsx.
+    const make = (shape: 'rectangle' | 'ellipse' | 'sticky' | 'database') => ({
       version: 1 as const,
       name: 'shape-demo',
       nodes: [
@@ -172,7 +175,7 @@ describe('DemoSchema', () => {
       connectors: [],
     });
 
-    for (const shape of ['rectangle', 'ellipse', 'sticky'] as const) {
+    for (const shape of ['rectangle', 'ellipse', 'sticky', 'database'] as const) {
       const result = DemoSchema.safeParse(make(shape));
       if (!result.success) {
         throw new Error(
@@ -184,6 +187,31 @@ describe('DemoSchema', () => {
       expect(node.data.shape).toBe(shape);
       expect(node.data.label).toBe(`${shape} note`);
     }
+  });
+
+  it('accepts a shapeNode with shape=database and no label (US-009 illustrative)', () => {
+    const demo = {
+      version: 1 as const,
+      name: 'db-shape',
+      nodes: [
+        {
+          id: 'db-1',
+          type: 'shapeNode' as const,
+          position: { x: 0, y: 0 },
+          data: { shape: 'database' as const },
+        },
+      ],
+      connectors: [],
+    };
+    const result = DemoSchema.safeParse(demo);
+    if (!result.success) {
+      throw new Error(
+        `expected database shapeNode to parse, got: ${JSON.stringify(result.error.issues)}`,
+      );
+    }
+    const node = result.data.nodes[0];
+    if (node?.type !== 'shapeNode') throw new Error('expected shapeNode');
+    expect(node.data.shape).toBe('database');
   });
 
   it('accepts a shapeNode without an optional label', () => {

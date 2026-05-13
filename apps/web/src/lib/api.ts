@@ -83,7 +83,11 @@ export interface NodeData extends NodeVisual, NodeDescription {
   handlerModule?: string;
 }
 
-export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky' | 'text';
+// US-009: `database` is the first illustrative shape — rendered via inline
+// SVG in `apps/web/src/components/nodes/shapes/database.tsx`, the wrapper
+// chrome is suppressed (SVG owns border + fill). Keep this union in sync with
+// `ShapeKindSchema` in `apps/studio/src/schema.ts`.
+export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky' | 'text' | 'database';
 
 export interface ShapeNodeData extends NodeVisual, NodeDescription {
   shape: ShapeKind;
