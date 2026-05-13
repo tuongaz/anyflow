@@ -174,12 +174,12 @@
       "targetHandleAutoPicked": false,
       "targetPin": {
         "side": "right",
-        "t": 0.3212508282158736
+        "t": 0.433163981469898
       },
       "kind": "default",
       "sourcePin": {
         "side": "bottom",
-        "t": 0.4938391047953309
+        "t": 0.45057855815932135
       },
       "label": "This is ok to work with ",
       "path": "step"

@@ -53,11 +53,16 @@ export interface ToolbarShapeEntry {
   Icon: typeof Square;
 }
 
-// Primary shapes get their own tile inline in the toolbar — these are the
-// generic building blocks every diagram needs.
-const PRIMARY_SHAPES: ToolbarShapeEntry[] = [
+// Top-group primary shapes — the geometric building blocks that sit alongside
+// the Shape picker and Icons trigger in the toolbar's first cluster.
+const TOP_PRIMARY_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'rectangle', label: 'Rectangle', Icon: Square },
   { shape: 'ellipse', label: 'Ellipse', Icon: Circle },
+];
+
+// Secondary primary shapes — annotation tiles (Sticky, Text) that live in
+// their own group below the shape/icon cluster.
+const SECONDARY_PRIMARY_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'sticky', label: 'Sticky note', Icon: StickyNote },
   { shape: 'text', label: 'Text', Icon: Type },
 ];
@@ -74,7 +79,11 @@ const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
 // Combined list, exported so US-015's drop-on-pane popover can list the same
 // set of creatable node types (matching icons + labels) without duplicating
 // the registry.
-export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [...PRIMARY_SHAPES, ...ILLUSTRATIVE_SHAPES];
+export const TOOLBAR_SHAPES: ToolbarShapeEntry[] = [
+  ...TOP_PRIMARY_SHAPES,
+  ...SECONDARY_PRIMARY_SHAPES,
+  ...ILLUSTRATIVE_SHAPES,
+];
 
 const INSERT_ICON_LABEL = 'Insert icon';
 const SHAPE_PICKER_LABEL = 'Shape';
@@ -99,35 +108,36 @@ export function CanvasToolbar({
   const illustrativeActive =
     activeShape !== null && ILLUSTRATIVE_SHAPES.some((s) => s.shape === activeShape);
 
+  const renderShapeButton = ({ shape, label, Icon }: ToolbarShapeEntry) => {
+    const active = activeShape === shape;
+    return (
+      <button
+        key={shape}
+        type="button"
+        data-testid={`toolbar-shape-${shape}`}
+        data-active={active ? 'true' : 'false'}
+        aria-pressed={active}
+        aria-label={label}
+        title={label}
+        onClick={() => onSelectShape(active ? null : shape)}
+        className={cn(
+          'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+          active
+            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+            : 'hover:bg-accent hover:text-accent-foreground',
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </button>
+    );
+  };
+
   return (
     <div
       data-testid="canvas-toolbar"
       className="pointer-events-auto flex flex-col items-center gap-1 rounded-lg border border-border bg-background/95 p-1 shadow-md backdrop-blur"
     >
-      {PRIMARY_SHAPES.map(({ shape, label, Icon }) => {
-        const active = activeShape === shape;
-        return (
-          <button
-            key={shape}
-            type="button"
-            data-testid={`toolbar-shape-${shape}`}
-            data-active={active ? 'true' : 'false'}
-            aria-pressed={active}
-            aria-label={label}
-            title={label}
-            onClick={() => onSelectShape(active ? null : shape)}
-            className={cn(
-              'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-              active
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'hover:bg-accent hover:text-accent-foreground',
-            )}
-          >
-            <Icon className="h-4 w-4" />
-          </button>
-        );
-      })}
-      <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
+      {TOP_PRIMARY_SHAPES.map(renderShapeButton)}
       <Popover open={shapePickerOpen} onOpenChange={setShapePickerOpen}>
         <PopoverTrigger asChild>
           <button
@@ -189,35 +199,34 @@ export function CanvasToolbar({
         </PopoverContent>
       </Popover>
       {onPickIcon ? (
-        <>
-          <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
-          <IconPickerPopover
-            open={iconPickerOpen ?? false}
-            onOpenChange={(next) => {
-              if (next) onOpenIconPicker?.();
-              else onCloseIconPicker?.();
-            }}
-            anchor={
-              <button
-                type="button"
-                data-testid="toolbar-insert-icon"
-                aria-label={INSERT_ICON_LABEL}
-                aria-pressed={iconPickerOpen ?? false}
-                title={INSERT_ICON_LABEL}
-                className={cn(
-                  'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-                  iconPickerOpen
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'hover:bg-accent hover:text-accent-foreground',
-                )}
-              >
-                <Sticker className="h-4 w-4" aria-hidden="true" />
-              </button>
-            }
-            onPick={onPickIcon}
-          />
-        </>
+        <IconPickerPopover
+          open={iconPickerOpen ?? false}
+          onOpenChange={(next) => {
+            if (next) onOpenIconPicker?.();
+            else onCloseIconPicker?.();
+          }}
+          anchor={
+            <button
+              type="button"
+              data-testid="toolbar-insert-icon"
+              aria-label={INSERT_ICON_LABEL}
+              aria-pressed={iconPickerOpen ?? false}
+              title={INSERT_ICON_LABEL}
+              className={cn(
+                'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+                iconPickerOpen
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              <Sticker className="h-4 w-4" aria-hidden="true" />
+            </button>
+          }
+          onPick={onPickIcon}
+        />
       ) : null}
+      <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
+      {SECONDARY_PRIMARY_SHAPES.map(renderShapeButton)}
       {htmlBlockEnabled ? (
         <>
           <div className="my-1 h-px w-6 bg-border" aria-hidden="true" />
