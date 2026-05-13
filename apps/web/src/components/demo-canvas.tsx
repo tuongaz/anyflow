@@ -514,7 +514,7 @@ const nodeElAtPoint = (clientX: number, clientY: number): Element | null => {
  * is the visual distance users perceive as "still close." Intentional empty-
  * space drops past that distance no longer get pulled toward a neighbour.
  */
-const RECONNECT_BUFFER_PX = 24;
+const RECONNECT_BUFFER_PX = 15;
 
 /**
  * Hit-test for connect/reconnect body drops. Returns the topmost
