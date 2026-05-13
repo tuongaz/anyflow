@@ -3,6 +3,8 @@
 // the dispatcher reads and returns the resolved action (or null for unrelated
 // keys). Wiring lives in `demo-view.tsx`.
 
+import type { ShapeKind } from '@/lib/api';
+
 export type ModifierEvent = Pick<
   KeyboardEvent,
   'key' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'
@@ -392,4 +394,31 @@ export const resolveClipboardChord = ({
   // 'v'
   if (!hasClipboard) return { type: 'noop' };
   return { type: 'paste' };
+};
+
+// US-003: tool-switch bare-key resolver. Maps Figma/Miro-style single letters
+// (V/R/O/T/S/D) to the toolbar's draw-mode value. Returns null for any chord —
+// these bindings are intentionally bare-only so they don't collide with Cmd+V
+// (paste), Cmd+D (duplicate), Shift+letter (inputs), etc. Uppercase variants
+// resolve identically (key.toLowerCase normalization).
+export type ToolShortcutResult = 'select' | ShapeKind | null;
+
+export const resolveToolShortcut = (e: ModifierEvent): ToolShortcutResult => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+  switch (e.key.toLowerCase()) {
+    case 'v':
+      return 'select';
+    case 'r':
+      return 'rectangle';
+    case 'o':
+      return 'ellipse';
+    case 't':
+      return 'text';
+    case 's':
+      return 'sticky';
+    case 'd':
+      return 'database';
+    default:
+      return null;
+  }
 };

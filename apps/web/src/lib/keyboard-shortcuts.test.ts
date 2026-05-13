@@ -3,11 +3,13 @@ import {
   COMMANDS,
   type ClipboardChordInput,
   type CommandId,
+  type ToolShortcutResult,
   applyNudge,
   formatShortcut,
   getNudgeDelta,
   getZoomChord,
   resolveClipboardChord,
+  resolveToolShortcut,
 } from '@/lib/keyboard-shortcuts';
 
 const ev = (
@@ -450,5 +452,49 @@ describe('COMMANDS registry (US-002)', () => {
     const select = COMMANDS.find((c) => c.id === 'tool.select');
     // Bare 'V' renders the same on every platform.
     expect(select?.shortcut).toBe('V');
+  });
+});
+
+describe('resolveToolShortcut (US-003)', () => {
+  // Single-letter Figma/Miro bindings: V/R/O/T/S/D map to the toolbar's draw
+  // values when pressed BARE. Any modifier disqualifies the chord so the
+  // bare-key family never shadows Cmd+V (paste), Cmd+D (duplicate), etc.
+  const tools: ReadonlyArray<{ key: string; tool: NonNullable<ToolShortcutResult> }> = [
+    { key: 'v', tool: 'select' },
+    { key: 'r', tool: 'rectangle' },
+    { key: 'o', tool: 'ellipse' },
+    { key: 't', tool: 'text' },
+    { key: 's', tool: 'sticky' },
+    { key: 'd', tool: 'database' },
+  ];
+
+  for (const { key, tool } of tools) {
+    it(`bare '${key}' resolves to ${tool}`, () => {
+      expect(resolveToolShortcut(ev({ key }))).toBe(tool);
+    });
+    it(`uppercase '${key.toUpperCase()}' also resolves to ${tool}`, () => {
+      expect(resolveToolShortcut(ev({ key: key.toUpperCase() }))).toBe(tool);
+    });
+    it(`'${key}' with metaKey returns null (so Cmd+letter chords pass through)`, () => {
+      expect(resolveToolShortcut(ev({ key, metaKey: true }))).toBeNull();
+    });
+    it(`'${key}' with ctrlKey returns null (so Ctrl+letter chords pass through)`, () => {
+      expect(resolveToolShortcut(ev({ key, ctrlKey: true }))).toBeNull();
+    });
+    it(`'${key}' with shiftKey returns null (Shift+letter is typing)`, () => {
+      expect(resolveToolShortcut(ev({ key, shiftKey: true }))).toBeNull();
+    });
+    it(`'${key}' with altKey returns null`, () => {
+      expect(resolveToolShortcut(ev({ key, altKey: true }))).toBeNull();
+    });
+  }
+
+  it('unrelated keys return null', () => {
+    expect(resolveToolShortcut(ev({ key: 'a' }))).toBeNull();
+    expect(resolveToolShortcut(ev({ key: 'q' }))).toBeNull();
+    expect(resolveToolShortcut(ev({ key: '1' }))).toBeNull();
+    expect(resolveToolShortcut(ev({ key: 'Enter' }))).toBeNull();
+    expect(resolveToolShortcut(ev({ key: 'Escape' }))).toBeNull();
+    expect(resolveToolShortcut(ev({ key: ' ' }))).toBeNull();
   });
 });

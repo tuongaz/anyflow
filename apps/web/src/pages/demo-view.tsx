@@ -46,6 +46,7 @@ import {
   getNudgeDelta,
   getZoomChord,
   resolveClipboardChord,
+  resolveToolShortcut,
 } from '@/lib/keyboard-shortcuts';
 import { getLastUsedStyle, rememberConnectorStyle, rememberNodeStyle } from '@/lib/last-used-style';
 import { buildNewShapeData } from '@/lib/node-defaults';
@@ -211,6 +212,17 @@ export function DemoView({
   // overrides aren't a fit because the entire array order is what changes.
   const [nodeOrderOverride, setNodeOrderOverride] = useState<string[] | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  // US-003: bottom-toolbar draw-mode state lives on the page so the global
+  // bare-key keyboard handler (V/R/O/T/S/D) and the upcoming command palette
+  // can drive tool switches. DemoCanvas reads `activeShape` and calls
+  // `setActiveShape` from props — its toolbar wiring is unchanged.
+  const [activeShape, setActiveShape] = useState<ShapeKind | null>(null);
+  // Mirror into a ref so the bare-key keydown effect reads the live value
+  // without re-binding the listener every time the shape toggles.
+  const activeShapeRef = useRef<ShapeKind | null>(null);
+  useEffect(() => {
+    activeShapeRef.current = activeShape;
+  }, [activeShape]);
   // React Flow instance handed up from `<DemoCanvas onRfInit>` (US-024). Used
   // by the zoom-chord handler below — only the page owns the keyboard
   // listener so the canvas stays free of page-level chord wiring.
@@ -2596,6 +2608,38 @@ export function DemoView({
     onTidy(scope);
   }, [onTidy]);
 
+  // US-003: bare-key tool-switch shortcuts (V/R/O/T/S/D). Mirrors the
+  // Figma/Miro convention — pressing a letter alone arms the matching toolbar
+  // value, pressing it again exits draw mode (same toggle as clicking the
+  // already-active toolbar button in canvas-toolbar.tsx). The pure resolver
+  // (`resolveToolShortcut`) handles modifier rejection so any chord (Cmd+V
+  // paste, Cmd+D duplicate, Shift+letter typing) falls through unchanged.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Skip while focus is in any text-editing element so InlineEdit / inputs
+      // / textareas / contentEditable surfaces keep their normal typing
+      // behavior — bare letters there are literal characters.
+      if (isEditableElement(document.activeElement)) return;
+      // Defense in depth: if an inline editor is mounted (connector label
+      // mid-edit etc.), the active element may have blurred to body in a way
+      // that slips past the check above. Skip while ANY editor is on screen.
+      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
+      const resolved = resolveToolShortcut(e);
+      if (resolved === null) return;
+      // 'select' is the pan/select baseline: arm null. Any shape: arm that
+      // shape, or toggle off if it's already active (matches the toolbar
+      // button's click behavior at canvas-toolbar.tsx:112).
+      const nextShape = resolved === 'select' ? null : resolved;
+      if (activeShapeRef.current === nextShape) {
+        setActiveShape(null);
+        return;
+      }
+      setActiveShape(nextShape);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // US-022: capture the React Flow viewport as a PNG. Shared `captureViewportPng`
   // helper handles the html-to-image call + chrome filter so PNG and PDF render
   // exactly the same content. The orchestration (fitView so the whole graph is
@@ -3063,6 +3107,8 @@ export function DemoView({
           onPaneClick={onPaneClickClosePanel}
           onCreateAndConnectFromPane={onCreateAndConnectFromPane}
           pendingEditNodeId={pendingEditNodeId}
+          activeShape={activeShape}
+          onSelectShape={setActiveShape}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">

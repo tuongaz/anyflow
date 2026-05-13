@@ -467,6 +467,16 @@ export interface DemoCanvasProps {
    * the batch unlock. Absent → the menu item is hidden.
    */
   onToggleNodeLock?: (nodeIds: string[]) => void;
+  /**
+   * US-003: bottom-toolbar draw-mode state, lifted to the parent so the page-
+   * level keyboard handler (`resolveToolShortcut` in demo-view.tsx) and the
+   * future command palette can drive tool switches without the canvas owning
+   * the state. The toolbar inside the canvas still reads `activeShape` and
+   * calls `onSelectShape` exactly like before — only the source-of-truth
+   * moved up one level.
+   */
+  activeShape: ShapeKind | null;
+  onSelectShape: (shape: ShapeKind | null) => void;
 }
 
 // Below this threshold we treat the gesture as an accidental click / tiny
@@ -1363,6 +1373,8 @@ export function DemoCanvas({
   onUnpinEndpoint,
   onUngroupSelection,
   onToggleNodeLock,
+  activeShape,
+  onSelectShape,
 }: DemoCanvasProps) {
   // Bottom-toolbar draw mode (US-028). When `drawShape` is set, the wrapper
   // shows a crosshair cursor and a pointer-down on the React Flow pane begins
@@ -1376,7 +1388,13 @@ export function DemoCanvas({
   // US-006: handle to the React Flow store (registered by <StoreApiBridge>).
   // Used to call `cancelConnection` when ESC cancels an in-flight connection.
   const storeApiRef = useRef<StoreApi | null>(null);
-  const [drawShape, setDrawShape] = useState<ShapeKind | null>(null);
+  // US-003: draw-mode state is owned by the parent (demo-view.tsx) so the
+  // page-level keyboard handler and command palette can drive tool switches.
+  // We alias the props inside this file to preserve the existing `drawShape` /
+  // `setDrawShape` naming used throughout — minimal diff against the prior
+  // local `useState` implementation.
+  const drawShape = activeShape;
+  const setDrawShape = onSelectShape;
   // Group enter/exit state: the id of the group the user has entered via
   // double-click. While set, the group's children become individually
   // selectable / draggable / connectable; while null, every child is gated so
@@ -1576,7 +1594,7 @@ export function DemoCanvas({
     drawStartRef.current = null;
     drawCurrentRef.current = null;
     drawingRef.current = false;
-  }, []);
+  }, [setDrawShape]);
 
   // US-006: ESC priority chain. A single window-level keydown listener handles
   // all in-progress cancellations in most-specific-first order, with early

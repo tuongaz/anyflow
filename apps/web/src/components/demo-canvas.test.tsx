@@ -127,6 +127,12 @@ function callDemoCanvas(
     connectors: [],
     selectedNodeIds: [],
     selectedConnectorIds: [],
+    // US-003: drawShape state was lifted to demo-view; tests can either pass
+    // `activeShape` directly or override the parent setter. Defaults keep the
+    // canvas in select-mode (no shape armed) so legacy tests see the same
+    // behavior they did when drawShape was internal state.
+    activeShape: null,
+    onSelectShape: () => {},
     ...overrides,
   };
   return renderWithHooks(
@@ -627,10 +633,9 @@ describe('DemoCanvas', () => {
     // gesture. If any of these regresses, the gesture stops landing in our
     // handlers and drag-to-create silently breaks.
     it('disables xyflow gesture handling on the empty pane when in draw mode', () => {
-      // drawShape is the FIRST useState slot in demo-canvas.tsx (line 637 in
-      // current file). Forcing it to 'rectangle' simulates the user picking a
-      // shape from the toolbar.
-      const tree = callDemoCanvas({}, { useStateOverrides: [/* drawShape */ 'rectangle'] });
+      // US-003: drawShape state was lifted to demo-view, so we drive draw
+      // mode via the `activeShape` prop instead of patching a useState slot.
+      const tree = callDemoCanvas({ activeShape: 'rectangle' });
       const rf = findElement(tree, (el) => el.type === ReactFlow);
       if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
       expect(rf.props.selectionOnDrag).toBe(false);
@@ -682,14 +687,12 @@ describe('DemoCanvas', () => {
         captured.push({ shape, pos, size });
       };
       const tree = callDemoCanvas(
-        { onCreateShapeNode },
+        { onCreateShapeNode, activeShape: 'rectangle' },
         {
-          // drawShape is the FIRST useState slot in demo-canvas.tsx — must
-          // be set so the JSX-level wrapperCursor and ReactFlow props enter
-          // draw mode. The gesture itself reads drawShapeRef (a separate
-          // ref slot we mutate below) since the handler doesn't depend on
-          // the state value directly.
-          useStateOverrides: [/* drawShape */ 'rectangle'],
+          // US-003: drawShape state lives in demo-view now, so we pass
+          // `activeShape` via props. The gesture handler reads
+          // `drawShapeRef` (a separate ref slot we mutate below) since the
+          // handler doesn't depend on the state value directly.
           refSink: refs,
         },
       );
@@ -792,6 +795,7 @@ describe('DemoCanvas', () => {
       }> = [];
       const tree = callDemoCanvas(
         {
+          activeShape: 'ellipse',
           onCreateShapeNode: (shape, pos, size) => {
             captured.push({
               shape: shape as string,
@@ -801,7 +805,6 @@ describe('DemoCanvas', () => {
           },
         },
         {
-          useStateOverrides: [/* drawShape */ 'ellipse'],
           refSink: refs,
         },
       );
@@ -890,22 +893,21 @@ describe('DemoCanvas', () => {
 
   describe('US-010: database drag-create ghost renders DatabaseShape', () => {
     // The drag-create ghost (`canvas-draw-ghost`) must render <DatabaseShape>
-    // INSIDE the ghost wrapper when drawShape='database' so the user sees the
-    // cylinder preview during the drag — matching the committed node's
+    // INSIDE the ghost wrapper when activeShape='database' so the user sees
+    // the cylinder preview during the drag — matching the committed node's
     // illustrative-shape visuals. The wrapper itself stays chrome-less
     // (shapeChromeStyle('database') already returns {} per US-009 / AC #4).
     //
-    // useState slot order (see `useState` audit at the top of US-016 tests):
-    //   slot 0 = drawShape   slot 4 = drawStart   slot 5 = drawCurrent
+    // useState slot order (US-003 lifted drawShape out of demo-canvas):
+    //   slot 3 = drawStart   slot 4 = drawCurrent
     // ghostRect is computed from drawStart + drawCurrent so both must be set
-    // for the ghost JSX branch to render.
+    // for the ghost JSX branch to render. activeShape comes in via props.
 
-    it('renders <DatabaseShape> inside the ghost when drawShape="database"', () => {
+    it('renders <DatabaseShape> inside the ghost when activeShape="database"', () => {
       const overrides: unknown[] = [];
-      overrides[0] = 'database';
-      overrides[4] = { x: 100, y: 100 };
-      overrides[5] = { x: 300, y: 240 };
-      const tree = callDemoCanvas({}, { useStateOverrides: overrides });
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'database' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
         (el) =>
@@ -924,12 +926,11 @@ describe('DemoCanvas', () => {
 
     it('passes width/height from ghostRect to DatabaseShape so the preview scales with the drag', () => {
       const overrides: unknown[] = [];
-      overrides[0] = 'database';
-      overrides[4] = { x: 100, y: 100 };
+      overrides[3] = { x: 100, y: 100 };
       // 200 wide, 140 tall (matches database SHAPE_DEFAULT_SIZE for an at-
       // template ghost — the cylinder reads proportional).
-      overrides[5] = { x: 300, y: 240 };
-      const tree = callDemoCanvas({}, { useStateOverrides: overrides });
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'database' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
         (el) =>
@@ -958,10 +959,9 @@ describe('DemoCanvas', () => {
 
     it('does NOT render DatabaseShape in the ghost for non-database shapes', () => {
       const overrides: unknown[] = [];
-      overrides[0] = 'rectangle';
-      overrides[4] = { x: 100, y: 100 };
-      overrides[5] = { x: 300, y: 240 };
-      const tree = callDemoCanvas({}, { useStateOverrides: overrides });
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'rectangle' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
         (el) =>
@@ -1057,16 +1057,16 @@ describe('DemoCanvas', () => {
     });
 
     it('marks the active group with data.isActive so the chrome can re-style', () => {
-      // activeGroupId is the FIRST `useState<string | null>` in DemoCanvas
-      // (declared right after `drawShape`). Force-set it to the group id so
-      // the buildNode path treats this group as entered.
+      // activeGroupId is the FIRST `useState` in DemoCanvas after US-003
+      // lifted drawShape to demo-view. Force-set it to the group id so the
+      // buildNode path treats this group as entered.
       const tree = callDemoCanvas(
         {
           nodes: [makeGroupNode('g'), childOf('a', 'g')],
           selectedNodeIds: [],
           onNodeNameChange: () => {},
         },
-        { useStateOverrides: [/* drawShape */ undefined, /* activeGroupId */ 'g'] },
+        { useStateOverrides: [/* activeGroupId */ 'g'] },
       );
       const rf = findElement(tree, (el) => el.type === ReactFlow);
       if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
@@ -1131,7 +1131,7 @@ describe('DemoCanvas', () => {
           nodes: [makeGroupNode('g'), childOf('a', 'g'), makeShapeNode('outside')],
           onNodeClick: (id) => clicks.push(id),
         },
-        { useStateOverrides: [/* drawShape */ undefined, /* activeGroupId */ 'g'] },
+        { useStateOverrides: [/* activeGroupId */ 'g'] },
       );
       const rf = findElement(tree, (el) => el.type === ReactFlow);
       if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
@@ -1246,9 +1246,9 @@ describe('DemoCanvas', () => {
     //     keeps the runaway expand/shrink bug from coming back.
     // We exercise both channels directly off the rfNode so the assertions
     // exactly match what `useResizeGesture` calls at every stage of the
-    // gesture. activeGroupId is the SECOND useState in demo-canvas.tsx
-    // (slot 1, after drawShape) — useStateOverrides drive it.
-    const ACTIVE_GROUP_STATE_SLOT = 1;
+    // gesture. activeGroupId is the FIRST useState in demo-canvas.tsx after
+    // US-003 lifted drawShape to demo-view — slot 0 drives it.
+    const ACTIVE_GROUP_STATE_SLOT = 0;
 
     function makeSizedGroup(
       id: string,
@@ -1870,9 +1870,9 @@ describe('DemoCanvas', () => {
     // The strip's "entered group" branch keys off data.isActive, but the
     // selectedNodes prop carries the on-disk shape (no transient flags).
     // The canvas injects isActive: true on the group whose id matches the
-    // local activeGroupId state — slot 1 in useStateOverrides. These tests
-    // pin the injection contract so the strip never has to ask the canvas
-    // for the active id separately.
+    // local activeGroupId state — slot 0 in useStateOverrides after US-003
+    // lifted drawShape to demo-view. These tests pin the injection contract
+    // so the strip never has to ask the canvas for the active id separately.
     function findStripNodes(tree: unknown): DemoNode[] | null {
       const strip = findElement(tree, (el) => el.type === StyleStrip);
       if (!strip) return null;
@@ -1888,9 +1888,10 @@ describe('DemoCanvas', () => {
           onStyleNode: () => {},
           onStyleConnector: () => {},
         },
-        // Slot 0 = drawShape, slot 1 = activeGroupId. Setting slot 1 = 'g1'
-        // simulates the user having double-clicked into g1.
-        { useStateOverrides: [undefined, 'g1'] },
+        // Slot 0 = activeGroupId (drawShape was lifted to demo-view in
+        // US-003). Setting slot 0 = 'g1' simulates the user having double-
+        // clicked into g1.
+        { useStateOverrides: ['g1'] },
       );
       const nodes = findStripNodes(tree);
       if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
@@ -1908,7 +1909,7 @@ describe('DemoCanvas', () => {
           onStyleNode: () => {},
           onStyleConnector: () => {},
         },
-        { useStateOverrides: [undefined, 'g1'] },
+        { useStateOverrides: ['g1'] },
       );
       const nodes = findStripNodes(tree);
       if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
@@ -1926,7 +1927,7 @@ describe('DemoCanvas', () => {
           onStyleNode: () => {},
           onStyleConnector: () => {},
         },
-        // Default activeGroupId is null (useState slot 1 unset).
+        // Default activeGroupId is null (useState slot 0 unset).
         { useStateOverrides: [] },
       );
       const nodes = findStripNodes(tree);
@@ -1944,7 +1945,7 @@ describe('DemoCanvas', () => {
           onStyleNode: () => {},
           onStyleConnector: () => {},
         },
-        { useStateOverrides: [undefined, 'g1'] },
+        { useStateOverrides: ['g1'] },
       );
       const nodes = findStripNodes(tree);
       if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
@@ -2666,8 +2667,10 @@ describe('DemoCanvas', () => {
       // ref and find the one initialised with null + later set to a node id.
       const refSink: { current: unknown }[] = [];
       const useStateOverrides: unknown[] = [];
-      useStateOverrides[6] = { x: 100, y: 100 };
-      useStateOverrides[7] = true;
+      // US-003 lifted drawShape to demo-view; contextMenuPos shifted from
+      // slot 6 to 5, contextOnNode from 7 to 6.
+      useStateOverrides[5] = { x: 100, y: 100 };
+      useStateOverrides[6] = true;
       const tree = callDemoCanvas(
         {
           nodes: [lockedShape('a')],
@@ -2687,8 +2690,8 @@ describe('DemoCanvas', () => {
       }
       // Re-render with the populated ref so the gate sees the locked id.
       const useStateOverrides2: unknown[] = [];
-      useStateOverrides2[6] = { x: 100, y: 100 };
-      useStateOverrides2[7] = true;
+      useStateOverrides2[5] = { x: 100, y: 100 };
+      useStateOverrides2[6] = true;
       const refSink2: { current: unknown }[] = [];
       const tree2 = callDemoCanvas(
         {
@@ -2731,8 +2734,8 @@ describe('DemoCanvas', () => {
       // Copy/Unlock/Delete all render. The pane-right-click path (which
       // intentionally produces this menu) is unchanged.
       const useStateOverrides: unknown[] = [];
-      useStateOverrides[6] = { x: 100, y: 100 };
-      useStateOverrides[7] = false; // contextOnNode: false (pane-mode)
+      useStateOverrides[5] = { x: 100, y: 100 };
+      useStateOverrides[6] = false; // contextOnNode: false (pane-mode)
       const tree = callDemoCanvas(
         {
           nodes: [lockedShape('a')],
