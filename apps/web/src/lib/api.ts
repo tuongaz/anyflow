@@ -535,6 +535,13 @@ export interface CreateConnectorBody {
   targetHandle?: string;
   sourceHandleAutoPicked?: boolean;
   targetHandleAutoPicked?: boolean;
+  // Per-endpoint perimeter pin. When set, the connector's endpoint is
+  // anchored at `(side, t)` on the connected node's bbox. Used when a
+  // create-from-body-drop fallback projects the cursor onto the target
+  // node's perimeter (user rule: "cursor over node → closest perimeter
+  // point and use that").
+  sourcePin?: EdgePin;
+  targetPin?: EdgePin;
   kind?: Connector['kind'];
   label?: string;
   style?: ConnectorStyle;

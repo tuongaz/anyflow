@@ -6,8 +6,8 @@
       "id": "create-order",
       "type": "playNode",
       "position": {
-        "x": -495.3036564466477,
-        "y": -975.2109372826435
+        "x": -1215.6917891762055,
+        "y": -2166.042183044064
       },
       "data": {
         "label": "POST /orders",
@@ -56,16 +56,18 @@
             "url": "http://localhost:3040/admin/stats"
           }
         },
-        "width": 313,
-        "height": 387
+        "width": 268,
+        "height": 238,
+        "description": "Thi sis another good one",
+        "shortDescription": "This is good one to do"
       }
     },
     {
       "id": "charge-payment",
       "type": "playNode",
       "position": {
-        "x": 115.78925876821867,
-        "y": -1782.1171509876376
+        "x": -712.2107412317813,
+        "y": -1594.1171509876376
       },
       "data": {
         "label": "POST /payments/charge",
@@ -101,8 +103,8 @@
       "id": "shipping-worker",
       "type": "stateNode",
       "position": {
-        "x": 885.6167849006229,
-        "y": -732.888347271029
+        "x": -1902.3832150993771,
+        "y": -1592.888347271029
       },
       "data": {
         "label": "shipping-worker",
@@ -132,8 +134,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": 287.61678490062286,
-        "y": -788.388347271029
+        "x": -148.8264094369487,
+        "y": -2263.347982983403
       },
       "data": {
         "label": "inventory-worker",
@@ -144,10 +146,6 @@
         "detail": {
           "summary": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit. Why it failed",
           "fields": [
-            {
-              "label": "Subscribes",
-              "value": "order.created"
-            },
             {
               "label": "Latency",
               "value": "~250ms"
@@ -163,24 +161,28 @@
       }
     },
     {
-      "id": "node-14a639b3-9136-40e0-aef7-1fdadbbe225c",
-      "type": "iconNode",
+      "id": "node-feb38f5c-19bf-4350-9711-0f30710574a4",
+      "type": "shapeNode",
       "position": {
-        "x": 276.07845737449026,
-        "y": -1289.6029233453612
+        "x": -1720.1441651673324,
+        "y": -2097.582159401899
       },
       "data": {
-        "icon": "lucide-clover",
-        "width": 82,
-        "height": 80,
-        "color": "blue"
+        "shape": "rectangle",
+        "width": 166.15801337849985,
+        "height": 151.6933756368967,
+        "borderSize": 1,
+        "fontSize": 12,
+        "shortDescription": "This is good",
+        "description": "This is short",
+        "label": "Thi sis good\n\n"
       }
     }
   ],
   "connectors": [
     {
       "id": "c-orders-payments",
-      "source": "create-order",
+      "source": "shipping-worker",
       "target": "charge-payment",
       "kind": "http",
       "method": "POST",
@@ -189,43 +191,49 @@
       "color": "blue",
       "borderSize": 4,
       "path": "curve",
-      "targetHandleAutoPicked": true
-    },
-    {
-      "id": "c-orders-shipping",
-      "source": "create-order",
-      "target": "inventory-worker",
-      "kind": "queue",
-      "queueName": "shipments",
-      "label": "shipments",
-      "color": "purple",
-      "targetHandle": "l"
-    },
-    {
-      "id": "conn-f32a80ad-4308-4cbd-b761-a22e99f8794d",
-      "source": "create-order",
-      "target": "inventory-worker",
-      "sourceHandle": "r",
-      "targetHandle": "l",
-      "kind": "default",
-      "path": "step",
-      "style": "dashed"
+      "targetHandleAutoPicked": false,
+      "sourcePin": {
+        "side": "right",
+        "t": 0.6330163682945628
+      },
+      "targetPin": {
+        "side": "left",
+        "t": 0.8203044770778085
+      },
+      "sourceHandleAutoPicked": false
     },
     {
       "id": "conn-b18bf676-ee6a-4aaf-bdcc-cbd225a10275",
-      "source": "create-order",
-      "target": "inventory-worker",
-      "sourceHandle": "r",
+      "source": "inventory-worker",
+      "target": "charge-payment",
+      "sourceHandleAutoPicked": false,
+      "targetHandleAutoPicked": false,
+      "sourcePin": {
+        "side": "left",
+        "t": 0.4790005000394146
+      },
+      "targetPin": {
+        "side": "top",
+        "t": 0.4321273752089884
+      },
       "kind": "default",
-      "targetHandleAutoPicked": true
+      "path": "step"
     },
     {
-      "id": "conn-01621e93-c685-4cf9-8a6c-3a219ccb277f",
-      "source": "inventory-worker",
-      "target": "shipping-worker",
-      "sourceHandle": "r",
-      "targetHandle": "l",
-      "kind": "default"
+      "id": "conn-7364cf6a-0286-494f-91a2-9f6dbf27b13c",
+      "source": "create-order",
+      "target": "charge-payment",
+      "sourceHandleAutoPicked": false,
+      "targetHandleAutoPicked": true,
+      "targetPin": {
+        "side": "left",
+        "t": 0.37672693794967643
+      },
+      "kind": "default",
+      "sourcePin": {
+        "side": "left",
+        "t": 0.5402327312487563
+      }
     }
   ]
 }

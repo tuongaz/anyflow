@@ -3,6 +3,7 @@ import {
   type Endpoint,
   type Pin,
   endpointFromPin,
+  endpointToPin,
   getNodeIntersection,
   projectCursorToPerimeter,
   resolveEdgeEndpoints,
@@ -425,5 +426,48 @@ describe('projectCursorToPerimeter', () => {
       side: 'top',
       t: 0.5,
     });
+  });
+});
+
+// Round-trip helper: pin → endpoint → pin should preserve (side, t) for
+// any side/t pair on a non-degenerate rect. Used by the reconnect-and-pin
+// path to convert a floating intersection back into a pin so the un-moved
+// endpoint stays anchored when the moved side changes nodes.
+describe('endpointToPin (inverse of endpointFromPin)', () => {
+  const rect = { x: 10, y: 20, w: 200, h: 100 };
+
+  it('round-trips every side at t=0, t=0.5, t=1', () => {
+    const sides = ['top', 'right', 'bottom', 'left'] as const;
+    const ts = [0, 0.25, 0.5, 0.75, 1];
+    for (const side of sides) {
+      for (const t of ts) {
+        const pin: Pin = { side, t };
+        const ep = endpointFromPin(rect, pin);
+        const back = endpointToPin(rect, ep);
+        expect(back.side).toBe(side);
+        expect(back.t).toBeCloseTo(t, 6);
+      }
+    }
+  });
+
+  it('clamps off-perimeter endpoints into [0, 1]', () => {
+    // An endpoint claimed to be on the top side but with x past the right
+    // edge → t clamps to 1. (Defensive: getNodeIntersection always lands on
+    // the perimeter, so this shouldn't happen in practice, but the helper
+    // must never produce a t outside [0, 1].)
+    const ep: Endpoint = { x: rect.x + rect.w + 50, y: rect.y, side: 'top' };
+    expect(endpointToPin(rect, ep)).toEqual({ side: 'top', t: 1 });
+  });
+
+  it('collapses t to 0 on a zero-width rect (top/bottom)', () => {
+    const zeroW = { x: 0, y: 0, w: 0, h: 60 };
+    const ep: Endpoint = { x: 0, y: 0, side: 'top' };
+    expect(endpointToPin(zeroW, ep)).toEqual({ side: 'top', t: 0 });
+  });
+
+  it('collapses t to 0 on a zero-height rect (left/right)', () => {
+    const zeroH = { x: 0, y: 0, w: 100, h: 0 };
+    const ep: Endpoint = { x: 0, y: 0, side: 'left' };
+    expect(endpointToPin(zeroH, ep)).toEqual({ side: 'left', t: 0 });
   });
 });

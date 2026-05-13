@@ -474,7 +474,7 @@ export function EditableDescription({
             onInput={onInput}
             onBlur={onBlur}
             data-testid="detail-panel-description-editor"
-            className="block w-full whitespace-pre-wrap break-words rounded-md border bg-background px-2 py-1.5 pr-8 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-ring"
+            className="block w-full whitespace-pre-wrap break-words pr-8 text-sm leading-relaxed outline-none"
             role="textbox"
             aria-multiline="true"
             aria-label="Edit description"
@@ -545,6 +545,7 @@ export function EditableMetadataField({
   ariaLabel,
   testIdBase,
   onSave,
+  valueClassName,
 }: {
   nodeId: string;
   value: string;
@@ -554,6 +555,7 @@ export function EditableMetadataField({
   ariaLabel: string;
   testIdBase: string;
   onSave?: (nodeId: string, value: string) => void;
+  valueClassName?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -706,8 +708,9 @@ export function EditableMetadataField({
             onBlur={onBlur}
             data-testid={`${testIdBase}-editor`}
             className={cn(
-              'block w-full whitespace-pre-wrap break-words rounded-md border bg-background px-2 py-1.5 pr-8 text-sm outline-none focus:ring-1 focus:ring-ring',
-              multiline ? 'min-h-[3.5rem] leading-relaxed' : 'leading-normal',
+              'block w-full whitespace-pre-wrap break-words pr-8 text-sm outline-none',
+              multiline ? 'leading-relaxed' : 'leading-normal',
+              valueClassName,
             )}
             role="textbox"
             aria-multiline={multiline ? 'true' : 'false'}
@@ -733,8 +736,9 @@ export function EditableMetadataField({
           <div
             aria-label={ariaLabel}
             className={cn(
-              'w-full whitespace-pre-wrap break-words rounded-md px-2 py-1.5 pr-8 text-sm',
+              'w-full whitespace-pre-wrap break-words pr-8 text-sm',
               isEmpty ? 'italic text-muted-foreground/50' : 'text-foreground',
+              valueClassName,
             )}
           >
             {isEmpty ? placeholder : value}
@@ -743,7 +747,7 @@ export function EditableMetadataField({
             type="button"
             size="sm"
             variant="ghost"
-            className="absolute right-0.5 top-0.5 h-6 w-6 p-0 text-muted-foreground opacity-30 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+            className="absolute right-0.5 top-0.5 h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
             onClick={enterEdit}
             data-testid={`${testIdBase}-edit`}
             aria-label={`Edit ${ariaLabel.toLowerCase()}`}
@@ -806,9 +810,6 @@ export function NodeMetadataEditor({
         </div>
       ) : null}
       <div className="flex flex-col gap-1 text-xs">
-        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
-          Short description
-        </span>
         <EditableMetadataField
           nodeId={nodeId}
           value={shortDescription}
@@ -818,12 +819,10 @@ export function NodeMetadataEditor({
           ariaLabel="Short description"
           testIdBase="detail-panel-short-description"
           onSave={onShortDescriptionChange}
+          valueClassName="font-semibold"
         />
       </div>
       <div className="flex flex-col gap-1 text-xs">
-        <span className="font-medium tracking-wide text-[10px] text-muted-foreground">
-          Description
-        </span>
         <EditableMetadataField
           nodeId={nodeId}
           value={description}

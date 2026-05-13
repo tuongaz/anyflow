@@ -2168,18 +2168,23 @@ export function DemoView({
   // prune then drops the override cleanly. On failure, drop the override and
   // surface the existing edit-error-banner.
   const onCreateConnector = useCallback(
-    (source: string, target: string) => {
+    (source: string, target: string, options?: { targetPin?: EdgePin }) => {
       if (!demoId) return;
       const id = `conn-${crypto.randomUUID()}`;
-      // US-025: every new connector is floating — both endpoints carry
-      // *HandleAutoPicked: true and no handle ids. The user pins a side
-      // later by reconnecting it onto a specific handle dot.
+      // US-025: by default every new connector is floating — both endpoints
+      // carry *HandleAutoPicked: true and no handle ids. When the body-drop
+      // fallback projected the cursor onto the target node's perimeter, we
+      // persist that `targetPin` so the new connector lands on the exact
+      // point the user aimed at (user rule: "cursor over node → closest
+      // perimeter point").
+      const targetPin = options?.targetPin;
       const optimistic: DefaultConnector = {
         id,
         source,
         target,
         sourceHandleAutoPicked: true,
         targetHandleAutoPicked: true,
+        ...(targetPin ? { targetPin } : {}),
         kind: 'default',
       };
       const payload = {
@@ -2188,6 +2193,7 @@ export function DemoView({
         target,
         sourceHandleAutoPicked: true,
         targetHandleAutoPicked: true,
+        ...(targetPin ? { targetPin } : {}),
         kind: 'default' as const,
       };
       setConnectorOverride(id, optimistic as Partial<Connector>);

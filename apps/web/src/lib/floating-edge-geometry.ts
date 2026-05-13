@@ -185,6 +185,38 @@ export const endpointFromPin = (rect: FloatingRect, pin: Pin): Endpoint => {
 };
 
 /**
+ * Convert a perimeter `Endpoint` back into a `Pin` against the same rect.
+ * Pure inverse of `endpointFromPin` (round-trips when the endpoint actually
+ * lies on the rect's perimeter, and clamps gracefully otherwise).
+ *
+ * Used to "freeze" a currently-floating endpoint at its visible position
+ * before a reconnect on the other side: capture the floating intersection
+ * via `getNodeIntersection`, convert via this helper, then persist as a pin
+ * so the un-moved endpoint doesn't slide when the moved side changes the
+ * line-through-centers.
+ *
+ * Edge case: a zero-width rect collapses t→0 on top/bottom (no horizontal
+ * range to parameterize); a zero-height rect collapses t→0 on left/right.
+ */
+export const endpointToPin = (rect: FloatingRect, endpoint: Endpoint): Pin => {
+  const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+  switch (endpoint.side) {
+    case 'top':
+    case 'bottom':
+      return {
+        side: endpoint.side,
+        t: rect.w === 0 ? 0 : clamp01((endpoint.x - rect.x) / rect.w),
+      };
+    case 'left':
+    case 'right':
+      return {
+        side: endpoint.side,
+        t: rect.h === 0 ? 0 : clamp01((endpoint.y - rect.y) / rect.h),
+      };
+  }
+};
+
+/**
  * Resolve a single edge endpoint. Precedence (highest first):
  *
  * 1. `pin` set (US-006) → compute from `(side, t)` against the node's bbox.

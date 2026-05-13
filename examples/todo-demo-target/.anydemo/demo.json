@@ -3,55 +3,11 @@
   "name": "Todo Demo",
   "nodes": [
     {
-      "id": "api-create-todo",
-      "type": "playNode",
-      "position": {
-        "x": 24,
-        "y": 443.6659146635077
-      },
-      "data": {
-        "label": "POST /todos",
-        "kind": "service",
-        "stateSource": {
-          "kind": "request"
-        },
-        "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3030/todos",
-          "body": {
-            "title": "Buy milk"
-          }
-        },
-        "detail": {
-          "summary": "Creates a todo on the in-memory store and returns it.",
-          "fields": [
-            {
-              "label": "Service",
-              "value": "todo-demo-target"
-            },
-            {
-              "label": "Port",
-              "value": "3030"
-            }
-          ],
-          "dynamicSource": {
-            "kind": "http",
-            "method": "GET",
-            "url": "http://localhost:3030/admin/stats"
-          }
-        },
-        "width": 202,
-        "height": 166
-      },
-      "parentId": "node-f3dad83f-b910-4bb6-897b-e3e5ae05df07"
-    },
-    {
       "id": "api-complete-todo",
       "type": "playNode",
       "position": {
-        "x": -437.0577772104354,
-        "y": -189.11178330866397
+        "x": -906.7768394909173,
+        "y": -1223.232707637383
       },
       "data": {
         "label": "POST /todos/:id/complete",
@@ -84,8 +40,8 @@
       "id": "todo-worker",
       "type": "stateNode",
       "position": {
-        "x": 102.74164698137366,
-        "y": 52
+        "x": -366.6948285997183,
+        "y": -1064.9568891004728
       },
       "data": {
         "label": "todo-worker",
@@ -95,41 +51,46 @@
         },
         "detail": {
           "summary": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
-          "fields": [
-            {
-              "label": "Subscribes",
-              "value": "todo.completed"
-            },
-            {
-              "label": "Emits",
-              "value": "running → done"
-            }
-          ]
+          "description": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done)."
         },
         "borderColor": "green",
         "width": 300,
         "height": 194,
-        "backgroundColor": "red"
-      },
-      "parentId": "node-f3dad83f-b910-4bb6-897b-e3e5ae05df07"
+        "backgroundColor": "red",
+        "description": "sds This is good ",
+        "shortDescription": "asdsadsa"
+      }
     },
     {
-      "id": "node-f3dad83f-b910-4bb6-897b-e3e5ae05df07",
-      "type": "group",
+      "id": "node-59ba0765-591c-4a18-99b2-49c6f8c90b1e",
+      "type": "stateNode",
       "position": {
-        "x": 263.953507062816,
-        "y": -696.6074471317625
+        "x": -730.6349879947153,
+        "y": -643.9206911024411
       },
       "data": {
-        "width": 426.7416469813736,
-        "height": 633.6659146635077
+        "label": "todo-worker",
+        "kind": "worker",
+        "stateSource": {
+          "kind": "event"
+        },
+        "detail": {
+          "summary": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done).",
+          "description": "Background worker subscribed to todo.completed events. Calls emit('todo-worker', running) → processes for ~250ms → emit('todo-worker', done)."
+        },
+        "width": 300,
+        "height": 194,
+        "borderColor": "green",
+        "backgroundColor": "red",
+        "shortDescription": "asdsadsa",
+        "description": "sds This is good "
       }
     }
   ],
   "connectors": [
     {
       "id": "c-complete-worker",
-      "source": "api-complete-todo",
+      "source": "node-59ba0765-591c-4a18-99b2-49c6f8c90b1e",
       "target": "todo-worker",
       "kind": "event",
       "eventName": "todo.completed",
@@ -137,13 +98,15 @@
       "color": "red",
       "direction": "backward",
       "targetPin": {
-        "side": "left",
-        "t": 0.36903980043240203
+        "side": "bottom",
+        "t": 0.6672192366975045
       },
       "sourcePin": {
-        "side": "bottom",
-        "t": 0.5148996065692003
-      }
+        "side": "right",
+        "t": 0.21295638725684474
+      },
+      "targetHandleAutoPicked": false,
+      "sourceHandleAutoPicked": false
     }
   ]
 }
