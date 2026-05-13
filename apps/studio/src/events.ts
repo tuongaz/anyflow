@@ -4,7 +4,12 @@
  * notified.
  */
 
-export type StudioEventType = 'demo:reload' | 'node:running' | 'node:done' | 'node:error';
+export type StudioEventType =
+  | 'demo:reload'
+  | 'node:running'
+  | 'node:done'
+  | 'node:error'
+  | 'file:changed';
 
 export interface StudioEvent {
   type: StudioEventType;

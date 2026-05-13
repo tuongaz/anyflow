@@ -144,4 +144,213 @@ describe('createWatcher', () => {
     expect(count).toBe(0);
     watcher.closeAll();
   });
+
+  // ---------------------------------------------------------------------------
+  // US-002: referenced-file watch set + `file:changed` SSE broadcast
+  // ---------------------------------------------------------------------------
+
+  // Build a demo with one playNode that also carries a forward-compatible
+  // `htmlPath` on its data (Zod strips the key from the parsed Demo, but
+  // collectReferencedPaths reads the raw JSON pre-strip).
+  const demoWithHtmlPath = (htmlPath: string) => ({
+    version: 1,
+    name: 'Watch Files',
+    nodes: [
+      {
+        id: 'h1',
+        type: 'playNode',
+        position: { x: 0, y: 0 },
+        data: {
+          label: 'A',
+          kind: 'svc',
+          stateSource: { kind: 'request' },
+          playAction: { kind: 'http', method: 'GET', url: 'http://x' },
+          htmlPath,
+        },
+      },
+    ],
+    connectors: [],
+  });
+
+  const demoWithImagePath = (imgPath: string) => ({
+    version: 1,
+    name: 'Watch Files',
+    nodes: [
+      {
+        id: 'img1',
+        type: 'playNode',
+        position: { x: 0, y: 0 },
+        data: {
+          label: 'I',
+          kind: 'svc',
+          stateSource: { kind: 'request' },
+          playAction: { kind: 'http', method: 'GET', url: 'http://x' },
+          path: imgPath,
+        },
+      },
+    ],
+    connectors: [],
+  });
+
+  it('emits file:changed when an htmlNode-referenced file is edited', async () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const repoPath = tmpRepo(demoWithHtmlPath('blocks/h1.html'));
+    mkdirSync(join(repoPath, '.anydemo', 'blocks'));
+    const htmlPath = join(repoPath, '.anydemo', 'blocks', 'h1.html');
+    writeFileSync(htmlPath, '<div>v1</div>');
+
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const events = createEventBus();
+    const watcher = createWatcher({ registry: reg, events, debounceMs: 20 });
+
+    const fileEvents: StudioEvent[] = [];
+    events.subscribe(entry.id, (e) => {
+      if (e.type === 'file:changed') fileEvents.push(e);
+    });
+
+    watcher.watch(entry.id);
+    expect(watcher.referencedPaths(entry.id)).toEqual(['blocks/h1.html']);
+
+    await wait(30);
+    writeFileSync(htmlPath, '<div>v2</div>');
+    await wait(150);
+
+    expect(fileEvents.length).toBeGreaterThanOrEqual(1);
+    const payload = fileEvents.at(-1)?.payload as { path: string };
+    expect(payload.path).toBe('blocks/h1.html');
+    watcher.closeAll();
+  });
+
+  it('emits file:changed when an imageNode-referenced path file is edited', async () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const repoPath = tmpRepo(demoWithImagePath('assets/logo.png'));
+    mkdirSync(join(repoPath, '.anydemo', 'assets'));
+    const imgPath = join(repoPath, '.anydemo', 'assets', 'logo.png');
+    writeFileSync(imgPath, 'placeholder-v1');
+
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const events = createEventBus();
+    const watcher = createWatcher({ registry: reg, events, debounceMs: 20 });
+
+    const fileEvents: StudioEvent[] = [];
+    events.subscribe(entry.id, (e) => {
+      if (e.type === 'file:changed') fileEvents.push(e);
+    });
+
+    watcher.watch(entry.id);
+    expect(watcher.referencedPaths(entry.id)).toEqual(['assets/logo.png']);
+
+    await wait(30);
+    writeFileSync(imgPath, 'placeholder-v2');
+    await wait(150);
+
+    const payload = fileEvents.at(-1)?.payload as { path: string };
+    expect(payload?.path).toBe('assets/logo.png');
+    watcher.closeAll();
+  });
+
+  it('adds newly-referenced paths to the watch set on demo edit', async () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const repoPath = tmpRepo();
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const events = createEventBus();
+    const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
+
+    watcher.watch(entry.id);
+    expect(watcher.referencedPaths(entry.id)).toEqual([]);
+
+    mkdirSync(join(repoPath, '.anydemo', 'blocks'));
+    writeFileSync(join(repoPath, '.anydemo', 'blocks', 'h1.html'), '<div>v1</div>');
+    writeFileSync(
+      join(repoPath, '.anydemo', 'demo.json'),
+      JSON.stringify(demoWithHtmlPath('blocks/h1.html')),
+    );
+    await wait(120);
+
+    expect(watcher.referencedPaths(entry.id)).toEqual(['blocks/h1.html']);
+    watcher.closeAll();
+  });
+
+  it('removes paths from the watch set when a referencing node is removed', async () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const repoPath = tmpRepo(demoWithHtmlPath('blocks/h1.html'));
+    mkdirSync(join(repoPath, '.anydemo', 'blocks'));
+    const htmlPath = join(repoPath, '.anydemo', 'blocks', 'h1.html');
+    writeFileSync(htmlPath, '<div>v1</div>');
+
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const events = createEventBus();
+    const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
+
+    const fileEvents: StudioEvent[] = [];
+    events.subscribe(entry.id, (e) => {
+      if (e.type === 'file:changed') fileEvents.push(e);
+    });
+
+    watcher.watch(entry.id);
+    expect(watcher.referencedPaths(entry.id)).toEqual(['blocks/h1.html']);
+
+    // Drop the referencing node from the demo via a write to demo.json.
+    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), JSON.stringify(VALID_DEMO));
+    await wait(120);
+    expect(watcher.referencedPaths(entry.id)).toEqual([]);
+
+    fileEvents.length = 0;
+    writeFileSync(htmlPath, '<div>v2</div>');
+    await wait(120);
+    expect(fileEvents.length).toBe(0);
+    watcher.closeAll();
+  });
+
+  it('ignores absolute paths, traversal, and data: URLs', async () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const repoPath = tmpRepo({
+      ...VALID_DEMO,
+      nodes: [
+        {
+          id: 'abs',
+          type: 'playNode',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'A',
+            kind: 'svc',
+            stateSource: { kind: 'request' },
+            playAction: { kind: 'http', method: 'GET', url: 'http://x' },
+            htmlPath: '/etc/passwd',
+          },
+        },
+        {
+          id: 'trav',
+          type: 'playNode',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'B',
+            kind: 'svc',
+            stateSource: { kind: 'request' },
+            playAction: { kind: 'http', method: 'GET', url: 'http://x' },
+            htmlPath: '../secrets.html',
+          },
+        },
+        {
+          id: 'data',
+          type: 'playNode',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'C',
+            kind: 'svc',
+            stateSource: { kind: 'request' },
+            playAction: { kind: 'http', method: 'GET', url: 'http://x' },
+            path: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        },
+      ],
+    });
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const events = createEventBus();
+    const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
+
+    watcher.watch(entry.id);
+    expect(watcher.referencedPaths(entry.id)).toEqual([]);
+    watcher.closeAll();
+  });
 });
