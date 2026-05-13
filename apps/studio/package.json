@@ -28,7 +28,7 @@
     "anydemo": "./bin/anydemo.mjs",
     "anydemo-mcp": "./src/mcp-shim.ts"
   },
-  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "README.md"],
+  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "public", "README.md"],
   "engines": {
     "node": ">=18"
   },

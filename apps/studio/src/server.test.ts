@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createRegistry } from './registry.ts';
-import { createApp } from './server.ts';
+import { RUNTIME_ASSETS_DIR, createApp } from './server.ts';
 import type { Spawner } from './shellout.ts';
 
 describe('createApp', () => {
@@ -25,6 +25,43 @@ describe('createApp', () => {
     const app = createApp({ mode: 'prod', staticRoot: './dist/web' });
     const res = await app.request('/__definitely_not_a_route__');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /runtime/:file (US-012 vendored Tailwind Play CDN)', () => {
+  it('serves the vendored tailwind.js with a JS content-type', async () => {
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', disableWatcher: true });
+    const res = await app.request('/runtime/tailwind.js');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type') ?? '').toContain('javascript');
+    const body = await res.text();
+    expect(body.length).toBeGreaterThan(1000);
+  });
+
+  it('sets a long-lived immutable cache-control', async () => {
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', disableWatcher: true });
+    const res = await app.request('/runtime/tailwind.js');
+    const cc = res.headers.get('cache-control') ?? '';
+    expect(cc).toMatch(/immutable/);
+    expect(cc).toMatch(/max-age=\d+/);
+  });
+
+  it('returns 404 for an unknown runtime file', async () => {
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', disableWatcher: true });
+    const res = await app.request('/runtime/does-not-exist.js');
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects traversal-shaped segments via the route regex (no match → 404)', async () => {
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', disableWatcher: true });
+    const res = await app.request('/runtime/..%2Ftsconfig.json');
+    expect(res.status).toBe(404);
+  });
+
+  it('resolves RUNTIME_ASSETS_DIR to apps/studio/public/runtime/ on disk', () => {
+    const tailwindAbs = join(RUNTIME_ASSETS_DIR, 'tailwind.js');
+    expect(existsSync(tailwindAbs)).toBe(true);
+    expect(RUNTIME_ASSETS_DIR).toMatch(/public\/runtime$/);
   });
 });
 

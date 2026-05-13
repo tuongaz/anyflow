@@ -11,7 +11,8 @@
       "**/dist/**",
       "**/.anydemo/**",
       "apps/web/dist/**",
-      "apps/studio/dist/**"
+      "apps/studio/dist/**",
+      "apps/studio/public/runtime/**"
     ]
   },
   "organizeImports": {

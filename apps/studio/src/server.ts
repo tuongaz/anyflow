@@ -1,3 +1,4 @@
+import { resolve as resolvePath } from 'node:path';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
@@ -7,6 +8,12 @@ import { createMcpServer } from './mcp.ts';
 import { type Registry, createRegistry } from './registry.ts';
 import type { Spawner } from './shellout.ts';
 import { type DemoWatcher, createWatcher } from './watcher.ts';
+
+/** Absolute path to the vendored runtime asset directory. Resolved relative
+ *  to this source file so the path is stable whether the studio runs from
+ *  `apps/studio/` in dev or from `node_modules/@tuongaz/anydemo/` when the
+ *  package is installed as a dependency. */
+export const RUNTIME_ASSETS_DIR = resolvePath(import.meta.dir, '../public/runtime');
 
 export type AppMode = 'dev' | 'prod';
 
@@ -54,6 +61,24 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
 
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // Vendored runtime assets (e.g. Tailwind Play CDN for htmlNode). Served
+  // identically in dev and prod so they don't depend on the web bundle.
+  // The `{[A-Za-z0-9._-]+}` regex constrains :file to a single safe segment,
+  // making traversal (`..`, `/`) impossible by construction.
+  app.get('/runtime/:file{[A-Za-z0-9._-]+}', async (c) => {
+    const file = c.req.param('file');
+    const abs = resolvePath(RUNTIME_ASSETS_DIR, file);
+    const f = Bun.file(abs);
+    if (!(await f.exists())) return c.notFound();
+    return new Response(f.stream(), {
+      headers: {
+        'content-type': f.type || 'application/octet-stream',
+        'cache-control': 'public, max-age=31536000, immutable',
+      },
+    });
+  });
+
   app.route(
     '/api',
     createApi({
