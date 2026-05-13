@@ -47,6 +47,7 @@ import {
   getZoomChord,
   resolveClipboardChord,
 } from '@/lib/keyboard-shortcuts';
+import { getLastUsedStyle, rememberConnectorStyle, rememberNodeStyle } from '@/lib/last-used-style';
 import { buildNewShapeData } from '@/lib/node-defaults';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { jsPDF } from 'jspdf';
@@ -733,6 +734,10 @@ export function DemoView({
   const onStyleNode = useCallback(
     (nodeId: string, patch: NodeStylePatch) => {
       if (!demoId) return;
+      // Remember the user's pick BEFORE the PATCH dispatches — last-used tracks
+      // intent (what they picked), not server-confirmed state. A later network
+      // failure does not roll the bucket back.
+      rememberNodeStyle(patch);
       const node = demoNodes?.find((n) => n.id === nodeId);
       // Snapshot only the keys the caller is touching — we want undo to
       // restore those exact fields and leave anything else alone.
@@ -777,6 +782,9 @@ export function DemoView({
     (nodeIds: string[], patch: NodeStylePatch) => {
       if (!demoId) return;
       if (nodeIds.length === 0) return;
+      // Remember the user's pick on the batch path too — the single-node
+      // `onStyleNode` does the same.
+      rememberNodeStyle(patch);
       const targets = nodeIds
         .map((id) => {
           const node = demoNodes?.find((n) => n.id === id);
@@ -889,6 +897,7 @@ export function DemoView({
   const onStyleConnector = useCallback(
     (connId: string, patch: ConnectorStylePatch) => {
       if (!demoId) return;
+      rememberConnectorStyle(patch);
       const conn = demoConnectors?.find((c) => c.id === connId);
       // Snapshot only the keys the caller is touching so undo restores those
       // exact fields and leaves anything else alone.
@@ -1515,7 +1524,9 @@ export function DemoView({
       // US-024: fresh shapes start with borderSize=1 + fontSize=12 (text
       // variant gets fontSize only — no border, per US-003). Existing nodes
       // on disk that lack these fields keep their renderer-side fallbacks.
-      const data = buildNewShapeData(shape, dims);
+      // Last-used style overlays on top of those factory defaults so a fresh
+      // shape mirrors the user's most recent style choice.
+      const data = buildNewShapeData(shape, dims, getLastUsedStyle().node);
       const payload = {
         id,
         type: 'shapeNode' as const,
@@ -1716,7 +1727,7 @@ export function DemoView({
       setEditError(null);
       markMutation();
       void performImageDropUpload(
-        { ...args, demoId },
+        { ...args, demoId, lastUsed: getLastUsedStyle().node },
         {
           upload: uploadImageFile,
           createNode,
@@ -2076,6 +2087,7 @@ export function DemoView({
       // point the user aimed at (user rule: "cursor over node → closest
       // perimeter point").
       const targetPin = options?.targetPin;
+      const lastUsedConnector = getLastUsedStyle().connector;
       const optimistic: DefaultConnector = {
         id,
         source,
@@ -2083,6 +2095,7 @@ export function DemoView({
         sourceHandleAutoPicked: true,
         targetHandleAutoPicked: true,
         ...(targetPin ? { targetPin } : {}),
+        ...lastUsedConnector,
         kind: 'default',
       };
       const payload = {
@@ -2092,6 +2105,7 @@ export function DemoView({
         sourceHandleAutoPicked: true,
         targetHandleAutoPicked: true,
         ...(targetPin ? { targetPin } : {}),
+        ...lastUsedConnector,
         kind: 'default' as const,
       };
       setConnectorOverride(id, optimistic as Partial<Connector>);
@@ -2143,8 +2157,11 @@ export function DemoView({
       const newConnId = `conn-${crypto.randomUUID()}`;
       const dims = SHAPE_DEFAULT_SIZE[shape];
       // US-024: shape defaults (borderSize=1 + fontSize=12; text variant
-      // skips border) — same path the toolbar drag-create uses.
-      const shapeData = buildNewShapeData(shape, dims);
+      // skips border) — same path the toolbar drag-create uses. Last-used
+      // overlay so the dropped node + the connector both carry the user's
+      // most recent style.
+      const lastUsed = getLastUsedStyle();
+      const shapeData = buildNewShapeData(shape, dims, lastUsed.node);
       const nodePayload = {
         id: newNodeId,
         type: 'shapeNode' as const,
@@ -2157,6 +2174,7 @@ export function DemoView({
         target: newNodeId,
         sourceHandleAutoPicked: true,
         targetHandleAutoPicked: true,
+        ...lastUsed.connector,
         kind: 'default',
       };
       // Optimistic: render the new node + edge immediately so the user sees

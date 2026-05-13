@@ -90,3 +90,157 @@ describe('constants', () => {
     expect(NEW_NODE_FONT_SIZE).toBe(17);
   });
 });
+
+describe('buildNewShapeData with lastUsed', () => {
+  it('an empty lastUsed reproduces the factory defaults exactly', () => {
+    const baseline = buildNewShapeData('rectangle', { width: 200, height: 120 });
+    const overlaid = buildNewShapeData('rectangle', { width: 200, height: 120 }, {});
+    expect(overlaid).toEqual(baseline);
+  });
+
+  it('rectangle consumes borderColor / backgroundColor / borderStyle / cornerRadius / fontSize / borderSize', () => {
+    const data = buildNewShapeData(
+      'rectangle',
+      { width: 200, height: 120 },
+      {
+        borderColor: 'blue',
+        backgroundColor: 'amber',
+        borderSize: 5,
+        borderStyle: 'dashed',
+        fontSize: 22,
+        cornerRadius: 8,
+      },
+    );
+    expect(data.borderColor).toBe('blue');
+    expect(data.backgroundColor).toBe('amber');
+    expect(data.borderSize).toBe(5);
+    expect(data.borderStyle).toBe('dashed');
+    expect(data.fontSize).toBe(22);
+    expect(data.cornerRadius).toBe(8);
+  });
+
+  it('sticky also consumes cornerRadius', () => {
+    const data = buildNewShapeData(
+      'sticky',
+      { width: 180, height: 180 },
+      { cornerRadius: 12, borderColor: 'green' },
+    );
+    expect(data.cornerRadius).toBe(12);
+    expect(data.borderColor).toBe('green');
+  });
+
+  it('ellipse drops cornerRadius (kind-specific filter)', () => {
+    const data = buildNewShapeData(
+      'ellipse',
+      { width: 160, height: 100 },
+      { cornerRadius: 12, borderColor: 'purple' },
+    );
+    expect(data.borderColor).toBe('purple');
+    expect('cornerRadius' in data).toBe(false);
+  });
+
+  it('text stays chromeless: only fontSize carries over, borderSize is dropped', () => {
+    const data = buildNewShapeData(
+      'text',
+      { width: 120, height: 36 },
+      { fontSize: 28, borderSize: 9, borderColor: 'red', backgroundColor: 'amber' },
+    );
+    expect(data.fontSize).toBe(28);
+    expect('borderSize' in data).toBe(false);
+    expect('borderColor' in data).toBe(false);
+    expect('backgroundColor' in data).toBe(false);
+  });
+
+  it('connector-only fields never leak in (e.g. direction)', () => {
+    const data = buildNewShapeData(
+      'rectangle',
+      { width: 200, height: 120 },
+      // Cast: a NodeStylePatch shouldn't carry this field at the type level,
+      // but `getLastUsedStyle().node` is `Partial<NodeStylePatch>` derived from
+      // localStorage so we defensively pick only known keys.
+      { borderColor: 'blue', direction: 'forward' } as unknown as Parameters<
+        typeof buildNewShapeData
+      >[2],
+    );
+    expect(data.borderColor).toBe('blue');
+    expect('direction' in data).toBe(false);
+  });
+});
+
+describe('buildNewImageData with lastUsed', () => {
+  it('an empty lastUsed reproduces the factory defaults exactly', () => {
+    const baseline = buildNewImageData('a/b.png', { width: 200, height: 150 });
+    const overlaid = buildNewImageData('a/b.png', { width: 200, height: 150 }, {});
+    expect(overlaid).toEqual(baseline);
+  });
+
+  it('consumes borderColor, borderWidth, borderStyle', () => {
+    const data = buildNewImageData(
+      'a/b.png',
+      { width: 200, height: 150 },
+      { borderColor: 'blue', borderWidth: 5, borderStyle: 'dashed' },
+    );
+    expect(data.borderColor).toBe('blue');
+    expect(data.borderWidth).toBe(5);
+    expect(data.borderStyle).toBe('dashed');
+  });
+
+  it('drops shape-only fields like fontSize and cornerRadius', () => {
+    const data = buildNewImageData(
+      'a/b.png',
+      { width: 200, height: 150 },
+      { fontSize: 22, cornerRadius: 8, borderColor: 'green' },
+    );
+    expect(data.borderColor).toBe('green');
+    expect('fontSize' in data).toBe(false);
+    expect('cornerRadius' in data).toBe(false);
+  });
+
+  it('does NOT read borderSize (image uses borderWidth)', () => {
+    // borderSize is mirrored to borderWidth at the remember boundary, so a
+    // realistic lastUsed bucket carries both. Confirm the builder honors the
+    // image-native key (`borderWidth`) and ignores any stray `borderSize`.
+    const data = buildNewImageData(
+      'a/b.png',
+      { width: 200, height: 150 },
+      { borderSize: 9, borderWidth: 4 },
+    );
+    expect(data.borderWidth).toBe(4);
+    expect('borderSize' in data).toBe(false);
+  });
+});
+
+describe('buildNewGroupData with lastUsed', () => {
+  it('an empty lastUsed reproduces the factory defaults exactly', () => {
+    const baseline = buildNewGroupData({ width: 320, height: 240 });
+    const overlaid = buildNewGroupData({ width: 320, height: 240 }, {});
+    expect(overlaid).toEqual(baseline);
+  });
+
+  it('consumes borderColor / backgroundColor / borderWidth / borderStyle', () => {
+    const data = buildNewGroupData(
+      { width: 320, height: 240 },
+      {
+        borderColor: 'blue',
+        backgroundColor: 'amber',
+        borderWidth: 5,
+        borderStyle: 'dotted',
+      },
+    );
+    expect(data.borderColor).toBe('blue');
+    expect(data.backgroundColor).toBe('amber');
+    expect(data.borderWidth).toBe(5);
+    expect(data.borderStyle).toBe('dotted');
+  });
+
+  it('drops shape-only fields like fontSize, cornerRadius, borderSize', () => {
+    const data = buildNewGroupData(
+      { width: 320, height: 240 },
+      { fontSize: 22, cornerRadius: 8, borderSize: 9, borderColor: 'green' },
+    );
+    expect(data.borderColor).toBe('green');
+    expect('fontSize' in data).toBe(false);
+    expect('cornerRadius' in data).toBe(false);
+    expect('borderSize' in data).toBe(false);
+  });
+});

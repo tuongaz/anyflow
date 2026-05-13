@@ -16,13 +16,54 @@
  *                                       fontSize fields; the `text-xs`
  *                                       className already renders the icon
  *                                       caption at 12px)
+ *
+ * Last-used overlay (docs/plans/2026-05-13-last-used-style-design.md): each
+ * builder accepts an optional `lastUsed` patch and merges only the fields its
+ * kind accepts on top of the hardcoded factory defaults. An empty patch
+ * reproduces today's behavior exactly. Property irrelevant to a given kind
+ * (e.g. `cornerRadius` on ellipse, `borderSize` on text) is silently dropped.
  */
+import type { NodeStylePatch } from '@/components/style-strip';
 import type { ShapeKind } from '@/lib/api';
 
 /** Default border thickness for new nodes. */
 export const NEW_NODE_BORDER_WIDTH = 3;
 /** Default label font size for new nodes. */
 export const NEW_NODE_FONT_SIZE = 17;
+
+const pick = <K extends keyof NodeStylePatch>(
+  patch: Partial<NodeStylePatch> | undefined,
+  keys: readonly K[],
+): Partial<Pick<NodeStylePatch, K>> => {
+  if (!patch) return {};
+  const out: Partial<Pick<NodeStylePatch, K>> = {};
+  for (const k of keys) {
+    if (patch[k] !== undefined) out[k] = patch[k];
+  }
+  return out;
+};
+
+// Fields each kind's renderer actually reads from its data payload. Anything
+// outside this list is silently dropped at apply time so a connector-only or
+// kind-irrelevant carry-over can't leak in.
+const SHAPE_RECT_FIELDS = [
+  'borderColor',
+  'backgroundColor',
+  'borderSize',
+  'borderStyle',
+  'fontSize',
+  'cornerRadius',
+] as const;
+const SHAPE_ELLIPSE_FIELDS = [
+  'borderColor',
+  'backgroundColor',
+  'borderSize',
+  'borderStyle',
+  'fontSize',
+] as const;
+const SHAPE_TEXT_FIELDS = ['fontSize'] as const;
+const IMAGE_FIELDS = ['borderColor', 'borderWidth', 'borderStyle'] as const;
+const GROUP_FIELDS = ['borderColor', 'backgroundColor', 'borderWidth', 'borderStyle'] as const;
 
 export interface ShapeDataDefaults {
   // Index signature lets the result satisfy `CreateNodeBody.data`
@@ -37,10 +78,13 @@ export interface ShapeDataDefaults {
 }
 
 /** Build the `data` object for a freshly-created shape node. Text variant
- * skips `borderSize` so text shapes stay chromeless (US-003). */
+ * skips `borderSize` so text shapes stay chromeless (US-003). Optional
+ * `lastUsed` overlays the user's most recently chosen style on top of the
+ * factory defaults. */
 export function buildNewShapeData(
   shape: ShapeKind,
   dims: { width: number; height: number },
+  lastUsed?: Partial<NodeStylePatch>,
 ): ShapeDataDefaults {
   if (shape === 'text') {
     return {
@@ -48,14 +92,17 @@ export function buildNewShapeData(
       width: dims.width,
       height: dims.height,
       fontSize: NEW_NODE_FONT_SIZE,
+      ...pick(lastUsed, SHAPE_TEXT_FIELDS),
     };
   }
+  const fields = shape === 'ellipse' ? SHAPE_ELLIPSE_FIELDS : SHAPE_RECT_FIELDS;
   return {
     shape,
     width: dims.width,
     height: dims.height,
     borderSize: NEW_NODE_BORDER_WIDTH,
     fontSize: NEW_NODE_FONT_SIZE,
+    ...pick(lastUsed, fields),
   };
 }
 
@@ -74,12 +121,14 @@ export interface ImageDataDefaults {
 export function buildNewImageData(
   path: string,
   dims: { width: number; height: number },
+  lastUsed?: Partial<NodeStylePatch>,
 ): ImageDataDefaults {
   return {
     path,
     width: dims.width,
     height: dims.height,
     borderWidth: NEW_NODE_BORDER_WIDTH,
+    ...pick(lastUsed, IMAGE_FIELDS),
   };
 }
 
@@ -93,13 +142,14 @@ export interface GroupDataDefaults {
 /** Build the `data` object for a freshly-created group node. Groups use
  * `borderWidth` (US-001), not `borderSize`. No `fontSize` — groups render
  * a label slot but not body text. */
-export function buildNewGroupData(dims: {
-  width: number;
-  height: number;
-}): GroupDataDefaults {
+export function buildNewGroupData(
+  dims: { width: number; height: number },
+  lastUsed?: Partial<NodeStylePatch>,
+): GroupDataDefaults {
   return {
     width: dims.width,
     height: dims.height,
     borderWidth: NEW_NODE_BORDER_WIDTH,
+    ...pick(lastUsed, GROUP_FIELDS),
   };
 }

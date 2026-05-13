@@ -1,3 +1,4 @@
+import type { NodeStylePatch } from '@/components/style-strip';
 import type { CreateNodeBody, DemoNode } from '@/lib/api';
 import type { ImageDataDefaults } from '@/lib/node-defaults';
 import { buildNewImageData } from '@/lib/node-defaults';
@@ -36,6 +37,9 @@ export interface PerformImageDropUploadArgs {
   position: { x: number; y: number };
   /** Capped natural dims of the image (longest side <= 400). */
   dims: { width: number; height: number };
+  /** Last-used node style overlay (docs/plans/2026-05-13-last-used-style-design.md).
+   *  Filtered to image-accepted fields inside `buildNewImageData`. */
+  lastUsed?: Partial<NodeStylePatch>;
 }
 
 export interface PerformImageDropUploadDeps {
@@ -85,6 +89,7 @@ export const buildUploadedOverride = (args: {
   path: string;
   dims: { width: number; height: number };
   originalFilename: string;
+  lastUsed?: Partial<NodeStylePatch>;
 }): Partial<DemoNode> => ({
   type: 'imageNode',
   data: buildUploadedImageData(args),
@@ -113,8 +118,9 @@ const buildUploadedImageData = (args: {
   path: string;
   dims: { width: number; height: number };
   originalFilename: string;
+  lastUsed?: Partial<NodeStylePatch>;
 }): ImageDataDefaults & { alt: string } => ({
-  ...buildNewImageData(args.path, args.dims),
+  ...buildNewImageData(args.path, args.dims, args.lastUsed),
   alt: args.originalFilename,
 });
 
@@ -125,7 +131,7 @@ export const performImageDropUpload = async (
   args: PerformImageDropUploadArgs,
   deps: PerformImageDropUploadDeps,
 ): Promise<void> => {
-  const { nodeId, demoId, file, originalFilename, position, dims } = args;
+  const { nodeId, demoId, file, originalFilename, position, dims, lastUsed } = args;
   // 1. Stash retry args BEFORE the upload starts. If the user reloads the page
   //    mid-upload the retry context is lost (we don't persist it across page
   //    reloads), but if the upload fails synchronously the placeholder can
@@ -146,8 +152,8 @@ export const performImageDropUpload = async (
 
   // 3. Update override to the final data (so pruneAgainst can drop it once the
   //    server echo lands) and persist via createNode.
-  deps.setOverride(nodeId, buildUploadedOverride({ path, dims, originalFilename }));
-  const data = buildUploadedImageData({ path, dims, originalFilename });
+  deps.setOverride(nodeId, buildUploadedOverride({ path, dims, originalFilename, lastUsed }));
+  const data = buildUploadedImageData({ path, dims, originalFilename, lastUsed });
   const payload: CreateNodeBody = {
     id: nodeId,
     type: 'imageNode',
