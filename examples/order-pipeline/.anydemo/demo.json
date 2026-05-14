@@ -15,7 +15,7 @@
         "stateSource": {
           "kind": "event"
         },
-        "description": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit. Why it failed ",
+        "description": "Subscribes to order.created. Confirms inventory (~250ms), updates the order to inventory-confirmed, and emits running → done over /api/emit. Why it failed !!!!",
         "width": 260.5321641138519,
         "height": 321.54698499762924,
         "borderColor": "amber",

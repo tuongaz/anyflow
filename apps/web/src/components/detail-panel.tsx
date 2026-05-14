@@ -98,6 +98,14 @@ export function DetailPanel({
           }
         }}
         onInteractOutside={(e) => {
+          // Radix dismisses on `pointerdown` outside the Sheet, which unmounts
+          // the EditableField before its contentEditable can fire `onBlur` →
+          // `commit()`. Flush any in-flight edit synchronously here so the
+          // typed text is saved even when the user clicks the canvas pane.
+          const active = document.activeElement as HTMLElement | null;
+          if (active?.getAttribute('data-testid')?.endsWith('-editor')) {
+            active.blur();
+          }
           // Resize gestures (US-031) start with a pointerdown on a
           // .react-flow__resize-control outside the Sheet. Radix's default is
           // to close on outside interaction, which would unmount the resize
