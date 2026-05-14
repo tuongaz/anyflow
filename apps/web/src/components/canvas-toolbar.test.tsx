@@ -179,6 +179,36 @@ describe('CanvasToolbar', () => {
     });
   });
 
+  describe('US-023: User illustrative-shape palette entry', () => {
+    it('includes a User entry in TOOLBAR_SHAPES', () => {
+      const entry = TOOLBAR_SHAPES.find((s) => s.shape === 'user');
+      expect(entry).toBeDefined();
+      expect(entry?.label).toBe('User');
+      expect(entry?.commandId).toBe('tool.user');
+      expect(entry?.Icon).toBeDefined();
+    });
+
+    it('renders the user tile inside the Shape picker popover', () => {
+      const tree = callToolbar();
+      const btn = findElement(tree, testIdEquals('shape-picker-user'));
+      expect(btn).not.toBeNull();
+    });
+
+    it('toggles draw mode for user via onSelectShape', () => {
+      let picked: string | null | undefined;
+      const tree = callToolbar({
+        onSelectShape: (shape) => {
+          picked = shape;
+        },
+      });
+      const btn = findElement(tree, testIdEquals('shape-picker-user'));
+      if (!btn) throw new Error('user picker tile not found');
+      const onClick = btn.props.onClick as () => void;
+      onClick();
+      expect(picked).toBe('user');
+    });
+  });
+
   describe('US-020: Tidy / Auto Align button removed from left toolbar', () => {
     it('does NOT render the toolbar-tidy button', () => {
       // Auto Align moved to the bottom-left Controls cluster. The left

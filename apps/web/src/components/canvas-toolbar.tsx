@@ -3,7 +3,17 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { ShapeKind } from '@/lib/api';
 import { type CommandId, getCommandTooltip } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
-import { Circle, Database, Server, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import {
+  Circle,
+  Database,
+  Server,
+  Shapes,
+  Square,
+  Sticker,
+  StickyNote,
+  Type,
+  User,
+} from 'lucide-react';
 import { useState } from 'react';
 
 /**
@@ -75,6 +85,8 @@ const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
   // US-022: rack-chassis illustrative shape, same ghost-dispatch contract as
   // Database — both consult `ILLUSTRATIVE_SHAPE_RENDERERS` for the SVG to draw.
   { shape: 'server', label: 'Server', commandId: 'tool.server', Icon: Server },
+  // US-023: person glyph for actors / end-users in architecture diagrams.
+  { shape: 'user', label: 'User', commandId: 'tool.user', Icon: User },
 ];
 
 // Combined list, exported so US-015's drop-on-pane popover can list the same

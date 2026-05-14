@@ -161,7 +161,7 @@ describe('DemoSchema', () => {
     // US-009 extended ShapeKind with `database` — the first illustrative
     // shape. The enum now drives both the schema validation here and the
     // per-shape renderer dispatch in apps/web's shape-node.tsx.
-    const make = (shape: 'rectangle' | 'ellipse' | 'sticky' | 'database' | 'server') => ({
+    const make = (shape: 'rectangle' | 'ellipse' | 'sticky' | 'database' | 'server' | 'user') => ({
       version: 1 as const,
       name: 'shape-demo',
       nodes: [
@@ -175,7 +175,7 @@ describe('DemoSchema', () => {
       connectors: [],
     });
 
-    for (const shape of ['rectangle', 'ellipse', 'sticky', 'database', 'server'] as const) {
+    for (const shape of ['rectangle', 'ellipse', 'sticky', 'database', 'server', 'user'] as const) {
       const result = DemoSchema.safeParse(make(shape));
       if (!result.success) {
         throw new Error(

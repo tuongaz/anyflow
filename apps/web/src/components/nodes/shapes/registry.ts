@@ -1,6 +1,7 @@
 import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { ServerShape } from '@/components/nodes/shapes/server';
 import type { ShapePartProps } from '@/components/nodes/shapes/types';
+import { UserShape } from '@/components/nodes/shapes/user';
 import type { ShapeKind } from '@/lib/api';
 import type { FC } from 'react';
 
@@ -14,4 +15,5 @@ import type { FC } from 'react';
 export const ILLUSTRATIVE_SHAPE_RENDERERS: Partial<Record<ShapeKind, FC<ShapePartProps>>> = {
   database: DatabaseShape,
   server: ServerShape,
+  user: UserShape,
 };

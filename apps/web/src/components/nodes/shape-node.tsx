@@ -67,6 +67,9 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
   // US-022: rack reads best in landscape — 3 horizontal bays at a wider aspect
   // ratio so the dividers and status LEDs sit at familiar proportions.
   server: { width: 140, height: 120 },
+  // US-023: person glyph reads best in portrait — head sits in the top quarter
+  // and the half-pill torso fills the bottom three-quarters.
+  user: { width: 100, height: 140 },
 };
 
 // `text` deliberately omits border + background so the shape reads as a free
@@ -87,6 +90,7 @@ export const SHAPE_CLASS: Record<ShapeKind, string> = {
   // border + fill so the wrapper stays a transparent positioning host.
   database: '',
   server: '',
+  user: '',
 };
 
 /**

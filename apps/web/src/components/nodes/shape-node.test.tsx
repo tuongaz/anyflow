@@ -10,6 +10,7 @@ import {
 } from '@/components/nodes/shape-node';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { ServerShape } from '@/components/nodes/shapes/server';
+import { UserShape } from '@/components/nodes/shapes/user';
 import { COLOR_TOKENS, NODE_DEFAULT_BG_WHITE } from '@/lib/color-tokens';
 import { Handle, type NodeProps } from '@xyflow/react';
 import * as React from 'react';
@@ -178,6 +179,30 @@ describe('shape-node chrome helpers', () => {
 
     it('SHAPE_DEFAULT_SIZE.server matches the spec (140 x 120 landscape rack)', () => {
       expect(SHAPE_DEFAULT_SIZE.server).toEqual({ width: 140, height: 120 });
+    });
+
+    // US-023: user follows the same chrome-suppression invariant — the SVG
+    // owns the silhouette (head + torso) and the wrapper stays transparent.
+    it('user returns empty Tailwind chrome class', () => {
+      expect(shapeChromeClass('user')).toBe('');
+      expect(SHAPE_CLASS.user).toBe('');
+    });
+
+    it('user returns {} from shapeChromeStyle regardless of author overrides', () => {
+      expect(shapeChromeStyle('user')).toEqual({});
+      expect(
+        shapeChromeStyle('user', {
+          borderColor: 'blue',
+          backgroundColor: 'green',
+          borderSize: 5,
+          borderStyle: 'dashed',
+          cornerRadius: 12,
+        }),
+      ).toEqual({});
+    });
+
+    it('SHAPE_DEFAULT_SIZE.user matches the spec (100 x 140 portrait person)', () => {
+      expect(SHAPE_DEFAULT_SIZE.user).toEqual({ width: 100, height: 140 });
     });
   });
 });
@@ -429,6 +454,15 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     );
     expect(headers).toHaveLength(0);
   });
+
+  it('user with name does NOT switch layouts (illustrative shape keeps SVG visuals)', () => {
+    const tree = callShapeNode({ shape: 'user', name: 'Alice' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
 });
 
 describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
@@ -533,6 +567,66 @@ describe('ShapeNode server shape (US-022)', () => {
       const shapes = findAll(tree, (el) => el.type === ServerShape);
       expect(shapes).toHaveLength(0);
     }
+  });
+});
+
+// US-023: user mirrors the wireable-illustrative contract. Same renderer
+// dispatch through the shapes registry, same four connect handles, same
+// resize affordance when selected — verified parallel to ServerShape.
+describe('ShapeNode user shape (US-023)', () => {
+  it('renders <UserShape> in the tree when shape=user', () => {
+    const tree = callShapeNode({ shape: 'user' });
+    const shapes = findAll(tree, (el) => el.type === UserShape);
+    expect(shapes).toHaveLength(1);
+  });
+
+  it('user shape still renders four connect handles (wireable like database)', () => {
+    const tree = callShapeNode({ shape: 'user' });
+    const handles = findAll(tree, (el) => el.type === Handle);
+    expect(handles).toHaveLength(4);
+  });
+
+  it('renders ResizeControls with visible=true when selected with onResize callback', () => {
+    const tree = callShapeNode({ shape: 'user', onResize: () => {} }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findAll(tree, (el) => el.type === ResizeControls);
+    expect(controls).toHaveLength(1);
+    const props = controls[0]?.props as { visible?: boolean } | undefined;
+    expect(props?.visible).toBe(true);
+  });
+
+  it('non-user shapes do NOT render <UserShape> in the tree', () => {
+    for (const shape of ['rectangle', 'ellipse', 'sticky', 'text', 'database', 'server'] as const) {
+      const tree = callShapeNode({ shape });
+      const shapes = findAll(tree, (el) => el.type === UserShape);
+      expect(shapes).toHaveLength(0);
+    }
+  });
+});
+
+// US-023: UserShape is a pure SVG renderer. Pin the structural invariants
+// (svg root, head circle + torso path, viewBox + testid) so a future change
+// to the person silhouette is intentional and reviewable.
+describe('UserShape (US-023)', () => {
+  it('returns an <svg> element with the expected viewBox and testid', () => {
+    const el = UserShape({ width: 100, height: 140 }) as {
+      type: string;
+      props: Record<string, unknown>;
+    };
+    expect(el.type).toBe('svg');
+    expect(el.props.viewBox).toBe('0 0 100 140');
+    expect(el.props['data-testid']).toBe('user-shape');
+  });
+
+  it('SVG body composition is title + head circle + torso path', () => {
+    const el = UserShape({ width: 100, height: 140 }) as {
+      props: { children?: unknown };
+    };
+    const types = (Array.isArray(el.props.children) ? el.props.children : [el.props.children])
+      .filter((c): c is { type: string } => !!c && typeof c === 'object' && 'type' in c)
+      .map((c) => c.type);
+    expect(types).toEqual(['title', 'circle', 'path']);
   });
 });
 

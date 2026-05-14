@@ -14,6 +14,7 @@ import {
 } from '@/components/demo-canvas';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { ServerShape } from '@/components/nodes/shapes/server';
+import { UserShape } from '@/components/nodes/shapes/user';
 import {
   type MultiResizeUpdate,
   SelectionResizeOverlay,
@@ -1041,6 +1042,42 @@ describe('DemoCanvas', () => {
       if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
       const serverShape = findElement(ghost, (el) => el.type === ServerShape);
       expect(serverShape).toBeNull();
+    });
+  });
+
+  // US-023: same registry-driven ghost-dispatch as Server; parallel coverage.
+  describe('US-023: user drag-create ghost renders UserShape', () => {
+    it('renders <UserShape> inside the ghost when activeShape="user"', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'user' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      expect((ghost.props as { 'data-ghost-shape'?: unknown })['data-ghost-shape']).toBe('user');
+      const userShape = findElement(ghost, (el) => el.type === UserShape);
+      expect(userShape).not.toBeNull();
+    });
+
+    it('does NOT render UserShape in the ghost for non-user shapes', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'server' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const userShape = findElement(ghost, (el) => el.type === UserShape);
+      expect(userShape).toBeNull();
     });
   });
 

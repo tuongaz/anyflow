@@ -67,6 +67,7 @@ export type CommandId =
   | 'tool.sticky'
   | 'tool.database'
   | 'tool.server'
+  | 'tool.user'
   | 'edit.undo'
   | 'edit.redo'
   | 'edit.copy'
@@ -156,6 +157,12 @@ export const COMMANDS: readonly CommandDef[] = [
     id: 'tool.server',
     label: 'Server',
     description: 'Add a server node',
+    category: 'Tools',
+  },
+  {
+    id: 'tool.user',
+    label: 'User',
+    description: 'Add a user node',
     category: 'Tools',
   },
   {
