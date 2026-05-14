@@ -34,10 +34,12 @@ import {
   reorderNodeImpl,
   resolveDemoPath,
 } from './operations.ts';
+import type { ProcessSpawner } from './process-spawner.ts';
 import { runPlay } from './proxy.ts';
 import type { Registry } from './registry.ts';
 import { DemoSchema } from './schema.ts';
 import { type Spawner, defaultSpawner } from './shellout.ts';
+import type { StatusRunner } from './status-runner.ts';
 import type { DemoWatcher } from './watcher.ts';
 
 const EmitBodySchema = z.object({
@@ -162,12 +164,18 @@ export interface ApiOptions {
   spawner?: Spawner;
   /** Override `process.platform` for tests covering darwin/win32/linux branches. */
   platform?: NodeJS.Platform;
+  /** Long-running statusAction runner; fanned out on each /play click. */
+  statusRunner?: StatusRunner;
+  /** Injectable ProcessSpawner threaded into runPlay; tests use this to avoid
+   *  launching real child processes for the play-action script. */
+  processSpawner?: ProcessSpawner;
 }
 
 export function createApi(options: ApiOptions): Hono {
-  const { registry, events, watcher } = options;
+  const { registry, events, watcher, statusRunner } = options;
   const spawner = options.spawner ?? defaultSpawner;
   const platform = options.platform ?? process.platform;
+  const processSpawner = options.processSpawner;
   const api = new Hono();
 
   api.post('/demos/register', async (c) => {
@@ -562,13 +570,32 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: `Node ${nodeId} has no playAction` }, 400);
     }
 
+    // Fan out the long-running statusAction scripts BEFORE awaiting the play
+    // spawn — fire-and-forget so a slow status batch can't delay the click.
+    // Individual spawn failures are surfaced via console.warn but never fail
+    // the /play call itself.
+    if (statusRunner) {
+      void statusRunner.restart(id).catch((err) => {
+        console.warn(
+          `[api] statusRunner.restart(${id}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
+
     const result = await runPlay({
       events,
       demoId: id,
       nodeId,
       cwd: entry.repoPath,
       action: node.data.playAction,
+      spawner: processSpawner,
     });
+
+    // Surface the symlink-escape error as a 400 so the frontend can show a
+    // distinct "fix your scriptPath" message instead of a generic run failure.
+    if (result.error === 'scriptPath escapes project root') {
+      return c.json({ error: result.error }, 400);
+    }
     return c.json(result);
   });
 
