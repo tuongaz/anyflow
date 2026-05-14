@@ -9,6 +9,7 @@ export type StudioEventType =
   | 'node:running'
   | 'node:done'
   | 'node:error'
+  | 'node:status'
   | 'file:changed';
 
 export interface StudioEvent {
