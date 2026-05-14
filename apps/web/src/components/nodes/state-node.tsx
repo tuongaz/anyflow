@@ -1,9 +1,10 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { StatusBadge } from '@/components/nodes/status-badge';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
-import type { NodeData } from '@/lib/api';
+import type { NodeData, StatusReport } from '@/lib/api';
 import { colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
@@ -15,6 +16,13 @@ export type StateNodeData = NodeData & {
    * 'idle' visually (the StatusPill renders nothing for 'idle').
    */
   status?: NodeStatus;
+  /**
+   * US-007: latest StatusReport from this node's statusAction script (if any),
+   * driven by `node:status` SSE events. Undefined when no entry exists in the
+   * `statusByNode` map — the badge row is suppressed entirely so the no-status
+   * path is byte-identical to legacy renders (no layout shift).
+   */
+  statusReport?: StatusReport & { ts: number };
   onResize?: (
     nodeId: string,
     dims: { width: number; height: number; x: number; y: number },
@@ -172,6 +180,18 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
           <StatusPill status={status} />
         </div>
       </div>
+      {data.statusReport ? (
+        <div
+          className="flex shrink-0 items-center border-b border-dashed px-2 py-1"
+          data-testid="state-node-status-badge"
+        >
+          <StatusBadge
+            state={data.statusReport.state}
+            summary={data.statusReport.summary}
+            data-testid="status-badge"
+          />
+        </div>
+      ) : null}
       <div
         className="flex min-h-0 flex-1 items-center px-2 py-1"
         data-testid="node-content"

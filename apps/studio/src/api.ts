@@ -34,10 +34,20 @@ import {
   reorderNodeImpl,
   resolveDemoPath,
 } from './operations.ts';
-import { runPlay } from './proxy.ts';
+import type { ProcessSpawner } from './process-spawner.ts';
+import {
+  type PlayResult,
+  type ResetResult,
+  type RunPlayOptions,
+  type RunResetOptions,
+  runPlay as defaultRunPlay,
+  runReset as defaultRunReset,
+  stopAllPlays as defaultStopAllPlays,
+} from './proxy.ts';
 import type { Registry } from './registry.ts';
 import { DemoSchema } from './schema.ts';
 import { type Spawner, defaultSpawner } from './shellout.ts';
+import type { StatusRunner } from './status-runner.ts';
 import type { DemoWatcher } from './watcher.ts';
 
 const EmitBodySchema = z.object({
@@ -162,12 +172,42 @@ export interface ApiOptions {
   spawner?: Spawner;
   /** Override `process.platform` for tests covering darwin/win32/linux branches. */
   platform?: NodeJS.Platform;
+  /** Long-running statusAction runner; fanned out on each /play click. */
+  statusRunner?: StatusRunner;
+  /** Injectable ProcessSpawner threaded into runPlay; tests use this to avoid
+   *  launching real child processes for the play-action script. */
+  processSpawner?: ProcessSpawner;
+  /** Injectable proxy facade — defaults wrap the proxy.ts module exports.
+   *  Tests use this to record call order across runPlay / runReset /
+   *  stopAllPlays and to drive each in isolation. */
+  proxy?: ProxyFacade;
 }
 
+/**
+ * Thin call-through wrapper around the proxy.ts module exports. Lets tests
+ * inject a recording fake to assert call order across runPlay, runReset, and
+ * stopAllPlays — none of which can be observed via the underlying
+ * ProcessSpawner alone because the play-run map and event broadcasts are
+ * encapsulated inside proxy.ts.
+ */
+export interface ProxyFacade {
+  runPlay(options: RunPlayOptions): Promise<PlayResult>;
+  runReset(options: RunResetOptions): Promise<ResetResult>;
+  stopAllPlays(demoId: string): Promise<void>;
+}
+
+export const defaultProxyFacade: ProxyFacade = {
+  runPlay: defaultRunPlay,
+  runReset: defaultRunReset,
+  stopAllPlays: defaultStopAllPlays,
+};
+
 export function createApi(options: ApiOptions): Hono {
-  const { registry, events, watcher } = options;
+  const { registry, events, watcher, statusRunner } = options;
   const spawner = options.spawner ?? defaultSpawner;
   const platform = options.platform ?? process.platform;
+  const processSpawner = options.processSpawner;
+  const proxy = options.proxy ?? defaultProxyFacade;
   const api = new Hono();
 
   api.post('/demos/register', async (c) => {
@@ -562,23 +602,45 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: `Node ${nodeId} has no playAction` }, 400);
     }
 
-    const result = await runPlay({
+    // Fan out the long-running statusAction scripts BEFORE awaiting the play
+    // spawn — fire-and-forget so a slow status batch can't delay the click.
+    // Individual spawn failures are surfaced via console.warn but never fail
+    // the /play call itself.
+    if (statusRunner) {
+      void statusRunner.restart(id).catch((err) => {
+        console.warn(
+          `[api] statusRunner.restart(${id}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
+
+    const result = await proxy.runPlay({
       events,
       demoId: id,
       nodeId,
+      cwd: entry.repoPath,
       action: node.data.playAction,
+      spawner: processSpawner,
     });
+
+    // Surface the symlink-escape error as a 400 so the frontend can show a
+    // distinct "fix your scriptPath" message instead of a generic run failure.
+    if (result.error === 'scriptPath escapes project root') {
+      return c.json({ error: result.error }, 400);
+    }
     return c.json(result);
   });
 
-  // POST /api/demos/:id/reset — fires the demo's `resetAction` (if declared)
-  // so the running app can wipe its in-memory state, then broadcasts a
-  // `demo:reload` event so all connected canvases re-fetch the demo from disk.
-  // The reload broadcast happens unconditionally whenever the demo loads — a
-  // failed resetAction (network error or status>=400) surfaces as a 502 to the
-  // caller but does NOT suppress the reload, so the canvas state still
-  // refreshes. URL handling matches `playAction`: the action's `url` is fetched
-  // verbatim with no studio-side resolution.
+  // POST /api/demos/:id/reset — the "Restart demo" workflow (US-008). Order:
+  //   1. Stop every live play-script + every long-running status-script for
+  //      this demo in parallel — both must complete before any reset script
+  //      spawns so the script sees no stragglers.
+  //   2. Run the demo's `resetAction` script (if declared); any non-zero exit
+  //      becomes a 502 to the caller but does NOT suppress reload/restart.
+  //   3. Broadcast `demo:reload` unconditionally so the canvas re-fetches.
+  //   4. Fire-and-forget `statusRunner.restart` so the next status batch is
+  //      spawning by the time the response lands. Individual spawn failures
+  //      surface via console.warn but never fail the /reset call.
   api.post('/demos/:id/reset', async (c) => {
     const id = c.req.param('id');
     const entry = registry.getById(id);
@@ -605,45 +667,48 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: 'Demo failed schema validation', issues: parsed.error.issues }, 400);
     }
 
+    // 1. Stop every play + status script in parallel. await BOTH before
+    //    spawning the reset script so a still-running play can't race the
+    //    reset and re-dirty the running app's state.
+    const stopPromises: Array<Promise<void>> = [proxy.stopAllPlays(id)];
+    if (statusRunner) stopPromises.push(statusRunner.stop(id));
+    await Promise.all(stopPromises);
+
+    // 2. Run resetAction (if declared).
     const resetAction = parsed.data.resetAction;
     let calledResetAction = false;
     let resetActionError: string | undefined;
 
     if (resetAction) {
       calledResetAction = true;
-      try {
-        const init: RequestInit = {
-          method: resetAction.method,
-          headers: { 'content-type': 'application/json' },
-        };
-        if (resetAction.body !== undefined) {
-          init.body = JSON.stringify(resetAction.body);
-        }
-        const upstream = await fetch(resetAction.url, init);
-        if (upstream.status >= 400) {
-          let upstreamBody = '';
-          try {
-            upstreamBody = await upstream.text();
-          } catch {
-            // best-effort body read for the error message
-          }
-          const trimmed = upstreamBody.trim().slice(0, 200);
-          resetActionError = trimmed
-            ? `Reset action returned ${upstream.status}: ${trimmed}`
-            : `Reset action returned ${upstream.status}`;
-        }
-      } catch (err) {
-        resetActionError = err instanceof Error ? err.message : String(err);
+      const result = await proxy.runReset({
+        events,
+        demoId: id,
+        cwd: entry.repoPath,
+        action: resetAction,
+      });
+      if (!result.ok && result.error) {
+        resetActionError = result.error;
       }
     }
 
-    // Broadcast unconditionally — even when resetAction failed, the canvas
-    // should still refresh from disk in case the user just edited the file.
+    // 3. Broadcast reload unconditionally — even when resetAction failed,
+    //    the canvas should still refresh from disk in case the user just
+    //    edited the file.
     events.broadcast({
       type: 'demo:reload',
       demoId: id,
       payload: {},
     });
+
+    // 4. Fire-and-forget the next status batch.
+    if (statusRunner) {
+      void statusRunner.restart(id).catch((err) => {
+        console.warn(
+          `[api] statusRunner.restart(${id}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
 
     if (resetActionError) {
       return c.json({ error: resetActionError, calledResetAction }, 502);

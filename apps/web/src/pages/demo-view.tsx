@@ -3,11 +3,12 @@ import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
 import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
-import { ResetDemoButton } from '@/components/reset-demo-button';
+import { RestartDemoButton } from '@/components/restart-demo-button';
 import { ShareMenu } from '@/components/share-menu';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
+import type { NodeStatuses } from '@/hooks/use-node-statuses';
 import { usePendingDeletions } from '@/hooks/use-pending-deletions';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
 import { useUndoStack } from '@/hooks/use-undo-stack';
@@ -144,8 +145,15 @@ export interface DemoViewProps {
   loading: boolean;
   runs: NodeRuns;
   nodeEvents: NodeEventLog;
+  /**
+   * US-006: latest StatusReport per node, driven by `node:status` SSE events.
+   * Empty when no statusAction has reported yet. US-007 will consume this in
+   * the node renderers (play-node / state-node) and the sidebar; for now the
+   * prop just plumbs the data down so the wiring is in place.
+   */
+  statusByNode: NodeStatuses;
   onPlayNode: (nodeId: string) => void;
-  onResetDemo?: () => Promise<unknown>;
+  onRestartDemo?: () => Promise<unknown>;
 }
 
 export function DemoView({
@@ -155,8 +163,9 @@ export function DemoView({
   loading,
   runs,
   nodeEvents,
+  statusByNode,
   onPlayNode,
-  onResetDemo,
+  onRestartDemo,
 }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   // US-019: multi-select. Selection is now an array; the inspector still
@@ -202,7 +211,7 @@ export function DemoView({
   // Same pattern as `onDeleteSelectionRef` above.
   const onExportPdfRef = useRef<(() => Promise<void>) | null>(null);
   const onExportPngRef = useRef<(() => Promise<void>) | null>(null);
-  const onResetDemoRef = useRef<(() => Promise<unknown>) | null>(null);
+  const onRestartDemoRef = useRef<(() => Promise<unknown>) | null>(null);
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -2858,7 +2867,7 @@ export function DemoView({
           return;
         }
         case 'session.reset': {
-          onResetDemoRef.current?.();
+          onRestartDemoRef.current?.();
           return;
         }
       }
@@ -2971,8 +2980,8 @@ export function DemoView({
     onExportPngRef.current = onExportPng;
   }, [onExportPng]);
   useEffect(() => {
-    onResetDemoRef.current = onResetDemo ?? null;
-  }, [onResetDemo]);
+    onRestartDemoRef.current = onRestartDemo ?? null;
+  }, [onRestartDemo]);
 
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
@@ -3299,6 +3308,11 @@ export function DemoView({
 
   const inspectedRun = panelNodeId ? runs[panelNodeId] : undefined;
   const inspectedEvents = panelNodeId ? (nodeEvents[panelNodeId] ?? []) : [];
+  // US-007: latest StatusReport for the inspected node, surfaced in the
+  // DetailPanel's Status section. Undefined when the node has no entry in
+  // the hook's status map (no statusAction defined, or the script hasn't
+  // emitted yet).
+  const inspectedStatusReport = panelNodeId ? statusByNode[panelNodeId] : undefined;
 
   return (
     <div className="relative h-full w-full">
@@ -3313,7 +3327,7 @@ export function DemoView({
       ) : null}
 
       <div className="pointer-events-auto absolute right-3 top-3 z-20 flex items-center gap-1">
-        {onResetDemo ? <ResetDemoButton onResetDemo={onResetDemo} /> : null}
+        {onRestartDemo ? <RestartDemoButton onRestartDemo={onRestartDemo} /> : null}
         <ShareMenu
           onDownloadPdf={demoId ? onExportPdf : undefined}
           onDownloadPng={demoId ? onExportPng : undefined}
@@ -3329,6 +3343,7 @@ export function DemoView({
           selectedConnectorIds={selectedConnectorIds}
           onSelectionChange={onSelectionChange}
           runs={runs}
+          statusByNode={statusByNode}
           onPlayNode={onPlayNode}
           nodeOverrides={nodeOverrides}
           connectorOverrides={connectorOverrides}
@@ -3414,11 +3429,11 @@ export function DemoView({
           canUndo,
           canRedo,
           hasClipboard,
-          // Export/reset commands need a backing demo. demoId is non-null
-          // whenever the canvas can render; `onResetDemo` is optional on the
+          // Export/restart commands need a backing demo. demoId is non-null
+          // whenever the canvas can render; `onRestartDemo` is optional on the
           // props and falls back to false when the parent didn't supply it.
           canExportDemo: Boolean(demoId),
-          canResetSession: Boolean(onResetDemo),
+          canResetSession: Boolean(onRestartDemo),
         }}
       />
 
@@ -3426,6 +3441,7 @@ export function DemoView({
         demoId={detail?.id ?? null}
         node={inspectedNode}
         connector={inspectedConnector}
+        statusReport={inspectedStatusReport}
         // Three-field consolidation: panel + canvas dispatchers share the
         // same coalesce keys (`node:<id>:name|description|detail`) so a
         // typing session across the canvas and sidebar produces a single

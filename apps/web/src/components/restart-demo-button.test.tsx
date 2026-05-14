@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
-import { ResetDemoButton } from '@/components/reset-demo-button';
+import { RestartDemoButton } from '@/components/restart-demo-button';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw } from 'lucide-react';
 import * as React from 'react';
@@ -73,25 +73,25 @@ function findElement(
   return null;
 }
 
-function callResetDemoButton(
-  props: { onResetDemo: () => Promise<unknown> },
+function callRestartDemoButton(
+  props: { onRestartDemo: () => Promise<unknown> },
   overrides: Partial<Hooks> = {},
 ): unknown {
   return renderWithHooks(
-    () => (ResetDemoButton as unknown as (p: typeof props) => unknown)(props),
+    () => (RestartDemoButton as unknown as (p: typeof props) => unknown)(props),
     overrides,
   );
 }
 
-describe('ResetDemoButton', () => {
+describe('RestartDemoButton', () => {
   it('renders a refresh icon button with the expected a11y attributes', () => {
-    const onResetDemo = mock(async () => undefined);
-    const tree = callResetDemoButton({ onResetDemo });
+    const onRestartDemo = mock(async () => undefined);
+    const tree = callRestartDemoButton({ onRestartDemo });
     const button = findElement(tree, (el) => el.type === Button);
     if (!button) throw new Error('Button element not found');
-    expect(button.props['data-testid']).toBe('header-reset-demo');
-    expect(button.props['aria-label']).toBe('Reset demo');
-    expect(button.props.title).toBe('Reset demo');
+    expect(button.props['data-testid']).toBe('header-restart-demo');
+    expect(button.props['aria-label']).toBe('Restart demo');
+    expect(button.props.title).toBe('Restart demo');
     expect(button.props.variant).toBe('ghost');
     expect(button.props.disabled).toBe(false);
     // Idle state renders the RefreshCw icon (not the Loader2 spinner).
@@ -101,25 +101,25 @@ describe('ResetDemoButton', () => {
     expect(spinner).toBeNull();
   });
 
-  it('calls onResetDemo when the button is clicked', () => {
-    const onResetDemo = mock(async () => undefined);
-    const tree = callResetDemoButton({ onResetDemo });
+  it('calls onRestartDemo when the button is clicked', () => {
+    const onRestartDemo = mock(async () => undefined);
+    const tree = callRestartDemoButton({ onRestartDemo });
     const button = findElement(tree, (el) => el.type === Button);
     if (!button) throw new Error('Button element not found');
     const onClick = button.props.onClick as () => void;
     onClick();
-    expect(onResetDemo).toHaveBeenCalledTimes(1);
+    expect(onRestartDemo).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the spinner and disables the button while resetting', () => {
-    const onResetDemo = mock(async () => undefined);
-    // Force the useState initial value to `true` so we render the resetting branch.
-    const tree = callResetDemoButton(
-      { onResetDemo },
+  it('shows the spinner and disables the button while pending', () => {
+    const onRestartDemo = mock(async () => undefined);
+    // Force the useState initial value to `true` so we render the pending branch.
+    const tree = callRestartDemoButton(
+      { onRestartDemo },
       {
         useState: <S,>(initial: S | (() => S)) => {
           const value = typeof initial === 'function' ? (initial as () => S)() : initial;
-          // `resetting` is the only useState in this component; flip it.
+          // `pending` is the only useState in this component; flip it.
           return [(value as unknown) === false ? (true as unknown as S) : value, () => {}];
         },
       },

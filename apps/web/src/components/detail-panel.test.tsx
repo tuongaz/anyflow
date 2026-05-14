@@ -23,7 +23,9 @@ const mockWindow = {
 };
 (globalThis as unknown as { window: typeof mockWindow }).window = mockWindow;
 
-const { DetailPanel, EditableField } = await import('@/components/detail-panel');
+const { DetailPanel, EditableField, StatusSection, formatRelativeTime } = await import(
+  '@/components/detail-panel'
+);
 
 // Same dispatcher-shim trick used by icon-node.test.tsx — apps/web tests run
 // without a DOM, so we shim React's internal hook dispatcher and call the
@@ -258,6 +260,143 @@ describe('DetailPanel', () => {
     expect(buttons.length).toBe(0);
   });
 
+  // US-007: Status section above the editable fields, only when statusReport
+  // is provided. Suppressed entirely for nodes with no status entry so the
+  // panel looks identical for pre-statusAction demos. The DetailPanel render
+  // returns a tree with StatusSection as a still-unrendered child component
+  // element — find by the function reference itself, not by the data-testid
+  // that only appears on its rendered inner <section>.
+  it('Status section is absent when no statusReport prop is provided', () => {
+    const tree = renderWithHooks(() =>
+      DetailPanel({
+        demoId: 'd1',
+        node: makePlayNode(),
+        connector: null,
+        onClose: () => {},
+        onNameChange: () => {},
+        onDescriptionChange: () => {},
+        onDetailChange: () => {},
+      }),
+    );
+    expect(findAll(tree, (el) => el.type === StatusSection).length).toBe(0);
+  });
+
+  it('Status section element is included when statusReport is provided', () => {
+    const report = {
+      state: 'ok' as const,
+      summary: 'all good',
+      detail: 'line a\nline b',
+      data: { x: 1, y: 'two' },
+      ts: 100,
+    };
+    const tree = renderWithHooks(() =>
+      DetailPanel({
+        demoId: 'd1',
+        node: makePlayNode(),
+        connector: null,
+        onClose: () => {},
+        statusReport: report,
+      }),
+    );
+    const sections = findAll(tree, (el) => el.type === StatusSection);
+    expect(sections.length).toBe(1);
+    expect((sections[0]?.props as { report?: unknown }).report).toBe(report);
+  });
+});
+
+describe('StatusSection', () => {
+  it('renders the StatusBadge with the report state', () => {
+    const tree = StatusSection({
+      report: { state: 'warn', summary: 's', ts: 0 },
+      now: 0,
+    });
+    const badge = findByTestId(tree, 'detail-panel-status-badge');
+    expect(badge).not.toBeNull();
+    expect((badge?.props as { state?: string }).state).toBe('warn');
+    expect((badge?.props as { summary?: string }).summary).toBe('s');
+  });
+
+  it('renders the detail block with whitespace-pre-wrap so line breaks survive', () => {
+    const tree = StatusSection({
+      report: { state: 'ok', detail: 'a\nb\nc', ts: 0 },
+      now: 0,
+    });
+    const detailBox = findByTestId(tree, 'detail-panel-status-detail');
+    expect(detailBox).not.toBeNull();
+    expect(detailBox?.props.children).toBe('a\nb\nc');
+    const className = String((detailBox?.props as { className?: string }).className ?? '');
+    expect(className).toContain('whitespace-pre-wrap');
+  });
+
+  it('omits the detail block when report.detail is undefined', () => {
+    const tree = StatusSection({
+      report: { state: 'ok', ts: 0 },
+      now: 0,
+    });
+    expect(findByTestId(tree, 'detail-panel-status-detail')).toBeNull();
+  });
+
+  it('renders the data key/value table with one row per entry', () => {
+    const tree = StatusSection({
+      report: { state: 'ok', data: { pending: 1, total: 3, label: 'todo' }, ts: 0 },
+      now: 0,
+    });
+    const dl = findByTestId(tree, 'detail-panel-status-data');
+    expect(dl).not.toBeNull();
+    const rows = findAll(tree, (el) => el.props['data-testid'] === 'detail-panel-status-data-row');
+    expect(rows.length).toBe(3);
+    // Pull dt/dd children — each row is a fragment-like contents div with a dt
+    // and a dd child. Flatten and assert the rendered values.
+    const dts = findAll(tree, (el) => el.type === 'dt');
+    const dds = findAll(tree, (el) => el.type === 'dd');
+    expect(dts.map((d) => d.props.children).sort()).toEqual(['label', 'pending', 'total']);
+    // Strings render bare; numbers go through JSON.stringify.
+    expect(dds.map((d) => d.props.children).sort()).toEqual(['1', '3', 'todo']);
+  });
+
+  it('omits the data table when report.data is undefined or empty', () => {
+    const tree1 = StatusSection({
+      report: { state: 'ok', ts: 0 },
+      now: 0,
+    });
+    expect(findByTestId(tree1, 'detail-panel-status-data')).toBeNull();
+
+    const tree2 = StatusSection({
+      report: { state: 'ok', data: {}, ts: 0 },
+      now: 0,
+    });
+    expect(findByTestId(tree2, 'detail-panel-status-data')).toBeNull();
+  });
+
+  it('renders the relative-time label off the deterministic `now` test seam', () => {
+    const tree = StatusSection({
+      report: { state: 'ok', ts: 1_000 },
+      now: 6_000,
+    });
+    const ts = findByTestId(tree, 'detail-panel-status-relative-time');
+    expect(ts?.props.children).toBe('Last updated: 5s ago');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  it('returns "just now" within the first second', () => {
+    expect(formatRelativeTime(1_000, 1_000)).toBe('just now');
+    expect(formatRelativeTime(1_000, 1_500)).toBe('just now');
+  });
+
+  it('scales seconds → minutes → hours → days', () => {
+    expect(formatRelativeTime(0, 5_000)).toBe('5s ago');
+    expect(formatRelativeTime(0, 90_000)).toBe('1m ago');
+    expect(formatRelativeTime(0, 60 * 60 * 1000 * 2)).toBe('2h ago');
+    expect(formatRelativeTime(0, 60 * 60 * 24 * 1000 * 3)).toBe('3d ago');
+  });
+
+  it('clamps negative diffs (future ts) to 0', () => {
+    expect(formatRelativeTime(2_000, 1_000)).toBe('just now');
+  });
+});
+
+describe('DetailPanel (connector)', () => {
   it('renders only the ConnectorSummary for a connector (no editable fields)', () => {
     const tree = renderWithHooks(() =>
       DetailPanel({

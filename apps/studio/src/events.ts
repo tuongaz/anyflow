@@ -6,9 +6,11 @@
 
 export type StudioEventType =
   | 'demo:reload'
+  | 'demo:reset'
   | 'node:running'
   | 'node:done'
   | 'node:error'
+  | 'node:status'
   | 'file:changed';
 
 export interface StudioEvent {

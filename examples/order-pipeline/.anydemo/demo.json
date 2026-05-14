@@ -40,10 +40,11 @@
         },
         "borderColor": "green",
         "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3040/payments/charge",
-          "body": {}
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/charge-payment.ts",
+          "input": {}
         },
         "description": "Charges the most recently-created order (or pass {orderId} explicitly). Synchronous HTTP leg — flips status pending → paid before responding!.",
         "width": 237.87719332134293,
@@ -125,10 +126,11 @@
         "description": "Creates an order, publishes order.created on the in-process bus, AND enqueues a shipment request on the shipments queue. The single click drives all three downstream nodes.",
         "detail": "Thi sis another good one",
         "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3040/orders",
-          "body": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/create-order.ts",
+          "input": {
             "customerId": "cust-1",
             "items": [
               {

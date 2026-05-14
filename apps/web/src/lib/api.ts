@@ -15,6 +15,20 @@ export interface HttpAction {
   bodySchema?: unknown;
 }
 
+// Mirror of `StatusReportSchema` in apps/studio/src/schema.ts. One record per
+// `node:status` SSE frame; the studio's StatusRunner parses each non-empty
+// stdout line from a statusAction script via `StatusReportSchema.safeParse`
+// before broadcasting. Keep this in lockstep with the studio schema.
+export type StatusReportState = 'ok' | 'warn' | 'error' | 'pending';
+
+export interface StatusReport {
+  state: StatusReportState;
+  summary?: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+  ts?: number;
+}
+
 export type ColorToken =
   | 'default'
   | 'slate'
@@ -626,12 +640,12 @@ export const createProject = async (body: CreateProjectBody): Promise<CreateProj
   return (await res.json()) as CreateProjectResult;
 };
 
-export interface ResetDemoResult {
+export interface RestartDemoResult {
   ok: true;
   calledResetAction: boolean;
 }
 
-export const resetDemo = async (demoId: string): Promise<ResetDemoResult> => {
+export const restartDemo = async (demoId: string): Promise<RestartDemoResult> => {
   const res = await fetch(`/api/demos/${demoId}/reset`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -646,7 +660,7 @@ export const resetDemo = async (demoId: string): Promise<ResetDemoResult> => {
     }
     throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/reset → ${res.status}`);
   }
-  return (await res.json()) as ResetDemoResult;
+  return (await res.json()) as RestartDemoResult;
 };
 
 export interface UploadImageResult {

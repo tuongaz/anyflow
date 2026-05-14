@@ -18,9 +18,9 @@ const VALID_DEMO = {
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: {
-          kind: 'http',
-          method: 'POST',
-          url: 'http://localhost:3001/checkout',
+          kind: 'script',
+          interpreter: 'bun',
+          scriptPath: 'scripts/checkout.ts',
         },
       },
     },
@@ -294,7 +294,7 @@ const VALID_DEMO_THREE_NODES = {
         name: 'A',
         kind: 'service',
         stateSource: { kind: 'request' },
-        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+        playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
       },
     },
     {
@@ -305,7 +305,7 @@ const VALID_DEMO_THREE_NODES = {
         name: 'B',
         kind: 'service',
         stateSource: { kind: 'request' },
-        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+        playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
       },
     },
     {
@@ -316,7 +316,7 @@ const VALID_DEMO_THREE_NODES = {
         name: 'C',
         kind: 'service',
         stateSource: { kind: 'request' },
-        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
+        playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
       },
     },
   ],
@@ -564,7 +564,7 @@ describe('anydemo_patch_node', () => {
     const node = onDisk.nodes.find((n) => n.id === 'api-checkout');
     expect(node?.data.name).toBe('POST /checkout (renamed)');
     // Untouched fields preserved.
-    expect(node?.data.playAction.kind).toBe('http');
+    expect(node?.data.playAction.kind).toBe('script');
     expect(node?.position).toEqual({ x: 0, y: 0 });
   });
 
@@ -702,7 +702,7 @@ describe('anydemo_patch_node', () => {
             name: 'Future',
             kind: 'service',
             stateSource: { kind: 'request' },
-            playAction: { kind: 'http', method: 'POST', url: 'http://example.test/fc' },
+            playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
           },
         },
       ],
@@ -745,7 +745,7 @@ const VALID_DEMO_TWO_NODES = {
         name: 'A',
         kind: 'service',
         stateSource: { kind: 'request' },
-        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+        playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
       },
     },
     {
@@ -756,7 +756,7 @@ const VALID_DEMO_TWO_NODES = {
         name: 'B',
         kind: 'service',
         stateSource: { kind: 'request' },
-        playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+        playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
       },
     },
   ],

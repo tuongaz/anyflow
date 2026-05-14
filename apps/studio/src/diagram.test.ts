@@ -47,7 +47,11 @@ const playNode = (id: string, x = 0, y = 0) => ({
     label: id,
     kind: 'service',
     stateSource: { kind: 'request' as const },
-    playAction: { kind: 'http' as const, method: 'GET' as const, url: `http://x/${id}` },
+    playAction: {
+      kind: 'script' as const,
+      interpreter: 'bun',
+      scriptPath: `scripts/${id}.ts`,
+    },
   },
 });
 

@@ -8,5 +8,5 @@
     "noEmit": true,
     "rootDir": "."
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", ".anydemo/scripts/**/*"]
 }

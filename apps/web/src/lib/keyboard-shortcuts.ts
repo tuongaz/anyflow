@@ -103,9 +103,9 @@ export type CommandContext = {
   // palette greys the rows instead of letting Enter do nothing.
   canExportDemo: boolean;
   // True when the open demo supports a runtime reset. Separate from
-  // `canExportDemo` because the parent only wires `onResetDemo` for demos
+  // `canExportDemo` because the parent only wires `onRestartDemo` for demos
   // that have a registered reset action — exports always work on a loaded
-  // demo, but reset is gated on the demo declaring one.
+  // demo, but restart is gated on the demo declaring one.
   canResetSession: boolean;
 };
 
@@ -319,8 +319,8 @@ export const COMMANDS: readonly CommandDef[] = [
   },
   {
     id: 'session.reset',
-    label: 'Restart the session',
-    description: 'Reset the running demo back to its initial state',
+    label: 'Restart the demo',
+    description: 'Stop running scripts and re-run the reset script',
     category: 'File',
     enabled: (ctx) => ctx.canResetSession,
   },

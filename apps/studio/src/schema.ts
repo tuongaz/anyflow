@@ -5,6 +5,11 @@ const PositionSchema = z.object({
   y: z.number(),
 });
 
+// US-008: HttpAction was the original shape for both playAction and resetAction
+// in pre-script-action releases. After US-001 cut playAction to script-only and
+// US-008 cut resetAction the same way, no schema in this file uses HttpAction
+// anymore. Connectors keep the `http` *kind literal* for visual semantics, but
+// that's an independent enum — search before re-adding any HttpActionSchema.
 const HttpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Curated palette tokens. Stored on disk as readable names; the frontend maps
@@ -50,15 +55,65 @@ const NodeDescriptionBaseShape = {
   detail: z.string().optional(),
 };
 
-const HttpActionSchema = z.object({
-  kind: z.literal('http'),
-  method: HttpMethodSchema,
-  url: z.string().min(1),
-  body: z.unknown().optional(),
-  bodySchema: z.unknown().optional(),
+// US-001: relative-path safety refine (textual). Mirrors the same rule used
+// for image/html-node paths further down. Realpath verification is layered on
+// top by the proxy/status-runner before any spawn (symlink-escape defense).
+const isCleanRelativePath = (s: string): boolean => {
+  if (s.length === 0) return false;
+  if (s.startsWith('/') || s.startsWith('\\')) return false;
+  if (/^[A-Za-z]:[\\/]/.test(s)) return false;
+  const segments = s.split(/[\\/]/);
+  return !segments.some((seg) => seg === '..');
+};
+
+// Script-based action: the studio spawns `<interpreter> [...args] <scriptPath>`
+// from the project's repoPath. `scriptPath` is a relative path under
+// `<project>/.anydemo/`; `args` (optional) prepend to the interpreter; `input`
+// (optional) gets JSON-serialized and written to the child's stdin then closed;
+// `timeoutMs` caps execution (default applied at the spawn layer, not here).
+const ScriptActionSchema = z.object({
+  kind: z.literal('script'),
+  interpreter: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  scriptPath: z.string().min(1).refine(isCleanRelativePath, {
+    message: 'scriptPath must be a relative path under .anydemo/ (no absolute / traversal)',
+  }),
+  input: z.unknown().optional(),
+  timeoutMs: z.number().int().positive().max(600_000).optional(),
 });
 
-const PlayActionSchema = HttpActionSchema;
+const PlayActionSchema = ScriptActionSchema;
+
+// US-008: resetAction is a one-shot script action — same shape as a play
+// script (interpreter + args + scriptPath + optional input/timeoutMs) but
+// invoked from the /reset endpoint. The studio kills every live play and
+// status script for the demo before running this script, so the running app
+// sees a clean baseline when wiping its state.
+const ResetActionSchema = ScriptActionSchema;
+
+// Long-running status script. Same spawn shape as ScriptAction (interpreter +
+// args + scriptPath) but no stdin payload and a much longer max lifetime since
+// these processes tick continuously and stream StatusReports to stdout.
+const StatusActionSchema = z.object({
+  kind: z.literal('script'),
+  interpreter: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  scriptPath: z.string().min(1).refine(isCleanRelativePath, {
+    message: 'scriptPath must be a relative path under .anydemo/ (no absolute / traversal)',
+  }),
+  maxLifetimeMs: z.number().int().positive().max(3_600_000).optional(),
+});
+
+// Per-tick status report a statusAction script writes to stdout (one JSON
+// record per line). `data` is a free-form key/value bag rendered as a table
+// in the sidebar.
+export const StatusReportSchema = z.object({
+  state: z.enum(['ok', 'warn', 'error', 'pending']),
+  summary: z.string().max(120).optional(),
+  detail: z.string().max(2000).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+  ts: z.number().int().positive().optional(),
+});
 
 const StateSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('request') }),
@@ -78,10 +133,12 @@ const NodeDataBaseSchema = z.object({
 
 const PlayNodeDataSchema = NodeDataBaseSchema.extend({
   playAction: PlayActionSchema,
+  statusAction: StatusActionSchema.optional(),
 });
 
 const StateNodeDataSchema = NodeDataBaseSchema.extend({
   playAction: PlayActionSchema.optional(),
+  statusAction: StatusActionSchema.optional(),
 });
 
 // US-011: shared fields on every node variant. `parentId` lets a node declare
@@ -137,18 +194,6 @@ const ShapeNodeSchema = z.object({
   type: z.literal('shapeNode'),
   data: ShapeNodeDataSchema,
 });
-
-// US-004 path-safety refine: relative paths under `<project>/.anydemo/` only.
-// Rejects absolute paths (rooted or drive-letter prefixed) and any `..`
-// traversal segment. The studio's file-serving endpoint layers a realpath
-// check on top of this for symlink-escape defense.
-const isCleanRelativePath = (s: string): boolean => {
-  if (s.length === 0) return false;
-  if (s.startsWith('/') || s.startsWith('\\')) return false;
-  if (/^[A-Za-z]:[\\/]/.test(s)) return false;
-  const segments = s.split(/[\\/]/);
-  return !segments.some((seg) => seg === '..');
-};
 
 // Decorative image node — references a file under `<project>/.anydemo/` by
 // relative path (US-004 hard-cut from base64 data URLs to path-backed files).
@@ -379,10 +424,11 @@ export const DemoSchema = z
     name: z.string().min(1),
     nodes: z.array(NodeSchema),
     connectors: z.array(ConnectorSchema),
-    // Optional declarative endpoint the studio POSTs to when the user resets
-    // the demo. Lets the running app reset its own in-memory state alongside
-    // the canvas reload broadcast (US-003 / US-008).
-    resetAction: HttpActionSchema.optional(),
+    // Optional one-shot script the studio runs when the user clicks Restart.
+    // Lets the running app wipe its own in-memory state. The studio kills
+    // every live play + status script for the demo BEFORE invoking this
+    // script (US-008), so the script sees no stragglers.
+    resetAction: ResetActionSchema.optional(),
   })
   .superRefine((demo, ctx) => {
     const nodeIds = new Set(demo.nodes.map((n) => n.id));
@@ -446,5 +492,7 @@ export type ConnectorPath = z.infer<typeof ConnectorPathSchema>;
 export type EdgePin = z.infer<typeof EdgePinSchema>;
 export type EdgePinSide = z.infer<typeof EdgePinSideSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
-export type ResetAction = z.infer<typeof HttpActionSchema>;
+export type StatusAction = z.infer<typeof StatusActionSchema>;
+export type StatusReport = z.infer<typeof StatusReportSchema>;
+export type ResetAction = z.infer<typeof ResetActionSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;

@@ -16,10 +16,11 @@
           "kind": "request"
         },
         "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3019/checkout",
-          "body": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/checkout.ts",
+          "input": {
             "items": [],
             "customerId": "cust_1"
           }

@@ -11,10 +11,11 @@
         "kind": "service",
         "stateSource": { "kind": "request" },
         "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3001/checkout",
-          "body": { "items": [], "customerId": "cust_1" }
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/play.ts",
+          "input": { "items": [], "customerId": "cust_1" }
         },
         "description": "Creates an order, charges the card, enqueues fulfillment."
       }

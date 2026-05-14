@@ -3,43 +3,43 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
-export interface ResetDemoButtonProps {
-  onResetDemo: () => Promise<unknown>;
+export interface RestartDemoButtonProps {
+  onRestartDemo: () => Promise<unknown>;
 }
 
-export function ResetDemoButton({ onResetDemo }: ResetDemoButtonProps) {
-  const [resetting, setResetting] = useState(false);
+export function RestartDemoButton({ onRestartDemo }: RestartDemoButtonProps) {
+  const [pending, setPending] = useState(false);
 
   const handleClick = useCallback(() => {
-    if (resetting) return;
-    setResetting(true);
-    Promise.resolve(onResetDemo()).finally(() => {
-      setResetting(false);
+    if (pending) return;
+    setPending(true);
+    Promise.resolve(onRestartDemo()).finally(() => {
+      setPending(false);
     });
-  }, [onResetDemo, resetting]);
+  }, [onRestartDemo, pending]);
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          data-testid="header-reset-demo"
+          data-testid="header-restart-demo"
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Reset demo"
-          title="Reset demo"
-          disabled={resetting}
+          aria-label="Restart demo"
+          title="Restart demo"
+          disabled={pending}
           onClick={handleClick}
           className="h-8 w-8"
         >
-          {resetting ? (
+          {pending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           )}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">Reset demo</TooltipContent>
+      <TooltipContent side="bottom">Restart demo</TooltipContent>
     </Tooltip>
   );
 }

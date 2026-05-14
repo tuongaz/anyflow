@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 import { existsSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
+import { createEventBus } from './events.ts';
+import { defaultProcessSpawner } from './process-spawner.ts';
+import { createRegistry } from './registry.ts';
 import {
   clearPid,
   defaultPidPath,
@@ -13,6 +16,7 @@ import {
 } from './runtime.ts';
 import { DemoSchema } from './schema.ts';
 import { serve } from './server.ts';
+import { createStatusRunner } from './status-runner.ts';
 
 const DEFAULT_DEMO_PATH = '.anydemo/demo.json';
 const HEALTH_TIMEOUT_MS = 10_000;
@@ -63,20 +67,28 @@ async function runStart() {
   // persist the chosen address so other subcommands can find us
   writeConfig({ port, host: config.host });
 
-  const server = serve({ port, hostname: config.host });
+  const registry = createRegistry();
+  const events = createEventBus();
+  const statusRunner = createStatusRunner({ registry, events, spawner: defaultProcessSpawner });
+  const server = serve({ port, hostname: config.host, registry, events, statusRunner });
   writePid(process.pid);
 
   const cleanup = () => {
     if (readPid() === process.pid) clearPid();
   };
-  process.on('SIGTERM', () => {
+  const shutdown = async () => {
     cleanup();
+    try {
+      await statusRunner.stopAll();
+    } catch (err) {
+      console.warn(
+        `[cli] statusRunner.stopAll() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     process.exit(0);
-  });
-  process.on('SIGINT', () => {
-    cleanup();
-    process.exit(0);
-  });
+  };
+  process.on('SIGTERM', () => void shutdown());
+  process.on('SIGINT', () => void shutdown());
   process.on('exit', cleanup);
 
   console.log(`AnyDemo Studio listening on http://${server.hostname}:${server.port}`);

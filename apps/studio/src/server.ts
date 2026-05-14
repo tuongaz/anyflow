@@ -2,11 +2,13 @@ import { resolve as resolvePath } from 'node:path';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
-import { createApi } from './api.ts';
+import { type ProxyFacade, createApi } from './api.ts';
 import { type EventBus, createEventBus } from './events.ts';
 import { createMcpServer } from './mcp.ts';
+import { type ProcessSpawner, defaultProcessSpawner } from './process-spawner.ts';
 import { type Registry, createRegistry } from './registry.ts';
 import type { Spawner } from './shellout.ts';
+import { type StatusRunner, createStatusRunner } from './status-runner.ts';
 import { type DemoWatcher, createWatcher } from './watcher.ts';
 
 /** Absolute path to the vendored runtime asset directory. Resolved relative
@@ -37,6 +39,15 @@ export interface CreateAppOptions {
   spawner?: Spawner;
   /** Override the host platform for tests covering darwin/win32/linux branches. */
   platform?: NodeJS.Platform;
+  /** Inject a StatusRunner; defaults to one wired to the registry + event bus. */
+  statusRunner?: StatusRunner;
+  /** Inject a ProcessSpawner for the play-action script; defaults to letting
+   *  proxy.ts pick `defaultProcessSpawner`. Tests use this to drive runPlay
+   *  with an in-memory fake spawner. */
+  processSpawner?: ProcessSpawner;
+  /** Inject a ProxyFacade — tests use this to short-circuit runPlay /
+   *  runReset / stopAllPlays and assert call order. */
+  proxy?: ProxyFacade;
 }
 
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
@@ -53,6 +64,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   const watcher = options.disableWatcher
     ? undefined
     : (options.watcher ?? createWatcher({ registry, events }));
+  const statusRunner =
+    options.statusRunner ??
+    createStatusRunner({ registry, events, spawner: defaultProcessSpawner });
 
   if (watcher && (options.watchAllOnBoot ?? true)) {
     watcher.watchAll();
@@ -87,6 +101,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       watcher,
       spawner: options.spawner,
       platform: options.platform,
+      statusRunner,
+      processSpawner: options.processSpawner,
+      proxy: options.proxy,
     }),
   );
 
@@ -157,6 +174,21 @@ export function serve(options: ServeOptions = {}) {
 }
 
 if (import.meta.main) {
-  const server = serve();
+  const registry = createRegistry();
+  const events = createEventBus();
+  const statusRunner = createStatusRunner({ registry, events, spawner: defaultProcessSpawner });
+  const server = serve({ registry, events, statusRunner });
+  const shutdown = async () => {
+    try {
+      await statusRunner.stopAll();
+    } catch (err) {
+      console.warn(
+        `[server] statusRunner.stopAll() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    process.exit(0);
+  };
+  process.once('SIGINT', () => void shutdown());
+  process.once('SIGTERM', () => void shutdown());
   console.log(`AnyDemo Studio listening on http://${server.hostname}:${server.port}`);
 }

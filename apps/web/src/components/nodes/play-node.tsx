@@ -1,10 +1,11 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { StatusBadge } from '@/components/nodes/status-badge';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import { Button } from '@/components/ui/button';
-import type { NodeData } from '@/lib/api';
+import type { NodeData, StatusReport } from '@/lib/api';
 import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
 import { cn } from '@/lib/utils';
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
@@ -21,6 +22,13 @@ export type PlayNodeData = NodeData & {
   status?: NodeStatus;
   /** Filled when status === 'error' — surfaced as the play-button tooltip. */
   errorMessage?: string;
+  /**
+   * US-007: latest StatusReport from this node's statusAction script (if any),
+   * driven by `node:status` SSE events. Undefined when no entry exists in the
+   * `statusByNode` map — the badge row is suppressed entirely so the no-status
+   * path is byte-identical to legacy renders (no layout shift).
+   */
+  statusReport?: StatusReport & { ts: number };
   onPlay?: (nodeId: string) => void;
   onResize?: (
     nodeId: string,
@@ -229,6 +237,18 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
           </Button>
         </div>
       </div>
+      {data.statusReport ? (
+        <div
+          className="flex shrink-0 items-center border-b px-2 py-1"
+          data-testid="play-node-status-badge"
+        >
+          <StatusBadge
+            state={data.statusReport.state}
+            summary={data.statusReport.summary}
+            data-testid="status-badge"
+          />
+        </div>
+      ) : null}
       <div
         className="flex min-h-0 flex-1 items-center px-2 py-1"
         data-testid="node-content"
