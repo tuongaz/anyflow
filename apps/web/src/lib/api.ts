@@ -15,6 +15,20 @@ export interface HttpAction {
   bodySchema?: unknown;
 }
 
+// Mirror of `StatusReportSchema` in apps/studio/src/schema.ts. One record per
+// `node:status` SSE frame; the studio's StatusRunner parses each non-empty
+// stdout line from a statusAction script via `StatusReportSchema.safeParse`
+// before broadcasting. Keep this in lockstep with the studio schema.
+export type StatusReportState = 'ok' | 'warn' | 'error' | 'pending';
+
+export interface StatusReport {
+  state: StatusReportState;
+  summary?: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+  ts?: number;
+}
+
 export type ColorToken =
   | 'default'
   | 'slate'

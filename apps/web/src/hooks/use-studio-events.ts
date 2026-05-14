@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 
-export type StudioEventType = 'demo:reload' | 'node:running' | 'node:done' | 'node:error';
+export type StudioEventType =
+  | 'demo:reload'
+  | 'node:running'
+  | 'node:done'
+  | 'node:error'
+  | 'node:status';
 
 export interface StudioEvent {
   type: StudioEventType;
@@ -63,7 +68,7 @@ export const useStudioEvents = (
       onReload?.();
     });
 
-    for (const type of ['node:running', 'node:done', 'node:error'] as const) {
+    for (const type of ['node:running', 'node:done', 'node:error', 'node:status'] as const) {
       source.addEventListener(type, (e) => {
         onEvent?.(parsePayload(e, type));
       });

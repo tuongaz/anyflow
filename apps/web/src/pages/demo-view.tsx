@@ -8,6 +8,7 @@ import { ShareMenu } from '@/components/share-menu';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
 import type { NodeRuns } from '@/hooks/use-node-runs';
+import type { NodeStatuses } from '@/hooks/use-node-statuses';
 import { usePendingDeletions } from '@/hooks/use-pending-deletions';
 import { usePendingOverrides } from '@/hooks/use-pending-overrides';
 import { useUndoStack } from '@/hooks/use-undo-stack';
@@ -144,6 +145,13 @@ export interface DemoViewProps {
   loading: boolean;
   runs: NodeRuns;
   nodeEvents: NodeEventLog;
+  /**
+   * US-006: latest StatusReport per node, driven by `node:status` SSE events.
+   * Empty when no statusAction has reported yet. US-007 will consume this in
+   * the node renderers (play-node / state-node) and the sidebar; for now the
+   * prop just plumbs the data down so the wiring is in place.
+   */
+  statusByNode: NodeStatuses;
   onPlayNode: (nodeId: string) => void;
   onResetDemo?: () => Promise<unknown>;
 }

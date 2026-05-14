@@ -4,6 +4,7 @@ import { useDemoData } from '@/hooks/use-demo-data';
 import { useDemos } from '@/hooks/use-demos';
 import { useNodeEvents } from '@/hooks/use-node-events';
 import { useNodeRuns } from '@/hooks/use-node-runs';
+import { useNodeStatuses } from '@/hooks/use-node-statuses';
 import { useStudioEvents } from '@/hooks/use-studio-events';
 import { type CreateProjectResult, playNode, resetDemo } from '@/lib/api';
 import { pickInitialDemo, readLastProjectId, writeLastProjectId } from '@/lib/last-project';
@@ -29,19 +30,32 @@ export function App() {
   const { detail, loading, refresh: refreshDetail } = useDemoData(demoId);
   const { runs, apply: applyRun } = useNodeRuns(demoId);
   const { events: nodeEvents, apply: applyNodeEvent } = useNodeEvents(demoId);
+  const {
+    statusByNode,
+    apply: applyNodeStatus,
+    reset: resetNodeStatuses,
+  } = useNodeStatuses(demoId);
 
   const onReload = useCallback(() => {
+    // The studio kills the previous status batch on every demo:reload, so
+    // the prior `statusByNode` entries are stale by the time we get here.
+    resetNodeStatuses();
     refreshDetail();
     refreshDemos();
-  }, [refreshDetail, refreshDemos]);
+  }, [refreshDetail, refreshDemos, resetNodeStatuses]);
 
   const onEvent = useCallback(
     (event: Parameters<typeof applyRun>[0]) => {
       applyRun(event);
       applyNodeEvent(event);
+      applyNodeStatus(event);
     },
-    [applyRun, applyNodeEvent],
+    [applyRun, applyNodeEvent, applyNodeStatus],
   );
+
+  // US-006: `statusByNode` is exposed by the hook so US-007 can render the
+  // per-node badge + sidebar status section. It threads through DemoView →
+  // DemoCanvas / DetailPanel; the renderers in those files are wired in US-007.
 
   useStudioEvents(demoId, { onReload, onEvent });
 
@@ -115,6 +129,7 @@ export function App() {
               loading={loading}
               runs={runs}
               nodeEvents={nodeEvents}
+              statusByNode={statusByNode}
               onPlayNode={onPlayNode}
               onResetDemo={demoId ? onResetDemo : undefined}
             />
