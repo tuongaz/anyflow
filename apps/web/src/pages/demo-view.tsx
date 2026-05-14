@@ -1,3 +1,4 @@
+import { CommandPalette } from '@/components/command-palette';
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
 import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
@@ -3365,26 +3366,20 @@ export function DemoView({
         </div>
       ) : null}
 
-      {/* US-006: command-palette placeholder. Full UI lands in US-007 — this
-          stub proves Cmd/Ctrl+P routes through runCommand and that
-          setPaletteOpen wiring is sound. */}
-      {paletteOpen ? (
-        <div
-          data-testid="command-palette-placeholder"
-          className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center pt-24"
-        >
-          <div className="pointer-events-auto w-[480px] rounded-md border bg-background p-4 text-sm shadow-lg">
-            <div className="font-medium">Command Palette (coming in US-007)</div>
-            <button
-              type="button"
-              className="mt-3 text-xs text-muted-foreground underline underline-offset-2"
-              onClick={() => setPaletteOpen(false)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      ) : null}
+      {/* US-007: command palette — Cmd/Ctrl+P opens this dialog, full
+          searchable list of every command in COMMANDS. Dispatcher is the same
+          `runCommand` the chord handlers route through. */}
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        runCommand={runCommand}
+        ctx={{
+          hasSelection: selectedIds.length > 0 || selectedConnectorIds.length > 0,
+          canUndo,
+          canRedo,
+          hasClipboard,
+        }}
+      />
 
       <DetailPanel
         demoId={detail?.id ?? null}
