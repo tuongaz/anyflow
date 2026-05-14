@@ -11,7 +11,7 @@ import {
   shapeChromeClass,
   shapeChromeStyle,
 } from '@/components/nodes/shape-node';
-import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { ILLUSTRATIVE_SHAPE_RENDERERS } from '@/components/nodes/shapes/registry';
 import { StateNode } from '@/components/nodes/state-node';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import {
@@ -3849,23 +3849,29 @@ export function DemoCanvas({
           }}
         >
           {/* US-010: illustrative shapes have no wrapper chrome — the SVG owns
-              the visuals. Render <DatabaseShape> directly inside the ghost so
-              the drag preview matches the committed cylinder byte-for-byte.
+              the visuals. Render the per-shape SVG directly inside the ghost
+              so the drag preview matches the committed visual byte-for-byte.
               The committed node (ShapeNodeImpl) calls `resolveIllustrativeColors`
               on its `data` to fill defaults; the ghost has no `data`, so we
               inline the same default resolution here: `borderColor` →
               `colorTokenStyle(undefined, 'node').borderColor` (theme-aware
               border via `hsl(var(--border))`), `backgroundColor` →
-              `NODE_DEFAULT_BG_WHITE` (US-021 white fallback). */}
-          {drawShape === 'database' ? (
-            <DatabaseShape
-              width={ghostRect.width}
-              height={ghostRect.height}
-              borderColor={colorTokenStyle(undefined, 'node').borderColor}
-              backgroundColor={NODE_DEFAULT_BG_WHITE}
-              borderSize={NEW_NODE_BORDER_WIDTH}
-            />
-          ) : null}
+              `NODE_DEFAULT_BG_WHITE` (US-021 white fallback).
+              US-022: dispatch through `ILLUSTRATIVE_SHAPE_RENDERERS` so adding
+              a new illustrative shape only touches the registry. */}
+          {(() => {
+            const GhostRenderer = drawShape ? ILLUSTRATIVE_SHAPE_RENDERERS[drawShape] : undefined;
+            if (!GhostRenderer) return null;
+            return (
+              <GhostRenderer
+                width={ghostRect.width}
+                height={ghostRect.height}
+                borderColor={colorTokenStyle(undefined, 'node').borderColor}
+                backgroundColor={NODE_DEFAULT_BG_WHITE}
+                borderSize={NEW_NODE_BORDER_WIDTH}
+              />
+            );
+          })()}
         </div>
       ) : null}
       {contextEnabled ? (

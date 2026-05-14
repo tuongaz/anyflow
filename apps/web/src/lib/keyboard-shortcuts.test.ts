@@ -408,6 +408,7 @@ describe('COMMANDS registry (US-002)', () => {
     'tool.text',
     'tool.sticky',
     'tool.database',
+    'tool.server',
     'edit.undo',
     'edit.redo',
     'edit.copy',

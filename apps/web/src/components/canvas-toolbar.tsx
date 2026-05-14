@@ -3,7 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { ShapeKind } from '@/lib/api';
 import { type CommandId, getCommandTooltip } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
-import { Circle, Database, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
+import { Circle, Database, Server, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
 import { useState } from 'react';
 
 /**
@@ -72,6 +72,9 @@ const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
   // the ghost preview in demo-canvas.tsx renders <DatabaseShape> directly
   // (not the wrapper chrome) so the preview matches the committed visual.
   { shape: 'database', label: 'Database', commandId: 'tool.database', Icon: Database },
+  // US-022: rack-chassis illustrative shape, same ghost-dispatch contract as
+  // Database — both consult `ILLUSTRATIVE_SHAPE_RENDERERS` for the SVG to draw.
+  { shape: 'server', label: 'Server', commandId: 'tool.server', Icon: Server },
 ];
 
 // Combined list, exported so US-015's drop-on-pane popover can list the same

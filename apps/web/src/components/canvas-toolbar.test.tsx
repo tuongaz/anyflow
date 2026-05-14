@@ -149,6 +149,36 @@ describe('CanvasToolbar', () => {
     });
   });
 
+  describe('US-022: Server illustrative-shape palette entry', () => {
+    it('includes a Server entry in TOOLBAR_SHAPES', () => {
+      const entry = TOOLBAR_SHAPES.find((s) => s.shape === 'server');
+      expect(entry).toBeDefined();
+      expect(entry?.label).toBe('Server');
+      expect(entry?.commandId).toBe('tool.server');
+      expect(entry?.Icon).toBeDefined();
+    });
+
+    it('renders the server tile inside the Shape picker popover', () => {
+      const tree = callToolbar();
+      const btn = findElement(tree, testIdEquals('shape-picker-server'));
+      expect(btn).not.toBeNull();
+    });
+
+    it('toggles draw mode for server via onSelectShape', () => {
+      let picked: string | null | undefined;
+      const tree = callToolbar({
+        onSelectShape: (shape) => {
+          picked = shape;
+        },
+      });
+      const btn = findElement(tree, testIdEquals('shape-picker-server'));
+      if (!btn) throw new Error('server picker tile not found');
+      const onClick = btn.props.onClick as () => void;
+      onClick();
+      expect(picked).toBe('server');
+    });
+  });
+
   describe('US-020: Tidy / Auto Align button removed from left toolbar', () => {
     it('does NOT render the toolbar-tidy button', () => {
       // Auto Align moved to the bottom-left Controls cluster. The left

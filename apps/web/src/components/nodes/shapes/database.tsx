@@ -1,20 +1,10 @@
-import type { ShapePartProps } from '@/components/nodes/shapes/types';
-
-// US-009: theme-aware CSS-var fallbacks. The vars aren't defined globally
-// (yet) — they're documented hooks for future theming. When the
-// caller-resolved prop is undefined, the SVG inherits whatever value the
-// surrounding CSS context provides, falling through to the host's currentColor
-// when no var binding exists.
-const BORDER_FALLBACK = 'var(--anydemo-node-border)';
-const BG_FALLBACK = 'var(--anydemo-node-bg)';
-
-const DEFAULT_STROKE_WIDTH = 2;
-
-function dashFor(style: ShapePartProps['borderStyle']): string | undefined {
-  if (style === 'dashed') return '6 4';
-  if (style === 'dotted') return '2 4';
-  return undefined;
-}
+import {
+  BG_FALLBACK,
+  BORDER_FALLBACK,
+  DEFAULT_STROKE_WIDTH,
+  type ShapePartProps,
+  dashFor,
+} from '@/components/nodes/shapes/types';
 
 // Standard database glyph (cylinder seen from front). Composition is the three
 // pieces the PRD calls out:

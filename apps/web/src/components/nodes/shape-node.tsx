@@ -1,7 +1,7 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
-import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { ILLUSTRATIVE_SHAPE_RENDERERS } from '@/components/nodes/shapes/registry';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { ShapeKind, ShapeNodeData } from '@/lib/api';
 import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '@/lib/color-tokens';
@@ -19,8 +19,13 @@ import {
 // under `apps/web/src/components/nodes/shapes/`. The wrapper's Tailwind chrome
 // (border / bg / rotation) is suppressed for these shapes — see `SHAPE_CLASS`
 // + `shapeChromeStyle` below — so the SVG can draw the whole visual without
-// fighting CSS borders. Extend this set when adding a new illustrative shape.
-const ILLUSTRATIVE_SHAPES: ReadonlySet<ShapeKind> = new Set<ShapeKind>(['database']);
+// fighting CSS borders.
+// US-022: the set is derived from `ILLUSTRATIVE_SHAPE_RENDERERS` so adding a
+// new illustrative shape only touches the registry — chrome suppression and
+// overlay dispatch stay in lockstep automatically.
+const ILLUSTRATIVE_SHAPES: ReadonlySet<ShapeKind> = new Set(
+  Object.keys(ILLUSTRATIVE_SHAPE_RENDERERS) as ShapeKind[],
+);
 
 function isIllustrativeShape(shape: ShapeKind): boolean {
   return ILLUSTRATIVE_SHAPES.has(shape);
@@ -59,6 +64,9 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
   // US-009: cylinder reads best in portrait — the rim disc looks proportional
   // when the body is taller than wide.
   database: { width: 120, height: 140 },
+  // US-022: rack reads best in landscape — 3 horizontal bays at a wider aspect
+  // ratio so the dividers and status LEDs sit at familiar proportions.
+  server: { width: 140, height: 120 },
 };
 
 // `text` deliberately omits border + background so the shape reads as a free
@@ -78,6 +86,7 @@ export const SHAPE_CLASS: Record<ShapeKind, string> = {
   // US-009: illustrative shapes have no wrapper chrome — the inline SVG owns
   // border + fill so the wrapper stays a transparent positioning host.
   database: '',
+  server: '',
 };
 
 /**
@@ -276,27 +285,27 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // US-009: illustrative shape overlay. Renders BEFORE the label JSX so the
   // label (positioned via the `relative` class below) stacks above by DOM
   // order — no z-index gymnastics needed. The overlay is `pointer-events-none`
-  // so the label, handles, and resize controls keep their hit targets. The
-  // dispatch is inline (not behind a wrapper component) so the per-shape SVG
-  // sits directly in the returned tree — keeps `ShapeNodeImpl`'s shallow
-  // render visible to the hook-shim test renderer in `shape-node.test.tsx`.
+  // so the label, handles, and resize controls keep their hit targets.
+  // US-022: dispatch through `ILLUSTRATIVE_SHAPE_RENDERERS` so the registry is
+  // the only place that learns about a new illustrative shape — the per-shape
+  // SVG still sits directly in the returned tree so the hook-shim test
+  // renderer in `shape-node.test.tsx` can find it by element type.
   let illustrativeOverlay: ReactNode = null;
-  if (isIllustrativeShape(shape)) {
+  const Renderer = ILLUSTRATIVE_SHAPE_RENDERERS[shape];
+  if (Renderer) {
     const w = data.width ?? size.width;
     const h = data.height ?? size.height;
     const { borderColor, backgroundColor } = resolveIllustrativeColors(data);
     illustrativeOverlay = (
       <div className="pointer-events-none absolute inset-0">
-        {shape === 'database' ? (
-          <DatabaseShape
-            width={w}
-            height={h}
-            borderColor={borderColor}
-            backgroundColor={backgroundColor}
-            borderSize={data.borderSize}
-            borderStyle={data.borderStyle}
-          />
-        ) : null}
+        <Renderer
+          width={w}
+          height={h}
+          borderColor={borderColor}
+          backgroundColor={backgroundColor}
+          borderSize={data.borderSize}
+          borderStyle={data.borderStyle}
+        />
       </div>
     );
   }

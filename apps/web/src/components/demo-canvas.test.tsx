@@ -13,6 +13,7 @@ import {
   handleGroupShortcut,
 } from '@/components/demo-canvas';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { ServerShape } from '@/components/nodes/shapes/server';
 import {
   type MultiResizeUpdate,
   SelectionResizeOverlay,
@@ -974,6 +975,72 @@ describe('DemoCanvas', () => {
       // the DatabaseShape SVG must NOT appear when the user is drawing a
       // non-database shape.
       expect(dbShape).toBeNull();
+    });
+  });
+
+  // US-022: server's drag-create ghost mirrors the database flow — the ghost
+  // wrapper hosts a <ServerShape> directly so the rack chassis preview matches
+  // the committed node byte-for-byte. The ghost-dispatch is registry-driven
+  // (see `ILLUSTRATIVE_SHAPE_RENDERERS`), so this test guards the contract for
+  // every future illustrative shape that lands in that map.
+  describe('US-022: server drag-create ghost renders ServerShape', () => {
+    it('renders <ServerShape> inside the ghost when activeShape="server"', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'server' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      expect((ghost.props as { 'data-ghost-shape'?: unknown })['data-ghost-shape']).toBe('server');
+      const serverShape = findElement(ghost, (el) => el.type === ServerShape);
+      expect(serverShape).not.toBeNull();
+    });
+
+    it('passes width/height from ghostRect to ServerShape so the preview scales with the drag', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'server' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const serverShape = findElement(ghost, (el) => el.type === ServerShape);
+      if (!serverShape) throw new Error('ServerShape not found inside ghost');
+      const props = serverShape.props as {
+        width?: number;
+        height?: number;
+        borderColor?: string;
+        backgroundColor?: string;
+      };
+      expect(props.width).toBe(200);
+      expect(props.height).toBe(140);
+      expect(props.borderColor).toBe('hsl(var(--border))');
+      expect(props.backgroundColor).toBe('#ffffff');
+    });
+
+    it('does NOT render ServerShape in the ghost for non-server shapes', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'database' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const serverShape = findElement(ghost, (el) => el.type === ServerShape);
+      expect(serverShape).toBeNull();
     });
   });
 

@@ -9,6 +9,7 @@ import {
   shapeChromeStyle,
 } from '@/components/nodes/shape-node';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { ServerShape } from '@/components/nodes/shapes/server';
 import { COLOR_TOKENS, NODE_DEFAULT_BG_WHITE } from '@/lib/color-tokens';
 import { Handle, type NodeProps } from '@xyflow/react';
 import * as React from 'react';
@@ -152,6 +153,31 @@ describe('shape-node chrome helpers', () => {
 
     it('SHAPE_DEFAULT_SIZE.database matches the PRD spec (120 x 140)', () => {
       expect(SHAPE_DEFAULT_SIZE.database).toEqual({ width: 120, height: 140 });
+    });
+
+    // US-022: server is the second illustrative shape. Same chrome-suppression
+    // invariant as database — the SVG owns border + fill, so the wrapper must
+    // stay empty/transparent.
+    it('server returns empty Tailwind chrome class', () => {
+      expect(shapeChromeClass('server')).toBe('');
+      expect(SHAPE_CLASS.server).toBe('');
+    });
+
+    it('server returns {} from shapeChromeStyle regardless of author overrides', () => {
+      expect(shapeChromeStyle('server')).toEqual({});
+      expect(
+        shapeChromeStyle('server', {
+          borderColor: 'blue',
+          backgroundColor: 'green',
+          borderSize: 5,
+          borderStyle: 'dashed',
+          cornerRadius: 12,
+        }),
+      ).toEqual({});
+    });
+
+    it('SHAPE_DEFAULT_SIZE.server matches the spec (140 x 120 landscape rack)', () => {
+      expect(SHAPE_DEFAULT_SIZE.server).toEqual({ width: 140, height: 120 });
     });
   });
 });
@@ -394,6 +420,15 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     );
     expect(headers).toHaveLength(0);
   });
+
+  it('server with name does NOT switch layouts (illustrative shape keeps SVG visuals)', () => {
+    const tree = callShapeNode({ shape: 'server', name: 'API rack' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
 });
 
 describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
@@ -463,6 +498,66 @@ describe('ShapeNode database shape (US-009)', () => {
       const shapes = findAll(tree, (el) => el.type === DatabaseShape);
       expect(shapes).toHaveLength(0);
     }
+  });
+});
+
+// US-022: server mirrors database's wireable-illustrative contract — same
+// renderer dispatch through the shapes registry, same four connect handles,
+// same resize affordance when selected.
+describe('ShapeNode server shape (US-022)', () => {
+  it('renders <ServerShape> in the tree when shape=server', () => {
+    const tree = callShapeNode({ shape: 'server' });
+    const shapes = findAll(tree, (el) => el.type === ServerShape);
+    expect(shapes).toHaveLength(1);
+  });
+
+  it('server shape still renders four connect handles (wireable like database)', () => {
+    const tree = callShapeNode({ shape: 'server' });
+    const handles = findAll(tree, (el) => el.type === Handle);
+    expect(handles).toHaveLength(4);
+  });
+
+  it('renders ResizeControls with visible=true when selected with onResize callback', () => {
+    const tree = callShapeNode({ shape: 'server', onResize: () => {} }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findAll(tree, (el) => el.type === ResizeControls);
+    expect(controls).toHaveLength(1);
+    const props = controls[0]?.props as { visible?: boolean } | undefined;
+    expect(props?.visible).toBe(true);
+  });
+
+  it('non-server shapes do NOT render <ServerShape> in the tree', () => {
+    for (const shape of ['rectangle', 'ellipse', 'sticky', 'text', 'database'] as const) {
+      const tree = callShapeNode({ shape });
+      const shapes = findAll(tree, (el) => el.type === ServerShape);
+      expect(shapes).toHaveLength(0);
+    }
+  });
+});
+
+// US-022: ServerShape is a pure SVG renderer. Pin the structural invariants
+// (svg root, outer rect + 2 dividers + 3 LED circles, viewBox + testid) so a
+// future change to the rack geometry is intentional and reviewable.
+describe('ServerShape (US-022)', () => {
+  it('returns an <svg> element with the expected viewBox and testid', () => {
+    const el = ServerShape({ width: 140, height: 120 }) as {
+      type: string;
+      props: Record<string, unknown>;
+    };
+    expect(el.type).toBe('svg');
+    expect(el.props.viewBox).toBe('0 0 140 120');
+    expect(el.props['data-testid']).toBe('server-shape');
+  });
+
+  it('SVG body composition is title + chassis rect + two dividers + three LEDs', () => {
+    const el = ServerShape({ width: 140, height: 120 }) as {
+      props: { children?: unknown };
+    };
+    const types = (Array.isArray(el.props.children) ? el.props.children : [el.props.children])
+      .filter((c): c is { type: string } => !!c && typeof c === 'object' && 'type' in c)
+      .map((c) => c.type);
+    expect(types).toEqual(['title', 'rect', 'line', 'line', 'circle', 'circle', 'circle']);
   });
 });
 

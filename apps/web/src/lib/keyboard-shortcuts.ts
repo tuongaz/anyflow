@@ -66,6 +66,7 @@ export type CommandId =
   | 'tool.text'
   | 'tool.sticky'
   | 'tool.database'
+  | 'tool.server'
   | 'edit.undo'
   | 'edit.redo'
   | 'edit.copy'
@@ -146,6 +147,16 @@ export const COMMANDS: readonly CommandDef[] = [
     description: 'Add a database node',
     category: 'Tools',
     shortcut: formatShortcut({ key: 'D' }),
+  },
+  // US-022: illustrative shapes added after Database (server, user, queue,
+  // cloud) live behind the toolbar's Shape picker and don't claim a bare-key
+  // shortcut — the single-letter pool was already tight (V/R/O/T/S/D taken)
+  // and shadowing useful chords would cost more than it saves.
+  {
+    id: 'tool.server',
+    label: 'Server',
+    description: 'Add a server node',
+    category: 'Tools',
   },
   {
     id: 'edit.undo',
