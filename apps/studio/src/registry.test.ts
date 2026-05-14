@@ -55,6 +55,103 @@ describe('createRegistry', () => {
     expect(reg.list()).toHaveLength(1);
   });
 
+  it('same repoPath + different demoPath coexist as two entries', () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const a = reg.upsert({
+      name: 'Checkout',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/checkout/demo.json',
+    });
+    const b = reg.upsert({
+      name: 'Refund',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/refund/demo.json',
+    });
+    expect(a.id).not.toBe(b.id);
+    expect(a.slug).toBe('checkout');
+    expect(b.slug).toBe('refund');
+    expect(reg.list()).toHaveLength(2);
+  });
+
+  it('upsert for (repoPath, demoPath) only updates that entry, leaves siblings unchanged', () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const a = reg.upsert({
+      name: 'Checkout',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/checkout/demo.json',
+    });
+    const b = reg.upsert({
+      name: 'Refund',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/refund/demo.json',
+    });
+    const updated = reg.upsert({
+      name: 'Checkout v2',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/checkout/demo.json',
+    });
+    expect(updated.id).toBe(a.id);
+    expect(updated.slug).toBe(a.slug);
+    expect(updated.name).toBe('Checkout v2');
+    expect(reg.list()).toHaveLength(2);
+    const sibling = reg.getById(b.id);
+    expect(sibling?.name).toBe('Refund');
+    expect(sibling?.demoPath).toBe('.anydemo/refund/demo.json');
+  });
+
+  it('slug uniqueness still enforced across the WHOLE registry (same name, same repo)', () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const a = reg.upsert({
+      name: 'Foo',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/foo-a/demo.json',
+    });
+    const b = reg.upsert({
+      name: 'Foo',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/foo-b/demo.json',
+    });
+    expect(a.slug).toBe('foo');
+    expect(b.slug).toBe('foo-2');
+  });
+
+  it('remove by id is surgical: deletes one entry, leaves siblings intact', () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const a = reg.upsert({
+      name: 'Checkout',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/checkout/demo.json',
+    });
+    const b = reg.upsert({
+      name: 'Refund',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/refund/demo.json',
+    });
+    expect(reg.remove(a.id)).toBe(true);
+    expect(reg.list()).toHaveLength(1);
+    expect(reg.getById(b.id)?.name).toBe('Refund');
+    expect(reg.getById(a.id)).toBeUndefined();
+  });
+
+  it('getByRepoPathAndDemoPath returns only the matching tuple', () => {
+    const reg = createRegistry({ path: tmpRegistryPath() });
+    const a = reg.upsert({
+      name: 'A',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/a/demo.json',
+    });
+    reg.upsert({
+      name: 'B',
+      repoPath: '/tmp/multi',
+      demoPath: '.anydemo/b/demo.json',
+    });
+    const found = reg.getByRepoPathAndDemoPath('/tmp/multi', '.anydemo/a/demo.json');
+    expect(found?.id).toBe(a.id);
+    expect(
+      reg.getByRepoPathAndDemoPath('/tmp/multi', '.anydemo/missing/demo.json'),
+    ).toBeUndefined();
+  });
+
   it('persists to disk on every mutation and rehydrates on construct', () => {
     const path = tmpRegistryPath();
     const reg1 = createRegistry({ path });

@@ -80,6 +80,7 @@ function makeFakeRegistry(entries: DemoEntry[]): Registry {
     getById: (id) => map.get(id),
     getBySlug: () => undefined,
     getByRepoPath: () => undefined,
+    getByRepoPathAndDemoPath: () => undefined,
     upsert() {
       throw new Error('not implemented in fake');
     },
@@ -438,6 +439,7 @@ describe('createStatusRunner', () => {
         getById: () => entry,
         getBySlug: () => undefined,
         getByRepoPath: () => undefined,
+        getByRepoPathAndDemoPath: () => undefined,
         upsert: () => {
           throw new Error('nope');
         },
