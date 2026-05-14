@@ -256,6 +256,18 @@ export const COMMANDS: readonly CommandDef[] = [
   },
 ];
 
+/**
+ * Tooltip text for a registered command — `"Label (Shortcut)"` when the
+ * command defines a shortcut, just `Label` otherwise. Lets the toolbar drive
+ * both `title` and `aria-label` from `COMMANDS` so a future label/shortcut
+ * change in the registry propagates to every hover hint without re-edits.
+ */
+export const getCommandTooltip = (id: CommandId): string => {
+  const cmd = COMMANDS.find((c) => c.id === id);
+  if (!cmd) return '';
+  return cmd.shortcut ? `${cmd.label} (${cmd.shortcut})` : cmd.label;
+};
+
 export type NudgeDelta = { dx: number; dy: number };
 
 const NUDGE_STEP_DEFAULT = 1;

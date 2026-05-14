@@ -1,6 +1,7 @@
 import { IconPickerPopover } from '@/components/icon-picker-popover';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ShapeKind } from '@/lib/api';
+import { type CommandId, getCommandTooltip } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
 import { Circle, Database, Shapes, Square, Sticker, StickyNote, Type } from 'lucide-react';
 import { useState } from 'react';
@@ -41,21 +42,27 @@ export interface CanvasToolbarProps {
 export interface ToolbarShapeEntry {
   shape: ShapeKind;
   label: string;
+  /**
+   * US-008: registry CommandId for the matching tool-switch entry. Drives
+   * `title` / `aria-label` tooltips through `getCommandTooltip` so a label or
+   * shortcut change in COMMANDS propagates without re-editing this file.
+   */
+  commandId: CommandId;
   Icon: typeof Square;
 }
 
 // Top-group primary shapes — the geometric building blocks that sit alongside
 // the Shape picker and Icons trigger in the toolbar's first cluster.
 const TOP_PRIMARY_SHAPES: ToolbarShapeEntry[] = [
-  { shape: 'rectangle', label: 'Rectangle', Icon: Square },
-  { shape: 'ellipse', label: 'Ellipse', Icon: Circle },
+  { shape: 'rectangle', label: 'Rectangle', commandId: 'tool.rectangle', Icon: Square },
+  { shape: 'ellipse', label: 'Ellipse', commandId: 'tool.ellipse', Icon: Circle },
 ];
 
 // Secondary primary shapes — annotation tiles (Sticky, Text) that live in
 // their own group below the shape/icon cluster.
 const SECONDARY_PRIMARY_SHAPES: ToolbarShapeEntry[] = [
-  { shape: 'sticky', label: 'Sticky note', Icon: StickyNote },
-  { shape: 'text', label: 'Text', Icon: Type },
+  { shape: 'sticky', label: 'Sticky note', commandId: 'tool.sticky', Icon: StickyNote },
+  { shape: 'text', label: 'Text', commandId: 'tool.text', Icon: Type },
 ];
 
 // Illustrative shapes live behind a single "Shape" toolbar trigger that
@@ -64,7 +71,7 @@ const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
   // US-010: drag-create commits a shapeNode with `data.shape: 'database'`;
   // the ghost preview in demo-canvas.tsx renders <DatabaseShape> directly
   // (not the wrapper chrome) so the preview matches the committed visual.
-  { shape: 'database', label: 'Database', Icon: Database },
+  { shape: 'database', label: 'Database', commandId: 'tool.database', Icon: Database },
 ];
 
 // Combined list, exported so US-015's drop-on-pane popover can list the same
@@ -98,8 +105,9 @@ export function CanvasToolbar({
   const illustrativeActive =
     activeShape !== null && ILLUSTRATIVE_SHAPES.some((s) => s.shape === activeShape);
 
-  const renderShapeButton = ({ shape, label, Icon }: ToolbarShapeEntry) => {
+  const renderShapeButton = ({ shape, commandId, Icon }: ToolbarShapeEntry) => {
     const active = activeShape === shape;
+    const tooltip = getCommandTooltip(commandId);
     return (
       <button
         key={shape}
@@ -107,8 +115,8 @@ export function CanvasToolbar({
         data-testid={`toolbar-shape-${shape}`}
         data-active={active ? 'true' : 'false'}
         aria-pressed={active}
-        aria-label={label}
-        title={label}
+        aria-label={tooltip}
+        title={tooltip}
         onClick={() => onSelectShape(active ? null : shape)}
         className={cn(
           'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
@@ -159,8 +167,9 @@ export function CanvasToolbar({
           }}
         >
           <div role="menu" aria-label="More shapes" className="flex flex-col gap-0.5">
-            {ILLUSTRATIVE_SHAPES.map(({ shape, label, Icon }) => {
+            {ILLUSTRATIVE_SHAPES.map(({ shape, label, commandId, Icon }) => {
               const active = activeShape === shape;
+              const tooltip = getCommandTooltip(commandId);
               return (
                 <button
                   key={shape}
@@ -169,6 +178,8 @@ export function CanvasToolbar({
                   data-testid={`shape-picker-${shape}`}
                   data-active={active ? 'true' : 'false'}
                   aria-pressed={active}
+                  aria-label={tooltip}
+                  title={tooltip}
                   onClick={() => {
                     onSelectShape(active ? null : shape);
                     setShapePickerOpen(false);
