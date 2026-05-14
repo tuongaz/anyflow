@@ -94,6 +94,15 @@
 }
 
 @layer utilities {
+  /* Scroll surfaces that should stay scrollable but hide the scrollbar chrome.
+   * Used by the command palette list — the palette is a search-first surface
+   * and the scrollbar gutter is visual noise that competes with the rows. */
+  .anydemo-no-scrollbar {
+    scrollbar-width: none;
+  }
+  .anydemo-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
   @keyframes anydemo-ping-fast {
     0% {
       transform: scale(1);

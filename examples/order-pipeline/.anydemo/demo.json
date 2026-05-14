@@ -6,8 +6,8 @@
       "id": "inventory-worker",
       "type": "stateNode",
       "position": {
-        "x": -2792.0960373554194,
-        "y": -1860.8775718100103
+        "x": -2546.765813052783,
+        "y": -2150.4104378597794
       },
       "data": {
         "name": "inventory-worker",
@@ -74,8 +74,8 @@
       "id": "node-1716ebf6-ee2c-41c5-8ca5-65bfeb12f728",
       "type": "shapeNode",
       "position": {
-        "x": -2467.2665671777418,
-        "y": -2408.40459218927
+        "x": -2472.379236950578,
+        "y": -2419.9080991781516
       },
       "data": {
         "shape": "ellipse",
@@ -92,8 +92,8 @@
       "id": "node-b184a4ba-2555-4e35-ae50-7a33c4dd0e6b",
       "type": "shapeNode",
       "position": {
-        "x": -3066.018822483024,
-        "y": -1990.5539265130083
+        "x": -2857.2475075827083,
+        "y": -2308.292899749977
       },
       "data": {
         "shape": "database",
@@ -189,8 +189,8 @@
       "id": "node-e3344a88-3b98-4223-ac3a-0749e5654371",
       "type": "shapeNode",
       "position": {
-        "x": -3724.7245975866103,
-        "y": -1966.1938437454533
+        "x": -3842.3160023618498,
+        "y": -1872.8876203911875
       },
       "data": {
         "shape": "sticky",
@@ -199,15 +199,16 @@
         "borderSize": 2,
         "fontSize": 17,
         "name": "AAA",
-        "description": "BBB"
+        "description": "BBB",
+        "cornerRadius": 11
       }
     },
     {
       "id": "node-9df6490d-6db6-439d-ba14-fff9b9f3d9cf",
       "type": "shapeNode",
       "position": {
-        "x": -3999.44574888187,
-        "y": -2455.100340168634
+        "x": -3146.8016691564985,
+        "y": -1971.206606033893
       },
       "data": {
         "shape": "rectangle",
@@ -216,21 +217,9 @@
         "borderSize": 2,
         "fontSize": 17,
         "borderColor": "green",
-        "borderStyle": "dashed"
-      }
-    },
-    {
-      "id": "node-e7bca6aa-1f09-4fc3-8d28-669d649cf86c",
-      "type": "shapeNode",
-      "position": {
-        "x": -4192.394485770356,
-        "y": -2139.686565903886
-      },
-      "data": {
-        "shape": "text",
-        "width": 105.65048767880126,
-        "height": 135.34235384350086,
-        "fontSize": 17
+        "borderStyle": "dashed",
+        "name": "AAA",
+        "description": "Sp,etjomg os mpt rogjt jere"
       }
     }
   ],
@@ -267,7 +256,7 @@
       "targetHandleAutoPicked": false,
       "targetPin": {
         "side": "top",
-        "t": 0.6730366718873683
+        "t": 0.2802593453173069
       },
       "kind": "default",
       "sourcePin": {

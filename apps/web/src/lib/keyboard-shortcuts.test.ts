@@ -428,6 +428,9 @@ describe('COMMANDS registry (US-002)', () => {
     'selection.deselect',
     'group.ungroup',
     'help.commandPalette',
+    'export.pdf',
+    'export.png',
+    'session.reset',
   ];
 
   it('contains exactly one entry per CommandId (no duplicates, no missing)', () => {
@@ -438,7 +441,15 @@ describe('COMMANDS registry (US-002)', () => {
   });
 
   it('assigns every command to a known category', () => {
-    const validCategories = new Set(['Edit', 'View', 'Tools', 'Layout', 'Selection', 'Help']);
+    const validCategories = new Set([
+      'Edit',
+      'View',
+      'Tools',
+      'Layout',
+      'Selection',
+      'File',
+      'Help',
+    ]);
     for (const cmd of COMMANDS) {
       expect(validCategories.has(cmd.category)).toBe(true);
     }

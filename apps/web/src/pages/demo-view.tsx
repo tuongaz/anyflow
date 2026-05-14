@@ -197,6 +197,12 @@ export function DemoView({
   const onDeleteSelectionRef = useRef<((nodeIds: string[], connIds: string[]) => void) | null>(
     null,
   );
+  // Bridges for `runCommand` (defined above the export/session helpers) so
+  // the new palette entries can invoke them without re-ordering the file.
+  // Same pattern as `onDeleteSelectionRef` above.
+  const onExportPdfRef = useRef<(() => Promise<void>) | null>(null);
+  const onExportPngRef = useRef<(() => Promise<void>) | null>(null);
+  const onResetDemoRef = useRef<(() => Promise<unknown>) | null>(null);
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -2838,6 +2844,23 @@ export function DemoView({
         case 'help.commandPalette':
           setPaletteOpen(true);
           return;
+        case 'export.pdf': {
+          // The export functions are declared after `runCommand` in source
+          // order, but JS closures resolve at call time — the callback can
+          // only fire once the component has rendered, by which point both
+          // identifiers are defined. Same pattern applies to export.png and
+          // session.reset below.
+          onExportPdfRef.current?.();
+          return;
+        }
+        case 'export.png': {
+          onExportPngRef.current?.();
+          return;
+        }
+        case 'session.reset': {
+          onResetDemoRef.current?.();
+          return;
+        }
       }
     },
     [
@@ -2937,6 +2960,19 @@ export function DemoView({
       setEditError(err instanceof Error ? err.message : String(err));
     }
   }, [captureViewportFramed, exportFileName]);
+
+  // Keep the dispatcher's refs pointed at the latest closures so the palette
+  // entries route to the current implementations without rebuilding
+  // `runCommand` on every render.
+  useEffect(() => {
+    onExportPdfRef.current = onExportPdf;
+  }, [onExportPdf]);
+  useEffect(() => {
+    onExportPngRef.current = onExportPng;
+  }, [onExportPng]);
+  useEffect(() => {
+    onResetDemoRef.current = onResetDemo ?? null;
+  }, [onResetDemo]);
 
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
@@ -3378,6 +3414,11 @@ export function DemoView({
           canUndo,
           canRedo,
           hasClipboard,
+          // Export/reset commands need a backing demo. demoId is non-null
+          // whenever the canvas can render; `onResetDemo` is optional on the
+          // props and falls back to false when the parent didn't supply it.
+          canExportDemo: Boolean(demoId),
+          canResetSession: Boolean(onResetDemo),
         }}
       />
 

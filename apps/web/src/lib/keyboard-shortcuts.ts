@@ -85,15 +85,28 @@ export type CommandId =
   | 'layout.tidy'
   | 'selection.deselect'
   | 'group.ungroup'
-  | 'help.commandPalette';
+  | 'help.commandPalette'
+  | 'export.pdf'
+  | 'export.png'
+  | 'session.reset';
 
-export type CommandCategory = 'Edit' | 'View' | 'Tools' | 'Layout' | 'Selection' | 'Help';
+export type CommandCategory = 'Edit' | 'View' | 'Tools' | 'Layout' | 'Selection' | 'File' | 'Help';
 
 export type CommandContext = {
   hasSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
   hasClipboard: boolean;
+  // True when there's an open demo backing the export commands. The palette
+  // renders inside DemoView (so the demo is always set in practice), but the
+  // dispatcher noops if the demo isn't ready yet — surface that here so the
+  // palette greys the rows instead of letting Enter do nothing.
+  canExportDemo: boolean;
+  // True when the open demo supports a runtime reset. Separate from
+  // `canExportDemo` because the parent only wires `onResetDemo` for demos
+  // that have a registered reset action — exports always work on a loaded
+  // demo, but reset is gated on the demo declaring one.
+  canResetSession: boolean;
 };
 
 export type CommandDef = {
@@ -285,6 +298,31 @@ export const COMMANDS: readonly CommandDef[] = [
     label: 'Open command palette',
     category: 'Help',
     shortcut: formatShortcut({ meta: true, key: 'P' }),
+  },
+  // File / session commands — surfaced via the palette so the keyboard-first
+  // user can reach them without going to the top-right menu chrome. No
+  // shortcuts assigned: the single-letter pool is exhausted and these aren't
+  // hot enough to claim a chord (use the palette).
+  {
+    id: 'export.pdf',
+    label: 'Export to PDF',
+    description: 'Download the current canvas as a PDF',
+    category: 'File',
+    enabled: (ctx) => ctx.canExportDemo,
+  },
+  {
+    id: 'export.png',
+    label: 'Export as image',
+    description: 'Download the current canvas as a PNG',
+    category: 'File',
+    enabled: (ctx) => ctx.canExportDemo,
+  },
+  {
+    id: 'session.reset',
+    label: 'Restart the session',
+    description: 'Reset the running demo back to its initial state',
+    category: 'File',
+    enabled: (ctx) => ctx.canResetSession,
   },
 ];
 
