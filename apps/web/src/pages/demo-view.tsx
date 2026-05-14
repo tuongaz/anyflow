@@ -2640,6 +2640,24 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // US-004: bare Escape → deselect + exit draw mode. Intentionally does NOT
+  // preventDefault so dialogs / popovers that listen for Escape elsewhere keep
+  // firing — only the deselect/exit-draw side-effects run. InlineEdit's own
+  // Escape-to-cancel still wins because we skip on any editable target or
+  // mounted inline-edit input.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isEditableElement(document.activeElement)) return;
+      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
+      if (selectedIdsRef.current.length > 0) setSelectedIds([]);
+      if (selectedConnectorIdsRef.current.length > 0) setSelectedConnectorIds([]);
+      if (activeShapeRef.current !== null) setActiveShape(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // US-022: capture the React Flow viewport as a PNG. Shared `captureViewportPng`
   // helper handles the html-to-image call + chrome filter so PNG and PDF render
   // exactly the same content. The orchestration (fitView so the whole graph is
