@@ -28,9 +28,9 @@ const VALID_DEMO = {
         kind: 'service',
         stateSource: { kind: 'request' },
         playAction: {
-          kind: 'http',
-          method: 'POST',
-          url: 'http://localhost:3001/checkout',
+          kind: 'script',
+          interpreter: 'bun',
+          scriptPath: 'scripts/checkout.ts',
         },
       },
     },
@@ -239,7 +239,11 @@ describe('POST /api/demos/validate', () => {
     expect(json.issues.some((i) => i.kind === 'cap')).toBe(true);
   });
 
-  it('warns about reachability for tier=real with http playActions', async () => {
+  // US-001: HTTP-based reachability warning no longer applies — playActions are
+  // script-shaped now. A future story may add an analogous "does this script
+  // file exist?" warning, but the http branch in diagram.ts is dead code under
+  // the new schema.
+  it.skip('warns about reachability for tier=real with http playActions', async () => {
     const { app } = buildApp();
     const res = await post(app, '/api/demos/validate', { demo: VALID_DEMO, tier: 'real' });
     const json = (await res.json()) as { warnings: Array<{ kind: string }> };
@@ -309,7 +313,7 @@ describe('POST /api/diagram/assemble', () => {
               name: 'API',
               kind: 'service',
               stateSource: { kind: 'request' },
-              playAction: { kind: 'http', method: 'GET', url: 'http://x/y' },
+              playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
             },
           },
           {
@@ -480,7 +484,10 @@ describe('GET /api/demos/:id', () => {
   });
 });
 
-describe('POST /api/demos/:id/play/:nodeId', () => {
+// US-001: legacy HTTP-proxy /play tests. The script-based runner lands in
+// US-003 and US-005 will re-add play coverage exercising the spawn path; until
+// then these tests describe behavior that no longer exists.
+describe.skip('POST /api/demos/:id/play/:nodeId', () => {
   const startStubServer = (
     handler: (req: Request) => Response | Promise<Response>,
   ): { url: string; stop: () => void } => {
@@ -1154,7 +1161,7 @@ describe('PATCH /api/demos/:id/nodes/:nodeId', () => {
     expect(node?.data.width).toBe(240);
     expect(node?.data.height).toBe(120);
     // Untouched fields are preserved.
-    expect(node?.data.playAction.kind).toBe('http');
+    expect(node?.data.playAction.kind).toBe('script');
     expect(node?.position).toEqual({ x: 0, y: 0 });
   });
 
@@ -1524,7 +1531,7 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
           name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
       {
@@ -1535,7 +1542,7 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
           name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
     ],
@@ -1580,7 +1587,7 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
             name: 'C',
             kind: 'service',
             stateSource: { kind: 'request' },
-            playAction: { kind: 'http', method: 'POST', url: 'http://example.test/c' },
+            playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
           },
         },
       ],
@@ -1761,7 +1768,7 @@ describe('PATCH /api/demos/:id/connectors/:connId', () => {
           name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
       {
@@ -1772,7 +1779,7 @@ describe('PATCH /api/demos/:id/connectors/:connId', () => {
           name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
     ],
@@ -2040,7 +2047,7 @@ describe('POST /api/demos/:id/connectors', () => {
           name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
       {
@@ -2051,7 +2058,7 @@ describe('POST /api/demos/:id/connectors', () => {
           name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
     ],
@@ -2301,7 +2308,7 @@ describe('DELETE /api/demos/:id/connectors/:connId', () => {
           name: 'A',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/a' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
       {
@@ -2312,7 +2319,7 @@ describe('DELETE /api/demos/:id/connectors/:connId', () => {
           name: 'B',
           kind: 'service',
           stateSource: { kind: 'request' },
-          playAction: { kind: 'http', method: 'POST', url: 'http://example.test/b' },
+          playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/play.ts' },
         },
       },
     ],

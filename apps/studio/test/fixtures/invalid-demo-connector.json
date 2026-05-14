@@ -11,9 +11,9 @@
         "kind": "service",
         "stateSource": { "kind": "request" },
         "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3001/checkout"
+          "kind": "script",
+          "interpreter": "bun",
+          "scriptPath": "scripts/play.ts"
         }
       }
     }

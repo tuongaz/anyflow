@@ -1,9 +1,9 @@
 /**
- * Play proxy: fires the HTTP action declared on a node and broadcasts
- * `node:running` / `node:done` / `node:error` SSE events around the fetch
- * so the canvas can animate. The originating fetch synchronously receives
- * the proxied response (status + body) so the user can see what their app
- * actually returned.
+ * Play proxy: runs the script declared on a node and broadcasts
+ * `node:running` / `node:done` / `node:error` SSE events around the spawn so
+ * the canvas can animate. US-001 ships a placeholder that returns an error
+ * envelope — US-003 replaces this with a real script spawner using the
+ * ProcessSpawner abstraction from US-002.
  */
 
 import type { EventBus } from './events.ts';
@@ -12,27 +12,13 @@ import type { PlayAction } from './schema.ts';
 export interface PlayResult {
   /** Correlates this run across SSE events + the synchronous response. */
   runId: string;
-  /** Upstream HTTP status (when the request reached the target). */
+  /** Upstream status (filled when the spawn completed). */
   status?: number;
   /** Parsed JSON body or raw string body. */
   body?: unknown;
-  /** Network-level error (target unreachable, etc). */
+  /** Spawn-level error (script not found, exit !== 0, timeout, etc.). */
   error?: string;
 }
-
-const isJsonContentType = (ct: string | null): boolean =>
-  !!ct && ct.toLowerCase().includes('application/json');
-
-const buildRequestInit = (action: PlayAction): RequestInit => {
-  const init: RequestInit = { method: action.method };
-  // Only attach body for methods that allow one. action.body may be JSON;
-  // serialize automatically when present.
-  if (action.body !== undefined && action.method !== 'GET') {
-    init.body = typeof action.body === 'string' ? action.body : JSON.stringify(action.body);
-    init.headers = { 'content-type': 'application/json' };
-  }
-  return init;
-};
 
 export interface RunPlayOptions {
   events: EventBus;
@@ -41,6 +27,8 @@ export interface RunPlayOptions {
   action: PlayAction;
 }
 
+const NOT_IMPLEMENTED = 'script-based playAction runner not yet implemented (US-003)';
+
 export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
   const { events, demoId, nodeId, action } = options;
   const runId = crypto.randomUUID();
@@ -48,37 +36,19 @@ export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
   events.broadcast({
     type: 'node:running',
     demoId,
-    payload: { nodeId, runId, method: action.method, url: action.url },
+    payload: {
+      nodeId,
+      runId,
+      interpreter: action.interpreter,
+      scriptPath: action.scriptPath,
+    },
   });
 
-  try {
-    const upstream = await fetch(action.url, buildRequestInit(action));
-    const ct = upstream.headers.get('content-type');
-    let body: unknown;
-    if (isJsonContentType(ct)) {
-      try {
-        body = await upstream.json();
-      } catch {
-        body = await upstream.text();
-      }
-    } else {
-      body = await upstream.text();
-    }
+  events.broadcast({
+    type: 'node:error',
+    demoId,
+    payload: { nodeId, runId, message: NOT_IMPLEMENTED },
+  });
 
-    events.broadcast({
-      type: 'node:done',
-      demoId,
-      payload: { nodeId, runId, status: upstream.status, body },
-    });
-
-    return { runId, status: upstream.status, body };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    events.broadcast({
-      type: 'node:error',
-      demoId,
-      payload: { nodeId, runId, message },
-    });
-    return { runId, error: message };
-  }
+  return { runId, error: NOT_IMPLEMENTED };
 }

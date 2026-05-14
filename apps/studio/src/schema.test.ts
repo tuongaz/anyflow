@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { DemoSchema } from './schema.ts';
+import { DemoSchema, StatusReportSchema } from './schema.ts';
 
 const fixturePath = (name: string) => new URL(`../test/fixtures/${name}`, import.meta.url).pathname;
 
@@ -74,7 +74,11 @@ describe('DemoSchema', () => {
             name: 'A',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
-            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            playAction: {
+              kind: 'script' as const,
+              interpreter: 'bun',
+              scriptPath: 'scripts/play.ts',
+            },
           },
         },
         {
@@ -282,7 +286,11 @@ describe('DemoSchema', () => {
             name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
-            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            playAction: {
+              kind: 'script' as const,
+              interpreter: 'bun',
+              scriptPath: 'scripts/play.ts',
+            },
             width: 200,
             height: 80,
             borderColor: 'blue' as const,
@@ -336,7 +344,11 @@ describe('DemoSchema', () => {
             name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
-            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            playAction: {
+              kind: 'script' as const,
+              interpreter: 'bun',
+              scriptPath: 'scripts/play.ts',
+            },
             locked: true,
           },
         },
@@ -882,7 +894,11 @@ describe('DemoSchema', () => {
             name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
-            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            playAction: {
+              kind: 'script' as const,
+              interpreter: 'bun',
+              scriptPath: 'scripts/play.ts',
+            },
             cornerRadius,
           },
         },
@@ -1533,7 +1549,11 @@ describe('DemoSchema', () => {
             name: 'P',
             kind: 'svc',
             stateSource: { kind: 'request' as const },
-            playAction: { kind: 'http' as const, method: 'GET' as const, url: 'http://x' },
+            playAction: {
+              kind: 'script' as const,
+              interpreter: 'bun',
+              scriptPath: 'scripts/play.ts',
+            },
           },
         },
         {
@@ -1771,7 +1791,7 @@ describe('DemoSchema', () => {
               name: 'p',
               kind: 'svc',
               stateSource: { kind: 'request' },
-              playAction: { kind: 'http', method: 'GET', url: '/p' },
+              playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/p.ts' },
               description: 'short body',
               detail: 'long-form\nnotes',
             },
@@ -2157,6 +2177,336 @@ describe('DemoSchema', () => {
       }
       const html = result.data.nodes.find((n) => n.id === 'html-1');
       expect(html?.parentId).toBe('group-1');
+    });
+  });
+
+  // US-001: script-based playAction + optional statusAction + StatusReport.
+  // PlayAction is now the script shape (HttpAction backs only resetAction).
+  describe('script-based playAction + statusAction (US-001)', () => {
+    const makeDemoWithPlayAction = (playAction: unknown) => ({
+      version: 1 as const,
+      name: 'script-demo',
+      nodes: [
+        {
+          id: 'p',
+          type: 'playNode' as const,
+          position: { x: 0, y: 0 },
+          data: {
+            name: 'P',
+            kind: 'svc',
+            stateSource: { kind: 'request' as const },
+            playAction,
+          },
+        },
+      ],
+      connectors: [],
+    });
+
+    it('parses a valid script-shaped playAction with optional input and timeoutMs', () => {
+      const demo = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        args: ['run'],
+        scriptPath: 'scripts/play.ts',
+        input: { foo: 'bar' },
+        timeoutMs: 5000,
+      });
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      const node = result.data.nodes[0];
+      if (node?.type !== 'playNode') throw new Error('expected play node');
+      const action = node.data.playAction;
+      expect(action.kind).toBe('script');
+      expect(action.interpreter).toBe('bun');
+      expect(action.scriptPath).toBe('scripts/play.ts');
+      expect(action.timeoutMs).toBe(5000);
+    });
+
+    it('rejects an absolute scriptPath', () => {
+      const demo = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: '/etc/passwd',
+      });
+      const result = DemoSchema.safeParse(demo);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects a scriptPath with '..' traversal", () => {
+      const demo = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: '../../etc/passwd',
+      });
+      const result = DemoSchema.safeParse(demo);
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a playAction with missing interpreter', () => {
+      const demo = makeDemoWithPlayAction({
+        kind: 'script',
+        scriptPath: 'scripts/play.ts',
+      });
+      const result = DemoSchema.safeParse(demo);
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a playAction with zero or negative timeoutMs', () => {
+      const zero = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/play.ts',
+        timeoutMs: 0,
+      });
+      expect(DemoSchema.safeParse(zero).success).toBe(false);
+
+      const negative = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/play.ts',
+        timeoutMs: -1,
+      });
+      expect(DemoSchema.safeParse(negative).success).toBe(false);
+    });
+
+    it('rejects a playAction with timeoutMs above 600_000', () => {
+      const demo = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/play.ts',
+        timeoutMs: 600_001,
+      });
+      expect(DemoSchema.safeParse(demo).success).toBe(false);
+    });
+
+    it('accepts a playAction with timeoutMs at the upper bound (600_000)', () => {
+      const demo = makeDemoWithPlayAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/play.ts',
+        timeoutMs: 600_000,
+      });
+      expect(DemoSchema.safeParse(demo).success).toBe(true);
+    });
+
+    it('parses a valid statusAction on a playNode', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'status-demo',
+        nodes: [
+          {
+            id: 'p',
+            type: 'playNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'P',
+              kind: 'svc',
+              stateSource: { kind: 'request' as const },
+              playAction: {
+                kind: 'script' as const,
+                interpreter: 'bun',
+                scriptPath: 'scripts/play.ts',
+              },
+              statusAction: {
+                kind: 'script' as const,
+                interpreter: 'bun',
+                args: ['run'],
+                scriptPath: 'scripts/status.ts',
+                maxLifetimeMs: 60_000,
+              },
+            },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      const node = result.data.nodes[0];
+      if (node?.type !== 'playNode') throw new Error('expected play node');
+      expect(node.data.statusAction?.kind).toBe('script');
+      expect(node.data.statusAction?.scriptPath).toBe('scripts/status.ts');
+      expect(node.data.statusAction?.maxLifetimeMs).toBe(60_000);
+    });
+
+    it('parses a valid statusAction on a stateNode (no playAction required)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'state-status-demo',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'S',
+              kind: 'worker',
+              stateSource: { kind: 'event' as const },
+              statusAction: {
+                kind: 'script' as const,
+                interpreter: 'bun',
+                scriptPath: 'scripts/status.ts',
+              },
+            },
+          },
+        ],
+        connectors: [],
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      const node = result.data.nodes[0];
+      if (node?.type !== 'stateNode') throw new Error('expected state node');
+      expect(node.data.statusAction?.scriptPath).toBe('scripts/status.ts');
+    });
+
+    it('rejects a statusAction with maxLifetimeMs above 3_600_000', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'bad-lifetime',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'S',
+              kind: 'worker',
+              stateSource: { kind: 'event' as const },
+              statusAction: {
+                kind: 'script' as const,
+                interpreter: 'bun',
+                scriptPath: 'scripts/status.ts',
+                maxLifetimeMs: 3_600_001,
+              },
+            },
+          },
+        ],
+        connectors: [],
+      };
+      expect(DemoSchema.safeParse(demo).success).toBe(false);
+    });
+
+    it('accepts a statusAction with maxLifetimeMs at the upper bound (3_600_000)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'lifetime-boundary',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'S',
+              kind: 'worker',
+              stateSource: { kind: 'event' as const },
+              statusAction: {
+                kind: 'script' as const,
+                interpreter: 'bun',
+                scriptPath: 'scripts/status.ts',
+                maxLifetimeMs: 3_600_000,
+              },
+            },
+          },
+        ],
+        connectors: [],
+      };
+      expect(DemoSchema.safeParse(demo).success).toBe(true);
+    });
+
+    it('rejects a statusAction with zero or negative maxLifetimeMs', () => {
+      const buildDemo = (maxLifetimeMs: number) => ({
+        version: 1 as const,
+        name: 'lifetime-bound',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'S',
+              kind: 'worker',
+              stateSource: { kind: 'event' as const },
+              statusAction: {
+                kind: 'script' as const,
+                interpreter: 'bun',
+                scriptPath: 'scripts/status.ts',
+                maxLifetimeMs,
+              },
+            },
+          },
+        ],
+        connectors: [],
+      });
+      expect(DemoSchema.safeParse(buildDemo(0)).success).toBe(false);
+      expect(DemoSchema.safeParse(buildDemo(-1)).success).toBe(false);
+    });
+
+    it('parses a valid StatusReport with all fields', () => {
+      const report = {
+        state: 'ok',
+        summary: 'all good',
+        detail: 'longer text\nwith newlines',
+        data: { count: 3, label: 'x' },
+        ts: Date.now(),
+      };
+      const result = StatusReportSchema.safeParse(report);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      expect(result.data.state).toBe('ok');
+      expect(result.data.summary).toBe('all good');
+    });
+
+    it('parses a minimal StatusReport (only state)', () => {
+      const result = StatusReportSchema.safeParse({ state: 'pending' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a StatusReport with an invalid state value', () => {
+      const result = StatusReportSchema.safeParse({ state: 'in-progress' });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a StatusReport whose summary exceeds 120 chars', () => {
+      const long = 'a'.repeat(121);
+      const result = StatusReportSchema.safeParse({ state: 'ok', summary: long });
+      expect(result.success).toBe(false);
+    });
+
+    it('resetAction on the demo still uses the HTTP action shape (unchanged)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'reset-demo',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'S',
+              kind: 'worker',
+              stateSource: { kind: 'event' as const },
+            },
+          },
+        ],
+        connectors: [],
+        resetAction: {
+          kind: 'http' as const,
+          method: 'POST' as const,
+          url: 'http://localhost:3000/reset',
+        },
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      expect(result.data.resetAction?.kind).toBe('http');
+      expect(result.data.resetAction?.method).toBe('POST');
     });
   });
 });

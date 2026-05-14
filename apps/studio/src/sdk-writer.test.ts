@@ -17,7 +17,7 @@ const REQUEST_DEMO: Demo = {
         name: 'POST /checkout',
         kind: 'service',
         stateSource: { kind: 'request' },
-        playAction: { kind: 'http', method: 'POST', url: 'http://localhost:3001/checkout' },
+        playAction: { kind: 'script', interpreter: 'bun', scriptPath: 'scripts/checkout.ts' },
       },
     },
   ],

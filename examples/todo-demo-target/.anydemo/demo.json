@@ -16,10 +16,11 @@
           "kind": "request"
         },
         "playAction": {
-          "kind": "http",
-          "method": "POST",
-          "url": "http://localhost:3030/todos/seed-1/complete",
-          "body": {}
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/complete-todo.ts",
+          "input": {}
         },
         "description": "Marks the seed todo (id: seed-1) complete and publishes a todo.completed event onto the in-memory bus, which the worker picks up."
       }
