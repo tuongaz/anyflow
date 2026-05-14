@@ -566,6 +566,7 @@ export function createApi(options: ApiOptions): Hono {
       events,
       demoId: id,
       nodeId,
+      cwd: entry.repoPath,
       action: node.data.playAction,
     });
     return c.json(result);
