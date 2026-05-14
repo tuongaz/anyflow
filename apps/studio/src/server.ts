@@ -2,7 +2,7 @@ import { resolve as resolvePath } from 'node:path';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
-import { createApi } from './api.ts';
+import { type ProxyFacade, createApi } from './api.ts';
 import { type EventBus, createEventBus } from './events.ts';
 import { createMcpServer } from './mcp.ts';
 import { type ProcessSpawner, defaultProcessSpawner } from './process-spawner.ts';
@@ -45,6 +45,9 @@ export interface CreateAppOptions {
    *  proxy.ts pick `defaultProcessSpawner`. Tests use this to drive runPlay
    *  with an in-memory fake spawner. */
   processSpawner?: ProcessSpawner;
+  /** Inject a ProxyFacade — tests use this to short-circuit runPlay /
+   *  runReset / stopAllPlays and assert call order. */
+  proxy?: ProxyFacade;
 }
 
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
@@ -100,6 +103,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       platform: options.platform,
       statusRunner,
       processSpawner: options.processSpawner,
+      proxy: options.proxy,
     }),
   );
 

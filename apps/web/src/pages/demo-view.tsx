@@ -3,7 +3,7 @@ import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
 import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
-import { ResetDemoButton } from '@/components/reset-demo-button';
+import { RestartDemoButton } from '@/components/restart-demo-button';
 import { ShareMenu } from '@/components/share-menu';
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 import type { NodeEventLog } from '@/hooks/use-node-events';
@@ -153,7 +153,7 @@ export interface DemoViewProps {
    */
   statusByNode: NodeStatuses;
   onPlayNode: (nodeId: string) => void;
-  onResetDemo?: () => Promise<unknown>;
+  onRestartDemo?: () => Promise<unknown>;
 }
 
 export function DemoView({
@@ -165,7 +165,7 @@ export function DemoView({
   nodeEvents,
   statusByNode,
   onPlayNode,
-  onResetDemo,
+  onRestartDemo,
 }: DemoViewProps) {
   const summary = demos.find((d) => d.slug === slug);
   // US-019: multi-select. Selection is now an array; the inspector still
@@ -211,7 +211,7 @@ export function DemoView({
   // Same pattern as `onDeleteSelectionRef` above.
   const onExportPdfRef = useRef<(() => Promise<void>) | null>(null);
   const onExportPngRef = useRef<(() => Promise<void>) | null>(null);
-  const onResetDemoRef = useRef<(() => Promise<unknown>) | null>(null);
+  const onRestartDemoRef = useRef<(() => Promise<unknown>) | null>(null);
   // Generalized optimistic overrides for nodes + connectors. Set on user
   // edits BEFORE firing the API call; pruned on the next demo:reload echo
   // (server caught up); dropped on API failure (revert to server state).
@@ -2867,7 +2867,7 @@ export function DemoView({
           return;
         }
         case 'session.reset': {
-          onResetDemoRef.current?.();
+          onRestartDemoRef.current?.();
           return;
         }
       }
@@ -2980,8 +2980,8 @@ export function DemoView({
     onExportPngRef.current = onExportPng;
   }, [onExportPng]);
   useEffect(() => {
-    onResetDemoRef.current = onResetDemo ?? null;
-  }, [onResetDemo]);
+    onRestartDemoRef.current = onRestartDemo ?? null;
+  }, [onRestartDemo]);
 
   // Drag an edge endpoint onto another node's handle to retarget it, OR drag
   // it onto a different handle on the same node (US-002). The patch only
@@ -3327,7 +3327,7 @@ export function DemoView({
       ) : null}
 
       <div className="pointer-events-auto absolute right-3 top-3 z-20 flex items-center gap-1">
-        {onResetDemo ? <ResetDemoButton onResetDemo={onResetDemo} /> : null}
+        {onRestartDemo ? <RestartDemoButton onRestartDemo={onRestartDemo} /> : null}
         <ShareMenu
           onDownloadPdf={demoId ? onExportPdf : undefined}
           onDownloadPng={demoId ? onExportPng : undefined}
@@ -3429,11 +3429,11 @@ export function DemoView({
           canUndo,
           canRedo,
           hasClipboard,
-          // Export/reset commands need a backing demo. demoId is non-null
-          // whenever the canvas can render; `onResetDemo` is optional on the
+          // Export/restart commands need a backing demo. demoId is non-null
+          // whenever the canvas can render; `onRestartDemo` is optional on the
           // props and falls back to false when the parent didn't supply it.
           canExportDemo: Boolean(demoId),
-          canResetSession: Boolean(onResetDemo),
+          canResetSession: Boolean(onRestartDemo),
         }}
       />
 

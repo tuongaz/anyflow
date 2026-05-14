@@ -6,7 +6,7 @@ import { useNodeEvents } from '@/hooks/use-node-events';
 import { useNodeRuns } from '@/hooks/use-node-runs';
 import { useNodeStatuses } from '@/hooks/use-node-statuses';
 import { useStudioEvents } from '@/hooks/use-studio-events';
-import { type CreateProjectResult, playNode, resetDemo } from '@/lib/api';
+import { type CreateProjectResult, playNode, restartDemo } from '@/lib/api';
 import { pickInitialDemo, readLastProjectId, writeLastProjectId } from '@/lib/last-project';
 import { navigate, usePathname } from '@/lib/router';
 import { DemoView } from '@/pages/demo-view';
@@ -59,12 +59,12 @@ export function App() {
 
   useStudioEvents(demoId, { onReload, onEvent });
 
-  const onResetDemo = useCallback(async (): Promise<void> => {
+  const onRestartDemo = useCallback(async (): Promise<void> => {
     if (!demoId) return;
     try {
-      await resetDemo(demoId);
+      await restartDemo(demoId);
     } catch (err) {
-      console.error('Failed to reset demo:', err);
+      console.error('Failed to restart demo:', err);
     }
   }, [demoId]);
 
@@ -131,7 +131,7 @@ export function App() {
               nodeEvents={nodeEvents}
               statusByNode={statusByNode}
               onPlayNode={onPlayNode}
-              onResetDemo={demoId ? onResetDemo : undefined}
+              onRestartDemo={demoId ? onRestartDemo : undefined}
             />
           ) : (
             <StudioHome demos={demos} />

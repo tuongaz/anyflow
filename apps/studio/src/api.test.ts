@@ -746,36 +746,93 @@ describe('POST /api/demos/:id/play/:nodeId', () => {
 });
 
 describe('POST /api/demos/:id/reset', () => {
-  const startStubServer = (
-    handler: (req: Request) => Response | Promise<Response>,
-  ): { url: string; stop: () => void } => {
-    const server = Bun.serve({ port: 0, fetch: handler });
+  // US-008: /reset now spawns a script (replacing the legacy HTTP resetAction)
+  // and orchestrates stopAllPlays + statusRunner.stop BEFORE the spawn, plus
+  // statusRunner.restart fire-and-forget after the demo:reload broadcast. The
+  // suite uses an injectable proxy facade + a fake statusRunner so we can
+  // assert call order across all three subsystems without spinning up real
+  // child processes or stubbing an HTTP server.
+  type ResetActionShape = {
+    kind: 'script';
+    interpreter: string;
+    scriptPath: string;
+    args?: string[];
+  };
+  const demoWithResetAction = (action: ResetActionShape) => ({
+    ...VALID_DEMO,
+    resetAction: action,
+  });
+
+  type ProxyCall =
+    | { kind: 'stopAllPlays'; demoId: string }
+    | { kind: 'runReset'; demoId: string }
+    | { kind: 'runPlay'; demoId: string; nodeId: string };
+  type RunnerCall = { kind: 'stop' | 'restart' | 'stopAll'; demoId?: string };
+
+  const makeFakeProxy = (
+    resetResult: { ok: boolean; body?: unknown; error?: string },
+    log: Array<ProxyCall | RunnerCall>,
+  ): import('./api.ts').ProxyFacade => {
     return {
-      url: `http://${server.hostname}:${server.port}`,
-      stop: () => server.stop(true),
+      async stopAllPlays(demoId) {
+        log.push({ kind: 'stopAllPlays', demoId });
+      },
+      async runReset({ demoId, events }) {
+        log.push({ kind: 'runReset', demoId });
+        events.broadcast({
+          type: 'demo:reset',
+          demoId,
+          payload: resetResult,
+        });
+        return resetResult;
+      },
+      async runPlay({ demoId, nodeId, events }) {
+        log.push({ kind: 'runPlay', demoId, nodeId });
+        const runId = 'fake-run-id';
+        events.broadcast({ type: 'node:done', demoId, payload: { nodeId, runId, status: 200 } });
+        return { runId, status: 200, body: {} };
+      },
     };
   };
 
-  const demoWithResetAction = (action: { method: string; url: string; body?: unknown }) => ({
-    ...VALID_DEMO,
-    resetAction: { kind: 'http', ...action },
+  const makeFakeStatusRunner = (
+    log: Array<ProxyCall | RunnerCall>,
+  ): import('./status-runner.ts').StatusRunner => ({
+    async stop(demoId) {
+      log.push({ kind: 'stop', demoId });
+    },
+    async restart(demoId) {
+      log.push({ kind: 'restart', demoId });
+    },
+    async stopAll() {
+      log.push({ kind: 'stopAll' });
+    },
   });
 
-  const buildAppWithBus = () => {
+  const buildResetApp = (
+    options: {
+      resetResult?: { ok: boolean; body?: unknown; error?: string };
+    } = {},
+  ) => {
+    const log: Array<ProxyCall | RunnerCall> = [];
     const bus = createEventBus();
     const registry = createRegistry({ path: tmpRegistry() });
+    const proxy = makeFakeProxy(options.resetResult ?? { ok: true, body: { ok: true } }, log);
+    const statusRunner = makeFakeStatusRunner(log);
     const app = createApp({
       mode: 'prod',
       staticRoot: './dist/web',
       registry,
       events: bus,
       disableWatcher: true,
+      proxy,
+      statusRunner,
     });
-    return { app, registry, bus };
+    return { app, registry, bus, log };
   };
 
   it('returns 200 and broadcasts demo:reload when the demo has no resetAction', async () => {
-    const { app, bus } = buildAppWithBus();
+    const { app, bus, log } = buildResetApp();
     const repoPath = tmpRepoWithDemo();
     const reg = (await (
       await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
@@ -791,81 +848,110 @@ describe('POST /api/demos/:id/reset', () => {
     expect(body.calledResetAction).toBe(false);
 
     expect(captured.map((e) => e.type)).toEqual(['demo:reload']);
+    // stop + reload + restart still happen even when there's no resetAction;
+    // runReset is the only step skipped.
+    const kinds = log.map((c) => c.kind);
+    expect(kinds).toContain('stopAllPlays');
+    expect(kinds).toContain('stop');
+    expect(kinds).toContain('restart');
+    expect(kinds).not.toContain('runReset');
   });
 
-  it('fires the resetAction with method+url+body and broadcasts demo:reload', async () => {
-    let receivedMethod: string | undefined;
-    let receivedPath: string | undefined;
-    let receivedBody: string | undefined;
-    let receivedContentType: string | null | undefined;
-    const stub = startStubServer(async (req) => {
-      receivedMethod = req.method;
-      receivedPath = new URL(req.url).pathname;
-      receivedContentType = req.headers.get('content-type');
-      receivedBody = await req.text();
-      return Response.json({ ok: true });
+  it('stops plays + status BEFORE invoking resetAction, then runs it, then reloads + restarts', async () => {
+    const { app, log } = buildResetApp({ resetResult: { ok: true, body: { ok: true } } });
+    const repoPath = tmpRepoWithDemo(
+      demoWithResetAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/reset.ts',
+      }),
+    );
+    // Stage the script file so the demo doesn't fail any future realpath
+    // checks (the fake proxy doesn't actually validate, but matches reality).
+    mkdirSync(join(repoPath, '.anydemo', 'scripts'), { recursive: true });
+    writeFileSync(join(repoPath, '.anydemo', 'scripts', 'reset.ts'), '// stub\n');
+
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const res = await post(app, `/api/demos/${reg.id}/reset`, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; calledResetAction: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.calledResetAction).toBe(true);
+
+    // Order assertion: stopAllPlays + stop must both happen BEFORE runReset.
+    const idxStopPlays = log.findIndex((c) => c.kind === 'stopAllPlays');
+    const idxStopStatus = log.findIndex((c) => c.kind === 'stop');
+    const idxRunReset = log.findIndex((c) => c.kind === 'runReset');
+    const idxRestart = log.findIndex((c) => c.kind === 'restart');
+    expect(idxStopPlays).toBeGreaterThanOrEqual(0);
+    expect(idxStopStatus).toBeGreaterThanOrEqual(0);
+    expect(idxRunReset).toBeGreaterThan(idxStopPlays);
+    expect(idxRunReset).toBeGreaterThan(idxStopStatus);
+    // restart is the very last call (fire-and-forget after broadcast).
+    expect(idxRestart).toBeGreaterThan(idxRunReset);
+  });
+
+  it('broadcasts demo:reload AND demo:reset around a successful reset script', async () => {
+    const { app, bus } = buildResetApp({ resetResult: { ok: true, body: { wiped: true } } });
+    const repoPath = tmpRepoWithDemo(
+      demoWithResetAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/reset.ts',
+      }),
+    );
+    mkdirSync(join(repoPath, '.anydemo', 'scripts'), { recursive: true });
+    writeFileSync(join(repoPath, '.anydemo', 'scripts', 'reset.ts'), '// stub\n');
+
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
+
+    const captured: Array<{ type: string }> = [];
+    bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+
+    await post(app, `/api/demos/${reg.id}/reset`, {});
+
+    expect(captured.map((e) => e.type)).toEqual(['demo:reset', 'demo:reload']);
+  });
+
+  it('returns 502 with the error message but still broadcasts demo:reload + restarts on reset-script failure', async () => {
+    const { app, bus, log } = buildResetApp({
+      resetResult: { ok: false, error: 'reset script exited with code 1' },
     });
-    try {
-      const { app, bus } = buildAppWithBus();
-      const repoPath = tmpRepoWithDemo(
-        demoWithResetAction({
-          method: 'POST',
-          url: `${stub.url}/reset`,
-          body: { fresh: true },
-        }),
-      );
-      const reg = (await (
-        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-      ).json()) as { id: string };
+    const repoPath = tmpRepoWithDemo(
+      demoWithResetAction({
+        kind: 'script',
+        interpreter: 'bun',
+        scriptPath: 'scripts/reset.ts',
+      }),
+    );
+    mkdirSync(join(repoPath, '.anydemo', 'scripts'), { recursive: true });
+    writeFileSync(join(repoPath, '.anydemo', 'scripts', 'reset.ts'), '// stub\n');
 
-      const captured: Array<{ type: string }> = [];
-      bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
+    const reg = (await (
+      await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
+    ).json()) as { id: string };
 
-      const res = await post(app, `/api/demos/${reg.id}/reset`, {});
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { ok: boolean; calledResetAction: boolean };
-      expect(body.ok).toBe(true);
-      expect(body.calledResetAction).toBe(true);
+    const captured: Array<{ type: string }> = [];
+    bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
 
-      expect(receivedMethod).toBe('POST');
-      expect(receivedPath).toBe('/reset');
-      expect(receivedContentType).toContain('application/json');
-      expect(JSON.parse(receivedBody ?? '')).toEqual({ fresh: true });
+    const res = await post(app, `/api/demos/${reg.id}/reset`, {});
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string; calledResetAction: boolean };
+    expect(body.calledResetAction).toBe(true);
+    expect(body.error).toBe('reset script exited with code 1');
 
-      expect(captured.map((e) => e.type)).toEqual(['demo:reload']);
-    } finally {
-      stub.stop();
-    }
-  });
-
-  it('returns 502 but still broadcasts demo:reload when the resetAction returns 500', async () => {
-    const stub = startStubServer(() => new Response('boom', { status: 500 }));
-    try {
-      const { app, bus } = buildAppWithBus();
-      const repoPath = tmpRepoWithDemo(
-        demoWithResetAction({ method: 'POST', url: `${stub.url}/reset` }),
-      );
-      const reg = (await (
-        await post(app, '/api/demos/register', { repoPath, demoPath: '.anydemo/demo.json' })
-      ).json()) as { id: string };
-
-      const captured: Array<{ type: string }> = [];
-      bus.subscribe(reg.id, (e) => captured.push({ type: e.type }));
-
-      const res = await post(app, `/api/demos/${reg.id}/reset`, {});
-      expect(res.status).toBe(502);
-      const body = (await res.json()) as { error: string; calledResetAction: boolean };
-      expect(body.calledResetAction).toBe(true);
-      expect(body.error).toContain('500');
-
-      expect(captured.map((e) => e.type)).toEqual(['demo:reload']);
-    } finally {
-      stub.stop();
-    }
+    // demo:reload still fires; statusRunner.restart still fires.
+    expect(captured.map((e) => e.type)).toContain('demo:reload');
+    expect(log.map((c) => c.kind)).toContain('restart');
   });
 
   it('returns 404 for an unknown demoId', async () => {
-    const { app } = buildAppWithBus();
+    const { app } = buildResetApp();
     const res = await post(app, '/api/demos/does-not-exist/reset', {});
     expect(res.status).toBe(404);
   });

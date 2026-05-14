@@ -16,7 +16,7 @@ import { realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import type { EventBus } from './events.ts';
 import { type ProcessSpawner, type SpawnHandle, defaultProcessSpawner } from './process-spawner.ts';
-import type { PlayAction } from './schema.ts';
+import type { PlayAction, ResetAction } from './schema.ts';
 
 export interface PlayResult {
   /** Correlates this run across SSE events + the synchronous response. */
@@ -103,6 +103,54 @@ async function writeStdinPayload(handle: SpawnHandle, input: unknown): Promise<v
   }
 }
 
+// Live play-script handles indexed by demoId. Populated by runPlay() on spawn;
+// entries are removed when each handle's `exited` promise resolves (success
+// AND error paths). `stopAllPlays(demoId)` consults this map to terminate
+// every in-flight play for a demo on /reset.
+const livePlayHandles = new Map<string, Set<SpawnHandle>>();
+
+function registerLiveHandle(demoId: string, handle: SpawnHandle): void {
+  let set = livePlayHandles.get(demoId);
+  if (!set) {
+    set = new Set();
+    livePlayHandles.set(demoId, set);
+  }
+  set.add(handle);
+  handle.exited.finally(() => {
+    const current = livePlayHandles.get(demoId);
+    if (!current) return;
+    current.delete(handle);
+    if (current.size === 0) livePlayHandles.delete(demoId);
+  });
+}
+
+async function killWithGrace(handle: SpawnHandle): Promise<void> {
+  handle.kill('SIGTERM');
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  const gracePromise = new Promise<'grace'>((res) => {
+    graceTimer = setTimeout(() => res('grace'), SIGKILL_GRACE_MS);
+  });
+  const winner = await Promise.race([handle.exited.then(() => 'exited' as const), gracePromise]);
+  if (graceTimer) clearTimeout(graceTimer);
+  if (winner === 'grace') {
+    handle.kill('SIGKILL');
+    await handle.exited;
+  }
+}
+
+// Kill every live play-script for `demoId` (SIGTERM → 2s grace → SIGKILL in
+// parallel) and wait for each to exit. Idempotent on an unknown demoId. The
+// map is keyed by demoId so a stop on demo A never touches demo B.
+export async function stopAllPlays(demoId: string): Promise<void> {
+  const set = livePlayHandles.get(demoId);
+  if (!set || set.size === 0) return;
+  const handles = [...set];
+  // Clear eagerly so a parallel runPlay can't double-count an entry we're
+  // about to await on. The exited.finally() will no-op the second delete.
+  livePlayHandles.delete(demoId);
+  await Promise.all(handles.map((h) => killWithGrace(h)));
+}
+
 export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
   const { events, demoId, nodeId, cwd, action } = options;
   const spawner = options.spawner ?? defaultProcessSpawner;
@@ -153,6 +201,8 @@ export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
     });
     return { runId, error: message };
   }
+
+  registerLiveHandle(demoId, handle);
 
   // Drain stdout AND stderr CONCURRENTLY with the process running so OS pipe
   // buffers (~64 KB) don't fill up and deadlock the child.
@@ -225,4 +275,119 @@ export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
     payload: { nodeId, runId, message },
   });
   return { runId, error: message };
+}
+
+export interface RunResetOptions {
+  events: EventBus;
+  demoId: string;
+  /** Project root (`<repoPath>`). Script resolves under `<cwd>/.anydemo/`. */
+  cwd: string;
+  action: ResetAction;
+  /** Injectable for tests; defaults to `defaultProcessSpawner`. */
+  spawner?: ProcessSpawner;
+}
+
+export interface ResetResult {
+  ok: boolean;
+  body?: unknown;
+  error?: string;
+}
+
+// Run the demo's one-shot `resetAction` script. Same spawn discipline as
+// runPlay (realpath-guarded scriptPath, concurrent stdout/stderr drain,
+// optional stdin payload, SIGTERM→2s→SIGKILL escalation on timeout) but the
+// lifecycle SSE event is the single `demo:reset` broadcast that mirrors the
+// returned shape. Callers (the /reset endpoint) decide what HTTP status to
+// surface; this returns `{ ok }` plus body/error so the endpoint can map.
+export async function runReset(options: RunResetOptions): Promise<ResetResult> {
+  const { events, demoId, cwd, action } = options;
+  const spawner = options.spawner ?? defaultProcessSpawner;
+
+  const resolved = resolveScript(cwd, action.scriptPath);
+  if (!resolved.ok) {
+    events.broadcast({
+      type: 'demo:reset',
+      demoId,
+      payload: { ok: false, error: SCRIPT_PATH_ESCAPE },
+    });
+    return { ok: false, error: SCRIPT_PATH_ESCAPE };
+  }
+
+  const wantsStdin = action.input !== undefined;
+  const env = buildChildEnv({ ANYDEMO_DEMO_ID: demoId });
+
+  let handle: SpawnHandle;
+  try {
+    handle = spawner.spawn({
+      cmd: [action.interpreter, ...(action.args ?? []), resolved.absPath],
+      cwd,
+      env,
+      stdin: wantsStdin ? 'pipe' : 'ignore',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    events.broadcast({
+      type: 'demo:reset',
+      demoId,
+      payload: { ok: false, error: message },
+    });
+    return { ok: false, error: message };
+  }
+
+  const stdoutPromise = new Response(handle.stdout).text();
+  const stderrPromise = new Response(handle.stderr).text();
+
+  if (wantsStdin) {
+    await writeStdinPayload(handle, action.input);
+  }
+
+  const timeoutMs = action.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<'timeout'>((res) => {
+    timer = setTimeout(() => res('timeout'), timeoutMs);
+  });
+  const exitPromise = handle.exited.then((code) => ({ code }) as const);
+
+  const race = await Promise.race([exitPromise, timeoutPromise]);
+  if (timer) clearTimeout(timer);
+
+  if (race === 'timeout') {
+    await killWithGrace(handle);
+    await Promise.allSettled([stdoutPromise, stderrPromise]);
+    const message = `reset script timed out after ${timeoutMs}ms`;
+    events.broadcast({
+      type: 'demo:reset',
+      demoId,
+      payload: { ok: false, error: message },
+    });
+    return { ok: false, error: message };
+  }
+
+  const code = race.code;
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+
+  if (code === 0) {
+    let body: unknown;
+    try {
+      body = JSON.parse(stdout);
+    } catch {
+      body = stdout;
+    }
+    events.broadcast({
+      type: 'demo:reset',
+      demoId,
+      payload: { ok: true, body },
+    });
+    return { ok: true, body };
+  }
+
+  const lastLine = lastNonEmptyLine(stderr);
+  const truncated = lastLine.slice(0, STDERR_TRUNCATE);
+  const message = truncated.length > 0 ? truncated : `reset script exited with code ${code}`;
+  events.broadcast({
+    type: 'demo:reset',
+    demoId,
+    payload: { ok: false, error: message },
+  });
+  return { ok: false, error: message };
 }

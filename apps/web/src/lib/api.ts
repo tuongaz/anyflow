@@ -640,12 +640,12 @@ export const createProject = async (body: CreateProjectBody): Promise<CreateProj
   return (await res.json()) as CreateProjectResult;
 };
 
-export interface ResetDemoResult {
+export interface RestartDemoResult {
   ok: true;
   calledResetAction: boolean;
 }
 
-export const resetDemo = async (demoId: string): Promise<ResetDemoResult> => {
+export const restartDemo = async (demoId: string): Promise<RestartDemoResult> => {
   const res = await fetch(`/api/demos/${demoId}/reset`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -660,7 +660,7 @@ export const resetDemo = async (demoId: string): Promise<ResetDemoResult> => {
     }
     throw new Error(errorBody?.error ?? `POST /api/demos/${demoId}/reset → ${res.status}`);
   }
-  return (await res.json()) as ResetDemoResult;
+  return (await res.json()) as RestartDemoResult;
 };
 
 export interface UploadImageResult {

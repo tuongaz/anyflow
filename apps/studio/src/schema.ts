@@ -5,6 +5,11 @@ const PositionSchema = z.object({
   y: z.number(),
 });
 
+// US-008: HttpAction was the original shape for both playAction and resetAction
+// in pre-script-action releases. After US-001 cut playAction to script-only and
+// US-008 cut resetAction the same way, no schema in this file uses HttpAction
+// anymore. Connectors keep the `http` *kind literal* for visual semantics, but
+// that's an independent enum — search before re-adding any HttpActionSchema.
 const HttpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Curated palette tokens. Stored on disk as readable names; the frontend maps
@@ -50,14 +55,6 @@ const NodeDescriptionBaseShape = {
   detail: z.string().optional(),
 };
 
-const HttpActionSchema = z.object({
-  kind: z.literal('http'),
-  method: HttpMethodSchema,
-  url: z.string().min(1),
-  body: z.unknown().optional(),
-  bodySchema: z.unknown().optional(),
-});
-
 // US-001: relative-path safety refine (textual). Mirrors the same rule used
 // for image/html-node paths further down. Realpath verification is layered on
 // top by the proxy/status-runner before any spawn (symlink-escape defense).
@@ -86,6 +83,13 @@ const ScriptActionSchema = z.object({
 });
 
 const PlayActionSchema = ScriptActionSchema;
+
+// US-008: resetAction is a one-shot script action — same shape as a play
+// script (interpreter + args + scriptPath + optional input/timeoutMs) but
+// invoked from the /reset endpoint. The studio kills every live play and
+// status script for the demo before running this script, so the running app
+// sees a clean baseline when wiping its state.
+const ResetActionSchema = ScriptActionSchema;
 
 // Long-running status script. Same spawn shape as ScriptAction (interpreter +
 // args + scriptPath) but no stdin payload and a much longer max lifetime since
@@ -420,10 +424,11 @@ export const DemoSchema = z
     name: z.string().min(1),
     nodes: z.array(NodeSchema),
     connectors: z.array(ConnectorSchema),
-    // Optional declarative endpoint the studio POSTs to when the user resets
-    // the demo. Lets the running app reset its own in-memory state alongside
-    // the canvas reload broadcast (US-003 / US-008).
-    resetAction: HttpActionSchema.optional(),
+    // Optional one-shot script the studio runs when the user clicks Restart.
+    // Lets the running app wipe its own in-memory state. The studio kills
+    // every live play + status script for the demo BEFORE invoking this
+    // script (US-008), so the script sees no stragglers.
+    resetAction: ResetActionSchema.optional(),
   })
   .superRefine((demo, ctx) => {
     const nodeIds = new Set(demo.nodes.map((n) => n.id));
@@ -489,5 +494,5 @@ export type EdgePinSide = z.infer<typeof EdgePinSideSchema>;
 export type PlayAction = z.infer<typeof PlayActionSchema>;
 export type StatusAction = z.infer<typeof StatusActionSchema>;
 export type StatusReport = z.infer<typeof StatusReportSchema>;
-export type ResetAction = z.infer<typeof HttpActionSchema>;
+export type ResetAction = z.infer<typeof ResetActionSchema>;
 export type StateSource = z.infer<typeof StateSourceSchema>;

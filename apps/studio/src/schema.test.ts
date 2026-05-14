@@ -1166,7 +1166,7 @@ describe('DemoSchema', () => {
     expect(result.data.connectors).toHaveLength(3);
   });
 
-  it('parses a demo with a top-level resetAction (US-003)', () => {
+  it('parses a demo with a top-level resetAction (US-003 / US-008 script-shape)', () => {
     const demo = {
       version: 1 as const,
       name: 'reset-demo',
@@ -1179,15 +1179,20 @@ describe('DemoSchema', () => {
         },
       ],
       connectors: [],
-      resetAction: { kind: 'http' as const, method: 'POST' as const, url: '/reset' },
+      resetAction: {
+        kind: 'script' as const,
+        interpreter: 'bun',
+        args: ['run'],
+        scriptPath: 'scripts/reset.ts',
+      },
     };
     const result = DemoSchema.safeParse(demo);
     if (!result.success) {
       throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
     }
-    expect(result.data.resetAction?.kind).toBe('http');
-    expect(result.data.resetAction?.method).toBe('POST');
-    expect(result.data.resetAction?.url).toBe('/reset');
+    expect(result.data.resetAction?.kind).toBe('script');
+    expect(result.data.resetAction?.interpreter).toBe('bun');
+    expect(result.data.resetAction?.scriptPath).toBe('scripts/reset.ts');
   });
 
   it('parses a demo without resetAction (back-compat for US-003)', () => {
@@ -2181,7 +2186,8 @@ describe('DemoSchema', () => {
   });
 
   // US-001: script-based playAction + optional statusAction + StatusReport.
-  // PlayAction is now the script shape (HttpAction backs only resetAction).
+  // US-008: PlayAction AND resetAction are both script-shaped now; the
+  // legacy HttpAction schema has been removed.
   describe('script-based playAction + statusAction (US-001)', () => {
     const makeDemoWithPlayAction = (playAction: unknown) => ({
       version: 1 as const,
@@ -2478,7 +2484,39 @@ describe('DemoSchema', () => {
       expect(result.success).toBe(false);
     });
 
-    it('resetAction on the demo still uses the HTTP action shape (unchanged)', () => {
+    it('resetAction on the demo uses the script action shape (US-008)', () => {
+      const demo = {
+        version: 1 as const,
+        name: 'reset-demo',
+        nodes: [
+          {
+            id: 's',
+            type: 'stateNode' as const,
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'S',
+              kind: 'worker',
+              stateSource: { kind: 'event' as const },
+            },
+          },
+        ],
+        connectors: [],
+        resetAction: {
+          kind: 'script' as const,
+          interpreter: 'bun',
+          scriptPath: 'scripts/reset.ts',
+        },
+      };
+      const result = DemoSchema.safeParse(demo);
+      if (!result.success) {
+        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
+      }
+      expect(result.data.resetAction?.kind).toBe('script');
+      expect(result.data.resetAction?.interpreter).toBe('bun');
+      expect(result.data.resetAction?.scriptPath).toBe('scripts/reset.ts');
+    });
+
+    it('rejects a legacy HTTP-shaped resetAction (US-008 cut)', () => {
       const demo = {
         version: 1 as const,
         name: 'reset-demo',
@@ -2502,11 +2540,7 @@ describe('DemoSchema', () => {
         },
       };
       const result = DemoSchema.safeParse(demo);
-      if (!result.success) {
-        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-      }
-      expect(result.data.resetAction?.kind).toBe('http');
-      expect(result.data.resetAction?.method).toBe('POST');
+      expect(result.success).toBe(false);
     });
   });
 });
