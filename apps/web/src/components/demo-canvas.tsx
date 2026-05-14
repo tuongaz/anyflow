@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import type { NodeRuns } from '@/hooks/use-node-runs';
+import type { NodeStatuses } from '@/hooks/use-node-statuses';
 import type { OverrideMap } from '@/hooks/use-pending-overrides';
 import type { Connector, DemoNode, EdgePin, ReorderOp, ShapeKind } from '@/lib/api';
 import { computeImageDims, handleCanvasFileDrop } from '@/lib/canvas-drop';
@@ -113,6 +114,13 @@ export interface DemoCanvasProps {
   onSelectionChange?: (nodeIds: string[], connectorIds: string[]) => void;
   /** Per-node run state from SSE events. */
   runs?: NodeRuns;
+  /**
+   * US-007: latest StatusReport per node, driven by `node:status` SSE events.
+   * Injected into each play/state node's `data.statusReport` so the renderer
+   * can show a colored dot + ellipsized summary below the header. Empty / no
+   * entry → no badge row (no layout shift vs. legacy renders).
+   */
+  statusByNode?: NodeStatuses;
   /** Click handler for a PlayNode's Play button. */
   onPlayNode?: (nodeId: string) => void;
   /**
@@ -1325,6 +1333,7 @@ export function DemoCanvas({
   selectedConnectorIds,
   onSelectionChange,
   runs,
+  statusByNode,
   onPlayNode,
   nodeOverrides,
   connectorOverrides,
@@ -2183,6 +2192,10 @@ export function DemoCanvas({
           onRetryUpload: onRetryImageUpload,
           status: dataStatusFor(runs, merged.id),
           errorMessage: dataErrorMessageFor(runs, merged.id),
+          // US-007: latest StatusReport for this node (if any). play-node /
+          // state-node read this to render their badge row. Undefined → row
+          // is suppressed and the node renders byte-identical to legacy.
+          statusReport: statusByNode?.[merged.id],
           onPlay: onPlayNode,
           // Group nodes split the resize into two channels:
           //   - per-tick `onResize` updates the group's own bounds live
@@ -2330,6 +2343,7 @@ export function DemoCanvas({
     nodes,
     selectedNodeIdSet,
     runs,
+    statusByNode,
     onPlayNode,
     onNodeResize,
     onGroupNodeResize,

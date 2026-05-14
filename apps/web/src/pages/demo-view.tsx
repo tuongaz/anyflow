@@ -163,6 +163,7 @@ export function DemoView({
   loading,
   runs,
   nodeEvents,
+  statusByNode,
   onPlayNode,
   onResetDemo,
 }: DemoViewProps) {
@@ -3307,6 +3308,11 @@ export function DemoView({
 
   const inspectedRun = panelNodeId ? runs[panelNodeId] : undefined;
   const inspectedEvents = panelNodeId ? (nodeEvents[panelNodeId] ?? []) : [];
+  // US-007: latest StatusReport for the inspected node, surfaced in the
+  // DetailPanel's Status section. Undefined when the node has no entry in
+  // the hook's status map (no statusAction defined, or the script hasn't
+  // emitted yet).
+  const inspectedStatusReport = panelNodeId ? statusByNode[panelNodeId] : undefined;
 
   return (
     <div className="relative h-full w-full">
@@ -3337,6 +3343,7 @@ export function DemoView({
           selectedConnectorIds={selectedConnectorIds}
           onSelectionChange={onSelectionChange}
           runs={runs}
+          statusByNode={statusByNode}
           onPlayNode={onPlayNode}
           nodeOverrides={nodeOverrides}
           connectorOverrides={connectorOverrides}
@@ -3434,6 +3441,7 @@ export function DemoView({
         demoId={detail?.id ?? null}
         node={inspectedNode}
         connector={inspectedConnector}
+        statusReport={inspectedStatusReport}
         // Three-field consolidation: panel + canvas dispatchers share the
         // same coalesce keys (`node:<id>:name|description|detail`) so a
         // typing session across the canvas and sidebar produces a single

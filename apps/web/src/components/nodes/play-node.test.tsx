@@ -186,6 +186,76 @@ function findPlayContainer(tree: unknown): ReactElementLike {
   return container;
 }
 
+// US-007: per-node status badge below the header. Renders only when
+// data.statusReport is present; absent → the badge row is not in the tree at
+// all (no layout shift vs. legacy renders).
+function findStatusBadgeRow(tree: unknown): ReactElementLike | null {
+  return findElement(
+    tree,
+    (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'play-node-status-badge',
+  );
+}
+
+function findStatusBadge(tree: unknown): ReactElementLike | null {
+  return findElement(
+    tree,
+    (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'status-badge',
+  );
+}
+
+function findDot(tree: unknown): ReactElementLike | null {
+  return findElement(tree, (el) => {
+    if (el.type !== 'span') return false;
+    const className = String((el.props as { className?: string }).className ?? '');
+    return className.includes('rounded-full') && className.includes('h-2');
+  });
+}
+
+describe('PlayNode status badge (US-007)', () => {
+  it('renders no badge row when statusReport is absent', () => {
+    const tree = callPlayNode({ playAction: { kind: 'script' }, onPlay: () => {} });
+    expect(findStatusBadgeRow(tree)).toBeNull();
+  });
+
+  it('renders the badge with the summary and the correct dot color per state', () => {
+    const cases = [
+      { state: 'ok' as const, dotClass: 'bg-emerald-500' },
+      { state: 'warn' as const, dotClass: 'bg-amber-500' },
+      { state: 'error' as const, dotClass: 'bg-rose-500' },
+      { state: 'pending' as const, dotClass: 'bg-slate-400' },
+    ];
+    for (const { state, dotClass } of cases) {
+      const tree = callPlayNode({
+        playAction: { kind: 'script' },
+        onPlay: () => {},
+        statusReport: { state, summary: 'hello', ts: 1 },
+      });
+      const row = findStatusBadgeRow(tree);
+      if (!row) throw new Error(`expected badge row for state=${state}`);
+      const badge = findStatusBadge(row);
+      if (!badge) throw new Error(`expected status-badge inside row for state=${state}`);
+      // The badge element here is React.createElement(StatusBadge, { state,
+      // summary, 'data-testid': 'status-badge' }) — `state` is a prop on the
+      // unrendered StatusBadge component, not yet a data-state on a span.
+      expect((badge.props as { state?: string }).state).toBe(state);
+      expect((badge.props as { summary?: string }).summary).toBe('hello');
+      // Sanity: render StatusBadge once to confirm the dotClass it picks for
+      // this state — same shape as the dedicated status-badge tests, just in
+      // line so the play-node coverage exercises the same color contract.
+      const StatusBadge = badge.type as (p: {
+        state: string;
+        summary?: string;
+        'data-testid'?: string;
+      }) => unknown;
+      const rendered = StatusBadge(badge.props as { state: string; summary?: string });
+      const dot = findDot(rendered);
+      if (!dot) throw new Error(`expected dot span for state=${state}`);
+      const dotClassName = String((dot.props as { className?: string }).className ?? '');
+      expect(dotClassName).toContain(dotClass);
+    }
+  });
+});
+
 describe('PlayNode default-white fill (US-021 default node background)', () => {
   it('renders #ffffff when backgroundColor is unset', () => {
     const tree = callPlayNode({});
