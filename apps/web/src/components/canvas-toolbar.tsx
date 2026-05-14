@@ -5,6 +5,7 @@ import { type CommandId, getCommandTooltip } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
 import {
   Circle,
+  Columns3,
   Database,
   Server,
   Shapes,
@@ -87,6 +88,10 @@ const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
   { shape: 'server', label: 'Server', commandId: 'tool.server', Icon: Server },
   // US-023: person glyph for actors / end-users in architecture diagrams.
   { shape: 'user', label: 'User', commandId: 'tool.user', Icon: User },
+  // US-024: queue glyph for message brokers / FIFO pipelines. The lucide
+  // Columns3 icon (3 vertical cells in a frame) is the closest match to the
+  // 4-cell capsule rendered on the canvas.
+  { shape: 'queue', label: 'Queue', commandId: 'tool.queue', Icon: Columns3 },
 ];
 
 // Combined list, exported so US-015's drop-on-pane popover can list the same

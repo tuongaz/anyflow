@@ -121,6 +121,7 @@ const ShapeKindSchema = z.enum([
   'database',
   'server',
   'user',
+  'queue',
 ]);
 
 const ShapeNodeDataSchema = z.object({

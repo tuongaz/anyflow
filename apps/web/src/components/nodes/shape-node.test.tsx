@@ -9,6 +9,7 @@ import {
   shapeChromeStyle,
 } from '@/components/nodes/shape-node';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { QueueShape } from '@/components/nodes/shapes/queue';
 import { ServerShape } from '@/components/nodes/shapes/server';
 import { UserShape } from '@/components/nodes/shapes/user';
 import { COLOR_TOKENS, NODE_DEFAULT_BG_WHITE } from '@/lib/color-tokens';
@@ -203,6 +204,30 @@ describe('shape-node chrome helpers', () => {
 
     it('SHAPE_DEFAULT_SIZE.user matches the spec (100 x 140 portrait person)', () => {
       expect(SHAPE_DEFAULT_SIZE.user).toEqual({ width: 100, height: 140 });
+    });
+
+    // US-024: queue mirrors the chrome-suppression invariant — the capsule +
+    // dividers are owned by the SVG, so the wrapper stays empty/transparent.
+    it('queue returns empty Tailwind chrome class', () => {
+      expect(shapeChromeClass('queue')).toBe('');
+      expect(SHAPE_CLASS.queue).toBe('');
+    });
+
+    it('queue returns {} from shapeChromeStyle regardless of author overrides', () => {
+      expect(shapeChromeStyle('queue')).toEqual({});
+      expect(
+        shapeChromeStyle('queue', {
+          borderColor: 'blue',
+          backgroundColor: 'green',
+          borderSize: 5,
+          borderStyle: 'dashed',
+          cornerRadius: 12,
+        }),
+      ).toEqual({});
+    });
+
+    it('SHAPE_DEFAULT_SIZE.queue matches the spec (220 x 80 wide pill)', () => {
+      expect(SHAPE_DEFAULT_SIZE.queue).toEqual({ width: 220, height: 80 });
     });
   });
 });
@@ -463,6 +488,15 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     );
     expect(headers).toHaveLength(0);
   });
+
+  it('queue with name does NOT switch layouts (illustrative shape keeps SVG visuals)', () => {
+    const tree = callShapeNode({ shape: 'queue', name: 'orders' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
 });
 
 describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
@@ -567,6 +601,73 @@ describe('ShapeNode server shape (US-022)', () => {
       const shapes = findAll(tree, (el) => el.type === ServerShape);
       expect(shapes).toHaveLength(0);
     }
+  });
+});
+
+// US-024: queue mirrors the wireable-illustrative contract — same registry-
+// driven renderer dispatch, same four handles, same resize affordance.
+describe('ShapeNode queue shape (US-024)', () => {
+  it('renders <QueueShape> in the tree when shape=queue', () => {
+    const tree = callShapeNode({ shape: 'queue' });
+    const shapes = findAll(tree, (el) => el.type === QueueShape);
+    expect(shapes).toHaveLength(1);
+  });
+
+  it('queue shape still renders four connect handles (wireable like database)', () => {
+    const tree = callShapeNode({ shape: 'queue' });
+    const handles = findAll(tree, (el) => el.type === Handle);
+    expect(handles).toHaveLength(4);
+  });
+
+  it('renders ResizeControls with visible=true when selected with onResize callback', () => {
+    const tree = callShapeNode({ shape: 'queue', onResize: () => {} }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findAll(tree, (el) => el.type === ResizeControls);
+    expect(controls).toHaveLength(1);
+    const props = controls[0]?.props as { visible?: boolean } | undefined;
+    expect(props?.visible).toBe(true);
+  });
+
+  it('non-queue shapes do NOT render <QueueShape> in the tree', () => {
+    for (const shape of [
+      'rectangle',
+      'ellipse',
+      'sticky',
+      'text',
+      'database',
+      'server',
+      'user',
+    ] as const) {
+      const tree = callShapeNode({ shape });
+      const shapes = findAll(tree, (el) => el.type === QueueShape);
+      expect(shapes).toHaveLength(0);
+    }
+  });
+});
+
+// US-024: QueueShape is a pure SVG renderer. Pin the structural invariants
+// (svg root, capsule rect + 3 vertical dividers, viewBox + testid) so a
+// future geometry change is intentional and reviewable.
+describe('QueueShape (US-024)', () => {
+  it('returns an <svg> element with the expected viewBox and testid', () => {
+    const el = QueueShape({ width: 220, height: 80 }) as {
+      type: string;
+      props: Record<string, unknown>;
+    };
+    expect(el.type).toBe('svg');
+    expect(el.props.viewBox).toBe('0 0 220 80');
+    expect(el.props['data-testid']).toBe('queue-shape');
+  });
+
+  it('SVG body composition is title + capsule rect + three dividers', () => {
+    const el = QueueShape({ width: 220, height: 80 }) as {
+      props: { children?: unknown };
+    };
+    const types = (Array.isArray(el.props.children) ? el.props.children : [el.props.children])
+      .filter((c): c is { type: string } => !!c && typeof c === 'object' && 'type' in c)
+      .map((c) => c.type);
+    expect(types).toEqual(['title', 'rect', 'line', 'line', 'line']);
   });
 });
 

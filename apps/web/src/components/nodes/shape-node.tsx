@@ -70,6 +70,9 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
   // US-023: person glyph reads best in portrait — head sits in the top quarter
   // and the half-pill torso fills the bottom three-quarters.
   user: { width: 100, height: 140 },
+  // US-024: queue reads best as a wide horizontal pill — capsule ends + 4
+  // cells make it look like "messages in line" at a glance.
+  queue: { width: 220, height: 80 },
 };
 
 // `text` deliberately omits border + background so the shape reads as a free
@@ -91,6 +94,7 @@ export const SHAPE_CLASS: Record<ShapeKind, string> = {
   database: '',
   server: '',
   user: '',
+  queue: '',
 };
 
 /**

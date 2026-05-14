@@ -13,6 +13,7 @@ import {
   handleGroupShortcut,
 } from '@/components/demo-canvas';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { QueueShape } from '@/components/nodes/shapes/queue';
 import { ServerShape } from '@/components/nodes/shapes/server';
 import { UserShape } from '@/components/nodes/shapes/user';
 import {
@@ -1078,6 +1079,42 @@ describe('DemoCanvas', () => {
       if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
       const userShape = findElement(ghost, (el) => el.type === UserShape);
       expect(userShape).toBeNull();
+    });
+  });
+
+  // US-024: queue ghost-dispatch parallels server/user — same registry hook.
+  describe('US-024: queue drag-create ghost renders QueueShape', () => {
+    it('renders <QueueShape> inside the ghost when activeShape="queue"', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'queue' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      expect((ghost.props as { 'data-ghost-shape'?: unknown })['data-ghost-shape']).toBe('queue');
+      const queueShape = findElement(ghost, (el) => el.type === QueueShape);
+      expect(queueShape).not.toBeNull();
+    });
+
+    it('does NOT render QueueShape in the ghost for non-queue shapes', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'user' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const queueShape = findElement(ghost, (el) => el.type === QueueShape);
+      expect(queueShape).toBeNull();
     });
   });
 

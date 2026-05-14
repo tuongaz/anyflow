@@ -1,4 +1,5 @@
 import { DatabaseShape } from '@/components/nodes/shapes/database';
+import { QueueShape } from '@/components/nodes/shapes/queue';
 import { ServerShape } from '@/components/nodes/shapes/server';
 import type { ShapePartProps } from '@/components/nodes/shapes/types';
 import { UserShape } from '@/components/nodes/shapes/user';
@@ -16,4 +17,5 @@ export const ILLUSTRATIVE_SHAPE_RENDERERS: Partial<Record<ShapeKind, FC<ShapePar
   database: DatabaseShape,
   server: ServerShape,
   user: UserShape,
+  queue: QueueShape,
 };
