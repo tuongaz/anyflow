@@ -199,7 +199,19 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   // read ONCE at mount via the lazy initializer; subsequent renders keep the
   // local state regardless of whether the upstream injection clears the flag
   // (e.g. because the parent's pendingEditNodeId moved to a different node).
-  const [editing, setEditing] = useState<EditField>(() => (data.autoEditOnMount ? 'name' : null));
+  //
+  // Untitled rectangle starts in description edit (matching the dblclick
+  // routing fix below) so a freshly-drawn rect's first keystrokes land in
+  // the body field — without this, typing would silently populate the title
+  // and the header strip would appear mid-edit.
+  const [editing, setEditing] = useState<EditField>(() => {
+    if (!data.autoEditOnMount) return null;
+    const startsAsDescription =
+      data.shape === 'ellipse' ||
+      data.shape === 'sticky' ||
+      (data.shape === 'rectangle' && (data.name === undefined || data.name === ''));
+    return startsAsDescription ? 'description' : 'name';
+  });
   const isEditing = editing !== null;
   const nameEditable = !!data.onNameChange;
   const descEditable = !!data.onDescriptionChange;
@@ -214,6 +226,14 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   const isDescriptionLabel = shape === 'ellipse' || shape === 'sticky';
   const hasName = data.name !== undefined && data.name !== '';
   const useHeaderLayout = isHeaderShape && hasName;
+  // A rectangle with no name is in single-label mode and used to route
+  // dblclick to NAME — the user types body content thinking it's the body,
+  // hasName flips true mid-typing, useHeaderLayout activates, and the header
+  // strip "suddenly appears" with the typed text. Treat the no-title
+  // rectangle the same way ellipse/sticky already work: dblclick edits
+  // description and the centered label renders description. The user only
+  // surfaces a header when they explicitly set Name via the detail panel.
+  const renderSingleLabelAsDescription = isDescriptionLabel || (isHeaderShape && !hasName);
   // While resizing OR once data.width/height are set, the React Flow wrapper
   // owns the dimensions; the inner fills via h-full w-full. Before any resize,
   // we still need an explicit size so the wrapper auto-sizes to it.
@@ -283,10 +303,12 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
             }
           }
           // Ellipse + sticky render description as their centered label and
-          // have no Name concept, so dblclick goes straight to description
-          // edit.
-          if (isDescriptionLabel) {
+          // have no Name concept; an empty rectangle (single-label mode)
+          // joins them so typing into the body doesn't accidentally
+          // populate the title and flip the layout into header+body.
+          if (renderSingleLabelAsDescription) {
             if (descEditable) setEditing('description');
+            else if (nameEditable) setEditing('name');
             return;
           }
           if (nameEditable) setEditing('name');
@@ -329,12 +351,13 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
   };
 
   // Single-label content variants:
-  //   - Ellipse + sticky: render `description` as the centered label. No Name
-  //     concept; dblclick enters description edit directly.
-  //   - Other shapes (text/database + rect with no title): keep the
-  //     `name`-based label so the auto-edit-on-mount flow types into it.
+  //   - Ellipse + sticky + untitled rectangle: render `description` as the
+  //     centered label. No Name concept on canvas; dblclick enters
+  //     description edit directly.
+  //   - Other shapes (text/database): keep the `name`-based label so the
+  //     auto-edit-on-mount flow types into it.
   let singleLabelContent: ReactNode;
-  if (isDescriptionLabel) {
+  if (renderSingleLabelAsDescription) {
     singleLabelContent =
       editing === 'description' && descEditable ? (
         <InlineEdit

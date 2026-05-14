@@ -446,6 +446,29 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     expect(headers).toHaveLength(0);
   });
 
+  it('rectangle WITHOUT a name renders description as the centered label (single-label parity with ellipse/sticky)', () => {
+    // Bug regression: the untitled rectangle used to render `data.name` as
+    // its single label AND route dblclick to name edit. Typing into the
+    // empty rect would populate the title (because dblclick targeted name),
+    // hasName would flip true mid-typing, and the header strip would
+    // "suddenly appear" with the typed text. Now the no-title rectangle
+    // joins ellipse/sticky: description is the label, dblclick edits
+    // description, header only surfaces after Name is set via the detail
+    // panel.
+    const tree = callShapeNode({
+      shape: 'rectangle',
+      name: '',
+      description: 'Body content',
+    });
+    const buttons = findAll(tree, (el) => el.type === 'button');
+    const labels = buttons.map((b) =>
+      typeof (b.props as { children?: unknown }).children === 'string'
+        ? ((b.props as { children: string }).children as string)
+        : '',
+    );
+    expect(labels.some((t) => t === 'Body content')).toBe(true);
+  });
+
   it('sticky NEVER renders a header even when a name is set (description-only shape)', () => {
     // Sticky intentionally drops the Name concept — see DetailPanel,
     // which hides the Name field for stickies. The on-canvas label is
