@@ -5,6 +5,7 @@ import { type CommandId, getCommandTooltip } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
 import {
   Circle,
+  Cloud,
   Columns3,
   Database,
   Server,
@@ -92,6 +93,9 @@ const ILLUSTRATIVE_SHAPES: ToolbarShapeEntry[] = [
   // Columns3 icon (3 vertical cells in a frame) is the closest match to the
   // 4-cell capsule rendered on the canvas.
   { shape: 'queue', label: 'Queue', commandId: 'tool.queue', Icon: Columns3 },
+  // US-025: cloud glyph for managed services / "the internet" / abstract
+  // boundaries. lucide's Cloud icon mirrors the puffy SVG silhouette.
+  { shape: 'cloud', label: 'Cloud', commandId: 'tool.cloud', Icon: Cloud },
 ];
 
 // Combined list, exported so US-015's drop-on-pane popover can list the same

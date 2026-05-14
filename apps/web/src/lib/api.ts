@@ -76,7 +76,8 @@ export type ShapeKind =
   | 'database'
   | 'server'
   | 'user'
-  | 'queue';
+  | 'queue'
+  | 'cloud';
 
 export interface ShapeNodeData extends NodeVisual, NodeDescription {
   shape: ShapeKind;

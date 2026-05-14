@@ -1,3 +1,4 @@
+import { CloudShape } from '@/components/nodes/shapes/cloud';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { QueueShape } from '@/components/nodes/shapes/queue';
 import { ServerShape } from '@/components/nodes/shapes/server';
@@ -18,4 +19,5 @@ export const ILLUSTRATIVE_SHAPE_RENDERERS: Partial<Record<ShapeKind, FC<ShapePar
   server: ServerShape,
   user: UserShape,
   queue: QueueShape,
+  cloud: CloudShape,
 };

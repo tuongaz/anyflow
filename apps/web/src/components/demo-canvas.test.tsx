@@ -12,6 +12,7 @@ import {
   handleClipboardShortcut,
   handleGroupShortcut,
 } from '@/components/demo-canvas';
+import { CloudShape } from '@/components/nodes/shapes/cloud';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { QueueShape } from '@/components/nodes/shapes/queue';
 import { ServerShape } from '@/components/nodes/shapes/server';
@@ -1115,6 +1116,42 @@ describe('DemoCanvas', () => {
       if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
       const queueShape = findElement(ghost, (el) => el.type === QueueShape);
       expect(queueShape).toBeNull();
+    });
+  });
+
+  // US-025: cloud ghost-dispatch parallels every other illustrative shape.
+  describe('US-025: cloud drag-create ghost renders CloudShape', () => {
+    it('renders <CloudShape> inside the ghost when activeShape="cloud"', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'cloud' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      expect((ghost.props as { 'data-ghost-shape'?: unknown })['data-ghost-shape']).toBe('cloud');
+      const cloudShape = findElement(ghost, (el) => el.type === CloudShape);
+      expect(cloudShape).not.toBeNull();
+    });
+
+    it('does NOT render CloudShape in the ghost for non-cloud shapes', () => {
+      const overrides: unknown[] = [];
+      overrides[3] = { x: 100, y: 100 };
+      overrides[4] = { x: 300, y: 240 };
+      const tree = callDemoCanvas({ activeShape: 'queue' }, { useStateOverrides: overrides });
+      const ghost = findElement(
+        tree,
+        (el) =>
+          isElement(el) &&
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'canvas-draw-ghost',
+      );
+      if (!ghost) throw new Error('canvas-draw-ghost not found in tree');
+      const cloudShape = findElement(ghost, (el) => el.type === CloudShape);
+      expect(cloudShape).toBeNull();
     });
   });
 

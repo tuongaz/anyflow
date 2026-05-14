@@ -162,7 +162,15 @@ describe('DemoSchema', () => {
     // shape. The enum now drives both the schema validation here and the
     // per-shape renderer dispatch in apps/web's shape-node.tsx.
     const make = (
-      shape: 'rectangle' | 'ellipse' | 'sticky' | 'database' | 'server' | 'user' | 'queue',
+      shape:
+        | 'rectangle'
+        | 'ellipse'
+        | 'sticky'
+        | 'database'
+        | 'server'
+        | 'user'
+        | 'queue'
+        | 'cloud',
     ) => ({
       version: 1 as const,
       name: 'shape-demo',
@@ -185,6 +193,7 @@ describe('DemoSchema', () => {
       'server',
       'user',
       'queue',
+      'cloud',
     ] as const) {
       const result = DemoSchema.safeParse(make(shape));
       if (!result.success) {

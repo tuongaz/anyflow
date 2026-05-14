@@ -73,6 +73,8 @@ export const SHAPE_DEFAULT_SIZE: Record<ShapeKind, { width: number; height: numb
   // US-024: queue reads best as a wide horizontal pill — capsule ends + 4
   // cells make it look like "messages in line" at a glance.
   queue: { width: 220, height: 80 },
+  // US-025: cloud reads best in landscape — three top bumps + short skirt.
+  cloud: { width: 180, height: 120 },
 };
 
 // `text` deliberately omits border + background so the shape reads as a free
@@ -95,6 +97,7 @@ export const SHAPE_CLASS: Record<ShapeKind, string> = {
   server: '',
   user: '',
   queue: '',
+  cloud: '',
 };
 
 /**

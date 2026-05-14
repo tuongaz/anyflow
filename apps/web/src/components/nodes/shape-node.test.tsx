@@ -8,6 +8,7 @@ import {
   shapeChromeClass,
   shapeChromeStyle,
 } from '@/components/nodes/shape-node';
+import { CloudShape } from '@/components/nodes/shapes/cloud';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
 import { QueueShape } from '@/components/nodes/shapes/queue';
 import { ServerShape } from '@/components/nodes/shapes/server';
@@ -228,6 +229,30 @@ describe('shape-node chrome helpers', () => {
 
     it('SHAPE_DEFAULT_SIZE.queue matches the spec (220 x 80 wide pill)', () => {
       expect(SHAPE_DEFAULT_SIZE.queue).toEqual({ width: 220, height: 80 });
+    });
+
+    // US-025: cloud mirrors the chrome-suppression invariant — the puffy
+    // outline is owned by the SVG, so the wrapper stays empty/transparent.
+    it('cloud returns empty Tailwind chrome class', () => {
+      expect(shapeChromeClass('cloud')).toBe('');
+      expect(SHAPE_CLASS.cloud).toBe('');
+    });
+
+    it('cloud returns {} from shapeChromeStyle regardless of author overrides', () => {
+      expect(shapeChromeStyle('cloud')).toEqual({});
+      expect(
+        shapeChromeStyle('cloud', {
+          borderColor: 'blue',
+          backgroundColor: 'green',
+          borderSize: 5,
+          borderStyle: 'dashed',
+          cornerRadius: 12,
+        }),
+      ).toEqual({});
+    });
+
+    it('SHAPE_DEFAULT_SIZE.cloud matches the spec (180 x 120 landscape)', () => {
+      expect(SHAPE_DEFAULT_SIZE.cloud).toEqual({ width: 180, height: 120 });
     });
   });
 });
@@ -497,6 +522,15 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     );
     expect(headers).toHaveLength(0);
   });
+
+  it('cloud with name does NOT switch layouts (illustrative shape keeps SVG visuals)', () => {
+    const tree = callShapeNode({ shape: 'cloud', name: 'AWS' });
+    const headers = findAll(
+      tree,
+      (el) => (el.props as { 'data-testid'?: string })['data-testid'] === 'shape-node-header',
+    );
+    expect(headers).toHaveLength(0);
+  });
 });
 
 describe('ShapeNode autoEditOnMount (US-003 + US-015)', () => {
@@ -601,6 +635,74 @@ describe('ShapeNode server shape (US-022)', () => {
       const shapes = findAll(tree, (el) => el.type === ServerShape);
       expect(shapes).toHaveLength(0);
     }
+  });
+});
+
+// US-025: cloud mirrors the wireable-illustrative contract — same registry-
+// driven dispatch, four handles, resize affordance, chrome-suppressed wrapper.
+describe('ShapeNode cloud shape (US-025)', () => {
+  it('renders <CloudShape> in the tree when shape=cloud', () => {
+    const tree = callShapeNode({ shape: 'cloud' });
+    const shapes = findAll(tree, (el) => el.type === CloudShape);
+    expect(shapes).toHaveLength(1);
+  });
+
+  it('cloud shape still renders four connect handles (wireable like database)', () => {
+    const tree = callShapeNode({ shape: 'cloud' });
+    const handles = findAll(tree, (el) => el.type === Handle);
+    expect(handles).toHaveLength(4);
+  });
+
+  it('renders ResizeControls with visible=true when selected with onResize callback', () => {
+    const tree = callShapeNode({ shape: 'cloud', onResize: () => {} }, {
+      selected: true,
+    } as Partial<NodeProps>);
+    const controls = findAll(tree, (el) => el.type === ResizeControls);
+    expect(controls).toHaveLength(1);
+    const props = controls[0]?.props as { visible?: boolean } | undefined;
+    expect(props?.visible).toBe(true);
+  });
+
+  it('non-cloud shapes do NOT render <CloudShape> in the tree', () => {
+    for (const shape of [
+      'rectangle',
+      'ellipse',
+      'sticky',
+      'text',
+      'database',
+      'server',
+      'user',
+      'queue',
+    ] as const) {
+      const tree = callShapeNode({ shape });
+      const shapes = findAll(tree, (el) => el.type === CloudShape);
+      expect(shapes).toHaveLength(0);
+    }
+  });
+});
+
+// US-025: CloudShape is a pure SVG renderer. Pin the structural invariants
+// (svg root, single closed cloud path, viewBox + testid) so a future change
+// to the silhouette is intentional and reviewable.
+describe('CloudShape (US-025)', () => {
+  it('returns an <svg> element with the expected viewBox and testid', () => {
+    const el = CloudShape({ width: 180, height: 120 }) as {
+      type: string;
+      props: Record<string, unknown>;
+    };
+    expect(el.type).toBe('svg');
+    expect(el.props.viewBox).toBe('0 0 180 120');
+    expect(el.props['data-testid']).toBe('cloud-shape');
+  });
+
+  it('SVG body composition is title + single closed cloud path', () => {
+    const el = CloudShape({ width: 180, height: 120 }) as {
+      props: { children?: unknown };
+    };
+    const types = (Array.isArray(el.props.children) ? el.props.children : [el.props.children])
+      .filter((c): c is { type: string } => !!c && typeof c === 'object' && 'type' in c)
+      .map((c) => c.type);
+    expect(types).toEqual(['title', 'path']);
   });
 });
 

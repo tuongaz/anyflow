@@ -69,6 +69,7 @@ export type CommandId =
   | 'tool.server'
   | 'tool.user'
   | 'tool.queue'
+  | 'tool.cloud'
   | 'edit.undo'
   | 'edit.redo'
   | 'edit.copy'
@@ -170,6 +171,12 @@ export const COMMANDS: readonly CommandDef[] = [
     id: 'tool.queue',
     label: 'Queue',
     description: 'Add a queue node',
+    category: 'Tools',
+  },
+  {
+    id: 'tool.cloud',
+    label: 'Cloud',
+    description: 'Add a cloud node',
     category: 'Tools',
   },
   {
