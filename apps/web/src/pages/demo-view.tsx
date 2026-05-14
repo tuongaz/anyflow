@@ -42,6 +42,7 @@ import { computeIconInsertPosition } from '@/lib/icon-insert';
 import { pushRecent } from '@/lib/icon-recents';
 import { performImageDropUpload } from '@/lib/image-upload-flow';
 import {
+  type CommandId,
   applyNudge,
   getNudgeDelta,
   getZoomChord,
@@ -223,6 +224,9 @@ export function DemoView({
   useEffect(() => {
     activeShapeRef.current = activeShape;
   }, [activeShape]);
+  // US-006: command-palette open state. The Cmd/Ctrl+P chord flips this true
+  // and the (placeholder) dialog renders gated on it. Full UI lands in US-007.
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // React Flow instance handed up from `<DemoCanvas onRfInit>` (US-024). Used
   // by the zoom-chord handler below — only the page owns the keyboard
   // listener so the canvas stays free of page-level chord wiring.
@@ -2701,6 +2705,173 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // US-006: single dispatcher for every CommandId. The command palette (US-007)
+  // and any future entry point (right-click menu, gesture, etc.) call this
+  // instead of duplicating handler glue. Mirrors the existing handler shapes —
+  // selection-aware reads go through the live refs so the dispatcher reflects
+  // the latest selection without re-binding when the palette opens.
+  const runCommand = useCallback(
+    (id: CommandId): void => {
+      switch (id) {
+        case 'tool.select':
+          setActiveShape(null);
+          return;
+        case 'tool.rectangle':
+          setActiveShape('rectangle');
+          return;
+        case 'tool.ellipse':
+          setActiveShape('ellipse');
+          return;
+        case 'tool.text':
+          setActiveShape('text');
+          return;
+        case 'tool.sticky':
+          setActiveShape('sticky');
+          return;
+        case 'tool.database':
+          setActiveShape('database');
+          return;
+        case 'edit.undo': {
+          if (!canUndo) return;
+          (async () => {
+            try {
+              const result = await undoFn();
+              if (result?.entry) await result.entry.undo();
+            } catch (err) {
+              setEditError(err instanceof Error ? err.message : String(err));
+              console.error('undo failed', err);
+            }
+          })();
+          return;
+        }
+        case 'edit.redo': {
+          if (!canRedo) return;
+          (async () => {
+            try {
+              const result = await redoFn();
+              if (result?.entry) await result.entry.do();
+            } catch (err) {
+              setEditError(err instanceof Error ? err.message : String(err));
+              console.error('redo failed', err);
+            }
+          })();
+          return;
+        }
+        case 'edit.copy': {
+          const ids = selectedIdsRef.current;
+          if (ids.length === 0) return;
+          onCopyNodes([...ids]);
+          return;
+        }
+        case 'edit.paste':
+          onPasteNodes(null);
+          return;
+        case 'edit.duplicate': {
+          const ids = selectedIdsRef.current;
+          if (ids.length === 0) return;
+          onCopyNodes([...ids]);
+          onPasteNodes(null);
+          return;
+        }
+        case 'edit.delete': {
+          const nodeIds = selectedIdsRef.current;
+          const connIds = selectedConnectorIdsRef.current;
+          if (nodeIds.length === 0 && connIds.length === 0) return;
+          onDeleteSelection([...nodeIds], [...connIds]);
+          return;
+        }
+        case 'edit.selectAll':
+          setSelectedIds((demoNodes ?? []).map((n) => n.id));
+          setSelectedConnectorIds((demoConnectors ?? []).map((c) => c.id));
+          return;
+        case 'view.fit': {
+          const inst = rfInstanceRef.current;
+          if (!inst) return;
+          inst.fitView({ padding: 0.2, duration: 200 });
+          return;
+        }
+        case 'view.zoomIn': {
+          const inst = rfInstanceRef.current;
+          if (!inst) return;
+          inst.zoomIn({ duration: 150 });
+          return;
+        }
+        case 'view.zoomOut': {
+          const inst = rfInstanceRef.current;
+          if (!inst) return;
+          inst.zoomOut({ duration: 150 });
+          return;
+        }
+        case 'view.zoom100': {
+          const inst = rfInstanceRef.current;
+          if (!inst) return;
+          const { x, y } = inst.getViewport();
+          inst.setViewport({ x, y, zoom: 1 }, { duration: 150 });
+          return;
+        }
+        case 'view.zoomToSelection': {
+          const ids = selectedIdsRef.current;
+          if (ids.length === 0) return;
+          const inst = rfInstanceRef.current;
+          if (!inst) return;
+          inst.fitView({
+            nodes: ids.map((nid) => ({ id: nid })),
+            padding: 0.2,
+            duration: 200,
+          });
+          return;
+        }
+        case 'layout.tidy': {
+          const scope = selectedIdsRef.current.length > 0 ? 'selection' : 'all';
+          onTidy(scope);
+          return;
+        }
+        case 'selection.deselect':
+          if (selectedIdsRef.current.length > 0) setSelectedIds([]);
+          if (selectedConnectorIdsRef.current.length > 0) setSelectedConnectorIds([]);
+          if (activeShapeRef.current !== null) setActiveShape(null);
+          return;
+        case 'group.ungroup':
+          ungroupSelectedGroups([...selectedIdsRef.current]);
+          return;
+        case 'help.commandPalette':
+          setPaletteOpen(true);
+          return;
+      }
+    },
+    [
+      canUndo,
+      canRedo,
+      undoFn,
+      redoFn,
+      onCopyNodes,
+      onPasteNodes,
+      onDeleteSelection,
+      demoNodes,
+      demoConnectors,
+      onTidy,
+      ungroupSelectedGroups,
+    ],
+  );
+
+  // US-006: Cmd/Ctrl+P opens the command palette. preventDefault fires the
+  // moment the chord matches (regardless of focus) so the browser's native
+  // Print dialog never escapes — even when focus is inside a node label
+  // editor. The palette action itself is suppressed in editable elements so
+  // typing flow isn't interrupted by an accidental palette open.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== 'p') return;
+      e.preventDefault();
+      if (isEditableElement(document.activeElement)) return;
+      runCommand('help.commandPalette');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [runCommand]);
+
   // US-022: capture the React Flow viewport as a PNG. Shared `captureViewportPng`
   // helper handles the html-to-image call + chrome filter so PNG and PDF render
   // exactly the same content. The orchestration (fitView so the whole graph is
@@ -3191,6 +3362,27 @@ export function DemoView({
           >
             Dismiss
           </button>
+        </div>
+      ) : null}
+
+      {/* US-006: command-palette placeholder. Full UI lands in US-007 — this
+          stub proves Cmd/Ctrl+P routes through runCommand and that
+          setPaletteOpen wiring is sound. */}
+      {paletteOpen ? (
+        <div
+          data-testid="command-palette-placeholder"
+          className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center pt-24"
+        >
+          <div className="pointer-events-auto w-[480px] rounded-md border bg-background p-4 text-sm shadow-lg">
+            <div className="font-medium">Command Palette (coming in US-007)</div>
+            <button
+              type="button"
+              className="mt-3 text-xs text-muted-foreground underline underline-offset-2"
+              onClick={() => setPaletteOpen(false)}
+            >
+              Close
+            </button>
+          </div>
         </div>
       ) : null}
 
