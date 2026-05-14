@@ -25,6 +25,7 @@ export interface Registry {
   getById(id: string): DemoEntry | undefined;
   getBySlug(slug: string): DemoEntry | undefined;
   getByRepoPath(repoPath: string): DemoEntry | undefined;
+  getByRepoPathAndDemoPath(repoPath: string, demoPath: string): DemoEntry | undefined;
   upsert(input: RegisterInput): DemoEntry;
   remove(id: string): boolean;
 }
@@ -77,6 +78,13 @@ export function createRegistry(options: { path?: string } = {}): Registry {
     return undefined;
   };
 
+  const findByRepoPathAndDemoPath = (repoPath: string, demoPath: string): DemoEntry | undefined => {
+    for (const e of entries.values()) {
+      if (e.repoPath === repoPath && e.demoPath === demoPath) return e;
+    }
+    return undefined;
+  };
+
   const uniqueSlug = (base: string): string => {
     const taken = new Set([...entries.values()].map((e) => e.slug));
     if (!taken.has(base)) return base;
@@ -90,10 +98,11 @@ export function createRegistry(options: { path?: string } = {}): Registry {
     getById: (id) => entries.get(id),
     getBySlug: (slug) => [...entries.values()].find((e) => e.slug === slug),
     getByRepoPath: findByRepoPath,
+    getByRepoPathAndDemoPath: findByRepoPathAndDemoPath,
     upsert(input) {
       const lastModified = input.lastModified ?? Date.now();
       const valid = input.valid ?? true;
-      const existing = findByRepoPath(input.repoPath);
+      const existing = findByRepoPathAndDemoPath(input.repoPath, input.demoPath);
       if (existing) {
         const updated: DemoEntry = {
           ...existing,

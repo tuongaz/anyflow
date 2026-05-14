@@ -172,6 +172,55 @@ describe('POST /api/demos/register', () => {
     expect((second as { slug: string }).slug).toBe((first as { slug: string }).slug);
     expect(registry.list()).toHaveLength(1);
   });
+
+  it('same repoPath + different demoPath returns two distinct ids + slugs; both listed', async () => {
+    const { app, registry } = buildApp();
+    const repoPath = mkdtempSync(join(tmpdir(), 'anydemo-api-multi-'));
+    mkdirSync(join(repoPath, '.anydemo', 'checkout'), { recursive: true });
+    mkdirSync(join(repoPath, '.anydemo', 'refund'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.anydemo', 'checkout', 'demo.json'),
+      JSON.stringify({ ...VALID_DEMO, name: 'Checkout' }),
+    );
+    writeFileSync(
+      join(repoPath, '.anydemo', 'refund', 'demo.json'),
+      JSON.stringify({ ...VALID_DEMO, name: 'Refund' }),
+    );
+
+    const a = (await (
+      await post(app, '/api/demos/register', {
+        repoPath,
+        demoPath: '.anydemo/checkout/demo.json',
+      })
+    ).json()) as { id: string; slug: string };
+    const b = (await (
+      await post(app, '/api/demos/register', {
+        repoPath,
+        demoPath: '.anydemo/refund/demo.json',
+      })
+    ).json()) as { id: string; slug: string };
+
+    expect(a.id).not.toBe(b.id);
+    expect(a.slug).not.toBe(b.slug);
+    expect(registry.list()).toHaveLength(2);
+
+    const listRes = await app.request('/api/demos');
+    expect(listRes.status).toBe(200);
+    const list = (await listRes.json()) as Array<{ id: string; slug: string }>;
+    const ids = list.map((d) => d.id).sort();
+    expect(ids).toEqual([a.id, b.id].sort());
+
+    // Re-registering one entry should only update that entry.
+    const updatedA = (await (
+      await post(app, '/api/demos/register', {
+        repoPath,
+        demoPath: '.anydemo/checkout/demo.json',
+      })
+    ).json()) as { id: string };
+    expect(updatedA.id).toBe(a.id);
+    expect(registry.list()).toHaveLength(2);
+    expect(registry.getById(b.id)?.demoPath).toBe('.anydemo/refund/demo.json');
+  });
 });
 
 describe('POST /api/demos/validate', () => {

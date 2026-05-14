@@ -1,0 +1,297 @@
+#!/usr/bin/env bun
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { registerDemo } from './register';
+import { resolveStudioUrl } from './studio-config';
+import { unregisterDemo } from './unregister';
+import { validateSchemaFile } from './validate-schema';
+
+const HEALTH_TIMEOUT_MS = 1000;
+const HERE = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_FIXTURE = join(HERE, '..', '..', '..', 'examples', 'todo-demo-target');
+
+export interface SmokeOptions {
+  url?: string;
+  fixturePath?: string;
+  keepTmp?: boolean;
+}
+
+export interface SmokeResult {
+  ok: boolean;
+  error?: string;
+  tmpRepo?: string;
+  firstId?: string;
+  firstSlug?: string;
+  secondId?: string;
+  secondSlug?: string;
+}
+
+export async function pingStudio(url: string, timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
+  try {
+    const res = await globalThis.fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// A second demo we author inline so the smoke covers "two demos in one repo".
+// Uses the same shape as todo-demo-target so the script paths resolve to files
+// the cpSync copy already laid down (no extra fixtures needed).
+function secondDemoFixture(): unknown {
+  return {
+    version: 1,
+    name: 'Sample Demo',
+    nodes: [
+      {
+        id: 'sample-service',
+        type: 'playNode',
+        position: { x: 0, y: 0 },
+        data: {
+          name: 'GET /sample',
+          kind: 'service',
+          stateSource: { kind: 'request' },
+          playAction: {
+            kind: 'script',
+            interpreter: 'bun',
+            args: ['run'],
+            scriptPath: 'scripts/play.ts',
+          },
+          description: 'Smoke fixture: second demo coexisting with the bundled one.',
+        },
+      },
+    ],
+    connectors: [],
+  };
+}
+
+interface DemoSummary {
+  id: string;
+  slug: string;
+  repoPath: string;
+}
+
+async function listDemos(url: string): Promise<DemoSummary[]> {
+  const res = await globalThis.fetch(`${url}/api/demos`);
+  if (!res.ok) {
+    throw new Error(`GET /api/demos failed: ${res.status}`);
+  }
+  return (await res.json()) as DemoSummary[];
+}
+
+export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult> {
+  const url = options.url ?? resolveStudioUrl();
+  const reachable = await pingStudio(url);
+  if (!reachable) {
+    return {
+      ok: false,
+      error: `Studio not reachable at ${url}. Start it with: anydemo start`,
+    };
+  }
+
+  const fixture = options.fixturePath ?? DEFAULT_FIXTURE;
+  if (!existsSync(fixture)) {
+    return { ok: false, error: `todo-demo-target fixture not found at ${fixture}` };
+  }
+
+  const tmpRepo = mkdtempSync(join(tmpdir(), 'anydemo-smoke-'));
+  let firstId: string | undefined;
+  let secondId: string | undefined;
+
+  try {
+    cpSync(fixture, tmpRepo, {
+      recursive: true,
+      filter: (src) => !src.includes('node_modules'),
+    });
+
+    // 1. Register the bundled demo at .anydemo/demo.json.
+    const firstReg = await registerDemo({
+      repoPath: tmpRepo,
+      demoPath: '.anydemo/demo.json',
+      url,
+    });
+    if (!firstReg.ok) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `register first demo failed (${firstReg.status}): ${JSON.stringify(firstReg.body)}`,
+      };
+    }
+    const firstBody = firstReg.body as { id?: string; slug?: string };
+    if (!firstBody.id || !firstBody.slug) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `register first demo returned malformed body: ${JSON.stringify(firstReg.body)}`,
+      };
+    }
+    firstId = firstBody.id;
+
+    // 2. Write a SECOND demo at .anydemo/sample/demo.json — validate via vendored schema.
+    const secondDir = join(tmpRepo, '.anydemo', 'sample');
+    mkdirSync(secondDir, { recursive: true });
+    const secondPath = join(secondDir, 'demo.json');
+    writeFileSync(secondPath, JSON.stringify(secondDemoFixture(), null, 2));
+
+    const validation = await validateSchemaFile(secondPath);
+    if (!validation.ok) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `second demo failed schema validation: ${JSON.stringify(validation.issues)}`,
+      };
+    }
+
+    const secondReg = await registerDemo({
+      repoPath: tmpRepo,
+      demoPath: '.anydemo/sample/demo.json',
+      url,
+    });
+    if (!secondReg.ok) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `register second demo failed (${secondReg.status}): ${JSON.stringify(secondReg.body)}`,
+      };
+    }
+    const secondBody = secondReg.body as { id?: string; slug?: string };
+    if (!secondBody.id || !secondBody.slug) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `register second demo returned malformed body: ${JSON.stringify(secondReg.body)}`,
+      };
+    }
+    secondId = secondBody.id;
+
+    if (firstBody.id === secondBody.id) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `first and second demo ids collided: ${firstBody.id}`,
+      };
+    }
+    if (firstBody.slug === secondBody.slug) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `first and second demo slugs collided: ${firstBody.slug}`,
+      };
+    }
+
+    // 3. Both demos must appear in GET /api/demos with the same repoPath.
+    const list = await listDemos(url);
+    const ours = list.filter((e) => e.repoPath === tmpRepo);
+    if (ours.length !== 2) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `expected 2 demos with repoPath=${tmpRepo}, got ${ours.length}`,
+      };
+    }
+    const listedIds = ours.map((e) => e.id).sort();
+    const expectedIds = [firstBody.id, secondBody.id].sort();
+    if (JSON.stringify(listedIds) !== JSON.stringify(expectedIds)) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `listed ids ${JSON.stringify(listedIds)} != expected ${JSON.stringify(expectedIds)}`,
+      };
+    }
+
+    // 4. Re-register the SECOND demo: same repoPath + same demoPath. Its id and
+    //    slug must be stable, and the FIRST demo's id must NOT change.
+    const reReg = await registerDemo({
+      repoPath: tmpRepo,
+      demoPath: '.anydemo/sample/demo.json',
+      url,
+    });
+    if (!reReg.ok) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `re-register second demo failed (${reReg.status}): ${JSON.stringify(reReg.body)}`,
+      };
+    }
+    const reBody = reReg.body as { id?: string; slug?: string };
+    if (reBody.id !== secondBody.id) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `second demo id mutated on re-register: ${secondBody.id} -> ${reBody.id}`,
+      };
+    }
+
+    const list2 = await listDemos(url);
+    const ours2 = list2.filter((e) => e.repoPath === tmpRepo);
+    const firstAfter = ours2.find((e) => e.id === firstBody.id);
+    if (!firstAfter) {
+      return {
+        ok: false,
+        tmpRepo,
+        error: `first demo id ${firstBody.id} disappeared after re-registering second demo`,
+      };
+    }
+
+    return {
+      ok: true,
+      tmpRepo,
+      firstId: firstBody.id,
+      firstSlug: firstBody.slug,
+      secondId: secondBody.id,
+      secondSlug: secondBody.slug,
+    };
+  } finally {
+    // Best-effort cleanup so repeated smoke runs against a long-lived studio
+    // do not accumulate stale registry entries.
+    if (firstId) {
+      try {
+        await unregisterDemo({ id: firstId, url });
+      } catch {
+        /* ignore — surface only the smoke result */
+      }
+    }
+    if (secondId) {
+      try {
+        await unregisterDemo({ id: secondId, url });
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!options.keepTmp) {
+      try {
+        rmSync(tmpRepo, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+export async function main(): Promise<number> {
+  const result = await runSmoke();
+  if (!result.ok) {
+    process.stderr.write(`${result.error}\n`);
+    return 1;
+  }
+  process.stdout.write(
+    `${JSON.stringify({
+      ok: true,
+      firstId: result.firstId,
+      firstSlug: result.firstSlug,
+      secondId: result.secondId,
+      secondSlug: result.secondSlug,
+    })}\n`,
+  );
+  return 0;
+}
+
+if (import.meta.main) {
+  process.exit(await main());
+}
+
+export { DEFAULT_FIXTURE };
