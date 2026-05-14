@@ -356,7 +356,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           )}
           style={descriptionFontStyle}
         >
-          {hasDescription ? description : descEditable ? 'Double-click to describe' : ''}
+          {hasDescription ? description : ''}
         </button>
       );
   } else {
@@ -385,7 +385,7 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
           )}
           style={labelFontStyle}
         >
-          {data.name ?? (nameEditable ? (isText ? 'Text' : 'Double-click to label') : '')}
+          {data.name ?? (isText && nameEditable ? 'Text' : '')}
         </button>
       );
   }

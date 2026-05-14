@@ -1,4 +1,3 @@
-import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   COMMANDS,
   type CommandCategory,
@@ -7,6 +6,7 @@ import {
   type CommandId,
 } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface CommandPaletteProps {
@@ -162,102 +162,108 @@ export function CommandPalette({ open, onOpenChange, runCommand, ctx }: CommandP
   }, [highlightedIndex, open]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="top-[20%] w-[480px] max-w-[90vw] translate-y-0 gap-0 p-0 sm:max-w-[480px]"
-        data-testid="command-palette"
-        onOpenAutoFocus={(e) => {
-          // Let our search input grab focus instead of Radix's default close
-          // button — the palette is search-first.
-          e.preventDefault();
-          inputRef.current?.focus();
-        }}
-      >
-        <div className="border-b">
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder="Type a command…"
-            data-testid="command-palette-input"
-            aria-label="Search commands"
-            autoComplete="off"
-            spellCheck={false}
-            className="w-full bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground"
-          />
-        </div>
-        <div
-          ref={listRef}
-          data-testid="command-palette-list"
-          className="max-h-[50vh] overflow-y-auto py-1"
-        >
-          {flat.length === 0 ? (
-            <div
-              data-testid="command-palette-empty"
-              className="px-4 py-6 text-center text-sm text-muted-foreground"
-            >
-              No commands match "{query}"
-            </div>
-          ) : (
-            (() => {
-              let runningIndex = -1;
-              return groups.map((group) => (
-                <div key={group.category} className="py-1">
-                  <div className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {group.category}
-                  </div>
-                  {group.rows.map((row) => {
-                    runningIndex += 1;
-                    const index = runningIndex;
-                    const isHighlighted = index === highlightedIndex;
-                    return (
-                      <button
-                        key={row.cmd.id}
-                        type="button"
-                        data-testid={`command-palette-row-${row.cmd.id}`}
-                        data-command-row-index={index}
-                        data-highlighted={isHighlighted ? 'true' : 'false'}
-                        aria-disabled={row.enabled ? undefined : true}
-                        disabled={!row.enabled}
-                        onMouseEnter={() => {
-                          if (row.enabled) setHighlightedIndex(index);
-                        }}
-                        onClick={() => executeAt(index)}
-                        className={cn(
-                          'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm outline-none',
-                          row.enabled
-                            ? 'cursor-pointer text-foreground hover:bg-accent'
-                            : 'cursor-not-allowed text-muted-foreground/50',
-                          isHighlighted && row.enabled ? 'bg-accent' : '',
-                        )}
-                      >
-                        <div className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium">{row.cmd.label}</span>
-                          {row.cmd.description ? (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {row.cmd.description}
-                            </span>
-                          ) : null}
-                        </div>
-                        {row.cmd.shortcut ? (
-                          <kbd
-                            data-testid={`command-palette-shortcut-${row.cmd.id}`}
-                            className="shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                          >
-                            {row.cmd.shortcut}
-                          </kbd>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ));
-            })()
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Content
+          className={cn(
+            'fixed left-[50%] top-[20%] z-50 w-[480px] max-w-[90vw] translate-x-[-50%] border bg-background shadow-lg duration-200',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+            'sm:rounded-lg',
           )}
-        </div>
-      </DialogContent>
-    </Dialog>
+          data-testid="command-palette"
+          onOpenAutoFocus={(e) => {
+            // Let our search input grab focus instead of Radix's default close
+            // button — the palette is search-first.
+            e.preventDefault();
+            inputRef.current?.focus();
+          }}
+        >
+          <div className="border-b">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              placeholder="Type a command…"
+              data-testid="command-palette-input"
+              aria-label="Search commands"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+          <div
+            ref={listRef}
+            data-testid="command-palette-list"
+            className="max-h-[50vh] overflow-y-auto py-1"
+          >
+            {flat.length === 0 ? (
+              <div
+                data-testid="command-palette-empty"
+                className="px-4 py-6 text-center text-sm text-muted-foreground"
+              >
+                No commands match "{query}"
+              </div>
+            ) : (
+              (() => {
+                let runningIndex = -1;
+                return groups.map((group) => (
+                  <div key={group.category} className="py-1">
+                    <div className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {group.category}
+                    </div>
+                    {group.rows.map((row) => {
+                      runningIndex += 1;
+                      const index = runningIndex;
+                      const isHighlighted = index === highlightedIndex;
+                      return (
+                        <button
+                          key={row.cmd.id}
+                          type="button"
+                          data-testid={`command-palette-row-${row.cmd.id}`}
+                          data-command-row-index={index}
+                          data-highlighted={isHighlighted ? 'true' : 'false'}
+                          aria-disabled={row.enabled ? undefined : true}
+                          disabled={!row.enabled}
+                          onMouseEnter={() => {
+                            if (row.enabled) setHighlightedIndex(index);
+                          }}
+                          onClick={() => executeAt(index)}
+                          className={cn(
+                            'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm outline-none',
+                            row.enabled
+                              ? 'cursor-pointer text-foreground hover:bg-accent'
+                              : 'cursor-not-allowed text-muted-foreground/50',
+                            isHighlighted && row.enabled ? 'bg-accent' : '',
+                          )}
+                        >
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium">{row.cmd.label}</span>
+                            {row.cmd.description ? (
+                              <span className="truncate text-xs text-muted-foreground">
+                                {row.cmd.description}
+                              </span>
+                            ) : null}
+                          </div>
+                          {row.cmd.shortcut ? (
+                            <kbd
+                              data-testid={`command-palette-shortcut-${row.cmd.id}`}
+                              className="shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                            >
+                              {row.cmd.shortcut}
+                            </kbd>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ));
+              })()
+            )}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
