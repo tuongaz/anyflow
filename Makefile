@@ -10,7 +10,10 @@ ITERATIONS ?= 10
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register example-order-pipeline ralph ralph-clean
+.PHONY: help install dev build typecheck lint format test clean start stop register example-order-pipeline ralph ralph-clean sync-anydemo-schema verify-anydemo-schema-sync
+
+ANYDEMO_SCHEMA_SRC := apps/studio/src/schema.ts
+ANYDEMO_SCHEMA_DST := skills/create-anydemo/vendored/schema.ts
 
 help: ## Show this target list
 	@echo "AnyDemo — make targets"
@@ -67,3 +70,21 @@ ralph: ## Run ralph loop (default 10 iterations; override with ITERATIONS=N)
 ralph-clean: ## Clear ralph state: progress.txt, prd.json, .last-branch, archive/
 	rm -f ralph/progress.txt ralph/prd.json ralph/.last-branch
 	rm -rf ralph/archive
+
+sync-anydemo-schema: ## Copy apps/studio/src/schema.ts into the create-anydemo plugin's vendored/
+	@mkdir -p $(dir $(ANYDEMO_SCHEMA_DST))
+	@cp $(ANYDEMO_SCHEMA_SRC) $(ANYDEMO_SCHEMA_DST)
+	@echo "Synced $(ANYDEMO_SCHEMA_SRC) -> $(ANYDEMO_SCHEMA_DST)"
+
+verify-anydemo-schema-sync: ## Fail if vendored schema has drifted from apps/studio/src/schema.ts
+	@if [ ! -f $(ANYDEMO_SCHEMA_DST) ]; then \
+		echo "ERROR: $(ANYDEMO_SCHEMA_DST) does not exist. Run: make sync-anydemo-schema" >&2; \
+		exit 1; \
+	fi
+	@if ! diff -q $(ANYDEMO_SCHEMA_SRC) $(ANYDEMO_SCHEMA_DST) >/dev/null; then \
+		echo "ERROR: vendored schema drifted from $(ANYDEMO_SCHEMA_SRC)." >&2; \
+		echo "Run: make sync-anydemo-schema" >&2; \
+		diff -u $(ANYDEMO_SCHEMA_SRC) $(ANYDEMO_SCHEMA_DST) || true; \
+		exit 1; \
+	fi
+	@echo "OK: $(ANYDEMO_SCHEMA_DST) matches $(ANYDEMO_SCHEMA_SRC)"

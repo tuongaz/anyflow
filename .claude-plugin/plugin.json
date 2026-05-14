@@ -1,0 +1,8 @@
+{
+  "name": "create-anydemo",
+  "version": "0.1.0",
+  "description": "Turn natural-language prompts into registered, validated AnyDemo flows. Ships one description-triggered skill (create-anydemo) that orchestrates four sub-agents and a small set of bun scripts.",
+  "author": {
+    "name": "AnyDemo"
+  }
+}
