@@ -2658,6 +2658,49 @@ export function DemoView({
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // US-005: bare 'F' → zoom-to-selection (Figma convention). Modifier-rejection
+  // guarantees it never shadows Cmd/Ctrl+F (find) or similar chords. Empty
+  // selection no-ops so the key never accidentally triggers a fit-all — that
+  // remains Cmd+0's job (zoom chord handler above).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'f') return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (isEditableElement(document.activeElement)) return;
+      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
+      const ids = selectedIdsRef.current;
+      if (ids.length === 0) return;
+      const inst = rfInstanceRef.current;
+      if (!inst) return;
+      inst.fitView({
+        nodes: ids.map((id) => ({ id })),
+        padding: 0.2,
+        duration: 200,
+      });
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // US-005: bare '1' → snap zoom to 100% while preserving the current pan.
+  // setViewport with the existing x/y avoids the re-centering that fitView
+  // would do. Modifier-rejection keeps Cmd+1 (and any future digit chords)
+  // free for other use.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== '1') return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (isEditableElement(document.activeElement)) return;
+      if (document.querySelector('[data-testid="inline-edit-input"]')) return;
+      const inst = rfInstanceRef.current;
+      if (!inst) return;
+      const { x, y } = inst.getViewport();
+      inst.setViewport({ x, y, zoom: 1 }, { duration: 150 });
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // US-022: capture the React Flow viewport as a PNG. Shared `captureViewportPng`
   // helper handles the html-to-image call + chrome filter so PNG and PDF render
   // exactly the same content. The orchestration (fitView so the whole graph is
