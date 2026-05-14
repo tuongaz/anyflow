@@ -19,10 +19,9 @@
           "kind": "script",
           "interpreter": "bun",
           "args": ["run"],
-          "scriptPath": "scripts/complete-todo.ts",
-          "input": {}
+          "scriptPath": "scripts/play.ts"
         },
-        "description": "Marks the seed todo (id: seed-1) complete and publishes a todo.completed event onto the in-memory bus, which the worker picks up."
+        "description": "Appends a new todo to .anydemo/state/todos.json. Reads an optional { text } JSON object from stdin (defaults to 'New todo') and prints { ok, todoId, demoId } to stdout."
       }
     },
     {
@@ -43,7 +42,14 @@
         "borderColor": "green",
         "width": 300,
         "height": 194,
-        "backgroundColor": "red"
+        "backgroundColor": "red",
+        "statusAction": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/status.ts",
+          "maxLifetimeMs": 600000
+        }
       }
     },
     {
