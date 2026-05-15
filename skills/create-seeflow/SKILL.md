@@ -39,8 +39,7 @@ Phase 4 — seeflow-play-designer  ┐
                                  ┘
 Phase 5 — synthesize → validate-schema
 Phase 6 — write script files → re-register full flow
-Phase 7 — validate-end-to-end.ts → trigger APIs → verify via SSE (retry up to 2x)
-Phase 8 — open browser on success / retry-or-stop on failure
+Phase 7 — validate-end-to-end.ts → trigger APIs → verify via SSE (retry up to 2x) → print URL on success / retry-or-stop on failure
 ```
 
 Each phase is **gated** on the previous one.
@@ -167,7 +166,6 @@ Create a `TaskCreate` checklist before launching any sub-agent:
 [ ] Phase 5 — Synthesize & validate schema
 [ ] Phase 6 — Write script files & re-register full flow
 [ ] Phase 7 — End-to-end validation (trigger APIs, verify via SSE)
-[ ] Phase 8 — Open browser
 ```
 
 Mark each complete via `TaskUpdate` immediately after it succeeds.
@@ -246,10 +244,10 @@ Paths (used in this phase and Phase 6):
 - `flowPath = .seeflow/<slug>/seeflow.json`
 
 1. Build skeleton JSON from node draft — omit `playAction`, `statusAction`, `resetAction`. Keep `version`, `name`, `nodes`, `connectors`.
-2. Write to `/tmp/seeflow-<slug>-nodes.json`.
+2. `mkdir -p $flowDir` then write to `$flowDir/seeflow-nodes.json`.
 3. Validate:
    ```bash
-   bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-nodes.json
+   bun skills/create-seeflow/scripts/validate-schema.ts "$flowDir/seeflow-nodes.json"
    ```
    On failure: fix field-level issues in-place (no re-run of node-planner), retry.
 4. Write `$flowDir/seeflow.json` and register:
@@ -257,12 +255,7 @@ Paths (used in this phase and Phase 6):
    bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --flow "$flowPath"
    ```
    Stash the returned `id`.
-5. Open studio in browser:
-   ```bash
-   url="$STUDIO_URL/d/<slug>"
-   case "$(uname)" in Darwin) open "$url";; Linux) xdg-open "$url";; esac
-   ```
-6. Ask the user:
+5. Ask the user:
    > The nodes are live at `<url>`. Does the layout look right? Any additions, removals, or renames before I write the scripts?
 
 **Wait** for response.
@@ -322,11 +315,11 @@ Launch `seeflow-play-designer` and `seeflow-status-designer` **in parallel** (si
 
 1. **Splice** `newTriggerNodes` into `nodeDraft.nodes` (add any required connectors).
 2. **Merge** each overlay onto its target node's `data`. Strip `validationSafe`, `rationale`, `scriptBody` — orchestrator metadata, not schema fields. Collect `nodeId`s where `validationSafe: false` into `unsafeNodeIds`.
-3. **Write** merged flow to `/tmp/seeflow-<slug>-draft.json`.
+3. **Write** merged flow to `$flowDir/seeflow-draft.json`.
 4. **Validate:**
 
 ```bash
-bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-draft.json
+bun skills/create-seeflow/scripts/validate-schema.ts "$flowDir/seeflow-draft.json"
 ```
 
 `{"ok":true}` → continue. `{"ok":false,"issues":[…]}` → feed issues back to the relevant designer, retry. **Max 3 retries**, then surface verbatim and stop.
@@ -371,7 +364,7 @@ The script:
 - Drains SSE for `node:done` / `node:error` / `node:status` events. SSE outcome takes precedence.
 - Hard ceiling: ~2 minutes. Emits `{ok, plays, statuses, skipped}`.
 
-**Interpret the JSON.** On `ok: true` → Phase 8. On `ok: false`:
+**Interpret the JSON.** On `ok: true` → print `Flow "<name>" registered as <slug>. Open: $STUDIO_URL/d/<slug>`. Done. On `ok: false`:
 
 1. Identify failing nodes from `plays[*].error` / `statuses[*].outcome`.
 2. Propose a concrete fix ("play-checkout.ts: `ECONNREFUSED` on port 3001 — start the app first").
@@ -379,19 +372,6 @@ The script:
 4. Edit scripts in-place, re-run Phase 7 against the same `<id>`. **Max 2 retries**, then ask `retry / stop`.
 
 Never re-run `register.ts` in the fix-up loop.
-
----
-
-## Phase 8 — open the browser
-
-```bash
-url="$STUDIO_URL/d/<slug>"
-case "$(uname)" in Darwin) open "$url";; Linux) xdg-open "$url";; *) echo "Open $url";; esac
-```
-
-Print: `Flow "<name>" registered as <slug>. Open: <url>`. Done.
-
-On Phase 7 failure: do not open browser. Wait for `retry / stop`.
 
 ---
 
