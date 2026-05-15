@@ -251,7 +251,11 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
     const message = err instanceof Error ? err.message : String(err);
     if (statusTargets.length > 0) {
       for (const nid of statusTargets) {
-        statuses.push({ nodeId: nid, outcome: 'failed', error: `failed to open SSE stream: ${message}` });
+        statuses.push({
+          nodeId: nid,
+          outcome: 'failed',
+          error: `failed to open SSE stream: ${message}`,
+        });
       }
     }
   }
@@ -290,7 +294,8 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
       const parsed = (body ?? {}) as { runId?: string; error?: string };
       httpResults.set(nodeId, {
         runId: parsed.runId,
-        httpError: typeof parsed.error === 'string' && parsed.error.length > 0 ? parsed.error : undefined,
+        httpError:
+          typeof parsed.error === 'string' && parsed.error.length > 0 ? parsed.error : undefined,
         body,
       });
     }
@@ -307,7 +312,9 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
     const pendingPlays = new Set(
       playTargets.filter((id) => httpResults.has(id) && !httpResults.get(id)?.httpError),
     );
-    const pendingStatuses = new Set(statusTargets.filter((id) => !statuses.find((s) => s.nodeId === id)));
+    const pendingStatuses = new Set(
+      statusTargets.filter((id) => !statuses.find((s) => s.nodeId === id)),
+    );
 
     const drainDeadline = Math.min(
       Date.now() + Math.max(SSE_PLAY_CONFIRM_MS, statusWaitMs),
@@ -335,7 +342,13 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
         });
         pendingPlays.delete(nid);
       } else if (evt.event === 'node:status') {
-        let payload: { nodeId?: unknown; state?: unknown; summary?: unknown; detail?: unknown; ts?: unknown };
+        let payload: {
+          nodeId?: unknown;
+          state?: unknown;
+          summary?: unknown;
+          detail?: unknown;
+          ts?: unknown;
+        };
         try {
           payload = JSON.parse(evt.data);
         } catch {
@@ -372,7 +385,13 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
 
     if (http.httpError) {
       // HTTP-level failure — no need to check SSE
-      plays.push({ nodeId, outcome: 'failed', runId: http.runId, body: http.body, error: http.httpError });
+      plays.push({
+        nodeId,
+        outcome: 'failed',
+        runId: http.runId,
+        body: http.body,
+        error: http.httpError,
+      });
     } else if (sse?.type === 'error') {
       // HTTP returned ok but SSE confirmed the script errored
       plays.push({

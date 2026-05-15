@@ -2667,7 +2667,13 @@ describe('POST /api/projects', () => {
   it('detects an existing SeeFlow project at <projectBaseDir>/<slug>/.seeflow/demo.json and registers it as-is', async () => {
     const projectBaseDir = mkdtempSync(join(tmpdir(), 'seeflow-create-existing-'));
     const registry = createRegistry({ path: tmpRegistry() });
-    const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
+    const app = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry,
+      disableWatcher: true,
+      projectBaseDir,
+    });
     // Pre-create the expected project path.
     const projectPath = join(projectBaseDir, 'existing-project');
     mkdirSync(join(projectPath, '.seeflow'), { recursive: true });
@@ -2691,7 +2697,13 @@ describe('POST /api/projects', () => {
   it('scaffolds a fresh project (folder + .seeflow/demo.json) when the target has no setup', async () => {
     const projectBaseDir = mkdtempSync(join(tmpdir(), 'seeflow-create-fresh-'));
     const registry = createRegistry({ path: tmpRegistry() });
-    const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
+    const app = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry,
+      disableWatcher: true,
+      projectBaseDir,
+    });
 
     const res = await post(app, '/api/projects', { name: 'Fresh Project' });
 
@@ -2701,7 +2713,9 @@ describe('POST /api/projects', () => {
     expect(body.slug).toBe('fresh-project');
     expect(registry.list()).toHaveLength(1);
 
-    const written = JSON.parse(readFileSync(join(projectBaseDir, 'fresh-project', '.seeflow', 'demo.json'), 'utf-8'));
+    const written = JSON.parse(
+      readFileSync(join(projectBaseDir, 'fresh-project', '.seeflow', 'demo.json'), 'utf-8'),
+    );
     expect(written).toEqual({ version: 1, name: 'Fresh Project', nodes: [], connectors: [] });
   });
 
@@ -2715,7 +2729,13 @@ describe('POST /api/projects', () => {
   it('returns 400 with issues when an existing demo file fails schema validation', async () => {
     const projectBaseDir = mkdtempSync(join(tmpdir(), 'seeflow-create-bad-'));
     const registry = createRegistry({ path: tmpRegistry() });
-    const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
+    const app = createApp({
+      mode: 'prod',
+      staticRoot: './dist/web',
+      registry,
+      disableWatcher: true,
+      projectBaseDir,
+    });
     // Pre-create an invalid demo.json at the expected path.
     const projectPath = join(projectBaseDir, 'bad');
     mkdirSync(join(projectPath, '.seeflow'), { recursive: true });

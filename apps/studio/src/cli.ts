@@ -54,7 +54,8 @@ if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
 }
 
 function printHelp() {
-  console.log(`
+  console.log(
+    `
 seeflow — local studio for file-defined interactive demos
 
 Usage:
@@ -81,7 +82,8 @@ Examples:
   npx @tuongaz/seeflow start --port 8080 --daemon
   npx @tuongaz/seeflow register --path ./my-app
   npx @tuongaz/seeflow stop
-`.trim());
+`.trim(),
+  );
 }
 
 async function runStart() {
@@ -181,7 +183,7 @@ async function runRegister() {
   const demoPathArg = flagValue('demo') ?? DEFAULT_DEMO_PATH;
   const noStart = hasFlag('no-start');
   const config = readConfig();
-  const overrideUrl = process.env.ANYDEMO_STUDIO_URL?.replace(/\/+$/, '');
+  const overrideUrl = process.env.SEEFLOW_STUDIO_URL?.replace(/\/+$/, '');
   const url = overrideUrl ?? studioUrl(config);
 
   const fullPath = isAbsolute(demoPathArg) ? demoPathArg : join(repoPath, demoPathArg);

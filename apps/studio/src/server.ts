@@ -129,7 +129,11 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
-    const mcpServer = createMcpServer({ registry, watcher, projectBaseDir: options.projectBaseDir });
+    const mcpServer = createMcpServer({
+      registry,
+      watcher,
+      projectBaseDir: options.projectBaseDir,
+    });
     await mcpServer.connect(transport);
     try {
       return await transport.handleRequest(c.req.raw);

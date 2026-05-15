@@ -147,9 +147,24 @@ interface ProjectFixture {
 const buildProjectFixture = (name: string): ProjectFixture => {
   const registry = createRegistry({ path: tmpRegistryPath() });
   const projectBaseDir = mkdtempSync(join(tmpdir(), 'seeflow-parity-proj-'));
-  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'demo';
-  return { app, registry, projectBaseDir, demoFile: join(projectBaseDir, slug, '.seeflow', 'demo.json') };
+  const app = createApp({
+    mode: 'prod',
+    staticRoot: './dist/web',
+    registry,
+    disableWatcher: true,
+    projectBaseDir,
+  });
+  const slug =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'demo';
+  return {
+    app,
+    registry,
+    projectBaseDir,
+    demoFile: join(projectBaseDir, slug, '.seeflow', 'demo.json'),
+  };
 };
 
 let rpcId = 1;

@@ -44,7 +44,13 @@ const tmpEmptyFolder = () => mkdtempSync(join(tmpdir(), 'seeflow-mcp-proj-'));
 
 const buildApp = (opts: { projectBaseDir?: string } = {}) => {
   const registry = createRegistry({ path: tmpRegistry() });
-  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, ...opts });
+  const app = createApp({
+    mode: 'prod',
+    staticRoot: './dist/web',
+    registry,
+    disableWatcher: true,
+    ...opts,
+  });
   return { app, registry };
 };
 

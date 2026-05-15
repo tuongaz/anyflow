@@ -509,7 +509,11 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
  * mcp-shim.ts) — every request builds its own server in stateless mode.
  */
 export function createMcpServer(options: CreateMcpServerOptions): Server {
-  const tools = buildTools({ registry: options.registry, watcher: options.watcher, projectBaseDir: options.projectBaseDir });
+  const tools = buildTools({
+    registry: options.registry,
+    watcher: options.watcher,
+    projectBaseDir: options.projectBaseDir,
+  });
 
   const server = new Server({ name: 'seeflow', version: '0.1.0' }, { capabilities: { tools: {} } });
 
