@@ -1,5 +1,8 @@
 node_modules/
 dist/
+!apps/studio/dist/
+apps/studio/dist/*
+!apps/studio/dist/web
 /.anydemo/
 **/.anydemo/sdk/
 ~/.anydemo

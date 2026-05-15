@@ -14,8 +14,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "test": "bun test",
-    "dev": "bun run --filter '*' dev",
-    "prepare": "npx --yes vite build --root apps/web || true"
+    "dev": "bun run --filter '*' dev"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
