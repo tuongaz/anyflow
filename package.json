@@ -4,6 +4,10 @@
   "version": "0.0.0",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "anyflow": "apps/studio/bin/anydemo",
+    "anydemo": "apps/studio/bin/anydemo"
+  },
   "workspaces": ["apps/*", "packages/*", "examples/*"],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",

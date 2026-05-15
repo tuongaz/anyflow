@@ -1,6 +1,6 @@
 {
 	"name": "@tuongaz/anyflow",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"description": "Local studio that hosts file-defined demos as React Flow canvases wired to a running app via REST + SSE + Zod schema.",
 	"keywords": [
 		"anydemo",
