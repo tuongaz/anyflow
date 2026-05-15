@@ -36,7 +36,9 @@ const flagValue = (name: string): string | undefined => {
 
 const hasFlag = (name: string): boolean => argv.includes(`--${name}`);
 
-if (!sub || sub === 'start') {
+if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
+  printHelp();
+} else if (sub === 'start') {
   await runStart();
 } else if (sub === 'stop') {
   runStop();
@@ -47,7 +49,39 @@ if (!sub || sub === 'start') {
   process.exit(0);
 } else {
   console.error(`Unknown subcommand: ${sub}`);
+  printHelp();
   process.exit(1);
+}
+
+function printHelp() {
+  console.log(`
+anyflow / anydemo — local studio for file-defined interactive demos
+
+Usage:
+  npx @tuongaz/anyflow <command> [options]
+
+Commands:
+  start             Start the AnyDemo Studio server (default port 4321)
+  stop              Stop a background studio instance
+  register          Register a demo repo with the running studio
+  help              Show this help message
+
+Options (start):
+  --port <n>        Listen on port n (default: 4321)
+  --daemon          Start in background and exit
+
+Options (register):
+  --path <dir>      Path to repo root (default: current directory)
+  --demo <file>     Path to demo JSON, relative to repo root
+                    (default: .anydemo/demo.json)
+  --no-start        Fail if studio is not already running
+
+Examples:
+  npx @tuongaz/anyflow start
+  npx @tuongaz/anyflow start --port 8080 --daemon
+  npx @tuongaz/anyflow register --path ./my-app
+  npx @tuongaz/anyflow stop
+`.trim());
 }
 
 async function runStart() {
