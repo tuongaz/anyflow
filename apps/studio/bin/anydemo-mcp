@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const shim = join(here, '..', 'src', 'mcp-shim.ts');
+const args = process.argv.slice(2);
+
+let res = spawnSync('bun', [shim, ...args], { stdio: 'inherit' });
+
+if (res.error && res.error.code === 'ENOENT') {
+  console.error('anydemo-mcp: Bun not found in PATH. Bootstrapping via `npx bun`…');
+  console.error('             For instant startup, install Bun: https://bun.sh\n');
+  res = spawnSync('npx', ['--yes', 'bun', shim, ...args], { stdio: 'inherit' });
+}
+
+if (res.error) {
+  console.error(`anydemo-mcp: failed to launch MCP shim: ${res.error.message}`);
+  process.exit(1);
+}
+
+process.exit(res.status ?? 1);

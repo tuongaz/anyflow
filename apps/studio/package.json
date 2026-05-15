@@ -25,8 +25,8 @@
   "author": "Tuong Le",
   "type": "module",
   "bin": {
-    "anydemo": "./bin/anydemo.mjs",
-    "anydemo-mcp": "./src/mcp-shim.ts"
+    "anydemo": "./bin/anydemo",
+    "anydemo-mcp": "./bin/anydemo-mcp"
   },
   "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "public", "README.md"],
   "engines": {
