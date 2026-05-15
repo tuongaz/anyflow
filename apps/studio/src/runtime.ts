@@ -10,11 +10,11 @@ export interface StudioConfig {
 export const DEFAULT_CONFIG: StudioConfig = { port: 4321, host: '0.0.0.0' };
 
 export function defaultConfigPath(): string {
-  return join(homedir(), '.anydemo', 'config.json');
+  return join(homedir(), '.seeflow', 'config.json');
 }
 
 export function defaultPidPath(): string {
-  return join(homedir(), '.anydemo', 'anydemo.pid');
+  return join(homedir(), '.seeflow', 'seeflow.pid');
 }
 
 export function readConfig(path = defaultConfigPath()): StudioConfig {

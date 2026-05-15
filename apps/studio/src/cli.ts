@@ -18,7 +18,7 @@ import { DemoSchema } from './schema.ts';
 import { serve } from './server.ts';
 import { createStatusRunner } from './status-runner.ts';
 
-const DEFAULT_DEMO_PATH = '.anydemo/demo.json';
+const DEFAULT_DEMO_PATH = '.seeflow/demo.json';
 const HEALTH_TIMEOUT_MS = 10_000;
 const HEALTH_POLL_INTERVAL_MS = 150;
 
@@ -45,7 +45,7 @@ if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
 } else if (sub === 'register') {
   await runRegister();
 } else if (['unregister', 'list'].includes(sub)) {
-  console.log(`anydemo ${sub}: not implemented (M1.B)`);
+  console.log(`seeflow ${sub}: not implemented (M1.B)`);
   process.exit(0);
 } else {
   console.error(`Unknown subcommand: ${sub}`);
@@ -55,13 +55,13 @@ if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
 
 function printHelp() {
   console.log(`
-anyflow / anydemo — local studio for file-defined interactive demos
+seeflow — local studio for file-defined interactive demos
 
 Usage:
-  npx @tuongaz/anyflow <command> [options]
+  npx @tuongaz/seeflow <command> [options]
 
 Commands:
-  start             Start the AnyDemo Studio server (default port 4321)
+  start             Start the SeeFlow Studio server (default port 4321)
   stop              Stop a background studio instance
   register          Register a demo repo with the running studio
   help              Show this help message
@@ -73,14 +73,14 @@ Options (start):
 Options (register):
   --path <dir>      Path to repo root (default: current directory)
   --demo <file>     Path to demo JSON, relative to repo root
-                    (default: .anydemo/demo.json)
+                    (default: .seeflow/demo.json)
   --no-start        Fail if studio is not already running
 
 Examples:
-  npx @tuongaz/anyflow start
-  npx @tuongaz/anyflow start --port 8080 --daemon
-  npx @tuongaz/anyflow register --path ./my-app
-  npx @tuongaz/anyflow stop
+  npx @tuongaz/seeflow start
+  npx @tuongaz/seeflow start --port 8080 --daemon
+  npx @tuongaz/seeflow register --path ./my-app
+  npx @tuongaz/seeflow stop
 `.trim());
 }
 
@@ -125,7 +125,7 @@ async function runStart() {
   process.on('SIGINT', () => void shutdown());
   process.on('exit', cleanup);
 
-  console.log(`AnyDemo Studio listening on http://${server.hostname}:${server.port}`);
+  console.log(`SeeFlow Studio listening on http://${server.hostname}:${server.port}`);
 }
 
 async function spawnDaemon(port: number, host: string) {
@@ -143,7 +143,7 @@ async function spawnDaemon(port: number, host: string) {
     console.error(`Timed out waiting for studio at ${url}/health`);
     process.exit(1);
   }
-  console.log(`AnyDemo Studio started in background on ${url} (pid ${proc.pid})`);
+  console.log(`SeeFlow Studio started in background on ${url} (pid ${proc.pid})`);
 }
 
 function spawnDetachedStudio(port: number): { pid: number } {
@@ -223,7 +223,7 @@ async function runRegister() {
     });
   } catch (err) {
     console.error(`Could not reach studio at ${url}: ${String(err)}`);
-    console.error('Start it first: anydemo start');
+    console.error('Start it first: seeflow start');
     process.exit(1);
   }
 
@@ -256,7 +256,7 @@ async function ensureStudioRunning(url: string, port: number, noStart: boolean) 
 
   if (noStart) {
     console.error(`Studio is not running at ${url}.`);
-    console.error('Start it first: anydemo start');
+    console.error('Start it first: seeflow start');
     process.exit(1);
   }
 

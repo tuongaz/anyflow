@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// AnyDemo CLI launcher.
+// SeeFlow CLI launcher.
 //
 // The CLI is written for Bun (uses Bun.serve, Bun.file, Bun.spawn). This
-// thin Node shim makes `npx anydemo …` work even if the user doesn't have
+// thin Node shim makes `npx seeflow …` work even if the user doesn't have
 // Bun installed yet — it falls back to `npx bun` to bootstrap Bun on first
 // run.
 //
@@ -19,13 +19,13 @@ const args = process.argv.slice(2);
 let res = spawnSync('bun', [cli, ...args], { stdio: 'inherit' });
 
 if (res.error && res.error.code === 'ENOENT') {
-  console.error('anydemo: Bun not found in PATH. Bootstrapping via `npx bun`…');
+  console.error('seeflow: Bun not found in PATH. Bootstrapping via `npx bun`…');
   console.error('         For instant startup, install Bun: https://bun.sh\n');
   res = spawnSync('npx', ['--yes', 'bun', cli, ...args], { stdio: 'inherit' });
 }
 
 if (res.error) {
-  console.error(`anydemo: failed to launch CLI: ${res.error.message}`);
+  console.error(`seeflow: failed to launch CLI: ${res.error.message}`);
   process.exit(1);
 }
 
