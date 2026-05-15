@@ -12,7 +12,15 @@ never read the user's codebase directly.
 
 ## When to invoke
 
-You are invoked by description. Trigger phrases include:
+You are invoked by description. In any project, just run:
+
+```
+/create-seeflow Create a flow showing how the order pipeline works
+/create-seeflow Show how checkout works end to end
+/create-seeflow Diagram our event-driven notification system
+```
+
+Trigger phrases include:
 
 - "create a demo of X" / "make me a flow of Y" / "diagram our X system"
 - "show how X works" / "visualise X" / "scaffold a demo for X"
