@@ -44,10 +44,11 @@ export interface ValidateOptions {
   url?: string;
   hardCeilingMs?: number;
   statusWaitMs?: number;
+  /** Node IDs to skip during validation (validationSafe: false — passed in by orchestrator). */
+  skipNodes?: string[];
 }
 
 interface MaybeAction {
-  validationSafe?: boolean;
   [k: string]: unknown;
 }
 
@@ -214,12 +215,14 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
 
   const nodes = demoData.demo.nodes ?? [];
 
+  // skipNodes is supplied by the orchestrator (nodes with validationSafe: false were stripped
+  // from demo.json in Phase 4 but the orchestrator retains the list and passes it via --skip-nodes).
+  const skipSet = new Set(options.skipNodes ?? []);
   const playTargets: string[] = [];
   for (const node of nodes) {
     if (!hasPlayAction(node)) continue;
-    const action = node.data?.playAction as MaybeAction | undefined;
-    if (action?.validationSafe === false) {
-      skipped.push({ nodeId: node.id, reason: 'playAction.validationSafe is false' });
+    if (skipSet.has(node.id)) {
+      skipped.push({ nodeId: node.id, reason: 'validationSafe: false — skipped by orchestrator' });
       continue;
     }
     playTargets.push(node.id);
@@ -414,12 +417,15 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
 }
 
 export async function main(argv: string[]): Promise<number> {
-  const demoId = argv[0];
+  const [demoId, ...flags] = argv;
   if (!demoId) {
-    process.stderr.write('Usage: validate-end-to-end.ts <demoId>\n');
+    process.stderr.write('Usage: validate-end-to-end.ts <demoId> [--skip-nodes nodeId1,nodeId2]\n');
     return 1;
   }
-  const report = await validateEndToEnd({ demoId });
+  const skipIdx = flags.indexOf('--skip-nodes');
+  const skipNodes =
+    skipIdx !== -1 && flags[skipIdx + 1] ? flags[skipIdx + 1].split(',').filter(Boolean) : [];
+  const report = await validateEndToEnd({ demoId, skipNodes });
   process.stdout.write(`${JSON.stringify(report)}\n`);
   return report.ok ? 0 : 1;
 }

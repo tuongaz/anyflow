@@ -269,8 +269,9 @@ In the main thread:
 2. **Merge** each `playOverlay` and `statusOverlay` onto its target node's
    `data` field. Strip `validationSafe` + `rationale` + `scriptBody` from
    the merged `playAction` / `statusAction` — they are orchestrator-side
-   metadata that the schema does NOT accept. Keep `validationSafe` in a
-   sidecar map (`{ nodeId → boolean }`) for Phase 6.
+   metadata that the schema does NOT accept. Collect every `nodeId` where
+   `validationSafe: false` into a list called `unsafeNodeIds` (used in
+   Phase 6 to tell the validator which nodes to skip).
 3. **Write** the merged `Demo` to a temporary path
    (e.g. `/tmp/anydemo-<slug>-draft.json`).
 4. **Validate** locally:
@@ -332,8 +333,14 @@ This phase MUST run. Do not skip it, do not simulate it, do not report
 success without running the script and reading its output.
 
 ```bash
-bun skills/create-anydemo/scripts/validate-end-to-end.ts <id>
+# Pass --skip-nodes only when unsafeNodeIds is non-empty (comma-separated list)
+bun skills/create-anydemo/scripts/validate-end-to-end.ts <id> [--skip-nodes <nodeId1>,<nodeId2>]
 ```
+
+`unsafeNodeIds` was built in Phase 4 from `playOverlays` entries where `validationSafe: false`.
+Pass them here so the validator skips nodes that hit real third-party services, charge real money,
+or cannot safely be triggered automatically. Nodes in `unsafeNodeIds` appear in the
+`skipped[]` output and are NOT counted as failures.
 
 The script:
 
@@ -399,7 +406,7 @@ decision.
 | Schema validation fails (Phase 4) | Loop back to the relevant designer with the Zod issue list. Max 3 retries; then surface issues verbatim. |
 | Register 400 (Phase 5) | Show response body; ask user "fix-and-retry / stop". |
 | Register 4xx/5xx other (Phase 5) | Show response body; stop. |
-| Play returns `{error: "…"}` (Phase 6) | Capture; let LLM interpret + propose fix-up plan; loop to Phase 4 (max 2 retries). |
+| Play returns `{error: "…"}` (Phase 6) | Edit the failing scripts in-place; re-run Phase 6 (max 2 retries). Do NOT re-run Phase 4 or re-register. |
 | Status SSE timeout 10s (Phase 6) | Mark node `no status received`; include in fix-up reasoning or ask user retry/stop. |
 | Validation total >2 min (Phase 6) | Script SIGTERMs in-flight checks and exits with `ok:false`; treat as failure → fix-up path. |
 
@@ -469,7 +476,7 @@ caches, `"store"` for file/object stores, `"bus"` for event buses, etc.
 {
   "id": "order-db", "type": "stateNode", "position": { "x": 600, "y": 200 },
   "data": {
-    "name": "Orders DB", "kind": "database",
+    "name": "Orders DB", "kind": "db",
     "stateSource": { "kind": "event" },
     "statusAction": { "kind": "script", "interpreter": "bun", "args": ["run"],
                       "scriptPath": "checkout-flow/scripts/status-orders.ts",
