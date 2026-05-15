@@ -107,4 +107,9 @@ OTP ?=
 
 release: ## Publish @tuongaz/anyflow to npm (NPM_TOKEN=<tok> make release; add OTP=<code> if 2FA is required)
 	@test -n "$(NPM_TOKEN)" || (echo "ERROR: NPM_TOKEN is not set" >&2; exit 1)
+	@PKG=apps/studio/package.json; \
+	OLD=$$(bun -e "console.log(require('./$$PKG').version)"); \
+	NEW=$$(echo "$$OLD" | awk -F. '{print $$1"."$$2"."$$3+1}'); \
+	echo "Bumping version $$OLD -> $$NEW"; \
+	bun -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./$$PKG'));p.version='$$NEW';fs.writeFileSync('./$$PKG',JSON.stringify(p,null,'\t')+'\n')"; \
 	cd apps/studio && npm publish --access public --//registry.npmjs.org/:_authToken=$(NPM_TOKEN) $(if $(OTP),--otp $(OTP),)
