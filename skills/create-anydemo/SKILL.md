@@ -78,6 +78,75 @@ lies about its own behavior.
 
 ---
 
+## Core rule — match the project's primary language
+
+**ALWAYS write scripts in the project's primary language when a runtime for
+that language is available.** The discoverer surfaces `runtimeProfile.primaryLanguage`
+in Phase 1 — use it as the default interpreter for every play and status
+script the designers produce in Phase 3.
+
+The practical reason: the project already has types, helpers, clients, and
+fixtures written in that language. Re-using them makes scripts shorter, more
+robust, and easier for the demo owner to maintain. A Bun/TypeScript app has
+`fetch`, typed payloads, and existing service clients; a Go app has its own
+HTTP clients and structs. Throwing away all of that by switching to bash or
+Python costs more than it saves.
+
+**Language → interpreter mapping (use these unless the runtime is absent):**
+
+| `primaryLanguage` | `interpreter` | `args` |
+|---|---|---|
+| `typescript` / `javascript` | `bun` | `["run"]` |
+| `go` | `go` | `["run"]` |
+| `python` | `python3` | `["-u"]` |
+| `ruby` | `ruby` | `[]` |
+| `java` / `kotlin` | `kotlinc` or `java` | depends on build tool |
+| `rust` | `cargo` | `["script"]` (if available) |
+
+**Worked examples:**
+
+*TypeScript app* — call the real checkout endpoint using the project's own
+type definitions:
+```typescript
+// .anydemo/checkout-flow/scripts/play-checkout.ts
+import type { CartPayload } from "../../src/types"; // reuse project types
+const input: CartPayload = JSON.parse(await Bun.stdin.text());
+const res = await fetch("http://localhost:3001/checkout", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(input),
+});
+console.log(await res.json());
+```
+
+*Go app* — use the project's existing models and HTTP client:
+```go
+// .anydemo/order-flow/scripts/play-order.go
+package main
+import (
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "bytes"
+    "os"
+)
+func main() {
+    var payload map[string]any
+    json.NewDecoder(os.Stdin).Decode(&payload)
+    body, _ := json.Marshal(payload)
+    res, _ := http.Post("http://localhost:8080/orders", "application/json", bytes.NewReader(body))
+    var out any
+    json.NewDecoder(res.Body).Decode(&out)
+    fmt.Println(out)
+}
+```
+
+**Fallback:** Only use `bash` or `python3` when the project language has no
+scriptable runtime (e.g. a Java monolith with no `jbang`/`kotlinc` available)
+or when the script logic is trivially simple (`curl` one-liner). If you fall
+back, note the reason in `rationale`.
+
+---
+
 ## Phase 0 — pre-flight (studio reachable)
 
 Resolve the studio URL: prefer `ANYDEMO_STUDIO_URL` env var, else
@@ -606,8 +675,10 @@ Constraints:
 
 - `scriptPath` MUST be a relative path under `.anydemo/`. No leading slash,
   no `..` traversal, no Windows-style drive letters.
-- `interpreter` is whatever the studio can exec. Common: `bun`, `node`,
-  `python3`, `bash`.
+- `interpreter` MUST match `runtimeProfile.primaryLanguage` (see "Core rule —
+  match the project's primary language"). Fallback to `bash`/`python3` only
+  when the project runtime cannot execute scripts directly. Common values:
+  `bun`, `go`, `python3`, `node`, `bash`.
 - `args` (optional) prepend before the script path:
   `bun run <scriptPath>` or `python3 -u <scriptPath>`.
 - `input` (playAction only) is JSON-serialised and piped to the child's
