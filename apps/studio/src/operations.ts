@@ -23,7 +23,7 @@ import {
 import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
 
-const DEFAULT_DEMO_RELATIVE_PATH = '.anydemo/demo.json';
+const DEFAULT_DEMO_RELATIVE_PATH = '.seeflow/demo.json';
 
 export const RegisterBodySchema = z.object({
   name: z.string().min(1).optional(),
@@ -176,7 +176,7 @@ export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePat
 export interface OperationsDeps {
   registry: Registry;
   watcher?: DemoWatcher;
-  /** Override the base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  /** Override the base directory for new projects. Defaults to ~/.seeflow. Tests inject a tmp dir. */
   projectBaseDir?: string;
 }
 
@@ -626,7 +626,7 @@ export async function createProjectImpl(
 ): Promise<CreateProjectOutcome> {
   const { registry, watcher } = deps;
   const { name } = body;
-  const baseDir = deps.projectBaseDir ?? join(homedir(), '.anydemo');
+  const baseDir = deps.projectBaseDir ?? join(homedir(), '.seeflow');
   const folderPath = join(baseDir, slugify(name));
 
   const demoFullPath = join(folderPath, DEFAULT_DEMO_RELATIVE_PATH);
@@ -656,7 +656,7 @@ export async function createProjectImpl(
   const scaffold: Demo = { version: 1, name, nodes: [], connectors: [] };
 
   try {
-    mkdirSync(join(folderPath, '.anydemo'), { recursive: true });
+    mkdirSync(join(folderPath, '.seeflow'), { recursive: true });
     writeFileSync(demoFullPath, `${JSON.stringify(scaffold, null, 2)}\n`);
   } catch (err) {
     return { kind: 'scaffoldFailed', message: err instanceof Error ? err.message : String(err) };
@@ -664,7 +664,7 @@ export async function createProjectImpl(
 
   // Same SDK-emit path as the CLI register flow. For a fresh scaffold with no
   // event-bound state nodes this returns 'skipped' and writes nothing —
-  // retained for parity with `anydemo register`.
+  // retained for parity with `seeflow register`.
   try {
     writeSdkEmitIfNeeded(folderPath, scaffold);
   } catch (err) {
@@ -718,7 +718,7 @@ export async function addNodeImpl(
       existingData.htmlPath = htmlPath;
       newNode.data = existingData;
       starterFile = {
-        absPath: join(entry.repoPath, '.anydemo', htmlPath),
+        absPath: join(entry.repoPath, '.seeflow', htmlPath),
         content: buildHtmlNodeStarter(newId),
       };
     } else if (!dataIsRecord) {
@@ -877,7 +877,7 @@ const managedHtmlNodePath = (
   if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
   const htmlPath = (data as Record<string, unknown>).htmlPath;
   if (htmlPath !== `blocks/${nodeId}.html`) return undefined;
-  return join(repoPath, '.anydemo', htmlPath);
+  return join(repoPath, '.seeflow', htmlPath);
 };
 
 // Move a single node by writing { x, y } back to its `position` on disk.

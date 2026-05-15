@@ -8,7 +8,7 @@
  *
  * Defense-in-depth on scriptPath: schema.ts already rejects absolute paths
  * and `..` traversal textually. Here we additionally realpath-resolve the
- * script under `<cwd>/.anydemo/` and reject anything that escapes that root —
+ * script under `<cwd>/.seeflow/` and reject anything that escapes that root —
  * symlink-escape defense in line with `resolveProjectFile` in api.ts.
  */
 
@@ -33,7 +33,7 @@ export interface RunPlayOptions {
   events: EventBus;
   demoId: string;
   nodeId: string;
-  /** Project root (`<repoPath>`). Script resolves under `<cwd>/.anydemo/`. */
+  /** Project root (`<repoPath>`). Script resolves under `<cwd>/.seeflow/`. */
   cwd: string;
   action: PlayAction;
   /** Injectable for tests; defaults to `defaultProcessSpawner`. */
@@ -47,17 +47,17 @@ const SCRIPT_PATH_ESCAPE = 'scriptPath escapes project root';
 
 type Resolved = { ok: true; absPath: string } | { ok: false };
 
-// Resolve `<cwd>/.anydemo/<scriptPath>` and verify via realpath it stays inside
-// the `.anydemo` root. Mirrors `resolveProjectFile` in api.ts.
+// Resolve `<cwd>/.seeflow/<scriptPath>` and verify via realpath it stays inside
+// the `.seeflow` root. Mirrors `resolveProjectFile` in api.ts.
 function resolveScript(cwd: string, scriptPath: string): Resolved {
-  const anydemoRoot = join(cwd, '.anydemo');
+  const seeflowRoot = join(cwd, '.seeflow');
   let realRoot: string;
   try {
-    realRoot = realpathSync(anydemoRoot);
+    realRoot = realpathSync(seeflowRoot);
   } catch {
     return { ok: false };
   }
-  const target = resolve(anydemoRoot, scriptPath);
+  const target = resolve(seeflowRoot, scriptPath);
   let realTarget: string;
   try {
     realTarget = realpathSync(target);
@@ -280,7 +280,7 @@ export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
 export interface RunResetOptions {
   events: EventBus;
   demoId: string;
-  /** Project root (`<repoPath>`). Script resolves under `<cwd>/.anydemo/`. */
+  /** Project root (`<repoPath>`). Script resolves under `<cwd>/.seeflow/`. */
   cwd: string;
   action: ResetAction;
   /** Injectable for tests; defaults to `defaultProcessSpawner`. */

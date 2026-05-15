@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// AnyDemo MCP stdio shim.
+// SeeFlow MCP stdio shim.
 //
 // Bridges an MCP stdio client (e.g. Claude Code via .mcp.json) to the studio's
 // HTTP `/mcp` endpoint. Every JSON-RPC message received on stdin is forwarded
@@ -7,7 +7,7 @@
 // piped back to stdout. The shim never interprets tool semantics — it's a
 // transparent JSON-RPC proxy keyed off message ids.
 //
-// Default target: http://127.0.0.1:4321/mcp. Override with ANYDEMO_STUDIO_URL.
+// Default target: http://127.0.0.1:4321/mcp. Override with SEEFLOW_STUDIO_URL.
 
 import {
   StreamableHTTPClientTransport,
@@ -17,10 +17,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { type JSONRPCMessage, isJSONRPCRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const DEFAULT_URL = 'http://127.0.0.1:4321/mcp';
-const STUDIO_NOT_RUNNING_MSG = 'AnyDemo studio is not running. Start it with `bun run dev` first.';
+const STUDIO_NOT_RUNNING_MSG = 'SeeFlow studio is not running. Start it with `bun run dev` first.';
 const STUDIO_WITHOUT_MCP_MSG = 'This studio version does not expose MCP. Upgrade required.';
 
-const url = new URL(process.env.ANYDEMO_STUDIO_URL ?? DEFAULT_URL);
+const url = new URL(process.env.SEEFLOW_STUDIO_URL ?? DEFAULT_URL);
 
 const stdio = new StdioServerTransport();
 const http = new StreamableHTTPClientTransport(url);

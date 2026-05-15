@@ -31,7 +31,7 @@ export interface Registry {
 }
 
 export function defaultRegistryPath(): string {
-  return join(homedir(), '.anydemo', 'registry.json');
+  return join(homedir(), '.seeflow', 'registry.json');
 }
 
 export function slugify(name: string): string {

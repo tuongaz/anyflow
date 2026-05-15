@@ -1,4 +1,4 @@
-# AnyDemo — convenience wrapper over the bun commands documented in CLAUDE.md.
+# SeeFlow — convenience wrapper over the bun commands documented in CLAUDE.md.
 # `make help` (or just `make`) lists every target with its one-line description.
 
 SHELL := /bin/bash
@@ -10,13 +10,13 @@ ITERATIONS ?= 10
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-anydemo-schema verify-anydemo-schema-sync smoke-create-anydemo release
+.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-seeflow-schema verify-seeflow-schema-sync smoke-create-seeflow release
 
-ANYDEMO_SCHEMA_SRC := apps/studio/src/schema.ts
-ANYDEMO_SCHEMA_DST := skills/create-anydemo/vendored/schema.ts
+SEEFLOW_SCHEMA_SRC := apps/studio/src/schema.ts
+SEEFLOW_SCHEMA_DST := skills/create-seeflow/vendored/schema.ts
 
 help: ## Show this target list
-	@echo "AnyDemo — make targets"
+	@echo "SeeFlow — make targets"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
@@ -48,7 +48,7 @@ format: ## biome format --write (run before lint)
 test: ## bun test
 	bun test
 
-start: ## Start the studio daemon (writes ~/.anydemo/anydemo.pid)
+start: ## Start the studio daemon (writes ~/.seeflow/seeflow.pid)
 	$(CLI) start --daemon
 
 stop: ## Stop the studio daemon (sends SIGTERM)
@@ -71,7 +71,7 @@ demo: ## Quickstart: start studio, register the bundled todo example, open in br
 example-order-pipeline: ## Run the order-pipeline example app (port 3040)
 	cd examples/order-pipeline && bun start
 
-clean: ## Remove node_modules + apps/studio/dist (preserves ~/.anydemo and examples/*/.anydemo/sdk)
+clean: ## Remove node_modules + apps/studio/dist (preserves ~/.seeflow and examples/*/.seeflow/sdk)
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules examples/*/node_modules
 	rm -rf apps/studio/dist
 
@@ -82,30 +82,30 @@ ralph-clean: ## Clear ralph state: progress.txt, prd.json, .last-branch, archive
 	rm -f ralph/progress.txt ralph/prd.json ralph/.last-branch
 	rm -rf ralph/archive
 
-sync-anydemo-schema: ## Copy apps/studio/src/schema.ts into the create-anydemo plugin's vendored/
-	@mkdir -p $(dir $(ANYDEMO_SCHEMA_DST))
-	@cp $(ANYDEMO_SCHEMA_SRC) $(ANYDEMO_SCHEMA_DST)
-	@echo "Synced $(ANYDEMO_SCHEMA_SRC) -> $(ANYDEMO_SCHEMA_DST)"
+sync-seeflow-schema: ## Copy apps/studio/src/schema.ts into the create-seeflow plugin's vendored/
+	@mkdir -p $(dir $(SEEFLOW_SCHEMA_DST))
+	@cp $(SEEFLOW_SCHEMA_SRC) $(SEEFLOW_SCHEMA_DST)
+	@echo "Synced $(SEEFLOW_SCHEMA_SRC) -> $(SEEFLOW_SCHEMA_DST)"
 
-verify-anydemo-schema-sync: ## Fail if vendored schema has drifted from apps/studio/src/schema.ts
-	@if [ ! -f $(ANYDEMO_SCHEMA_DST) ]; then \
-		echo "ERROR: $(ANYDEMO_SCHEMA_DST) does not exist. Run: make sync-anydemo-schema" >&2; \
+verify-seeflow-schema-sync: ## Fail if vendored schema has drifted from apps/studio/src/schema.ts
+	@if [ ! -f $(SEEFLOW_SCHEMA_DST) ]; then \
+		echo "ERROR: $(SEEFLOW_SCHEMA_DST) does not exist. Run: make sync-seeflow-schema" >&2; \
 		exit 1; \
 	fi
-	@if ! diff -q $(ANYDEMO_SCHEMA_SRC) $(ANYDEMO_SCHEMA_DST) >/dev/null; then \
-		echo "ERROR: vendored schema drifted from $(ANYDEMO_SCHEMA_SRC)." >&2; \
-		echo "Run: make sync-anydemo-schema" >&2; \
-		diff -u $(ANYDEMO_SCHEMA_SRC) $(ANYDEMO_SCHEMA_DST) || true; \
+	@if ! diff -q $(SEEFLOW_SCHEMA_SRC) $(SEEFLOW_SCHEMA_DST) >/dev/null; then \
+		echo "ERROR: vendored schema drifted from $(SEEFLOW_SCHEMA_SRC)." >&2; \
+		echo "Run: make sync-seeflow-schema" >&2; \
+		diff -u $(SEEFLOW_SCHEMA_SRC) $(SEEFLOW_SCHEMA_DST) || true; \
 		exit 1; \
 	fi
-	@echo "OK: $(ANYDEMO_SCHEMA_DST) matches $(ANYDEMO_SCHEMA_SRC)"
+	@echo "OK: $(SEEFLOW_SCHEMA_DST) matches $(SEEFLOW_SCHEMA_SRC)"
 
-smoke-create-anydemo: ## End-to-end smoke: registers TWO demos in one repo via plugin scripts (studio must be running)
-	@bun run skills/create-anydemo/scripts/smoke.ts
+smoke-create-seeflow: ## End-to-end smoke: registers TWO demos in one repo via plugin scripts (studio must be running)
+	@bun run skills/create-seeflow/scripts/smoke.ts
 
 OTP ?=
 
-release: ## Publish @tuongaz/anyflow to npm (NPM_TOKEN=<tok> make release; add OTP=<code> if 2FA is required)
+release: ## Publish @tuongaz/seeflow to npm (NPM_TOKEN=<tok> make release; add OTP=<code> if 2FA is required)
 	@test -n "$(NPM_TOKEN)" || (echo "ERROR: NPM_TOKEN is not set" >&2; exit 1)
 	@PKG=apps/studio/package.json; \
 	OLD=$$(bun -e "console.log(require('./$$PKG').version)"); \

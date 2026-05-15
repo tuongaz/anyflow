@@ -9,7 +9,7 @@
     "ignore": [
       "**/node_modules/**",
       "**/dist/**",
-      "**/.anydemo/**",
+      "**/.seeflow/**",
       "apps/web/dist/**",
       "apps/studio/dist/**",
       "apps/studio/public/runtime/**"

@@ -14,7 +14,7 @@ import { type DemoWatcher, createWatcher } from './watcher.ts';
 
 /** Absolute path to the vendored runtime asset directory. Resolved relative
  *  to this source file so the path is stable whether the studio runs from
- *  `apps/studio/` in dev or from `node_modules/@tuongaz/anydemo/` when the
+ *  `apps/studio/` in dev or from `node_modules/@tuongaz/seeflow/` when the
  *  package is installed as a dependency. */
 export const RUNTIME_ASSETS_DIR = resolvePath(import.meta.dir, '../public/runtime');
 
@@ -26,7 +26,7 @@ export interface CreateAppOptions {
   viteDevUrl?: string;
   /** Filesystem root for the built web bundle in prod mode. */
   staticRoot?: string;
-  /** Inject a registry; defaults to one persisted at ~/.anydemo/registry.json. */
+  /** Inject a registry; defaults to one persisted at ~/.seeflow/registry.json. */
   registry?: Registry;
   /** Inject an event bus; defaults to a fresh in-memory bus. */
   events?: EventBus;
@@ -49,7 +49,7 @@ export interface CreateAppOptions {
   /** Inject a ProxyFacade — tests use this to short-circuit runPlay /
    *  runReset / stopAllPlays and assert call order. */
   proxy?: ProxyFacade;
-  /** Override base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  /** Override base directory for new projects. Defaults to ~/.seeflow. Tests inject a tmp dir. */
   projectBaseDir?: string;
 }
 
@@ -158,7 +158,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
         });
       } catch (_err) {
         return c.text(
-          `AnyDemo dev proxy could not reach Vite at ${viteDevUrl}.\nMake sure \`bun run dev\` is running so Vite is up.\n`,
+          `SeeFlow dev proxy could not reach Vite at ${viteDevUrl}.\nMake sure \`bun run dev\` is running so Vite is up.\n`,
           502,
         );
       }
@@ -200,5 +200,5 @@ if (import.meta.main) {
   };
   process.once('SIGINT', () => void shutdown());
   process.once('SIGTERM', () => void shutdown());
-  console.log(`AnyDemo Studio listening on http://${server.hostname}:${server.port}`);
+  console.log(`SeeFlow Studio listening on http://${server.hostname}:${server.port}`);
 }

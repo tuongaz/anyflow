@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Rename the entire app from `anydemo`/`AnyDemo` to `seeflow`/`SeeFlow`, including package names, CLI binaries, the `.anydemo/` directory convention, CSS tokens, UI text, agents, skills, and plugin.
+**Goal:** Rename the entire app from `anydemo`/`SeeFlow` to `seeflow`/`SeeFlow`, including package names, CLI binaries, the `.seeflow/` directory convention, CSS tokens, UI text, agents, skills, and plugin.
 
-**Architecture:** Pure search-and-replace + file renames across the monorepo. No logic changes — this is a brand rename only. The `.anydemo/` hidden directory convention in demo projects changes to `.seeflow/`. Root directory rename is handled by the operator separately.
+**Architecture:** Pure search-and-replace + file renames across the monorepo. No logic changes — this is a brand rename only. The `.seeflow/` hidden directory convention in demo projects changes to `.seeflow/`. Root directory rename is handled by the operator separately.
 
 **Tech Stack:** Bun, TypeScript, React, Hono, Biome (lint/format)
 
@@ -111,7 +111,7 @@ mv apps/studio/bin/anydemo-mcp apps/studio/bin/seeflow-mcp
 **Step 2: Update content of `apps/studio/bin/seeflow`**
 
 Replace all `anydemo` occurrences in the file:
-- `// AnyDemo CLI launcher.` → `// SeeFlow CLI launcher.`
+- `// SeeFlow CLI launcher.` → `// SeeFlow CLI launcher.`
 - `// This thin Node shim makes \`npx anydemo …\` work` → `// This thin Node shim makes \`npx seeflow …\` work`
 - `console.error('anydemo: Bun not found...` → `console.error('seeflow: Bun not found...`
 - `console.error(\`anydemo: failed to launch CLI...` → `console.error(\`seeflow: failed to launch CLI...`
@@ -136,20 +136,20 @@ git commit -m "rename: bin files from anydemo to seeflow"
 **Files:**
 - Modify: `apps/studio/src/cli.ts`
 
-**Step 1: Apply changes** (all occurrences of `anydemo`/`anyflow`/`AnyDemo`)
+**Step 1: Apply changes** (all occurrences of `anydemo`/`anyflow`/`SeeFlow`)
 
-- `const DEFAULT_DEMO_PATH = '.anydemo/demo.json'` → `const DEFAULT_DEMO_PATH = '.seeflow/demo.json'`
+- `const DEFAULT_DEMO_PATH = '.seeflow/demo.json'` → `const DEFAULT_DEMO_PATH = '.seeflow/demo.json'`
 - `console.log(\`anydemo ${sub}: not implemented\`` → `console.log(\`seeflow ${sub}: not implemented\``
 - `anyflow / anydemo — local studio` → `seeflow — local studio`
 - `npx @tuongaz/anyflow <command>` → `npx @tuongaz/seeflow <command>`
 - All four `npx @tuongaz/anyflow` examples → `npx @tuongaz/seeflow`
-- `(default: .anydemo/demo.json)` → `(default: .seeflow/demo.json)`
-- `'Start it first: anydemo start'` (×2) → `'Start it first: seeflow start'`
+- `(default: .seeflow/demo.json)` → `(default: .seeflow/demo.json)`
+- `'Start it first: seeflow start'` (×2) → `'Start it first: seeflow start'`
 
 **Step 2: Verify**
 
 ```bash
-grep -n "anydemo\|anyflow\|AnyDemo" apps/studio/src/cli.ts
+grep -n "anydemo\|anyflow\|SeeFlow" apps/studio/src/cli.ts
 ```
 Expected: no matches.
 
@@ -195,8 +195,8 @@ git commit -m "rename: runtime.ts ~/.anydemo paths to ~/.seeflow"
 
 **Step 1: Apply changes**
 
-- Comment line 43: `under \`<project>/.anydemo/\`` → `under \`<project>/.seeflow/\``
-- Comment line 52: `rooted at \`<project>/.anydemo/\`` → `rooted at \`<project>/.seeflow/\``
+- Comment line 43: `under \`<project>/.seeflow/\`` → `under \`<project>/.seeflow/\``
+- Comment line 52: `rooted at \`<project>/.seeflow/\`` → `rooted at \`<project>/.seeflow/\``
 - Line 269: `join(entry.repoPath, '.anydemo')` → `join(entry.repoPath, '.seeflow')`
 
 **Step 2: Verify**
@@ -222,7 +222,7 @@ git commit -m "rename: watcher.ts .anydemo path references to .seeflow"
 
 **Step 1: Apply changes**
 
-- Comment: `Writes \`.anydemo/sdk/emit.ts\`` → `Writes \`.seeflow/sdk/emit.ts\``
+- Comment: `Writes \`.seeflow/sdk/emit.ts\`` → `Writes \`.seeflow/sdk/emit.ts\``
 - `join(repoPath, '.anydemo', 'sdk')` → `join(repoPath, '.seeflow', 'sdk')`
 
 **Step 2: Verify**
@@ -248,9 +248,9 @@ git commit -m "rename: sdk-writer.ts .anydemo paths to .seeflow"
 - Modify: `apps/studio/src/api.ts`
 - Modify: `apps/studio/src/mcp.ts`
 
-**Step 1: schema.ts** — replace all 9 occurrences of `.anydemo/` with `.seeflow/` (in comments and validation error message strings).
+**Step 1: schema.ts** — replace all 9 occurrences of `.seeflow/` with `.seeflow/` (in comments and validation error message strings).
 
-**Step 2: api.ts** — replace `.anydemo/` references in comments with `.seeflow/`.
+**Step 2: api.ts** — replace `.seeflow/` references in comments with `.seeflow/`.
 
 **Step 3: mcp.ts** — replace `~/.anydemo` reference in comment with `~/.seeflow`.
 
@@ -270,12 +270,12 @@ git commit -m "rename: schema/api/mcp .anydemo references to .seeflow"
 
 ---
 
-### Task 10: Rename .anydemo/ directories in examples
+### Task 10: Rename .seeflow/ directories in examples
 
 **Files:**
-- Rename: `examples/checkout-demo/.anydemo/` → `examples/checkout-demo/.seeflow/`
-- Rename: `examples/order-pipeline/.anydemo/` → `examples/order-pipeline/.seeflow/`
-- Rename: `examples/todo-demo-target/.anydemo/` → `examples/todo-demo-target/.seeflow/`
+- Rename: `examples/checkout-demo/.seeflow/` → `examples/checkout-demo/.seeflow/`
+- Rename: `examples/order-pipeline/.seeflow/` → `examples/order-pipeline/.seeflow/`
+- Rename: `examples/todo-demo-target/.seeflow/` → `examples/todo-demo-target/.seeflow/`
 
 **Step 1: Rename**
 
@@ -290,12 +290,12 @@ mv examples/todo-demo-target/.anydemo examples/todo-demo-target/.seeflow
 Search for `anydemo` in all files inside the renamed dirs and replace:
 
 ```bash
-grep -rn "anydemo\|AnyDemo" examples/checkout-demo/.seeflow examples/order-pipeline/.seeflow examples/todo-demo-target/.seeflow
+grep -rn "anydemo\|SeeFlow" examples/checkout-demo/.seeflow examples/order-pipeline/.seeflow examples/todo-demo-target/.seeflow
 ```
 
 Update any occurrences found (check `demo.json` files, scripts).
 
-**Step 3: Update references in example source files that pointed to `.anydemo/`**
+**Step 3: Update references in example source files that pointed to `.seeflow/`**
 
 ```bash
 grep -rn "\.anydemo" examples/ --include="*.ts" --include="*.json" --include="*.md"
@@ -314,7 +314,7 @@ Expected: no matches (or only in git history).
 
 ```bash
 git add examples/
-git commit -m "rename: example .anydemo/ directories to .seeflow/"
+git commit -m "rename: example .seeflow/ directories to .seeflow/"
 ```
 
 ---
@@ -371,7 +371,7 @@ git commit -m "rename: CSS tokens and class names anydemo→seeflow"
 **Step 1: Apply changes in each file** — replace all `anydemo` occurrences:
 
 `demo-canvas.tsx`:
-- `.anydemo/<htmlPath>` in comment → `.seeflow/<htmlPath>`
+- `.seeflow/<htmlPath>` in comment → `.seeflow/<htmlPath>`
 - `.anydemo-connector-endpoint-dot` → `.seeflow-connector-endpoint-dot`
 - `'anydemo-connecting'` → `'seeflow-connecting'`
 - `--anydemo-handle-size` in comment → `--seeflow-handle-size`
@@ -425,14 +425,14 @@ git commit -m "rename: web component class names and CSS var refs anydemo→seef
 `empty-state.tsx`:
 - `const REGISTER_COMMAND = 'npx anydemo register --path .'` → `'npx seeflow register --path .'`
 - `data-testid="anydemo-empty-state"` → `data-testid="seeflow-empty-state"`
-- `Point AnyDemo at any folder` → `Point SeeFlow at any folder`
-- `.anydemo/demo.json` (displayed code) → `.seeflow/demo.json`
+- `Point SeeFlow at any folder` → `Point SeeFlow at any folder`
+- `.seeflow/demo.json` (displayed code) → `.seeflow/demo.json`
 
 `header.tsx`:
-- `AnyDemo Studio` → `SeeFlow Studio`
+- `SeeFlow Studio` → `SeeFlow Studio`
 
 `create-project-dialog.tsx`:
-- `~/.anydemo/&lt;slug&gt;` → `~/.seeflow/&lt;slug&gt;`
+- `~/.seeflow/&lt;slug&gt;` → `~/.seeflow/&lt;slug&gt;`
 
 `canvas-toolbar.tsx`:
 - `'application/x-anydemo-create-html-block'` → `'application/x-seeflow-create-html-block'`
@@ -440,7 +440,7 @@ git commit -m "rename: web component class names and CSS var refs anydemo→seef
 **Step 2: Verify**
 
 ```bash
-grep -rn "anydemo\|AnyDemo" apps/web/src/components/empty-state.tsx apps/web/src/components/header.tsx apps/web/src/components/create-project-dialog.tsx apps/web/src/components/canvas-toolbar.tsx
+grep -rn "anydemo\|SeeFlow" apps/web/src/components/empty-state.tsx apps/web/src/components/header.tsx apps/web/src/components/create-project-dialog.tsx apps/web/src/components/canvas-toolbar.tsx
 ```
 Expected: no matches.
 
@@ -448,7 +448,7 @@ Expected: no matches.
 
 ```bash
 git add apps/web/src/components/empty-state.tsx apps/web/src/components/header.tsx apps/web/src/components/create-project-dialog.tsx apps/web/src/components/canvas-toolbar.tsx
-git commit -m "rename: web UI text AnyDemo→SeeFlow"
+git commit -m "rename: web UI text SeeFlow→SeeFlow"
 ```
 
 ---
@@ -462,7 +462,7 @@ git commit -m "rename: web UI text AnyDemo→SeeFlow"
 **Step 1: Find any remaining**
 
 ```bash
-grep -rn "anydemo\|AnyDemo" apps/web/src/ | grep -v ".test." | grep -v "index.css"
+grep -rn "anydemo\|SeeFlow" apps/web/src/ | grep -v ".test." | grep -v "index.css"
 ```
 
 **Step 2: Apply remaining fixes** as needed per file.
@@ -479,37 +479,37 @@ git commit -m "rename: remaining web src anydemo references"
 ### Task 15: Rename agent files and update content
 
 **Files:**
-- Rename: `agents/anydemo-discoverer.md` → `agents/seeflow-discoverer.md`
-- Rename: `agents/anydemo-discoverer.smoke.md` → `agents/seeflow-discoverer.smoke.md`
-- Rename: `agents/anydemo-node-planner.md` → `agents/seeflow-node-planner.md`
-- Rename: `agents/anydemo-play-designer.md` → `agents/seeflow-play-designer.md`
-- Rename: `agents/anydemo-status-designer.md` → `agents/seeflow-status-designer.md`
+- Rename: `agents/seeflow-discoverer.md` → `agents/seeflow-discoverer.md`
+- Rename: `agents/seeflow-discoverer.smoke.md` → `agents/seeflow-discoverer.smoke.md`
+- Rename: `agents/seeflow-node-planner.md` → `agents/seeflow-node-planner.md`
+- Rename: `agents/seeflow-play-designer.md` → `agents/seeflow-play-designer.md`
+- Rename: `agents/seeflow-status-designer.md` → `agents/seeflow-status-designer.md`
 
 **Step 1: Rename files**
 
 ```bash
-mv agents/anydemo-discoverer.md agents/seeflow-discoverer.md
-mv agents/anydemo-discoverer.smoke.md agents/seeflow-discoverer.smoke.md
-mv agents/anydemo-node-planner.md agents/seeflow-node-planner.md
-mv agents/anydemo-play-designer.md agents/seeflow-play-designer.md
-mv agents/anydemo-status-designer.md agents/seeflow-status-designer.md
+mv agents/seeflow-discoverer.md agents/seeflow-discoverer.md
+mv agents/seeflow-discoverer.smoke.md agents/seeflow-discoverer.smoke.md
+mv agents/seeflow-node-planner.md agents/seeflow-node-planner.md
+mv agents/seeflow-play-designer.md agents/seeflow-play-designer.md
+mv agents/seeflow-status-designer.md agents/seeflow-status-designer.md
 ```
 
 **Step 2: Update content in each file**
 
 In every renamed agent file, do a global search-and-replace:
-- `anydemo-discoverer` → `seeflow-discoverer`
-- `anydemo-node-planner` → `seeflow-node-planner`
-- `anydemo-play-designer` → `seeflow-play-designer`
-- `anydemo-status-designer` → `seeflow-status-designer`
-- `create-anydemo` → `create-seeflow`
-- `AnyDemo` → `SeeFlow`
-- `.anydemo/` → `.seeflow/`
+- `seeflow-discoverer` → `seeflow-discoverer`
+- `seeflow-node-planner` → `seeflow-node-planner`
+- `seeflow-play-designer` → `seeflow-play-designer`
+- `seeflow-status-designer` → `seeflow-status-designer`
+- `create-seeflow` → `create-seeflow`
+- `SeeFlow` → `SeeFlow`
+- `.seeflow/` → `.seeflow/`
 
 **Step 3: Verify**
 
 ```bash
-grep -rn "anydemo\|AnyDemo" agents/
+grep -rn "anydemo\|SeeFlow" agents/
 ```
 Expected: no matches.
 
@@ -522,36 +522,36 @@ git commit -m "rename: agent files and content anydemo→seeflow"
 
 ---
 
-### Task 16: Rename skills/create-anydemo → skills/create-seeflow
+### Task 16: Rename skills/create-seeflow → skills/create-seeflow
 
 **Files:**
-- Rename directory: `skills/create-anydemo/` → `skills/create-seeflow/`
+- Rename directory: `skills/create-seeflow/` → `skills/create-seeflow/`
 - Update all file content within
 
 **Step 1: Rename directory**
 
 ```bash
-mv skills/create-anydemo skills/create-seeflow
+mv skills/create-seeflow skills/create-seeflow
 ```
 
 **Step 2: Update content in all files**
 
 Run a global replace within the directory:
 - `anydemo` → `seeflow`
-- `AnyDemo` → `SeeFlow`
+- `SeeFlow` → `SeeFlow`
 - `anyflow` → `seeflow`
 
 Key files to check:
 - `skills/create-seeflow/SKILL.md` — skill name, description, all references
 - `skills/create-seeflow/scripts/*.ts` — all script files
-- `skills/create-seeflow/vendored/schema.ts` — `.anydemo/` path strings
+- `skills/create-seeflow/vendored/schema.ts` — `.seeflow/` path strings
 - `skills/create-seeflow/references/plan-format.md`
 - `skills/create-seeflow/references/examples/checkout-flow-plan.md`
 
 **Step 3: Verify**
 
 ```bash
-grep -rn "anydemo\|AnyDemo\|anyflow" skills/create-seeflow/
+grep -rn "anydemo\|SeeFlow\|anyflow" skills/create-seeflow/
 ```
 Expected: no matches.
 
@@ -559,7 +559,7 @@ Expected: no matches.
 
 ```bash
 git add skills/
-git commit -m "rename: skills/create-anydemo → skills/create-seeflow with content updates"
+git commit -m "rename: skills/create-seeflow → skills/create-seeflow with content updates"
 ```
 
 ---
@@ -586,7 +586,7 @@ git commit -m "rename: skills/create-anydemo → skills/create-seeflow with cont
 **Step 2: Update settings.local.json**
 
 ```bash
-grep -n "anydemo\|anyflow\|AnyDemo" .claude/settings.local.json
+grep -n "anydemo\|anyflow\|SeeFlow" .claude/settings.local.json
 ```
 
 Replace any occurrences found.
@@ -610,25 +610,25 @@ git commit -m "rename: plugin.json and settings anydemo→seeflow"
 **Step 1: CLAUDE.md**
 
 Replace:
-- `# AnyDemo` → `# SeeFlow`
+- `# SeeFlow` → `# SeeFlow`
 - `apps/studio/` — Bun + Hono backend + CLI (`anydemo`)` → `... CLI (\`seeflow\`)`
-- All other `anydemo`/`AnyDemo` occurrences
+- All other `anydemo`/`SeeFlow` occurrences
 
 **Step 2: README.md and apps/studio/README.md**
 
 Do a global search-and-replace in both files:
-- `AnyDemo` → `SeeFlow`
+- `SeeFlow` → `SeeFlow`
 - `anydemo` → `seeflow`
 - `anyflow` → `seeflow`
 - `@tuongaz/anyflow` → `@tuongaz/seeflow`
 - `tuongaz/anydemo` → `tuongaz/seeflow`
-- `.anydemo/` → `.seeflow/`
-- `create-anydemo` → `create-seeflow`
+- `.seeflow/` → `.seeflow/`
+- `create-seeflow` → `create-seeflow`
 
 **Step 3: Verify**
 
 ```bash
-grep -n "anydemo\|AnyDemo\|anyflow" CLAUDE.md README.md apps/studio/README.md
+grep -n "anydemo\|SeeFlow\|anyflow" CLAUDE.md README.md apps/studio/README.md
 ```
 Expected: no matches.
 
@@ -652,7 +652,7 @@ git commit -m "rename: CLAUDE.md and READMEs anydemo→seeflow"
 **Step 1: Find all remaining**
 
 ```bash
-grep -rn "anydemo\|AnyDemo\|anyflow" . --include="*.json" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.css" | grep -v node_modules | grep -v .git | grep -v dist
+grep -rn "anydemo\|SeeFlow\|anyflow" . --include="*.json" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.css" | grep -v node_modules | grep -v .git | grep -v dist
 ```
 
 **Step 2: Fix each file** with search-and-replace as appropriate.
@@ -660,7 +660,7 @@ grep -rn "anydemo\|AnyDemo\|anyflow" . --include="*.json" --include="*.md" --inc
 **Step 3: Verify — zero remaining matches**
 
 ```bash
-grep -rn "anydemo\|AnyDemo\|anyflow" . --include="*.json" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.css" | grep -v node_modules | grep -v .git | grep -v dist | grep -v "docs/plans/2026-05-15-rename-anydemo"
+grep -rn "anydemo\|SeeFlow\|anyflow" . --include="*.json" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.css" | grep -v node_modules | grep -v .git | grep -v dist | grep -v "docs/plans/2026-05-15-rename-anydemo"
 ```
 Expected: zero lines (aside from this plan file and the design doc which document the old name).
 
@@ -676,7 +676,7 @@ git commit -m "rename: remaining anydemo references in ralph, docs, and misc fil
 ### Task 20: Update test files
 
 **Files:**
-- All `*.test.ts` and `*.test.tsx` files referencing `.anydemo/`
+- All `*.test.ts` and `*.test.tsx` files referencing `.seeflow/`
 
 **Step 1: Find all test references**
 
@@ -686,7 +686,7 @@ grep -rn "anydemo\|\.anydemo" . --include="*.test.ts" --include="*.test.tsx" | g
 
 **Step 2: Apply changes**
 
-Replace `.anydemo/` with `.seeflow/` in all test path strings. Replace `anydemo` in string literals (e.g., `'anydemo-empty-state'` test id → `'seeflow-empty-state'`). Keep `anydemo` references only where they test that the OLD name is rejected (none expected).
+Replace `.seeflow/` with `.seeflow/` in all test path strings. Replace `anydemo` in string literals (e.g., `'anydemo-empty-state'` test id → `'seeflow-empty-state'`). Keep `anydemo` references only where they test that the OLD name is rejected (none expected).
 
 **Step 3: Verify**
 
@@ -730,7 +730,7 @@ Expected: all pass.
 **Step 4: Final grep check**
 
 ```bash
-grep -rn "anydemo\|AnyDemo\|anyflow" . --include="*.json" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.css" | grep -v node_modules | grep -v .git | grep -v dist | grep -v "docs/plans/2026-05-15-rename-anydemo"
+grep -rn "anydemo\|SeeFlow\|anyflow" . --include="*.json" --include="*.md" --include="*.ts" --include="*.tsx" --include="*.css" | grep -v node_modules | grep -v .git | grep -v dist | grep -v "docs/plans/2026-05-15-rename-anydemo"
 ```
 Expected: zero lines.
 

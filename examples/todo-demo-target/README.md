@@ -1,6 +1,6 @@
-# todo-demo-target — canonical AnyDemo M1 verification target
+# todo-demo-target — canonical SeeFlow M1 verification target
 
-A tiny Bun + Hono app paired with a hand-authored `.anydemo/demo.json` that
+A tiny Bun + Hono app paired with a hand-authored `.seeflow/demo.json` that
 exercises **every** Milestone-1 feature in one place. Use it as the run-book
 for the 9 verification steps below.
 
@@ -17,7 +17,7 @@ todo-demo-target/
 │   ├── store.ts               # In-memory todo store (with seed-1 pre-loaded)
 │   ├── event-bus.ts           # Tiny pub/sub
 │   └── worker.ts              # Subscribes to todo.completed → emits running → done
-└── .anydemo/
+└── .seeflow/
     └── demo.json              # 3 nodes: create-todo, complete-todo, todo-worker (event)
 ```
 
@@ -31,7 +31,7 @@ todo-demo-target/
 | GET    | `/admin/stats`             | `{ total, completed, pending, lastCompletedId }` — used as the `dynamicSource` for the create-todo node. |
 | GET    | `/health`                  | `{ ok: true }`.                                              |
 
-The store ships pre-seeded with one todo (`id: seed-1`, title: `Try AnyDemo`)
+The store ships pre-seeded with one todo (`id: seed-1`, title: `Try SeeFlow`)
 so the demo's `complete-todo` Play node can fire on the first click without
 state setup.
 
@@ -56,7 +56,7 @@ state setup.
 bun install
 ```
 
-### V1 — `npx anydemo start` boots studio; empty-state at `localhost:4321`
+### V1 — `npx seeflow start` boots studio; empty-state at `localhost:4321`
 
 ```bash
 bun run apps/studio/src/cli.ts start --daemon
@@ -64,7 +64,7 @@ open http://localhost:4321
 ```
 
 Expected: empty grid + "Press ⌘K to open the project switcher" hint, OR the
-copy-able `npx anydemo register --path .` empty-state if the registry is empty
+copy-able `npx seeflow register --path .` empty-state if the registry is empty
 on this machine. Stop with `bun run apps/studio/src/cli.ts stop`.
 
 ### V2 — `register --path <folder>` makes the demo appear in the switcher
@@ -77,7 +77,7 @@ Expected output:
 
 ```
 Registered "Todo Demo" → http://localhost:4321/d/todo-demo
-Wrote /…/examples/todo-demo-target/.anydemo/sdk/emit.ts (event-bound state node detected)
+Wrote /…/examples/todo-demo-target/.seeflow/sdk/emit.ts (event-bound state node detected)
 ```
 
 Open `http://localhost:4321`. Press `⌘K`. Pick **Todo Demo**. The canvas
@@ -103,13 +103,13 @@ bun run apps/studio/src/cli.ts register --path examples/todo-demo-target
 Expected: the CLI prints `Studio not running at …; starting in background…`,
 then `Studio started (pid …)`, then the usual `Registered …` line. To prove
 the opt-out works, kill again and run with `--no-start` — it should error
-clearly: `Start it first: anydemo start`.
+clearly: `Start it first: seeflow start`.
 
 ### V5 — editing `demo.json` live-reloads the canvas (no refresh)
 
 With studio running and the **Todo Demo** canvas open:
 
-1. In another terminal, edit `examples/todo-demo-target/.anydemo/demo.json` —
+1. In another terminal, edit `examples/todo-demo-target/.seeflow/demo.json` —
    change `"label": "POST /todos"` to `"label": "POST /todos (live)"` and save.
    The label updates on the canvas within ~100ms; no browser refresh needed.
 2. Introduce a syntax error (e.g. delete a closing `}`). The canvas keeps the
@@ -121,7 +121,7 @@ With studio running and the **Todo Demo** canvas open:
 Start the demo target in another terminal:
 
 ```bash
-bun run --filter @anydemo/example-todo-demo-target start
+bun run --filter @seeflow/example-todo-demo-target start
 ```
 
 (Or: `cd examples/todo-demo-target && bun run start`.)
@@ -134,7 +134,7 @@ Click Play on **api-create-todo**. Expected:
   view (`{ id: "todo-2", title: "Buy milk", … }`).
 
 Targeting an unreachable host — point the `playAction.url` at
-`http://does-not-exist.anydemo-test.invalid` and re-fire — flips the pill to
+`http://does-not-exist.seeflow-test.invalid` and re-fire — flips the pill to
 `error` with the network-failure message in the panel; studio stays alive.
 
 ### V7 — dynamic detail panel
@@ -195,7 +195,7 @@ matches the on-disk demo file.
 bun run apps/studio/src/cli.ts stop
 # (kill the demo target's terminal manually with ^C)
 
-# Forget the demo (does NOT delete the .anydemo/demo.json on disk):
+# Forget the demo (does NOT delete the .seeflow/demo.json on disk):
 DEMO_ID=$(curl -s http://localhost:4321/api/demos | \
   bun -e 'const list = await Bun.stdin.json(); console.log(list.find(d => d.slug === "todo-demo")?.id ?? "");')
 [ -n "$DEMO_ID" ] && curl -s -X DELETE "http://localhost:4321/api/demos/$DEMO_ID"
