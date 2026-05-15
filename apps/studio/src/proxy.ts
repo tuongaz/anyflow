@@ -179,9 +179,9 @@ export async function runPlay(options: RunPlayOptions): Promise<PlayResult> {
 
   const wantsStdin = action.input !== undefined;
   const env = buildChildEnv({
-    ANYDEMO_DEMO_ID: demoId,
-    ANYDEMO_NODE_ID: nodeId,
-    ANYDEMO_RUN_ID: runId,
+    SEEFLOW_DEMO_ID: demoId,
+    SEEFLOW_NODE_ID: nodeId,
+    SEEFLOW_RUN_ID: runId,
   });
 
   let handle: SpawnHandle;
@@ -314,7 +314,7 @@ export async function runReset(options: RunResetOptions): Promise<ResetResult> {
   }
 
   const wantsStdin = action.input !== undefined;
-  const env = buildChildEnv({ ANYDEMO_DEMO_ID: demoId });
+  const env = buildChildEnv({ SEEFLOW_DEMO_ID: demoId });
 
   let handle: SpawnHandle;
   try {

@@ -199,9 +199,9 @@ export function createStatusRunner(options: CreateStatusRunnerOptions): StatusRu
 
     const runId = crypto.randomUUID();
     const env = buildChildEnv({
-      ANYDEMO_DEMO_ID: demoId,
-      ANYDEMO_NODE_ID: nodeId,
-      ANYDEMO_RUN_ID: runId,
+      SEEFLOW_DEMO_ID: demoId,
+      SEEFLOW_NODE_ID: nodeId,
+      SEEFLOW_RUN_ID: runId,
     });
 
     let handle: SpawnHandle;

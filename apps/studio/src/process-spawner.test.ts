@@ -30,9 +30,9 @@ describe('defaultProcessSpawner', () => {
 
   it('propagates env vars to the child', async () => {
     const handle = defaultProcessSpawner.spawn({
-      cmd: ['bun', '-e', 'process.stdout.write(process.env.ANYDEMO_TEST_VAR ?? "missing")'],
+      cmd: ['bun', '-e', 'process.stdout.write(process.env.SEEFLOW_TEST_VAR ?? "missing")'],
       cwd: process.cwd(),
-      env: envFromProcess({ ANYDEMO_TEST_VAR: 'spawner-says-hi' }),
+      env: envFromProcess({ SEEFLOW_TEST_VAR: 'spawner-says-hi' }),
       stdin: 'ignore',
     });
 

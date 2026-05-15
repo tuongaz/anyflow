@@ -105,8 +105,8 @@ to give the user a chance to ask for it.
 - **`scriptBody`** *(string, required)* — the FULL source text of the
   script. Always start with a shebang. The script's contract:
   - Reads no stdin. The studio closes stdin immediately.
-  - May read `process.env.ANYDEMO_DEMO_ID`, `process.env.ANYDEMO_NODE_ID`,
-    `process.env.ANYDEMO_RUN_ID` for correlation/logging. All three
+  - May read `process.env.SEEFLOW_DEMO_ID`, `process.env.SEEFLOW_NODE_ID`,
+    `process.env.SEEFLOW_RUN_ID` for correlation/logging. All three
     are set before spawn.
   - Runs in a loop. Each iteration:
     1. Reads the observable signal (file, HTTP endpoint, DB row,

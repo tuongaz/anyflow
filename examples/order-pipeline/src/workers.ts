@@ -2,7 +2,7 @@ import type { EventBus, OrderCreatedEvent } from './event-bus.ts';
 import type { Queue, ShipmentRequest } from './queue.ts';
 import type { OrderStore } from './store.ts';
 
-const STUDIO_URL = (globalThis.process?.env?.ANYDEMO_STUDIO_URL ?? 'http://localhost:4321').replace(
+const STUDIO_URL = (globalThis.process?.env?.SEEFLOW_STUDIO_URL ?? 'http://localhost:4321').replace(
   /\/+$/,
   '',
 );

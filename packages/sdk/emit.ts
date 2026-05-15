@@ -5,7 +5,7 @@ export interface EmitOptions {
   runId?: string;
   /** Arbitrary JSON-serializable payload merged into the SSE event. */
   payload?: unknown;
-  /** Override the studio URL (defaults to ANYDEMO_STUDIO_URL or localhost:4321). */
+  /** Override the studio URL (defaults to SEEFLOW_STUDIO_URL or localhost:4321). */
   studioUrl?: string;
 }
 
@@ -20,7 +20,7 @@ export async function emit(
   status: EmitStatus,
   opts: EmitOptions = {},
 ): Promise<void> {
-  const base = (opts.studioUrl ?? readEnv('ANYDEMO_STUDIO_URL') ?? 'http://localhost:4321').replace(
+  const base = (opts.studioUrl ?? readEnv('SEEFLOW_STUDIO_URL') ?? 'http://localhost:4321').replace(
     /\/+$/,
     '',
   );

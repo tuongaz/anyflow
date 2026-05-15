@@ -463,7 +463,7 @@ describe('createStatusRunner', () => {
     expect(spawns).toHaveLength(1); // no new spawn since no status nodes
   });
 
-  it('sets ANYDEMO_* env vars and assembles cmd correctly per spawn', async () => {
+  it('sets SEEFLOW_* env vars and assembles cmd correctly per spawn', async () => {
     const { entry, nodeId } = makeProject({ hasStatus: true });
     const bus = createEventBus();
     captureEvents(bus, 'demoA');
@@ -485,10 +485,10 @@ describe('createStatusRunner', () => {
     expect(call.cmd[1]).toBe('run');
     expect(call.cmd[call.cmd.length - 1]?.endsWith('/scripts/status.ts')).toBe(true);
     expect(call.cwd).toBe(entry.repoPath);
-    expect(call.env.ANYDEMO_DEMO_ID).toBe('demoA');
-    expect(call.env.ANYDEMO_NODE_ID).toBe(nodeId);
-    const runId = call.env.ANYDEMO_RUN_ID;
-    if (!runId) throw new Error('expected ANYDEMO_RUN_ID to be set');
+    expect(call.env.SEEFLOW_DEMO_ID).toBe('demoA');
+    expect(call.env.SEEFLOW_NODE_ID).toBe(nodeId);
+    const runId = call.env.SEEFLOW_RUN_ID;
+    if (!runId) throw new Error('expected SEEFLOW_RUN_ID to be set');
     expect(typeof runId).toBe('string');
     expect(runId.length).toBeGreaterThan(0);
     expect(call.stdin).toBe('ignore');

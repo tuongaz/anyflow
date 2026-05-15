@@ -281,7 +281,7 @@ describe('runPlay (script spawner)', () => {
     expect(record.spawnCalls[0]?.stdin).toBe('ignore');
   });
 
-  it('sets ANYDEMO_* env vars and assembles cmd as [interpreter, ...args, absScriptPath]', async () => {
+  it('sets SEEFLOW_* env vars and assembles cmd as [interpreter, ...args, absScriptPath]', async () => {
     const { cwd, scriptPath } = makeProjectWithScript();
     const bus = createEventBus();
     captureEvents(bus, 'demoA');
@@ -308,9 +308,9 @@ describe('runPlay (script spawner)', () => {
     expect(call.cmd[2]).toBe('--silent');
     expect(call.cmd[3]?.endsWith('/scripts/play.ts')).toBe(true);
     expect(call.cwd).toBe(cwd);
-    expect(call.env.ANYDEMO_DEMO_ID).toBe('demoA');
-    expect(call.env.ANYDEMO_NODE_ID).toBe('node-x');
-    expect(call.env.ANYDEMO_RUN_ID).toBe(result.runId);
+    expect(call.env.SEEFLOW_DEMO_ID).toBe('demoA');
+    expect(call.env.SEEFLOW_NODE_ID).toBe('node-x');
+    expect(call.env.SEEFLOW_RUN_ID).toBe(result.runId);
   });
 
   it('rejects a scriptPath that escapes the project root via a symlink', async () => {
@@ -644,7 +644,7 @@ describe('runReset (US-008)', () => {
     });
   });
 
-  it('sets ANYDEMO_DEMO_ID env var (no NODE_ID / RUN_ID — reset is one-shot)', async () => {
+  it('sets SEEFLOW_DEMO_ID env var (no NODE_ID / RUN_ID — reset is one-shot)', async () => {
     const { cwd, scriptPath } = makeProjectWithScript('reset.ts');
     const bus = createEventBus();
     captureEvents(bus, 'demoA');
@@ -660,8 +660,8 @@ describe('runReset (US-008)', () => {
 
     const call = record.spawnCalls[0];
     if (!call) throw new Error('expected spawn');
-    expect(call.env.ANYDEMO_DEMO_ID).toBe('demoA');
-    expect(call.env.ANYDEMO_NODE_ID).toBeUndefined();
-    expect(call.env.ANYDEMO_RUN_ID).toBeUndefined();
+    expect(call.env.SEEFLOW_DEMO_ID).toBe('demoA');
+    expect(call.env.SEEFLOW_NODE_ID).toBeUndefined();
+    expect(call.env.SEEFLOW_RUN_ID).toBeUndefined();
   });
 });

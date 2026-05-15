@@ -152,7 +152,7 @@ function spawnDetachedStudio(port: number): { pid: number } {
   const proc = Bun.spawn({
     cmd: [process.execPath, import.meta.path, 'start', `--port=${port}`],
     stdio: ['ignore', 'ignore', 'ignore'],
-    env: { ...process.env, ANYDEMO_DAEMON: '1' },
+    env: { ...process.env, SEEFLOW_DAEMON: '1' },
   });
   proc.unref();
   return { pid: proc.pid };

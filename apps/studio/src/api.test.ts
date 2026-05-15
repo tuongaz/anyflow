@@ -671,8 +671,8 @@ describe('POST /api/demos/:id/play/:nodeId', () => {
     expect(call?.cmd[0]).toBe('bun');
     expect(call?.cmd[1]?.endsWith('/scripts/play.ts')).toBe(true);
     expect(call?.cwd).toBe(repoPath);
-    expect(call?.env.ANYDEMO_DEMO_ID).toBe(reg.id);
-    expect(call?.env.ANYDEMO_NODE_ID).toBe('api-checkout');
+    expect(call?.env.SEEFLOW_DEMO_ID).toBe(reg.id);
+    expect(call?.env.SEEFLOW_NODE_ID).toBe('api-checkout');
   });
 
   it('broadcasts node:running and node:done around the spawn', async () => {

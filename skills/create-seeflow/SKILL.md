@@ -149,7 +149,7 @@ back, note the reason in `rationale`.
 
 ## Phase 0 — pre-flight (studio reachable)
 
-Resolve the studio URL: prefer `ANYDEMO_STUDIO_URL` env var, else
+Resolve the studio URL: prefer `SEEFLOW_STUDIO_URL` env var, else
 `~/.seeflow/config.json`'s `port` field, else default `http://localhost:4321`.
 Then:
 
