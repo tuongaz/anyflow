@@ -2220,14 +2220,14 @@ export function DemoCanvas({
           })(),
           onDescriptionChange: (() => {
             if (gatedByGroup) return undefined;
-            // Rectangle and ellipse shapes render a description body — wire
+            // Rectangle, ellipse, and sticky shapes render a description body — wire
             // the canvas-side inline edit so dblclick on the body lands an
-            // edit. Other shape kinds (text/sticky/database) and imageNode /
+            // edit. Other shape kinds (text/database) and imageNode /
             // iconNode have no on-canvas body text, so the inline-edit
             // callback stays undefined.
             if (merged.type === 'shapeNode') {
               const shapeKind = (merged.data as { shape?: ShapeKind }).shape;
-              return shapeKind === 'rectangle' || shapeKind === 'ellipse'
+              return shapeKind === 'rectangle' || shapeKind === 'ellipse' || shapeKind === 'sticky'
                 ? onNodeDescriptionChange
                 : undefined;
             }
