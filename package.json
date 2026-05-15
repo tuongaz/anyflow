@@ -1,12 +1,11 @@
 {
-  "name": "anydemo",
+  "name": "seeflow",
   "private": true,
   "version": "0.0.0",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "anyflow": "apps/studio/bin/anydemo",
-    "anydemo": "apps/studio/bin/anydemo"
+    "seeflow": "apps/studio/bin/seeflow"
   },
   "workspaces": ["apps/*", "packages/*", "examples/*"],
   "scripts": {

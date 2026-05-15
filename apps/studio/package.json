@@ -1,9 +1,9 @@
 {
-	"name": "@tuongaz/anyflow",
+	"name": "@tuongaz/seeflow",
 	"version": "0.1.3",
 	"description": "Local studio that hosts file-defined demos as React Flow canvases wired to a running app via REST + SSE + Zod schema.",
 	"keywords": [
-		"anydemo",
+		"seeflow",
 		"react-flow",
 		"diagram",
 		"architecture",
@@ -12,22 +12,21 @@
 		"hono",
 		"bun"
 	],
-	"homepage": "https://github.com/tuongaz/anydemo#readme",
+	"homepage": "https://github.com/tuongaz/seeflow#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/tuongaz/anydemo.git",
+		"url": "git+https://github.com/tuongaz/seeflow.git",
 		"directory": "apps/studio"
 	},
 	"bugs": {
-		"url": "https://github.com/tuongaz/anydemo/issues"
+		"url": "https://github.com/tuongaz/seeflow/issues"
 	},
 	"license": "MIT",
 	"author": "Tuong Le",
 	"type": "module",
 	"bin": {
-		"anyflow": "bin/anydemo",
-		"anydemo": "bin/anydemo",
-		"anydemo-mcp": "bin/anydemo-mcp"
+		"seeflow": "bin/seeflow",
+		"seeflow-mcp": "bin/seeflow-mcp"
 	},
 	"files": [
 		"bin",
