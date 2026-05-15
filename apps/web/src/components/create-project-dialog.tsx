@@ -18,24 +18,19 @@ export interface CreateProjectDialogProps {
 
 export function CreateProjectDialog({ open, onOpenChange, onCreated }: CreateProjectDialogProps) {
   const [name, setName] = useState('');
-  const [folderPath, setFolderPath] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Reset whenever the dialog re-opens so a previous attempt's error/values
-  // don't bleed into a fresh attempt.
   useEffect(() => {
     if (open) {
       setName('');
-      setFolderPath('');
       setError(null);
       setSubmitting(false);
     }
   }, [open]);
 
   const trimmedName = name.trim();
-  const trimmedFolder = folderPath.trim();
-  const canSubmit = trimmedName.length > 0 && trimmedFolder.length > 0 && !submitting;
+  const canSubmit = trimmedName.length > 0 && !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +38,7 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: CreatePro
     setSubmitting(true);
     setError(null);
     try {
-      const result = await createProject({ name: trimmedName, folderPath: trimmedFolder });
+      const result = await createProject({ name: trimmedName });
       onCreated(result);
       onOpenChange(false);
     } catch (err) {
@@ -70,8 +65,7 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: CreatePro
         <DialogHeader>
           <DialogTitle>Create new project</DialogTitle>
           <DialogDescription>
-            Point AnyDemo at a folder. If it already has a setup we'll load it; otherwise we'll
-            scaffold a fresh one.
+            The project will be created at <code>~/.anydemo/&lt;slug&gt;</code>.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -87,23 +81,6 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: CreatePro
               data-testid="create-project-name-input"
               className="rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium">Folder path</span>
-            <input
-              type="text"
-              required
-              autoComplete="off"
-              spellCheck={false}
-              value={folderPath}
-              placeholder="/absolute/path/to/folder"
-              onChange={(e) => setFolderPath(e.target.value)}
-              data-testid="create-project-folder-input"
-              className="rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            />
-            <span className="text-xs text-muted-foreground">
-              Must be an absolute path. The folder will be created if it doesn't exist.
-            </span>
           </label>
           {error ? (
             <div

@@ -613,7 +613,6 @@ export const deleteConnector = async (demoId: string, connId: string): Promise<{
 
 export interface CreateProjectBody {
   name: string;
-  folderPath: string;
 }
 
 export interface CreateProjectResult {

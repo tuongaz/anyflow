@@ -126,6 +126,17 @@ On success: continue to Phase 1.
 
 ---
 
+## General rule — use subagents to parallelise wherever possible
+
+Whenever two or more units of work are independent of each other, dispatch them
+as concurrent subagents in a single message rather than running them serially.
+This applies beyond Phase 3: if you need to fix multiple failing scripts in
+Phase 6, or re-run multiple designers in Phase 4, send all the sub-agent
+`Task` calls at once. Serial execution should be the exception (needed only
+when output of one step is required as input to the next), not the default.
+
+---
+
 ## After Phase 0 — list tasks
 
 Before launching any sub-agent, create a TodoWrite checklist so the user can
@@ -369,7 +380,11 @@ On `ok: false`:
 2. Propose a concrete fix-up (e.g. "play-checkout.ts failed with
    `ECONNREFUSED` — the app is not listening on port 3001; update the
    script's base URL or ask the user to start the app first").
-3. Edit the failing scripts in-place, then re-run Phase 6 against the same
+3. **If more than one script needs fixing, dispatch subagents in parallel** —
+   send one `Task` call per failing script in a single message so fixes are
+   authored concurrently. Wait for all to complete before writing the files
+   and re-running validation.
+4. Edit the failing scripts in-place, then re-run Phase 6 against the same
    registered `<id>`. **Max 2 fix-up retries.** After the second failure,
    present the failures verbatim and ask the user `retry / stop`.
 

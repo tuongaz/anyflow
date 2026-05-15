@@ -138,17 +138,18 @@ const buildDemoFixture = (initialDemo: unknown): DemoFixture => {
 interface ProjectFixture {
   app: ReturnType<typeof createApp>;
   registry: ReturnType<typeof createRegistry>;
-  folderPath: string;
+  projectBaseDir: string;
   demoFile: string;
 }
 
-// create_project fixture: empty folder, no pre-registered demo. The tool
-// itself scaffolds the demo file + registers it.
-const buildProjectFixture = (): ProjectFixture => {
+// create_project fixture: empty base dir, no pre-registered demo. The tool
+// itself scaffolds the demo file + registers it under <base>/<slug>/.anydemo/demo.json.
+const buildProjectFixture = (name: string): ProjectFixture => {
   const registry = createRegistry({ path: tmpRegistryPath() });
-  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true });
-  const folderPath = mkdtempSync(join(tmpdir(), 'anydemo-parity-proj-'));
-  return { app, registry, folderPath, demoFile: join(folderPath, '.anydemo', 'demo.json') };
+  const projectBaseDir = mkdtempSync(join(tmpdir(), 'anydemo-parity-proj-'));
+  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'demo';
+  return { app, registry, projectBaseDir, demoFile: join(projectBaseDir, slug, '.anydemo', 'demo.json') };
 };
 
 let rpcId = 1;
@@ -359,19 +360,16 @@ const SCENARIOS: ParityScenario[] = [
   {
     toolName: 'anydemo_create_project',
     build: () => {
-      const restFix = buildProjectFixture();
-      const mcpFix = buildProjectFixture();
       const name = 'Parity Project';
+      const restFix = buildProjectFixture(name);
+      const mcpFix = buildProjectFixture(name);
       return {
         // Comparing two separate scaffolds: the project tool creates a fresh
-        // demo.json under each fixture's folderPath. Folders differ, file
+        // demo.json under each fixture's projectBaseDir. Folders differ, file
         // contents shouldn't.
         demoFile: '__pair__',
         runRest: async () => {
-          const body = await restJson(restFix.app, 'POST', '/api/projects', {
-            name,
-            folderPath: restFix.folderPath,
-          });
+          const body = await restJson(restFix.app, 'POST', '/api/projects', { name });
           // Stash the demoFile bytes via a property-bag side channel so the
           // outer test code can compare both fixtures' on-disk demo.json.
           (body as Record<string, unknown>).__demoFileBytes = readFileSync(
@@ -383,7 +381,6 @@ const SCENARIOS: ParityScenario[] = [
         runMcp: async () => {
           const body = (await callMcpTool(mcpFix.app, 'anydemo_create_project', {
             name,
-            folderPath: mcpFix.folderPath,
           })) as Record<string, unknown>;
           body.__demoFileBytes = readFileSync(mcpFix.demoFile, 'utf8');
           return body;

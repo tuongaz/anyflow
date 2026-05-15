@@ -42,9 +42,9 @@ const tmpRepoWithDemo = (demo: unknown = VALID_DEMO) => {
 
 const tmpEmptyFolder = () => mkdtempSync(join(tmpdir(), 'anydemo-mcp-proj-'));
 
-const buildApp = () => {
+const buildApp = (opts: { projectBaseDir?: string } = {}) => {
   const registry = createRegistry({ path: tmpRegistry() });
-  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true });
+  const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, ...opts });
   return { app, registry };
 };
 
@@ -131,7 +131,7 @@ describe('POST /mcp tools/list', () => {
 
     const createProject = byName.get('anydemo_create_project');
     const cpProps = createProject?.inputSchema?.properties as Record<string, unknown>;
-    expect(Object.keys(cpProps)).toEqual(expect.arrayContaining(['name', 'folderPath']));
+    expect(Object.keys(cpProps)).toEqual(['name']);
   });
 });
 
@@ -255,26 +255,14 @@ describe('anydemo_delete_demo', () => {
 
 describe('anydemo_create_project', () => {
   it('scaffolds a new project folder and writes .anydemo/demo.json', async () => {
-    const { app, registry } = buildApp();
-    const folderPath = tmpEmptyFolder();
-    const envelope = await callTool(app, 'anydemo_create_project', {
-      name: 'Brand New Demo',
-      folderPath,
-    });
+    const projectBaseDir = tmpEmptyFolder();
+    const { app, registry } = buildApp({ projectBaseDir });
+    const envelope = await callTool(app, 'anydemo_create_project', { name: 'Brand New Demo' });
     const body = expectOk(envelope) as { id: string; slug: string; scaffolded: boolean };
     expect(body.scaffolded).toBe(true);
     expect(body.slug).toBe('brand-new-demo');
-    expect(existsSync(join(folderPath, '.anydemo', 'demo.json'))).toBe(true);
+    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.anydemo', 'demo.json'))).toBe(true);
     expect(registry.list()).toHaveLength(1);
-  });
-
-  it('errors with the same human-readable text when folderPath is not absolute', async () => {
-    const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_create_project', {
-      name: 'Relative Path',
-      folderPath: 'relative/path',
-    });
-    expect(expectError(envelope)).toBe('folderPath must be an absolute filesystem path');
   });
 });
 

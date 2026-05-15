@@ -181,6 +181,8 @@ export interface ApiOptions {
    *  Tests use this to record call order across runPlay / runReset /
    *  stopAllPlays and to drive each in isolation. */
   proxy?: ProxyFacade;
+  /** Override base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  projectBaseDir?: string;
 }
 
 /**
@@ -208,6 +210,7 @@ export function createApi(options: ApiOptions): Hono {
   const platform = options.platform ?? process.platform;
   const processSpawner = options.processSpawner;
   const proxy = options.proxy ?? defaultProxyFacade;
+  const projectBaseDir = options.projectBaseDir;
   const api = new Hono();
 
   api.post('/demos/register', async (c) => {
@@ -324,12 +327,10 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: 'Invalid create project body', issues: parsed.error.issues }, 400);
     }
 
-    const result = await createProjectImpl({ registry, watcher }, parsed.data);
+    const result = await createProjectImpl({ registry, watcher, projectBaseDir }, parsed.data);
     switch (result.kind) {
       case 'ok':
         return c.json(result.data);
-      case 'invalidPath':
-        return c.json({ error: 'folderPath must be an absolute filesystem path' }, 400);
       case 'badJson':
         return c.json({ error: `Existing demo file is not valid JSON: ${result.detail}` }, 400);
       case 'badSchema':
@@ -338,10 +339,7 @@ export function createApi(options: ApiOptions): Hono {
           400,
         );
       case 'scaffoldFailed':
-        return c.json(
-          { error: `Failed to scaffold project at ${parsed.data.folderPath}: ${result.message}` },
-          500,
-        );
+        return c.json({ error: `Failed to scaffold project: ${result.message}` }, 500);
       case 'sdkWriteFailed':
         return c.json({ error: `Failed to write SDK helper: ${result.message}` }, 500);
     }

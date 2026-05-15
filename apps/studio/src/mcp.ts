@@ -34,6 +34,8 @@ import type { DemoWatcher } from './watcher.ts';
 export interface CreateMcpServerOptions {
   registry: Registry;
   watcher?: DemoWatcher;
+  /** Override base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  projectBaseDir?: string;
 }
 
 // Tools are pushed into this in-memory list inside `createMcpServer`. Each
@@ -241,8 +243,6 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
       switch (result.kind) {
         case 'ok':
           return okResult(result.data);
-        case 'invalidPath':
-          return errorResult('folderPath must be an absolute filesystem path');
         case 'badJson':
           return errorResult(`Existing demo file is not valid JSON: ${result.detail}`);
         case 'badSchema':
@@ -250,9 +250,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
             `Existing demo file failed schema validation: ${JSON.stringify(result.issues)}`,
           );
         case 'scaffoldFailed':
-          return errorResult(
-            `Failed to scaffold project at ${parsed.data.folderPath}: ${result.message}`,
-          );
+          return errorResult(`Failed to scaffold project: ${result.message}`);
         case 'sdkWriteFailed':
           return errorResult(`Failed to write SDK helper: ${result.message}`);
       }
@@ -511,7 +509,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
  * mcp-shim.ts) — every request builds its own server in stateless mode.
  */
 export function createMcpServer(options: CreateMcpServerOptions): Server {
-  const tools = buildTools(options);
+  const tools = buildTools({ registry: options.registry, watcher: options.watcher, projectBaseDir: options.projectBaseDir });
 
   const server = new Server({ name: 'anydemo', version: '0.1.0' }, { capabilities: { tools: {} } });
 

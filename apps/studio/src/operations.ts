@@ -8,9 +8,10 @@
 // Future stories add patch_node + connector helpers alongside these.
 
 import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { type ZodIssue, z } from 'zod';
-import type { Registry } from './registry.ts';
+import { type Registry, slugify } from './registry.ts';
 import {
   ColorTokenSchema,
   type Demo,
@@ -33,7 +34,6 @@ export type RegisterBody = z.infer<typeof RegisterBodySchema>;
 
 export const CreateProjectBodySchema = z.object({
   name: z.string().min(1),
-  folderPath: z.string().min(1),
 });
 export type CreateProjectBody = z.infer<typeof CreateProjectBodySchema>;
 
@@ -176,6 +176,8 @@ export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePat
 export interface OperationsDeps {
   registry: Registry;
   watcher?: DemoWatcher;
+  /** Override the base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  projectBaseDir?: string;
 }
 
 export interface DemoListItem {
@@ -227,7 +229,6 @@ export type DeleteDemoOutcome = { kind: 'ok' } | { kind: 'notFound' };
 
 export type CreateProjectOutcome =
   | { kind: 'ok'; data: CreateProjectSuccess }
-  | { kind: 'invalidPath' }
   | { kind: 'badJson'; detail: string }
   | { kind: 'badSchema'; issues: ZodIssue[] }
   | { kind: 'scaffoldFailed'; message: string }
@@ -624,8 +625,9 @@ export async function createProjectImpl(
   body: CreateProjectBody,
 ): Promise<CreateProjectOutcome> {
   const { registry, watcher } = deps;
-  const { name, folderPath } = body;
-  if (!isAbsolute(folderPath)) return { kind: 'invalidPath' };
+  const { name } = body;
+  const baseDir = deps.projectBaseDir ?? join(homedir(), '.anydemo');
+  const folderPath = join(baseDir, slugify(name));
 
   const demoFullPath = join(folderPath, DEFAULT_DEMO_RELATIVE_PATH);
 
