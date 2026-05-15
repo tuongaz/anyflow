@@ -1,7 +1,6 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
-import { StatusBadge } from '@/components/nodes/status-badge';
 import { type NodeStatus, StatusPill } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import type { NodeData, StatusReport } from '@/lib/api';
@@ -71,7 +70,10 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
   // US-010: selection outline moved to CSS (see play-node.tsx note) so the
   // inline style is stable across renders when only `selected` flips.
   const containerStyle: CSSProperties = {
-    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
+    borderColor:
+      data.statusReport?.state === 'error'
+        ? colorTokenStyle('red', 'node').borderColor
+        : colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor: colorTokenStyle(data.backgroundColor, 'node').backgroundColor,
     borderWidth: data.borderSize !== undefined ? data.borderSize : undefined,
     borderStyle: data.borderStyle,
@@ -180,18 +182,6 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
           <StatusPill status={status} />
         </div>
       </div>
-      {data.statusReport ? (
-        <div
-          className="flex shrink-0 items-center border-b border-dashed px-2 py-1"
-          data-testid="state-node-status-badge"
-        >
-          <StatusBadge
-            state={data.statusReport.state}
-            summary={data.statusReport.summary}
-            data-testid="status-badge"
-          />
-        </div>
-      ) : null}
       <div
         className="flex min-h-0 flex-1 items-center px-2 py-1"
         data-testid="node-content"

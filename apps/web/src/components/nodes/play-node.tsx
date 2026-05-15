@@ -1,7 +1,6 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
-import { StatusBadge } from '@/components/nodes/status-badge';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import { Button } from '@/components/ui/button';
@@ -96,7 +95,10 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
   // `React.memo`'s prop-equality check below — no inline `outline*` keys
   // whose identity churns when `selected` flips.
   const containerStyle: CSSProperties = {
-    borderColor: colorTokenStyle(data.borderColor, 'node').borderColor,
+    borderColor:
+      data.statusReport?.state === 'error'
+        ? colorTokenStyle('red', 'node').borderColor
+        : colorTokenStyle(data.borderColor, 'node').borderColor,
     backgroundColor:
       data.backgroundColor !== undefined
         ? colorTokenStyle(data.backgroundColor, 'node').backgroundColor
@@ -237,18 +239,6 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
           </Button>
         </div>
       </div>
-      {data.statusReport ? (
-        <div
-          className="flex shrink-0 items-center border-b px-2 py-1"
-          data-testid="play-node-status-badge"
-        >
-          <StatusBadge
-            state={data.statusReport.state}
-            summary={data.statusReport.summary}
-            data-testid="status-badge"
-          />
-        </div>
-      ) : null}
       <div
         className="flex min-h-0 flex-1 items-center px-2 py-1"
         data-testid="node-content"
