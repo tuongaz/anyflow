@@ -486,12 +486,31 @@ Full schema: `skills/create-seeflow/vendored/schema.ts`. Below covers ~95% of ca
   "data": { "name": "Internal services", "width": 800, "height": 400 } }
 ```
 
-**htmlNode** — custom HTML under `.seeflow/`; renderer fetches + sanitises.
+**htmlNode** — escape-hatch for content no curated node covers: legends, data tables, rich annotations, custom UI widgets. Renderer fetches the HTML file, injects Tailwind Play CDN (utility classes work), then **sanitises before painting** (strips `<script>`, `<style>`, `<iframe>`, `on*=` attributes, `javascript:` URLs).
+
+**Required fields:**
+- `htmlPath` — relative path under `.seeflow/`. No leading `/`, no `..`. E.g. `checkout-flow/legend.html`.
+
+**Optional styling fields (same as shapeNode):**
+`width`, `height`, `backgroundColor`, `borderColor`, `borderSize`, `borderStyle`, `cornerRadius`, `fontSize`, `textColor`, `name` (caption below node), `description`, `detail`
+
+**Default size:** 320 × 200 px. Set `width`/`height` to override.
 
 ```json
 { "id": "legend", "type": "htmlNode", "position": { "x": 50, "y": 600 },
-  "data": { "htmlPath": "checkout-flow/legend.html", "width": 400 } }
+  "data": {
+    "htmlPath": "checkout-flow/legend.html",
+    "width": 400, "height": 120,
+    "backgroundColor": "slate",
+    "cornerRadius": 8,
+    "name": "Legend"
+  }
+}
 ```
+
+**HTML file** — write to `$flowDir/<name>.html`. Tailwind classes work; no `<script>` or `<style>` (stripped by sanitiser). Use inline styles for anything Tailwind can't cover. See `references/examples/html-node-example.html`.
+
+**When NOT to use:** If a `shapeNode` with a label, an `iconNode`, or a `stateNode` covers the content, prefer those — they participate in theming and status updates automatically.
 
 **imageNode** — decorative image under `.seeflow/`.
 
