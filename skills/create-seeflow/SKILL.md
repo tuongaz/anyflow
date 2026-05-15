@@ -215,7 +215,6 @@ Launch `seeflow-node-planner` with the context brief. No tools — pure reasonin
 - **Connection limit** — max **4 total connections** (in + out) per node. When exceeded:
   - **Split** if the node has distinct responsibilities.
   - **Duplicate** a shared resource to break hub-and-spoke patterns.
-  - **Group** related nodes and show one connector to the group.
 
 **Duplication for clarity** — the "one node per service" default can be overridden when showing the same resource twice improves readability (e.g. a shared DB placed next to each service that uses it). Use same `kind` + `name`; unique `id` with a descriptive suffix (`"orders-db-read"`, `"orders-db-write"`).
 
@@ -477,13 +476,6 @@ Full schema: `skills/create-seeflow/vendored/schema.ts`. Below covers ~95% of ca
 ```json
 { "id": "user-icon", "type": "iconNode", "position": { "x": 0, "y": 200 },
   "data": { "icon": "User", "name": "Customer", "width": 64, "height": 64 } }
-```
-
-**group** — container; children declare via `parentId`.
-
-```json
-{ "id": "internal", "type": "group", "position": { "x": 100, "y": 100 },
-  "data": { "name": "Internal services", "width": 800, "height": 400 } }
 ```
 
 **htmlNode** — escape-hatch for content no curated node covers: legends, data tables, rich annotations, custom UI widgets. Renderer fetches the HTML file, injects Tailwind Play CDN (utility classes work), then **sanitises before painting** (strips `<script>`, `<style>`, `<iframe>`, `on*=` attributes, `javascript:` URLs).

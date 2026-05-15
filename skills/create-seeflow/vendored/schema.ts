@@ -141,14 +141,9 @@ const StateNodeDataSchema = NodeDataBaseSchema.extend({
   statusAction: StatusActionSchema.optional(),
 });
 
-// US-011: shared fields on every node variant. `parentId` lets a node declare
-// another node as its container (group) — React Flow then positions the child
-// relative to the parent and drags the parent + children together. Optional;
-// existing demo files predate it and must round-trip unchanged.
 const NodeBaseShape = {
   id: z.string().min(1),
   position: PositionSchema,
-  parentId: z.string().optional(),
 };
 
 const PlayNodeSchema = z.object({
@@ -271,42 +266,12 @@ const IconNodeSchema = z.object({
   data: IconNodeDataSchema,
 });
 
-// US-011: group node — a container with an optional label and explicit
-// dimensions. Children declare it via `parentId` and React Flow positions
-// them relative to the group. No semantic payload; the visual chrome
-// (dashed border, transparent fill) lives in CSS so a future style story
-// can theme it without schema churn.
-// US-001 (text-and-group-resize): optional style fields render via inline
-// style in group-node.tsx (US-005); absent → existing CSS defaults apply.
-// Note: `borderWidth` (not `borderSize`) is the canonical field on groups
-// per the PRD — it constrains to 1–8 vs shape nodes' open-ended borderSize.
-const GroupNodeDataSchema = z.object({
-  name: z.string().optional(),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
-  // US-019: lock state mirror of NodeVisualBaseShape.locked. GroupNode does
-  // not spread the visual base so we declare it here explicitly.
-  locked: z.boolean().optional(),
-  backgroundColor: ColorTokenSchema.optional(),
-  borderColor: ColorTokenSchema.optional(),
-  borderWidth: z.number().min(1).max(8).optional(),
-  borderStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
-  ...NodeDescriptionBaseShape,
-});
-
-const GroupNodeSchema = z.object({
-  ...NodeBaseShape,
-  type: z.literal('group'),
-  data: GroupNodeDataSchema,
-});
-
 const NodeSchema = z.discriminatedUnion('type', [
   PlayNodeSchema,
   StateNodeSchema,
   ShapeNodeSchema,
   ImageNodeSchema,
   IconNodeSchema,
-  GroupNodeSchema,
   HtmlNodeSchema,
 ]);
 
@@ -448,27 +413,6 @@ export const DemoSchema = z
         });
       }
     });
-    // US-011: a node's parentId must reference an existing node (otherwise
-    // React Flow would silently strand the child off-canvas). Self-parenting
-    // is also rejected to keep the parent graph acyclic at the trivial level.
-    demo.nodes.forEach((n, idx) => {
-      if (n.parentId === undefined) return;
-      if (n.parentId === n.id) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['nodes', idx, 'parentId'],
-          message: `Node ${n.id} cannot be its own parent`,
-        });
-        return;
-      }
-      if (!nodeIds.has(n.parentId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['nodes', idx, 'parentId'],
-          message: `Node ${n.id} references unknown parent: ${n.parentId}`,
-        });
-      }
-    });
   });
 
 export type Demo = z.infer<typeof DemoSchema>;
@@ -476,7 +420,6 @@ export type DemoNode = z.infer<typeof NodeSchema>;
 export type ShapeNode = z.infer<typeof ShapeNodeSchema>;
 export type ImageNode = z.infer<typeof ImageNodeSchema>;
 export type IconNode = z.infer<typeof IconNodeSchema>;
-export type GroupNode = z.infer<typeof GroupNodeSchema>;
 export type HtmlNode = z.infer<typeof HtmlNodeSchema>;
 export type HtmlNodeData = z.infer<typeof HtmlNodeDataSchema>;
 export type ShapeKind = z.infer<typeof ShapeKindSchema>;
