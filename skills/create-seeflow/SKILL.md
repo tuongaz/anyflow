@@ -33,14 +33,14 @@ Ask for clarification only when the prompt is incoherent — never ask "what is 
 Phase 0 — pre-flight: studio reachable?
 Phase 1 — seeflow-discoverer        → context brief (language + runtime + tests)
 Phase 2 — seeflow-node-planner      → node draft
-Phase 2b— write skeleton seeflow.json (nodes only) → register → user reviews canvas → approval
-Phase 3 — seeflow-play-designer  ┐
+Phase 3 — write skeleton seeflow.json (nodes only) → register → user reviews canvas → approval
+Phase 4 — seeflow-play-designer  ┐
           seeflow-status-designer├ parallel → overlays
                                  ┘
-Phase 4 — synthesize → validate-schema
-Phase 5 — write script files → re-register full flow
-Phase 6 — validate-end-to-end.ts → trigger APIs → verify via SSE (retry up to 2x)
-Phase 7 — open browser on success / retry-or-stop on failure
+Phase 5 — synthesize → validate-schema
+Phase 6 — write script files → re-register full flow
+Phase 7 — validate-end-to-end.ts → trigger APIs → verify via SSE (retry up to 2x)
+Phase 8 — open browser on success / retry-or-stop on failure
 ```
 
 Each phase is **gated** on the previous one.
@@ -160,14 +160,14 @@ Whenever two or more tasks are independent, dispatch them as concurrent sub-agen
 Create a `TaskCreate` checklist before launching any sub-agent:
 
 ```
-[ ] Phase 1  — Discover codebase (language, runtime, integration tests)
-[ ] Phase 2  — Plan nodes & connectors
-[ ] Phase 2b — Register skeleton flow (nodes only) — await user node review
-[ ] Phase 3  — Design Play + Status scripts (parallel)
-[ ] Phase 4  — Synthesize & validate schema
-[ ] Phase 5  — Write script files & re-register full flow
-[ ] Phase 6  — End-to-end validation (trigger APIs, verify via SSE)
-[ ] Phase 7  — Open browser
+[ ] Phase 1 — Discover codebase (language, runtime, integration tests)
+[ ] Phase 2 — Plan nodes & connectors
+[ ] Phase 3 — Register skeleton flow (nodes only) — await user node review
+[ ] Phase 4 — Design Play + Status scripts (parallel)
+[ ] Phase 5 — Synthesize & validate schema
+[ ] Phase 6 — Write script files & re-register full flow
+[ ] Phase 7 — End-to-end validation (trigger APIs, verify via SSE)
+[ ] Phase 8 — Open browser
 ```
 
 Mark each complete via `TaskUpdate` immediately after it succeeds.
@@ -236,11 +236,11 @@ Retry budget: one retry on unparseable output, then surface and stop.
 
 ---
 
-## Phase 2b — node review checkpoint
+## Phase 3 — node review checkpoint
 
 Register a **skeleton** flow (nodes + connectors only, no scripts) so the user can review the canvas before any scripts are written.
 
-Paths (used in this phase and Phase 5):
+Paths (used in this phase and Phase 6):
 - `repoPath = $PWD`
 - `flowDir = $PWD/.seeflow/<slug>`
 - `flowPath = .seeflow/<slug>/seeflow.json`
@@ -266,12 +266,12 @@ Paths (used in this phase and Phase 5):
    > The nodes are live at `<url>`. Does the layout look right? Any additions, removals, or renames before I write the scripts?
 
 **Wait** for response.
-- **Approved** → Phase 3.
-- **Changes requested** → re-run node-planner with feedback, repeat Phase 2b.
+- **Approved** → Phase 4.
+- **Changes requested** → re-run node-planner with feedback, repeat Phase 3.
 
 ---
 
-## Phase 3 — design Play + Status (parallel)
+## Phase 4 — design Play + Status (parallel)
 
 Launch `seeflow-play-designer` and `seeflow-status-designer` **in parallel** (single message, two `Task` calls). Both receive: context brief + node draft + edit target. Tools: `Read, Grep, Glob, LS`.
 
@@ -318,7 +318,7 @@ Launch `seeflow-play-designer` and `seeflow-status-designer` **in parallel** (si
 
 ---
 
-## Phase 4 — synthesize + validate schema
+## Phase 5 — synthesize + validate schema
 
 1. **Splice** `newTriggerNodes` into `nodeDraft.nodes` (add any required connectors).
 2. **Merge** each overlay onto its target node's `data`. Strip `validationSafe`, `rationale`, `scriptBody` — orchestrator metadata, not schema fields. Collect `nodeId`s where `validationSafe: false` into `unsafeNodeIds`.
@@ -331,14 +331,14 @@ bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-draft.j
 
 `{"ok":true}` → continue. `{"ok":false,"issues":[…]}` → feed issues back to the relevant designer, retry. **Max 3 retries**, then surface verbatim and stop.
 
-5. Proceed to Phase 5 — node layout was approved in Phase 2b.
+5. Proceed to Phase 6 — node layout was approved in Phase 3.
 
 ---
 
-## Phase 5 — write script files + re-register full flow
+## Phase 6 — write script files + re-register full flow
 
 1. `mkdir -p $flowDir/scripts $flowDir/state`
-2. Write files (overwriting the Phase 2b skeleton):
+2. Write files (overwriting the Phase 3 skeleton):
    - `$flowDir/seeflow.json` — validated flow JSON with all actions.
    - `$flowDir/scripts/<name>` — one file per overlay `scriptBody`. `chmod +x`.
    - `$flowDir/state/.gitignore` — `*`.
@@ -348,13 +348,13 @@ bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-draft.j
 bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$flowPath"
 ```
 
-Prints `{id, slug}`. Use the new `id` for Phases 6 + 7.
+Prints `{id, slug}`. Use the new `id` for Phases 7 + 8.
 
 On 400: show body, ask "fix-and-retry / stop". On other 4xx/5xx: show body, stop.
 
 ---
 
-## Phase 6 — end-to-end validation
+## Phase 7 — end-to-end validation
 
 **Must run. Do not skip or simulate.**
 
@@ -371,18 +371,18 @@ The script:
 - Drains SSE for `node:done` / `node:error` / `node:status` events. SSE outcome takes precedence.
 - Hard ceiling: ~2 minutes. Emits `{ok, plays, statuses, skipped}`.
 
-**Interpret the JSON.** On `ok: true` → Phase 7. On `ok: false`:
+**Interpret the JSON.** On `ok: true` → Phase 8. On `ok: false`:
 
 1. Identify failing nodes from `plays[*].error` / `statuses[*].outcome`.
 2. Propose a concrete fix ("play-checkout.ts: `ECONNREFUSED` on port 3001 — start the app first").
 3. Dispatch one sub-agent per failing script **in parallel**.
-4. Edit scripts in-place, re-run Phase 6 against the same `<id>`. **Max 2 retries**, then ask `retry / stop`.
+4. Edit scripts in-place, re-run Phase 7 against the same `<id>`. **Max 2 retries**, then ask `retry / stop`.
 
 Never re-run `register.ts` in the fix-up loop.
 
 ---
 
-## Phase 7 — open the browser
+## Phase 8 — open the browser
 
 ```bash
 url="$STUDIO_URL/d/<slug>"
@@ -391,7 +391,7 @@ case "$(uname)" in Darwin) open "$url";; Linux) xdg-open "$url";; *) echo "Open 
 
 Print: `Flow "<name>" registered as <slug>. Open: <url>`. Done.
 
-On Phase 6 failure: do not open browser. Wait for `retry / stop`.
+On Phase 7 failure: do not open browser. Wait for `retry / stop`.
 
 ---
 
@@ -401,14 +401,14 @@ On Phase 6 failure: do not open browser. Wait for `retry / stop`.
 |---|---|
 | Studio `/health` fails | `which seeflow` → if found: `seeflow start`; if not: `npx @tuongaz/seeflow` or clone + `make dev`. No retry. |
 | Sub-agent unparseable output | Retry once with parse error; if still failing, surface and stop. |
-| Schema validation fails (Phase 4) | Feed Zod issues back to relevant designer. Max 3 retries. |
-| Register 400 (Phase 5) | Show body; ask "fix-and-retry / stop". |
+| Schema validation fails (Phase 5) | Feed Zod issues back to relevant designer. Max 3 retries. |
+| Register 400 (Phase 6) | Show body; ask "fix-and-retry / stop". |
 | Register 4xx/5xx other | Show body; stop. |
-| Play `{error: "…"}` (Phase 6) | Edit scripts in-place; re-run Phase 6 (max 2 retries). Do NOT re-register. |
+| Play `{error: "…"}` (Phase 7) | Edit scripts in-place; re-run Phase 7 (max 2 retries). Do NOT re-register. |
 | Status SSE timeout 10s | Mark `no status received`; include in fix-up or ask retry/stop. |
 | Validation >2 min | `ok:false`; treat as failure → fix-up path. |
 
-Retry caps: Phase 4 schema → **3**. Phase 6 fix-up → **2**.
+Retry caps: Phase 5 schema → **3**. Phase 7 fix-up → **2**.
 
 ---
 
@@ -579,8 +579,8 @@ Malformed lines are silently dropped. Emit one full JSON object per line.
 |---|---|---|
 | `seeflow-discoverer` | `Read, Grep, Glob, LS, Bash` (read-only) | Phase 1: explore codebase, return context brief |
 | `seeflow-node-planner` | none (pure reasoning) | Phase 2: pick nodes + connectors |
-| `seeflow-play-designer` | `Read, Grep, Glob, LS` | Phase 3: design playActions + script bodies |
-| `seeflow-status-designer` | `Read, Grep, Glob, LS` | Phase 3: design statusActions + script bodies |
+| `seeflow-play-designer` | `Read, Grep, Glob, LS` | Phase 4: design playActions + script bodies |
+| `seeflow-status-designer` | `Read, Grep, Glob, LS` | Phase 4: design statusActions + script bodies |
 
 Full prompts + worked examples in `agents/<agent>.md`. All four share `examples/order-pipeline` — keep in lockstep.
 
@@ -589,10 +589,10 @@ Full prompts + worked examples in `agents/<agent>.md`. All four share `examples/
 | Endpoint | Method | Phase | Body |
 |---|---|---|---|
 | `/health` | GET | 0 | — |
-| `/api/demos/register` | POST | 2b, 5 | `{name, repoPath, demoPath}` |
-| `/api/demos/:id` | GET | 6 | — |
-| `/api/demos/:id/play/:nodeId` | POST | 6 | — |
-| `/api/events?demoId=:id` | GET (SSE) | 6 | — |
+| `/api/demos/register` | POST | 3, 6 | `{name, repoPath, demoPath}` |
+| `/api/demos/:id` | GET | 7 | — |
+| `/api/demos/:id/play/:nodeId` | POST | 7 | — |
+| `/api/events?demoId=:id` | GET (SSE) | 7 | — |
 | `/api/demos/:id` | DELETE | rollback only | — |
 
 Never invent endpoints. Surface anything outside this table to the user.
