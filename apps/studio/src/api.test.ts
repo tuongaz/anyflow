@@ -2664,15 +2664,18 @@ describe('DELETE /api/demos/:id', () => {
 });
 
 describe('POST /api/projects', () => {
-  it('detects an existing AnyDemo project at <folder>/.anydemo/demo.json and registers it as-is', async () => {
-    const { app, registry } = buildApp();
-    const repoPath = tmpRepoWithDemo();
-    const beforeBytes = readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf-8');
+  it('detects an existing AnyDemo project at <projectBaseDir>/<slug>/.anydemo/demo.json and registers it as-is', async () => {
+    const projectBaseDir = mkdtempSync(join(tmpdir(), 'anydemo-create-existing-'));
+    const registry = createRegistry({ path: tmpRegistry() });
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
+    // Pre-create the expected project path.
+    const projectPath = join(projectBaseDir, 'existing-project');
+    mkdirSync(join(projectPath, '.anydemo'), { recursive: true });
+    const existingDemo = { version: 1, name: 'Existing Project', nodes: [], connectors: [] };
+    writeFileSync(join(projectPath, '.anydemo', 'demo.json'), JSON.stringify(existingDemo));
+    const beforeBytes = readFileSync(join(projectPath, '.anydemo', 'demo.json'), 'utf-8');
 
-    const res = await post(app, '/api/projects', {
-      name: 'Existing Project',
-      folderPath: repoPath,
-    });
+    const res = await post(app, '/api/projects', { name: 'Existing Project' });
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string; slug: string; scaffolded: boolean };
@@ -2680,18 +2683,17 @@ describe('POST /api/projects', () => {
     expect(body.slug).toBe('existing-project');
     expect(body.scaffolded).toBe(false);
     expect(registry.list()).toHaveLength(1);
-    expect(registry.list()[0]?.repoPath).toBe(repoPath);
+    expect(registry.list()[0]?.repoPath).toBe(projectPath);
     // Existing demo.json content is untouched (no overwrite, no scaffold).
-    expect(readFileSync(join(repoPath, '.anydemo', 'demo.json'), 'utf-8')).toBe(beforeBytes);
+    expect(readFileSync(join(projectPath, '.anydemo', 'demo.json'), 'utf-8')).toBe(beforeBytes);
   });
 
   it('scaffolds a fresh project (folder + .anydemo/demo.json) when the target has no setup', async () => {
-    const { app, registry } = buildApp();
-    const folderPath = mkdtempSync(join(tmpdir(), 'anydemo-create-fresh-'));
-    // Sanity: starts empty.
-    expect(readdirSync(folderPath)).toHaveLength(0);
+    const projectBaseDir = mkdtempSync(join(tmpdir(), 'anydemo-create-fresh-'));
+    const registry = createRegistry({ path: tmpRegistry() });
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
 
-    const res = await post(app, '/api/projects', { name: 'Fresh Project', folderPath });
+    const res = await post(app, '/api/projects', { name: 'Fresh Project' });
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string; slug: string; scaffolded: boolean };
@@ -2699,48 +2701,27 @@ describe('POST /api/projects', () => {
     expect(body.slug).toBe('fresh-project');
     expect(registry.list()).toHaveLength(1);
 
-    // Scaffold written.
-    const written = JSON.parse(readFileSync(join(folderPath, '.anydemo', 'demo.json'), 'utf-8'));
+    const written = JSON.parse(readFileSync(join(projectBaseDir, 'fresh-project', '.anydemo', 'demo.json'), 'utf-8'));
     expect(written).toEqual({ version: 1, name: 'Fresh Project', nodes: [], connectors: [] });
-  });
-
-  it('creates the parent folder when missing before scaffolding', async () => {
-    const { app } = buildApp();
-    const parent = mkdtempSync(join(tmpdir(), 'anydemo-create-parent-'));
-    const folderPath = join(parent, 'nested', 'project');
-
-    const res = await post(app, '/api/projects', { name: 'Nested', folderPath });
-
-    expect(res.status).toBe(200);
-    expect(readFileSync(join(folderPath, '.anydemo', 'demo.json'), 'utf-8')).toContain(
-      '"name": "Nested"',
-    );
-  });
-
-  it('rejects relative folder paths with 400', async () => {
-    const { app, registry } = buildApp();
-    const res = await post(app, '/api/projects', {
-      name: 'Bad path',
-      folderPath: 'relative/path',
-    });
-    expect(res.status).toBe(400);
-    expect(registry.list()).toHaveLength(0);
   });
 
   it('rejects empty name with 400', async () => {
     const { app, registry } = buildApp();
-    const res = await post(app, '/api/projects', { name: '', folderPath: '/tmp/anywhere' });
+    const res = await post(app, '/api/projects', { name: '' });
     expect(res.status).toBe(400);
     expect(registry.list()).toHaveLength(0);
   });
 
   it('returns 400 with issues when an existing demo file fails schema validation', async () => {
-    const { app, registry } = buildApp();
-    const repoPath = mkdtempSync(join(tmpdir(), 'anydemo-create-bad-'));
-    mkdirSync(join(repoPath, '.anydemo'));
-    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), JSON.stringify({ version: 1 }));
+    const projectBaseDir = mkdtempSync(join(tmpdir(), 'anydemo-create-bad-'));
+    const registry = createRegistry({ path: tmpRegistry() });
+    const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
+    // Pre-create an invalid demo.json at the expected path.
+    const projectPath = join(projectBaseDir, 'bad');
+    mkdirSync(join(projectPath, '.anydemo'), { recursive: true });
+    writeFileSync(join(projectPath, '.anydemo', 'demo.json'), JSON.stringify({ version: 1 }));
 
-    const res = await post(app, '/api/projects', { name: 'Bad', folderPath: repoPath });
+    const res = await post(app, '/api/projects', { name: 'Bad' });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string; issues?: Array<{ path: unknown[] }> };
     expect(body.error).toContain('schema validation');
