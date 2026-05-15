@@ -47,7 +47,7 @@ make demo
 and opens it at <http://localhost:4321/d/todo-demo>. In the canvas, click
 **Play** on the `POST /todos/:id/complete` node — a real `bun` script runs,
 the node animates `running → done`, and the detail panel renders the response.
-Edit `examples/todo-demo-target/.seeflow/seeflow.json` and save — the canvas
+Edit `.seeflow/seeflow.json` in the registered demo and save — the canvas
 hot-reloads. When you're done, run `make stop`.
 
 ## Generate a demo from your own code (Claude Code plugin)
@@ -76,9 +76,8 @@ source of truth).
 ## Author a demo by hand
 
 A demo is a single file at `<your-repo>/.seeflow/seeflow.json` — no build
-step, no DSL. See [`examples/todo-demo-target`](./examples/todo-demo-target)
-for a working three-node demo plus its play/status scripts, and
-[`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) for the schema.
+step, no DSL. See [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts)
+for the full schema.
 
 Register your demo with:
 

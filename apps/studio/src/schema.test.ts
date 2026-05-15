@@ -1418,8 +1418,8 @@ describe('DemoSchema', () => {
   });
 
   // US-011: group node + parentId foundation. parentId is optional on every
-  // node variant, the group variant is new, and existing demo files round-trip
-  // unchanged (the example demos in /examples have no parentId / group nodes).
+  // node variant, the group variant is new, and pre-existing demo files
+  // round-trip unchanged (they have no parentId / group nodes).
   it('round-trips a group node with optional label + size (US-011)', () => {
     const demo = {
       version: 1 as const,
@@ -1728,29 +1728,45 @@ describe('DemoSchema', () => {
     expect(children.map((c) => c.id).sort()).toEqual(['child-a', 'child-b']);
   });
 
-  it('existing example demos round-trip unchanged through a parse cycle (US-011 back-compat)', async () => {
-    // The three on-disk examples in /examples/*/.seeflow/seeflow.json predate
-    // US-011's parentId / group additions. Both fields are optional, so a
-    // parse → serialize → parse cycle must produce a deep-equal demo.
-    const examples = [
-      '../../../examples/order-pipeline/.seeflow/seeflow.json',
-      '../../../examples/checkout-demo/.seeflow/seeflow.json',
-      '../../../examples/todo-demo-target/.seeflow/seeflow.json',
-    ];
-    for (const rel of examples) {
-      const url = new URL(rel, import.meta.url);
-      const raw = (await Bun.file(url.pathname).json()) as unknown;
-      const parsed = DemoSchema.safeParse(raw);
-      if (!parsed.success) {
-        throw new Error(
-          `expected ${rel} to parse, got: ${JSON.stringify(parsed.error.issues, null, 2)}`,
-        );
-      }
-      // Round-trip through JSON serialization to catch any silent field
-      // injection (e.g. parentId defaulting to undefined leaking out).
-      const serialized = JSON.parse(JSON.stringify(parsed.data)) as unknown;
-      expect(serialized).toEqual(raw);
+  it('pre-US-011 demos (no parentId / group nodes) round-trip unchanged (US-011 back-compat)', () => {
+    // Demos authored before US-011 have no parentId or group nodes. Both
+    // fields are optional, so a parse → serialize → parse cycle must produce
+    // a deep-equal result with no injected keys.
+    const raw = {
+      version: 1,
+      name: 'Legacy Demo',
+      nodes: [
+        {
+          id: 'svc',
+          type: 'playNode',
+          position: { x: 0, y: 0 },
+          data: {
+            name: 'POST /action',
+            kind: 'service',
+            stateSource: { kind: 'request' },
+            playAction: {
+              kind: 'script',
+              interpreter: 'bun',
+              args: ['run'],
+              scriptPath: 'scripts/play.ts',
+            },
+          },
+        },
+        {
+          id: 'worker',
+          type: 'stateNode',
+          position: { x: 300, y: 0 },
+          data: { name: 'my-worker', kind: 'worker', stateSource: { kind: 'event' } },
+        },
+      ],
+      connectors: [{ id: 'c1', source: 'svc', target: 'worker', kind: 'default' }],
+    };
+    const parsed = DemoSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(`expected legacy demo to parse: ${JSON.stringify(parsed.error.issues)}`);
     }
+    const serialized = JSON.parse(JSON.stringify(parsed.data)) as unknown;
+    expect(serialized).toEqual(raw);
   });
 
   it('treats data.handlerModule as optional and reserved (no runtime use yet)', () => {

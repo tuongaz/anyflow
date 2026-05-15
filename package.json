@@ -7,7 +7,7 @@
   "bin": {
     "seeflow": "apps/studio/bin/seeflow"
   },
-  "workspaces": ["apps/*", "packages/*", "examples/*"],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "biome check .",

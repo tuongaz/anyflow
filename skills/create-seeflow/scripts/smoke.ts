@@ -1,20 +1,16 @@
 #!/usr/bin/env bun
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { registerDemo } from './register';
 import { resolveStudioUrl } from './studio-config';
 import { unregisterDemo } from './unregister';
 import { validateSchemaFile } from './validate-schema';
 
 const HEALTH_TIMEOUT_MS = 1000;
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_FIXTURE = join(HERE, '..', '..', '..', 'examples', 'todo-demo-target');
 
 export interface SmokeOptions {
   url?: string;
-  fixturePath?: string;
   keepTmp?: boolean;
 }
 
@@ -39,9 +35,33 @@ export async function pingStudio(url: string, timeoutMs = HEALTH_TIMEOUT_MS): Pr
   }
 }
 
-// A second demo we author inline so the smoke covers "two demos in one repo".
-// Uses the same shape as todo-demo-target so the script paths resolve to files
-// the cpSync copy already laid down (no extra fixtures needed).
+function firstDemoFixture(): unknown {
+  return {
+    version: 1,
+    name: 'Smoke Demo',
+    nodes: [
+      {
+        id: 'smoke-service',
+        type: 'playNode',
+        position: { x: 0, y: 0 },
+        data: {
+          name: 'POST /smoke',
+          kind: 'service',
+          stateSource: { kind: 'request' },
+          playAction: {
+            kind: 'script',
+            interpreter: 'bun',
+            args: ['run'],
+            scriptPath: 'scripts/play.ts',
+          },
+          description: 'Smoke fixture: first demo.',
+        },
+      },
+    ],
+    connectors: [],
+  };
+}
+
 function secondDemoFixture(): unknown {
   return {
     version: 1,
@@ -61,7 +81,7 @@ function secondDemoFixture(): unknown {
             args: ['run'],
             scriptPath: 'scripts/play.ts',
           },
-          description: 'Smoke fixture: second demo coexisting with the bundled one.',
+          description: 'Smoke fixture: second demo coexisting with the first.',
         },
       },
     ],
@@ -93,22 +113,17 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
     };
   }
 
-  const fixture = options.fixturePath ?? DEFAULT_FIXTURE;
-  if (!existsSync(fixture)) {
-    return { ok: false, error: `todo-demo-target fixture not found at ${fixture}` };
-  }
-
   const tmpRepo = mkdtempSync(join(tmpdir(), 'seeflow-smoke-'));
   let firstId: string | undefined;
   let secondId: string | undefined;
 
   try {
-    cpSync(fixture, tmpRepo, {
-      recursive: true,
-      filter: (src) => !src.includes('node_modules'),
-    });
+    // Write the first demo fixture inline.
+    const firstDir = join(tmpRepo, '.seeflow');
+    mkdirSync(firstDir, { recursive: true });
+    writeFileSync(join(firstDir, 'seeflow.json'), JSON.stringify(firstDemoFixture(), null, 2));
 
-    // 1. Register the bundled demo at .seeflow/seeflow.json.
+    // 1. Register the first demo at .seeflow/seeflow.json.
     const firstReg = await registerDemo({
       repoPath: tmpRepo,
       demoPath: '.seeflow/seeflow.json',
@@ -293,5 +308,3 @@ export async function main(): Promise<number> {
 if (import.meta.main) {
   process.exit(await main());
 }
-
-export { DEFAULT_FIXTURE };

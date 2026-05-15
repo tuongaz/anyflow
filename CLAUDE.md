@@ -8,7 +8,6 @@ Local studio that hosts file-defined demos as React Flow canvases wired to a run
 - `apps/web/` — Vite + React + React Flow SPA
 - `packages/sdk/` — `emit()` helper
 - `skills/diagram/`, `agents/`, `commands/`, `.claude-plugin/` — Claude Code plugin (at repo root) that generates demos
-- `examples/` — demo targets
 
 ## Toolchain
 

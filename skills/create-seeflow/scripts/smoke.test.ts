@@ -1,7 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { runSmoke } from './smoke';
 
 const realFetch = globalThis.fetch;
@@ -18,56 +15,6 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-// Minimal todo-demo-target fixture: just enough for the studio's RegisterBody
-// + DemoSchema check. The real fixture lives at examples/todo-demo-target but
-// these tests stub fetch so we never touch the real studio.
-function makeFixture(root: string): void {
-  const seeflow = join(root, '.seeflow');
-  mkdirSync(seeflow, { recursive: true });
-  writeFileSync(
-    join(seeflow, 'seeflow.json'),
-    JSON.stringify({
-      version: 1,
-      name: 'Todo Demo',
-      nodes: [
-        {
-          id: 'api-complete-todo',
-          type: 'playNode',
-          position: { x: 0, y: 0 },
-          data: {
-            name: 'POST /todos/:id/complete',
-            kind: 'service',
-            stateSource: { kind: 'request' },
-            playAction: {
-              kind: 'script',
-              interpreter: 'bun',
-              args: ['run'],
-              scriptPath: 'scripts/play.ts',
-            },
-          },
-        },
-      ],
-      connectors: [],
-    }),
-  );
-  mkdirSync(join(seeflow, 'scripts'), { recursive: true });
-  writeFileSync(join(seeflow, 'scripts', 'play.ts'), '#!/usr/bin/env bun\nconsole.log("noop");\n');
-}
-
-let tmpRoot: string;
-let fixturePath: string;
-
-beforeAll(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), 'seeflow-smoke-test-'));
-  fixturePath = join(tmpRoot, 'todo-demo-target');
-  makeFixture(fixturePath);
-});
-
-afterAll(() => {
-  rmSync(tmpRoot, { recursive: true, force: true });
-  globalThis.fetch = realFetch;
-});
-
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
@@ -78,23 +25,10 @@ describe('runSmoke', () => {
       throw new TypeError('fetch failed');
     }) as typeof fetch;
 
-    const result = await runSmoke({ url: 'http://127.0.0.1:65535', fixturePath });
+    const result = await runSmoke({ url: 'http://127.0.0.1:65535' });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Studio not reachable at http://127.0.0.1:65535');
     expect(result.error).toContain('seeflow start');
-  });
-
-  it('returns ok:false when the fixture directory does not exist', async () => {
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/health')) return jsonResponse({ ok: true });
-      return new Response('unexpected', { status: 500 });
-    }) as typeof fetch;
-
-    const missing = join(tmpRoot, 'does-not-exist');
-    const result = await runSmoke({ url: 'http://stub', fixturePath: missing });
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('todo-demo-target fixture not found');
   });
 
   it('happy path: registers both demos, lists both, re-registers second without disturbing first', async () => {
@@ -140,7 +74,7 @@ describe('runSmoke', () => {
       return new Response('unexpected', { status: 500 });
     }) as typeof fetch;
 
-    const result = await runSmoke({ url: 'http://stub', fixturePath });
+    const result = await runSmoke({ url: 'http://stub' });
     expect(result.ok).toBe(true);
     expect(result.firstId).toBe(FIRST_ID);
     expect(result.firstSlug).toBe(FIRST_SLUG);
@@ -172,7 +106,7 @@ describe('runSmoke', () => {
       return new Response('unexpected', { status: 500 });
     }) as typeof fetch;
 
-    const result = await runSmoke({ url: 'http://stub', fixturePath });
+    const result = await runSmoke({ url: 'http://stub' });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('register first demo failed');
     expect(result.error).toContain('400');
@@ -192,7 +126,7 @@ describe('runSmoke', () => {
       return new Response('unexpected', { status: 500 });
     }) as typeof fetch;
 
-    const result = await runSmoke({ url: 'http://stub', fixturePath });
+    const result = await runSmoke({ url: 'http://stub' });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('first and second demo ids collided');
   });

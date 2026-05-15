@@ -2,8 +2,7 @@
 
 This is a **documentation** smoke test, not an executable script. It tells
 maintainers how to manually exercise the `seeflow-discoverer` agent
-against the repo's `examples/order-pipeline` project and what a passing
-brief should look like.
+against a local project and what a passing brief should look like.
 
 A future iteration may wire this into an evaluation harness; for now it is
 the canonical "did the prompt drift?" check.
@@ -22,7 +21,7 @@ From a Claude Code session anywhere with this plugin installed:
    Launch the seeflow-discoverer sub-agent with these inputs:
 
      userPrompt:   "show how the order pipeline works"
-     projectRoot:  <absolute path to examples/order-pipeline>
+     projectRoot:  <absolute path to a local project with an HTTP server, event bus, queue, and workers>
      existingDemo: null
 
    It must return a single fenced JSON block matching the contract
@@ -98,7 +97,5 @@ SeeFlow default audience).
 Re-run this smoke whenever:
 
 - `agents/seeflow-discoverer.md` is edited.
-- The structure of `examples/order-pipeline/src/` changes meaningfully
-  (new top-level file, removed worker, renamed entity).
 - The output contract in the agent prompt changes — also update the
   "Structural checks" list above.
