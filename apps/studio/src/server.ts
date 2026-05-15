@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { Hono } from 'hono';
@@ -55,7 +56,13 @@ export interface CreateAppOptions {
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
 const DEFAULT_STATIC_ROOT = './dist/web';
 
-const inferMode = (): AppMode => (process.env.NODE_ENV === 'production' ? 'prod' : 'dev');
+const inferMode = (): AppMode => {
+  if (process.env.NODE_ENV === 'production') return 'prod';
+  if (process.env.NODE_ENV === 'development') return 'dev';
+  // No NODE_ENV: use prod if the built web bundle exists, dev otherwise.
+  const distIndex = resolvePath(import.meta.dir, '../dist/web/index.html');
+  return existsSync(distIndex) ? 'prod' : 'dev';
+};
 
 export function createApp(options: CreateAppOptions = {}): Hono {
   const mode = options.mode ?? inferMode();

@@ -42,7 +42,7 @@
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit",
-		"dev": "bun --hot run src/cli.ts start",
+		"dev": "NODE_ENV=development bun --hot run src/cli.ts start",
 		"start": "bun run src/cli.ts start",
 		"test": "bun test",
 		"build:web": "cd ../web && bun run build",
