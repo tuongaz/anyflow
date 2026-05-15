@@ -1701,7 +1701,9 @@ describe('POST /api/demos/:id/nodes', () => {
       expect(starter).toContain(`blocks/${body.id}.html`);
       expect(starter).toContain('class="text-center"');
 
-      const onDisk = JSON.parse(readFileSync(join(repoPath, '.seeflow', 'seeflow.json'), 'utf8')) as {
+      const onDisk = JSON.parse(
+        readFileSync(join(repoPath, '.seeflow', 'seeflow.json'), 'utf8'),
+      ) as {
         nodes: Array<{ id: string; type: string; data: { htmlPath?: string } }>;
       };
       const persisted = onDisk.nodes.find((n) => n.id === body.id);
@@ -1921,7 +1923,9 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
       expect(await res.json()).toEqual({ ok: true });
       expect(existsSync(blockFile)).toBe(false);
 
-      const onDisk = JSON.parse(readFileSync(join(repoPath, '.seeflow', 'seeflow.json'), 'utf8')) as {
+      const onDisk = JSON.parse(
+        readFileSync(join(repoPath, '.seeflow', 'seeflow.json'), 'utf8'),
+      ) as {
         nodes: Array<{ id: string }>;
       };
       expect(onDisk.nodes.find((n) => n.id === created.id)).toBeUndefined();
@@ -1980,7 +1984,9 @@ describe('DELETE /api/demos/:id/nodes/:nodeId', () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true });
 
-      const onDisk = JSON.parse(readFileSync(join(repoPath, '.seeflow', 'seeflow.json'), 'utf8')) as {
+      const onDisk = JSON.parse(
+        readFileSync(join(repoPath, '.seeflow', 'seeflow.json'), 'utf8'),
+      ) as {
         nodes: Array<{ id: string }>;
       };
       expect(onDisk.nodes.find((n) => n.id === created.id)).toBeUndefined();

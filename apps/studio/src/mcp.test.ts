@@ -267,7 +267,9 @@ describe('seeflow_create_project', () => {
     const body = expectOk(envelope) as { id: string; slug: string; scaffolded: boolean };
     expect(body.scaffolded).toBe(true);
     expect(body.slug).toBe('brand-new-demo');
-    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.seeflow', 'seeflow.json'))).toBe(true);
+    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.seeflow', 'seeflow.json'))).toBe(
+      true,
+    );
     expect(registry.list()).toHaveLength(1);
   });
 });

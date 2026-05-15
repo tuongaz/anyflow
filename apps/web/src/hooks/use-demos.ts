@@ -11,8 +11,8 @@ export const useDemos = (): UseDemosResult => {
   const [demos, setDemos] = useState<DemoSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
-    fetchDemos()
+  const refresh = useCallback((): Promise<void> => {
+    return fetchDemos()
       .then((list) => {
         setDemos(list);
         setError(null);

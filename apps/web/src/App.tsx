@@ -77,8 +77,8 @@ export function App() {
   );
 
   const onProjectUnregistered = useCallback(
-    (id: string) => {
-      refreshDemos();
+    async (id: string) => {
+      await refreshDemos();
       if (demoId === id) navigate('/');
     },
     [refreshDemos, demoId],
