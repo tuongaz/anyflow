@@ -10,7 +10,7 @@ ITERATIONS ?= 10
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register example-order-pipeline ralph ralph-clean sync-anydemo-schema verify-anydemo-schema-sync smoke-create-anydemo
+.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-anydemo-schema verify-anydemo-schema-sync smoke-create-anydemo
 
 ANYDEMO_SCHEMA_SRC := apps/studio/src/schema.ts
 ANYDEMO_SCHEMA_DST := skills/create-anydemo/vendored/schema.ts
@@ -56,6 +56,17 @@ stop: ## Stop the studio daemon (sends SIGTERM)
 
 register: ## Register a demo: make register DIR=<path>
 	$(CLI) register --path $(DIR)
+
+demo: ## Quickstart: start studio, register the bundled todo example, open in browser
+	@OUTPUT="$$($(CLI) register --path examples/todo-demo-target)"; \
+	echo "$$OUTPUT"; \
+	URL="$$(echo "$$OUTPUT" | grep -oE 'http://[^ ]+' | head -1)"; \
+	if [ -n "$$URL" ]; then \
+	  case "$$(uname)" in \
+	    Darwin) open "$$URL" ;; \
+	    Linux)  xdg-open "$$URL" >/dev/null 2>&1 || true ;; \
+	  esac; \
+	fi
 
 example-order-pipeline: ## Run the order-pipeline example app (port 3040)
 	cd examples/order-pipeline && bun start

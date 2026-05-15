@@ -12,63 +12,82 @@ Use it to onboard a new teammate in an afternoon instead of a week, align a
 product team on what actually happens during checkout, or keep a permanent
 record of how your system behaves — one that breaks loudly when it drifts.
 
-## How you'll use it
-
-**1. Install the Claude Code skill** — one command, then `/diagram` works in
-any repo.
-
-```bash
-npx skills add tuongaz/anydemo
-```
-
-**2. Generate a diagram from your codebase.** Inside your project:
-
-```
-/diagram show me how the order pipeline works
-```
-
-Claude walks your code, picks the right slice, and writes a `demo.json`. No
-manual diagramming.
-
-**3. Play it.**
-
-```bash
-npx @tuongaz/anydemo start             # one-time: starts the studio
-npx @tuongaz/anydemo register --path . # register the demo, opens the canvas
-```
-
-Click a node → a real HTTP request hits your dev server. Workers downstream
-animate from `running` → `done` as your app calls `emit()`. If the diagram
-ever lies about your system, the play action will fail in front of you.
-
-## What you get
+## Why you'd use it
 
 - **A diagram that can't lie.** The boxes are real endpoints; the arrows
   fire real requests. Drift is visible immediately.
 - **Living onboarding.** New engineers click around instead of reading
   six-month-old docs.
-- **Generated, not drawn.** The skill produces the diagram from your code,
-  so you don't pay a tax to keep it.
+- **Generated, not drawn.** The bundled Claude Code plugin produces the
+  diagram from your code, so you don't pay a tax to keep it.
 - **Hot reload.** Edit the demo file, the canvas updates. No rebuild.
-- **Three playability tiers.** Wire it against your live dev server, against
-  a generated mock harness, or keep it static-but-rich when running the real
-  app isn't worth the setup.
 
-## Authoring by hand
+## Quickstart (under a minute)
 
-If you'd rather skip the skill, a demo is a single file at
-`<your-repo>/.anydemo/demo.json`. See
-[`examples/order-pipeline`](./examples/order-pipeline) for a complete
-working example, and [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts)
-for the Zod schema that validates it.
+You need **[Bun](https://bun.sh) ≥ 1.3** and `git`. Then:
 
-## Install the MCP server
+```bash
+git clone https://github.com/tuongaz/anydemo.git
+cd anydemo && bun install
+make demo
+```
+
+`make demo` starts the studio in the background, registers the bundled
+**Todo Demo** example, and opens it at <http://localhost:4321/d/todo-demo>.
+
+In the canvas, click **Play** on the `POST /todos/:id/complete` node — a
+real `bun` script runs, the node animates `running → done`, and the
+detail panel renders the response. Edit
+`examples/todo-demo-target/.anydemo/demo.json` and save — the canvas
+hot-reloads. When you're done, run `make stop`.
+
+> Prefer no clone? `npx -y @tuongaz/anydemo start --daemon` launches the
+> studio on its own; you'll still need to point `register --path <dir>` at
+> a folder that contains a `.anydemo/demo.json`.
+
+## Generate a demo from your own code (Claude Code plugin)
+
+Inside the cloned repo there's a Claude Code plugin (`create-anydemo`) that
+walks your codebase, picks a slice, and writes a `.anydemo/<slug>/demo.json`
+for you — no manual diagramming. From Claude Code:
+
+```
+/plugin marketplace add tuongaz/anydemo
+/plugin install create-anydemo@anydemo
+```
+
+Then in any project, just describe what you want:
+
+> create a demo showing how the order pipeline works
+
+Claude walks your code, drafts the nodes, asks you to confirm, then writes +
+registers the demo against your running studio. The plugin handles schema
+validation and end-to-end checks before opening the canvas.
+
+For deeper authoring, browse [`skills/create-anydemo/`](./skills/create-anydemo/)
+and [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) (the Zod
+source of truth).
+
+## Author a demo by hand
+
+A demo is a single file at `<your-repo>/.anydemo/demo.json` — no build
+step, no DSL. See [`examples/todo-demo-target`](./examples/todo-demo-target)
+for a working three-node demo plus its play/status scripts, and
+[`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) for the schema.
+
+Register your demo with:
+
+```bash
+npx -y @tuongaz/anydemo register --path /path/to/your/repo
+```
+
+## MCP server (Cursor, Windsurf, any MCP-aware agent)
 
 AnyDemo ships an MCP server so any MCP-aware coding agent (Claude Code,
 Cursor, Windsurf, etc.) can list, register, and edit demos directly —
 adding nodes, moving them, wiring connectors, patching styles. The studio
-must be running (`npx @tuongaz/anydemo start`); the MCP server is a thin
-stdio shim that proxies to its `/mcp` endpoint.
+must be running (`make demo` or `npx -y @tuongaz/anydemo start`); the MCP
+server is a thin stdio shim that proxies to its `/mcp` endpoint.
 
 **Claude Code** — one command:
 
@@ -100,11 +119,11 @@ running, tool calls return a clear error instead of hanging.
 git clone https://github.com/tuongaz/anydemo.git
 cd anydemo
 bun install
-make dev   # Vite (5173) + Hono studio (4321)
+make dev   # Vite (5173) + Hono studio (4321), both hot-reloading
 ```
 
-See `make help` for the rest. Toolchain: Bun ≥ 1.3, Hono, React Flow, Zod,
-Biome.
+`make help` lists every target. Toolchain: Bun ≥ 1.3, Hono, React Flow,
+Zod, Biome.
 
 ## Status
 
@@ -113,6 +132,4 @@ changes. Issues, ideas, and PRs welcome.
 
 ## License
 
-Not yet licensed for external distribution. Treat the source as
-"all rights reserved" until a `LICENSE` file lands. Reach out if you want
-to use it.
+MIT — see [`LICENSE`](./LICENSE).
