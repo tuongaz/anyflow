@@ -54,7 +54,7 @@ export interface CreateAppOptions {
 }
 
 const DEFAULT_VITE_DEV_URL = 'http://localhost:5173';
-const DEFAULT_STATIC_ROOT = './dist/web';
+const DEFAULT_STATIC_ROOT = resolvePath(import.meta.dir, '../dist/web');
 
 const inferMode = (): AppMode => {
   if (process.env.NODE_ENV === 'production') return 'prod';
@@ -165,7 +165,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     });
   } else {
     app.use('/*', serveStatic({ root: staticRoot }));
-    app.get('*', serveStatic({ path: `${staticRoot}/index.html` }));
+    app.get('*', serveStatic({ root: staticRoot, path: 'index.html' }));
   }
 
   return app;
