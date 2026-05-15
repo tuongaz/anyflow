@@ -190,7 +190,7 @@ export function DetailPanel({
                 ariaLabel="Description"
                 testIdBase="detail-panel-description"
                 onSave={onDescriptionChange}
-                textClassName="font-medium"
+                textClassName="font-medium text-muted-foreground"
               />
               <EditableField
                 nodeId={inspectableNode.id}
