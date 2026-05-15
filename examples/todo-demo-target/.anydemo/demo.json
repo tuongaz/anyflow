@@ -76,42 +76,6 @@
         "borderColor": "green",
         "backgroundColor": "red"
       }
-    },
-    {
-      "id": "node-150b091c-90c8-4642-bb16-67ce7f28bb3c",
-      "type": "shapeNode",
-      "position": {
-        "x": -1521.9689842294326,
-        "y": -1191.9235629493487
-      },
-      "data": {
-        "shape": "rectangle",
-        "width": 142.81376553912287,
-        "height": 146.70811231228754,
-        "borderSize": 2,
-        "fontSize": 17,
-        "borderColor": "green",
-        "borderStyle": "dashed",
-        "description": "ASDASD"
-      }
-    },
-    {
-      "id": "node-c698b934-7987-41ba-9c60-655661f0c409",
-      "type": "shapeNode",
-      "position": {
-        "x": -1440.359614598284,
-        "y": -986.0599723106437
-      },
-      "data": {
-        "shape": "sticky",
-        "width": 206.16531480311232,
-        "height": 161.53820583495906,
-        "borderSize": 2,
-        "fontSize": 17,
-        "borderColor": "green",
-        "borderStyle": "dashed",
-        "description": "ASdsad"
-      }
     }
   ],
   "connectors": [
