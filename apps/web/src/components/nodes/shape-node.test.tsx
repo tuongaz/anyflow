@@ -959,8 +959,8 @@ describe('DatabaseShape (US-009)', () => {
       props: { children: Array<{ type: string; props: Record<string, unknown> }> };
     };
     const ellipse = el.props.children.find((c) => c.type === 'ellipse');
-    expect(ellipse?.props.stroke).toBe('var(--anydemo-node-border)');
-    expect(ellipse?.props.fill).toBe('var(--anydemo-node-bg)');
+    expect(ellipse?.props.stroke).toBe('var(--seeflow-node-border)');
+    expect(ellipse?.props.fill).toBe('var(--seeflow-node-bg)');
   });
 
   it('honours explicit stroke/fill props', () => {

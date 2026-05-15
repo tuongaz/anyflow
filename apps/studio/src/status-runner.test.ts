@@ -91,12 +91,12 @@ function makeFakeRegistry(entries: DemoEntry[]): Registry {
 const tmpDirs: string[] = [];
 
 function makeProject(opts: { hasStatus: boolean; nodeId?: string; statusScriptName?: string }) {
-  const cwd = mkdtempSync(join(tmpdir(), 'anydemo-status-'));
+  const cwd = mkdtempSync(join(tmpdir(), 'seeflow-status-'));
   tmpDirs.push(cwd);
-  mkdirSync(join(cwd, '.anydemo', 'scripts'), { recursive: true });
+  mkdirSync(join(cwd, '.seeflow', 'scripts'), { recursive: true });
   const statusScriptName = opts.statusScriptName ?? 'status.ts';
-  writeFileSync(join(cwd, '.anydemo', 'scripts', statusScriptName), '// stub for tests');
-  writeFileSync(join(cwd, '.anydemo', 'scripts', 'play.ts'), '// stub for tests');
+  writeFileSync(join(cwd, '.seeflow', 'scripts', statusScriptName), '// stub for tests');
+  writeFileSync(join(cwd, '.seeflow', 'scripts', 'play.ts'), '// stub for tests');
 
   const nodeId = opts.nodeId ?? 'status-node';
   const demo = {
@@ -127,7 +127,7 @@ function makeProject(opts: { hasStatus: boolean; nodeId?: string; statusScriptNa
     ],
     connectors: [],
   };
-  const demoPath = join(cwd, '.anydemo', 'demo.json');
+  const demoPath = join(cwd, '.seeflow', 'demo.json');
   writeFileSync(demoPath, JSON.stringify(demo, null, 2));
   return {
     cwd,
@@ -137,7 +137,7 @@ function makeProject(opts: { hasStatus: boolean; nodeId?: string; statusScriptNa
       slug: 'demo-a',
       name: 'Test demo',
       repoPath: cwd,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
       lastModified: Date.now(),
       valid: true,
     } satisfies DemoEntry,
@@ -320,10 +320,10 @@ describe('createStatusRunner', () => {
   });
 
   it('enforces maxLifetimeMs: kills process and emits final error event', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'anydemo-status-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'seeflow-status-'));
     tmpDirs.push(cwd);
-    mkdirSync(join(cwd, '.anydemo', 'scripts'), { recursive: true });
-    writeFileSync(join(cwd, '.anydemo', 'scripts', 'status.ts'), '// stub');
+    mkdirSync(join(cwd, '.seeflow', 'scripts'), { recursive: true });
+    writeFileSync(join(cwd, '.seeflow', 'scripts', 'status.ts'), '// stub');
     const demo = {
       version: 1,
       name: 'Lifetime test',
@@ -348,13 +348,13 @@ describe('createStatusRunner', () => {
       ],
       connectors: [],
     };
-    writeFileSync(join(cwd, '.anydemo', 'demo.json'), JSON.stringify(demo));
+    writeFileSync(join(cwd, '.seeflow', 'demo.json'), JSON.stringify(demo));
     const entry: DemoEntry = {
       id: 'demoA',
       slug: 'demo-a',
       name: 'Lifetime test',
       repoPath: cwd,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
       lastModified: Date.now(),
       valid: true,
     };

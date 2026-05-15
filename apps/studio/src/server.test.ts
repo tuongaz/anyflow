@@ -67,21 +67,21 @@ describe('GET /runtime/:file (US-012 vendored Tailwind Play CDN)', () => {
 
 describe('GET /api/projects/:id/files/:path', () => {
   const buildFixture = () => {
-    const repoDir = mkdtempSync(join(tmpdir(), 'anydemo-files-repo-'));
-    mkdirSync(join(repoDir, '.anydemo', 'assets'), { recursive: true });
-    writeFileSync(join(repoDir, '.anydemo', 'demo.json'), '{"version":1}');
-    writeFileSync(join(repoDir, '.anydemo', 'assets', 'hello.txt'), 'hi there');
-    writeFileSync(join(repoDir, '.anydemo', 'blocks-card.html'), '<p>hi</p>');
-    // A secret file just outside .anydemo to verify traversal defense.
+    const repoDir = mkdtempSync(join(tmpdir(), 'seeflow-files-repo-'));
+    mkdirSync(join(repoDir, '.seeflow', 'assets'), { recursive: true });
+    writeFileSync(join(repoDir, '.seeflow', 'demo.json'), '{"version":1}');
+    writeFileSync(join(repoDir, '.seeflow', 'assets', 'hello.txt'), 'hi there');
+    writeFileSync(join(repoDir, '.seeflow', 'blocks-card.html'), '<p>hi</p>');
+    // A secret file just outside .seeflow to verify traversal defense.
     writeFileSync(join(repoDir, 'secret.txt'), 'never expose me');
 
     const registry = createRegistry({
-      path: join(mkdtempSync(join(tmpdir(), 'anydemo-files-reg-')), 'registry.json'),
+      path: join(mkdtempSync(join(tmpdir(), 'seeflow-files-reg-')), 'registry.json'),
     });
     const entry = registry.upsert({
       name: 'Files Test',
       repoPath: repoDir,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     const app = createApp({
       mode: 'prod',
@@ -142,19 +142,19 @@ const buildShelloutFixture = (opts?: {
   spawnResult?: { ok: boolean; error?: string };
   platform?: NodeJS.Platform;
 }): ShelloutFixture => {
-  const repoDir = mkdtempSync(join(tmpdir(), 'anydemo-shellout-repo-'));
-  mkdirSync(join(repoDir, '.anydemo', 'blocks'), { recursive: true });
-  writeFileSync(join(repoDir, '.anydemo', 'demo.json'), '{"version":1}');
-  writeFileSync(join(repoDir, '.anydemo', 'blocks', 'card.html'), '<p>hi</p>');
+  const repoDir = mkdtempSync(join(tmpdir(), 'seeflow-shellout-repo-'));
+  mkdirSync(join(repoDir, '.seeflow', 'blocks'), { recursive: true });
+  writeFileSync(join(repoDir, '.seeflow', 'demo.json'), '{"version":1}');
+  writeFileSync(join(repoDir, '.seeflow', 'blocks', 'card.html'), '<p>hi</p>');
   writeFileSync(join(repoDir, 'secret.txt'), 'never expose me');
 
   const registry = createRegistry({
-    path: join(mkdtempSync(join(tmpdir(), 'anydemo-shellout-reg-')), 'registry.json'),
+    path: join(mkdtempSync(join(tmpdir(), 'seeflow-shellout-reg-')), 'registry.json'),
   });
   const entry = registry.upsert({
     name: 'Shellout Test',
     repoPath: repoDir,
-    demoPath: '.anydemo/demo.json',
+    demoPath: '.seeflow/demo.json',
   });
 
   const calls: Array<{ cmd: string; args: string[] }> = [];
@@ -178,7 +178,7 @@ const buildShelloutFixture = (opts?: {
     projectId: entry.id,
     repoDir,
     calls,
-    blockHtmlAbs: realpathSync(join(repoDir, '.anydemo', 'blocks', 'card.html')),
+    blockHtmlAbs: realpathSync(join(repoDir, '.seeflow', 'blocks', 'card.html')),
   };
 };
 
@@ -284,7 +284,7 @@ describe('POST /api/projects/:id/files/open', () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string; absPath: string };
     expect(body.error).toMatch(/not found/i);
-    expect(body.absPath).toBe(join(fix.repoDir, '.anydemo', 'blocks', 'nope.html'));
+    expect(body.absPath).toBe(join(fix.repoDir, '.seeflow', 'blocks', 'nope.html'));
     expect(fix.calls).toEqual([]);
   });
 
@@ -347,7 +347,7 @@ describe('POST /api/projects/:id/files/reveal', () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string; absPath: string };
     expect(body.error).toMatch(/not found/i);
-    expect(body.absPath).toBe(join(fix.repoDir, '.anydemo', 'blocks', 'nope.html'));
+    expect(body.absPath).toBe(join(fix.repoDir, '.seeflow', 'blocks', 'nope.html'));
     expect(fix.calls).toEqual([]);
   });
 
@@ -369,17 +369,17 @@ describe('POST /api/projects/:id/files/reveal', () => {
 
 describe('POST /api/projects/:id/files/upload', () => {
   const buildUploadFixture = () => {
-    const repoDir = mkdtempSync(join(tmpdir(), 'anydemo-upload-repo-'));
-    mkdirSync(join(repoDir, '.anydemo'), { recursive: true });
-    writeFileSync(join(repoDir, '.anydemo', 'demo.json'), '{"version":1}');
+    const repoDir = mkdtempSync(join(tmpdir(), 'seeflow-upload-repo-'));
+    mkdirSync(join(repoDir, '.seeflow'), { recursive: true });
+    writeFileSync(join(repoDir, '.seeflow', 'demo.json'), '{"version":1}');
 
     const registry = createRegistry({
-      path: join(mkdtempSync(join(tmpdir(), 'anydemo-upload-reg-')), 'registry.json'),
+      path: join(mkdtempSync(join(tmpdir(), 'seeflow-upload-reg-')), 'registry.json'),
     });
     const entry = registry.upsert({
       name: 'Upload Test',
       repoPath: repoDir,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     const app = createApp({
       mode: 'prod',
@@ -410,8 +410,8 @@ describe('POST /api/projects/:id/files/upload', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { path: string };
     expect(body.path).toBe('assets/hello-world.png');
-    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'hello-world.png'))).toBe(true);
-    const written = readFileSync(join(repoDir, '.anydemo', 'assets', 'hello-world.png'));
+    expect(existsSync(join(repoDir, '.seeflow', 'assets', 'hello-world.png'))).toBe(true);
+    const written = readFileSync(join(repoDir, '.seeflow', 'assets', 'hello-world.png'));
     expect(new Uint8Array(written)).toEqual(PNG_BYTES);
   });
 
@@ -423,7 +423,7 @@ describe('POST /api/projects/:id/files/upload', () => {
     const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
     expect(res.status).toBe(200);
     expect(((await res.json()) as { path: string }).path).toBe('assets/my-image.png');
-    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'my-image.png'))).toBe(true);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets', 'my-image.png'))).toBe(true);
   });
 
   it('dedupes with -2, -3 suffix when the same name already exists', async () => {
@@ -437,9 +437,9 @@ describe('POST /api/projects/:id/files/upload', () => {
     expect((await upload('logo.png')).path).toBe('assets/logo.png');
     expect((await upload('logo.png')).path).toBe('assets/logo-2.png');
     expect((await upload('logo.png')).path).toBe('assets/logo-3.png');
-    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'logo.png'))).toBe(true);
-    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'logo-2.png'))).toBe(true);
-    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'logo-3.png'))).toBe(true);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets', 'logo.png'))).toBe(true);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets', 'logo-2.png'))).toBe(true);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets', 'logo-3.png'))).toBe(true);
   });
 
   it('rejects non-image extensions with 400', async () => {
@@ -453,7 +453,7 @@ describe('POST /api/projects/:id/files/upload', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/invalid|extension/i);
-    expect(existsSync(join(repoDir, '.anydemo', 'assets'))).toBe(false);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets'))).toBe(false);
   });
 
   it('rejects files larger than 5 MB with 413', async () => {
@@ -466,7 +466,7 @@ describe('POST /api/projects/:id/files/upload', () => {
     const body = (await res.json()) as { error: string; maxBytes: number };
     expect(body.error).toMatch(/too large/i);
     expect(body.maxBytes).toBe(5 * 1024 * 1024);
-    expect(existsSync(join(repoDir, '.anydemo', 'assets'))).toBe(false);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets'))).toBe(false);
   });
 
   it('returns 400 when the file field is missing', async () => {
@@ -494,6 +494,6 @@ describe('POST /api/projects/:id/files/upload', () => {
     const res = await app.fetch(formPost(`/api/projects/${projectId}/files/upload`, form));
     expect(res.status).toBe(200);
     expect(((await res.json()) as { path: string }).path).toBe('assets/icon.svg');
-    expect(existsSync(join(repoDir, '.anydemo', 'assets', 'icon.svg'))).toBe(true);
+    expect(existsSync(join(repoDir, '.seeflow', 'assets', 'icon.svg'))).toBe(true);
   });
 });

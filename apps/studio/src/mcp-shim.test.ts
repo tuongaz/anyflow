@@ -9,23 +9,23 @@ import { createApp } from './server.ts';
 const SHIM_PATH = join(dirname(fileURLToPath(import.meta.url)), 'mcp-shim.ts');
 
 const EXPECTED_TOOL_NAMES = [
-  'anydemo_add_connector',
-  'anydemo_add_node',
-  'anydemo_create_project',
-  'anydemo_delete_connector',
-  'anydemo_delete_demo',
-  'anydemo_delete_node',
-  'anydemo_get_demo',
-  'anydemo_list_demos',
-  'anydemo_move_node',
-  'anydemo_patch_connector',
-  'anydemo_patch_node',
-  'anydemo_register_demo',
-  'anydemo_reorder_node',
+  'seeflow_add_connector',
+  'seeflow_add_node',
+  'seeflow_create_project',
+  'seeflow_delete_connector',
+  'seeflow_delete_demo',
+  'seeflow_delete_node',
+  'seeflow_get_demo',
+  'seeflow_list_demos',
+  'seeflow_move_node',
+  'seeflow_patch_connector',
+  'seeflow_patch_node',
+  'seeflow_register_demo',
+  'seeflow_reorder_node',
 ] as const;
 
 const tmpRegistry = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'anydemo-shim-reg-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seeflow-shim-reg-'));
   return join(dir, 'registry.json');
 };
 
@@ -68,13 +68,13 @@ const readOneResponse = async (
   }
 };
 
-describe('anydemo-mcp stdio shim', () => {
+describe('seeflow-mcp stdio shim', () => {
   it('forwards tools/list over stdio to the studio /mcp endpoint', async () => {
     const studio = startTestStudio();
     let proc: ReturnType<typeof Bun.spawn> | undefined;
     try {
       proc = Bun.spawn(['bun', SHIM_PATH], {
-        env: { ...process.env, ANYDEMO_STUDIO_URL: studio.url },
+        env: { ...process.env, SEEFLOW_STUDIO_URL: studio.url },
         stdin: 'pipe',
         stdout: 'pipe',
         stderr: 'pipe',

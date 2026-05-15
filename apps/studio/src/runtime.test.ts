@@ -13,7 +13,7 @@ import {
 } from './runtime.ts';
 
 const tmpFile = (name: string) => {
-  const dir = mkdtempSync(join(tmpdir(), 'anydemo-runtime-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seeflow-runtime-'));
   return join(dir, name);
 };
 
@@ -52,7 +52,7 @@ describe('studioUrl', () => {
 
 describe('pid', () => {
   it('writePid + readPid round-trip', () => {
-    const path = tmpFile('anydemo.pid');
+    const path = tmpFile('seeflow.pid');
     writePid(99999, path);
     expect(readPid(path)).toBe(99999);
   });
@@ -62,13 +62,13 @@ describe('pid', () => {
   });
 
   it('readPid returns undefined when contents non-numeric', () => {
-    const path = tmpFile('anydemo.pid');
+    const path = tmpFile('seeflow.pid');
     writeFileSync(path, 'abc');
     expect(readPid(path)).toBeUndefined();
   });
 
   it('clearPid removes file (and is safe when missing)', () => {
-    const path = tmpFile('anydemo.pid');
+    const path = tmpFile('seeflow.pid');
     writePid(123, path);
     clearPid(path);
     expect(existsSync(path)).toBe(false);

@@ -360,7 +360,7 @@ describe('CommandPalette', () => {
     }
   });
 
-  it('list container marks itself as scroll-suppressed via the anydemo-no-scrollbar class', () => {
+  it('list container marks itself as scroll-suppressed via the seeflow-no-scrollbar class', () => {
     // The class is purely cosmetic, but easy to regression-check: the
     // palette is search-first and the scrollbar gutter is visual noise.
     const tree = renderPalette({}, { recents: ['edit.undo'] });
@@ -368,7 +368,7 @@ describe('CommandPalette', () => {
     if (!list) throw new Error('list missing');
     const className = list.props.className;
     expect(typeof className).toBe('string');
-    expect((className as string).includes('anydemo-no-scrollbar')).toBe(true);
+    expect((className as string).includes('seeflow-no-scrollbar')).toBe(true);
   });
 
   it('palette container omits a translate-x transform so the open animation only fades', () => {

@@ -27,8 +27,8 @@ const VALID_DEMO = {
 
 const tmpRepo = (demo: unknown = VALID_DEMO) => {
   const dir = mkdtempSync(join(tmpdir(), 'watcher-repo-'));
-  mkdirSync(join(dir, '.anydemo'));
-  writeFileSync(join(dir, '.anydemo', 'demo.json'), JSON.stringify(demo));
+  mkdirSync(join(dir, '.seeflow'));
+  writeFileSync(join(dir, '.seeflow', 'demo.json'), JSON.stringify(demo));
   return dir;
 };
 
@@ -43,7 +43,7 @@ describe('createWatcher', () => {
   it('seeds a valid snapshot when watch() starts on a parseable file', () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo();
-    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 
@@ -59,7 +59,7 @@ describe('createWatcher', () => {
   it('broadcasts demo:reload with valid:true on parse, valid:false on bad JSON', async () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo();
-    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 20 });
 
@@ -70,7 +70,7 @@ describe('createWatcher', () => {
 
     // Force a write that should land after the watcher is up.
     await wait(50);
-    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), '{ not: json }');
+    writeFileSync(join(repoPath, '.seeflow', 'demo.json'), '{ not: json }');
     await wait(150);
 
     const last = received.at(-1);
@@ -79,7 +79,7 @@ describe('createWatcher', () => {
     expect((last?.payload as { error: string }).error).toContain('Invalid JSON');
 
     // Repair the file. Should flip back to valid:true and broadcast a new event.
-    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), JSON.stringify(VALID_DEMO));
+    writeFileSync(join(repoPath, '.seeflow', 'demo.json'), JSON.stringify(VALID_DEMO));
     await wait(150);
 
     const finalEvent = received.at(-1);
@@ -90,7 +90,7 @@ describe('createWatcher', () => {
   it('keeps the last-good demo on snapshot when current parse is invalid', () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo();
-    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 
@@ -98,7 +98,7 @@ describe('createWatcher', () => {
     const good = watcher.snapshot(entry.id);
     expect(good?.valid).toBe(true);
 
-    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), 'oops');
+    writeFileSync(join(repoPath, '.seeflow', 'demo.json'), 'oops');
     const reparsed = watcher.reparse(entry.id);
     expect(reparsed?.valid).toBe(false);
     expect(reparsed?.demo?.name).toBe('Watch Me');
@@ -109,7 +109,7 @@ describe('createWatcher', () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     // Missing top-level `name` field.
     const repoPath = tmpRepo({ ...VALID_DEMO, name: undefined });
-    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 
@@ -124,7 +124,7 @@ describe('createWatcher', () => {
   it('unwatch() clears the snapshot and stops further events', async () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo();
-    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Me', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 
@@ -139,7 +139,7 @@ describe('createWatcher', () => {
     watcher.unwatch(entry.id);
     expect(watcher.snapshot(entry.id)).toBeNull();
 
-    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), JSON.stringify(VALID_DEMO));
+    writeFileSync(join(repoPath, '.seeflow', 'demo.json'), JSON.stringify(VALID_DEMO));
     await wait(80);
     expect(count).toBe(0);
     watcher.closeAll();
@@ -195,11 +195,11 @@ describe('createWatcher', () => {
   it('emits file:changed when an htmlNode-referenced file is edited', async () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo(demoWithHtmlPath('blocks/h1.html'));
-    mkdirSync(join(repoPath, '.anydemo', 'blocks'));
-    const htmlPath = join(repoPath, '.anydemo', 'blocks', 'h1.html');
+    mkdirSync(join(repoPath, '.seeflow', 'blocks'));
+    const htmlPath = join(repoPath, '.seeflow', 'blocks', 'h1.html');
     writeFileSync(htmlPath, '<div>v1</div>');
 
-    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 20 });
 
@@ -224,11 +224,11 @@ describe('createWatcher', () => {
   it('emits file:changed when an imageNode-referenced path file is edited', async () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo(demoWithImagePath('assets/logo.png'));
-    mkdirSync(join(repoPath, '.anydemo', 'assets'));
-    const imgPath = join(repoPath, '.anydemo', 'assets', 'logo.png');
+    mkdirSync(join(repoPath, '.seeflow', 'assets'));
+    const imgPath = join(repoPath, '.seeflow', 'assets', 'logo.png');
     writeFileSync(imgPath, 'placeholder-v1');
 
-    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 20 });
 
@@ -252,17 +252,17 @@ describe('createWatcher', () => {
   it('adds newly-referenced paths to the watch set on demo edit', async () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo();
-    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 
     watcher.watch(entry.id);
     expect(watcher.referencedPaths(entry.id)).toEqual([]);
 
-    mkdirSync(join(repoPath, '.anydemo', 'blocks'));
-    writeFileSync(join(repoPath, '.anydemo', 'blocks', 'h1.html'), '<div>v1</div>');
+    mkdirSync(join(repoPath, '.seeflow', 'blocks'));
+    writeFileSync(join(repoPath, '.seeflow', 'blocks', 'h1.html'), '<div>v1</div>');
     writeFileSync(
-      join(repoPath, '.anydemo', 'demo.json'),
+      join(repoPath, '.seeflow', 'demo.json'),
       JSON.stringify(demoWithHtmlPath('blocks/h1.html')),
     );
     await wait(120);
@@ -274,11 +274,11 @@ describe('createWatcher', () => {
   it('removes paths from the watch set when a referencing node is removed', async () => {
     const reg = createRegistry({ path: tmpRegistryPath() });
     const repoPath = tmpRepo(demoWithHtmlPath('blocks/h1.html'));
-    mkdirSync(join(repoPath, '.anydemo', 'blocks'));
-    const htmlPath = join(repoPath, '.anydemo', 'blocks', 'h1.html');
+    mkdirSync(join(repoPath, '.seeflow', 'blocks'));
+    const htmlPath = join(repoPath, '.seeflow', 'blocks', 'h1.html');
     writeFileSync(htmlPath, '<div>v1</div>');
 
-    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 
@@ -291,7 +291,7 @@ describe('createWatcher', () => {
     expect(watcher.referencedPaths(entry.id)).toEqual(['blocks/h1.html']);
 
     // Drop the referencing node from the demo via a write to demo.json.
-    writeFileSync(join(repoPath, '.anydemo', 'demo.json'), JSON.stringify(VALID_DEMO));
+    writeFileSync(join(repoPath, '.seeflow', 'demo.json'), JSON.stringify(VALID_DEMO));
     await wait(120);
     expect(watcher.referencedPaths(entry.id)).toEqual([]);
 
@@ -345,7 +345,7 @@ describe('createWatcher', () => {
         },
       ],
     });
-    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.anydemo/demo.json' });
+    const entry = reg.upsert({ name: 'Watch Files', repoPath, demoPath: '.seeflow/demo.json' });
     const events = createEventBus();
     const watcher = createWatcher({ registry: reg, events, debounceMs: 10 });
 

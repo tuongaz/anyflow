@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createRegistry, slugify } from './registry.ts';
 
 const tmpRegistryPath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'anydemo-registry-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seeflow-registry-'));
   return join(dir, 'registry.json');
 };
 
@@ -28,7 +28,7 @@ describe('createRegistry', () => {
     const entry = reg.upsert({
       name: 'Checkout Flow',
       repoPath: '/tmp/repo-a',
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     expect(entry.id).toBeTruthy();
     expect(entry.slug).toBe('checkout-flow');
@@ -60,12 +60,12 @@ describe('createRegistry', () => {
     const a = reg.upsert({
       name: 'Checkout',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/checkout/demo.json',
+      demoPath: '.seeflow/checkout/demo.json',
     });
     const b = reg.upsert({
       name: 'Refund',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/refund/demo.json',
+      demoPath: '.seeflow/refund/demo.json',
     });
     expect(a.id).not.toBe(b.id);
     expect(a.slug).toBe('checkout');
@@ -78,17 +78,17 @@ describe('createRegistry', () => {
     const a = reg.upsert({
       name: 'Checkout',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/checkout/demo.json',
+      demoPath: '.seeflow/checkout/demo.json',
     });
     const b = reg.upsert({
       name: 'Refund',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/refund/demo.json',
+      demoPath: '.seeflow/refund/demo.json',
     });
     const updated = reg.upsert({
       name: 'Checkout v2',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/checkout/demo.json',
+      demoPath: '.seeflow/checkout/demo.json',
     });
     expect(updated.id).toBe(a.id);
     expect(updated.slug).toBe(a.slug);
@@ -96,7 +96,7 @@ describe('createRegistry', () => {
     expect(reg.list()).toHaveLength(2);
     const sibling = reg.getById(b.id);
     expect(sibling?.name).toBe('Refund');
-    expect(sibling?.demoPath).toBe('.anydemo/refund/demo.json');
+    expect(sibling?.demoPath).toBe('.seeflow/refund/demo.json');
   });
 
   it('slug uniqueness still enforced across the WHOLE registry (same name, same repo)', () => {
@@ -104,12 +104,12 @@ describe('createRegistry', () => {
     const a = reg.upsert({
       name: 'Foo',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/foo-a/demo.json',
+      demoPath: '.seeflow/foo-a/demo.json',
     });
     const b = reg.upsert({
       name: 'Foo',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/foo-b/demo.json',
+      demoPath: '.seeflow/foo-b/demo.json',
     });
     expect(a.slug).toBe('foo');
     expect(b.slug).toBe('foo-2');
@@ -120,12 +120,12 @@ describe('createRegistry', () => {
     const a = reg.upsert({
       name: 'Checkout',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/checkout/demo.json',
+      demoPath: '.seeflow/checkout/demo.json',
     });
     const b = reg.upsert({
       name: 'Refund',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/refund/demo.json',
+      demoPath: '.seeflow/refund/demo.json',
     });
     expect(reg.remove(a.id)).toBe(true);
     expect(reg.list()).toHaveLength(1);
@@ -138,17 +138,17 @@ describe('createRegistry', () => {
     const a = reg.upsert({
       name: 'A',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/a/demo.json',
+      demoPath: '.seeflow/a/demo.json',
     });
     reg.upsert({
       name: 'B',
       repoPath: '/tmp/multi',
-      demoPath: '.anydemo/b/demo.json',
+      demoPath: '.seeflow/b/demo.json',
     });
-    const found = reg.getByRepoPathAndDemoPath('/tmp/multi', '.anydemo/a/demo.json');
+    const found = reg.getByRepoPathAndDemoPath('/tmp/multi', '.seeflow/a/demo.json');
     expect(found?.id).toBe(a.id);
     expect(
-      reg.getByRepoPathAndDemoPath('/tmp/multi', '.anydemo/missing/demo.json'),
+      reg.getByRepoPathAndDemoPath('/tmp/multi', '.seeflow/missing/demo.json'),
     ).toBeUndefined();
   });
 

@@ -726,12 +726,12 @@ describe('DemoCanvas', () => {
 
       // Walk the tree to the wrapper div (the same element that carries the
       // onPointerDown / onPointerMove / onPointerUp props in the JSX).
-      // `data-testid="anydemo-canvas"` is the wrapper's testid.
+      // `data-testid="seeflow-canvas"` is the wrapper's testid.
       const wrapper = findElement(
         tree,
         (el) =>
           isElement(el) &&
-          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'anydemo-canvas',
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'seeflow-canvas',
       );
       if (!wrapper) throw new Error('wrapper div not found in DemoCanvas tree');
 
@@ -821,7 +821,7 @@ describe('DemoCanvas', () => {
         tree,
         (el) =>
           isElement(el) &&
-          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'anydemo-canvas',
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'seeflow-canvas',
       );
       if (!wrapper) throw new Error('wrapper div not found');
 
@@ -868,7 +868,7 @@ describe('DemoCanvas', () => {
         tree,
         (el) =>
           isElement(el) &&
-          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'anydemo-canvas',
+          (el.props as { 'data-testid'?: unknown })['data-testid'] === 'seeflow-canvas',
       );
       if (!wrapper) throw new Error('wrapper div not found');
       const paneTarget = {
@@ -3097,7 +3097,7 @@ describe('DemoCanvas', () => {
     function findCanvasWrapper(tree: unknown): ReactElementLike | null {
       return findElement(tree, (el) => {
         const p = el.props as { 'data-testid'?: string };
-        return p['data-testid'] === 'anydemo-canvas';
+        return p['data-testid'] === 'seeflow-canvas';
       });
     }
 
@@ -3228,7 +3228,7 @@ describe('DemoCanvas', () => {
     function findCanvasWrapper(tree: unknown): ReactElementLike | null {
       return findElement(tree, (el) => {
         const p = el.props as { 'data-testid'?: string };
-        return p['data-testid'] === 'anydemo-canvas';
+        return p['data-testid'] === 'seeflow-canvas';
       });
     }
 

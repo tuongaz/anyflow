@@ -17,7 +17,7 @@ const { getLastUsedStyle, rememberNodeStyle, rememberConnectorStyle } = await im
   '@/lib/last-used-style'
 );
 
-const STORAGE_KEY = 'anydemo:last-used-style:v1';
+const STORAGE_KEY = 'seeflow:last-used-style:v1';
 
 beforeEach(() => {
   memStore.clear();

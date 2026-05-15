@@ -32,7 +32,7 @@ const VALID_DEMO = {
 };
 
 const tmpRegistryPath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'anydemo-cli-reg-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seeflow-cli-reg-'));
   return join(dir, 'registry.json');
 };
 
@@ -66,33 +66,33 @@ const runCli = async (
   return { code: proc.exitCode ?? -1, stdout, stderr };
 };
 
-describe('anydemo CLI register integration', () => {
+describe('seeflow CLI register integration', () => {
   it('two registers from the same repo with different demoPath produce two distinct studio entries', async () => {
     const studio = startTestStudio();
     try {
-      const repoDir = mkdtempSync(join(tmpdir(), 'anydemo-cli-repo-'));
-      mkdirSync(join(repoDir, '.anydemo', 'checkout'), { recursive: true });
-      mkdirSync(join(repoDir, '.anydemo', 'refund'), { recursive: true });
+      const repoDir = mkdtempSync(join(tmpdir(), 'seeflow-cli-repo-'));
+      mkdirSync(join(repoDir, '.seeflow', 'checkout'), { recursive: true });
+      mkdirSync(join(repoDir, '.seeflow', 'refund'), { recursive: true });
       writeFileSync(
-        join(repoDir, '.anydemo', 'checkout', 'demo.json'),
+        join(repoDir, '.seeflow', 'checkout', 'demo.json'),
         JSON.stringify({ ...VALID_DEMO, name: 'Checkout' }),
       );
       writeFileSync(
-        join(repoDir, '.anydemo', 'refund', 'demo.json'),
+        join(repoDir, '.seeflow', 'refund', 'demo.json'),
         JSON.stringify({ ...VALID_DEMO, name: 'Refund' }),
       );
 
-      const baseEnv = { ANYDEMO_STUDIO_URL: studio.url };
+      const baseEnv = { SEEFLOW_STUDIO_URL: studio.url };
 
       const first = await runCli(
-        ['register', '--no-start', '--path', repoDir, '--demo', '.anydemo/checkout/demo.json'],
+        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/checkout/demo.json'],
         baseEnv,
       );
       expect(first.code).toBe(0);
       expect(first.stdout).toContain('Registered "Checkout"');
 
       const second = await runCli(
-        ['register', '--no-start', '--path', repoDir, '--demo', '.anydemo/refund/demo.json'],
+        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/refund/demo.json'],
         baseEnv,
       );
       expect(second.code).toBe(0);

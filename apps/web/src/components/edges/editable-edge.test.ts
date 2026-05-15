@@ -96,9 +96,9 @@ describe('connectors paint under nodes; labels stack between edges and nodes', (
 describe('endpoint dot is visual-only — native React Flow reconnect drives drag', () => {
   it('CSS sets pointer-events: none on the endpoint dot', () => {
     const css = readFileSync(indexCssPath, 'utf-8');
-    const rule = css.match(/\.anydemo-connector-endpoint-dot\s*\{[^}]*\}/);
+    const rule = css.match(/\.seeflow-connector-endpoint-dot\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
-    if (!rule) throw new Error('expected .anydemo-connector-endpoint-dot rule');
+    if (!rule) throw new Error('expected .seeflow-connector-endpoint-dot rule');
     expect(rule[0]).toMatch(/pointer-events:\s*none/);
     // The `cursor: grab` / `grabbing` affordances from the perimeter-snap
     // era would imply a drag handler on the dot. They must be gone.

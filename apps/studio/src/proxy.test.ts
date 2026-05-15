@@ -107,10 +107,10 @@ function makeFakeSpawner(opts: FakeOptions): { spawner: ProcessSpawner; record: 
 const tmpDirs: string[] = [];
 
 function makeProjectWithScript(scriptName = 'play.ts'): { cwd: string; scriptPath: string } {
-  const cwd = mkdtempSync(join(tmpdir(), 'anydemo-proxy-'));
+  const cwd = mkdtempSync(join(tmpdir(), 'seeflow-proxy-'));
   tmpDirs.push(cwd);
-  mkdirSync(join(cwd, '.anydemo', 'scripts'), { recursive: true });
-  writeFileSync(join(cwd, '.anydemo', 'scripts', scriptName), '// stub for tests');
+  mkdirSync(join(cwd, '.seeflow', 'scripts'), { recursive: true });
+  writeFileSync(join(cwd, '.seeflow', 'scripts', scriptName), '// stub for tests');
   return { cwd, scriptPath: `scripts/${scriptName}` };
 }
 
@@ -315,14 +315,14 @@ describe('runPlay (script spawner)', () => {
 
   it('rejects a scriptPath that escapes the project root via a symlink', async () => {
     // Make two tmp dirs: the project and an outside dir containing the target.
-    const cwd = mkdtempSync(join(tmpdir(), 'anydemo-proxy-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'seeflow-proxy-'));
     tmpDirs.push(cwd);
-    const outside = mkdtempSync(join(tmpdir(), 'anydemo-proxy-out-'));
+    const outside = mkdtempSync(join(tmpdir(), 'seeflow-proxy-out-'));
     tmpDirs.push(outside);
-    mkdirSync(join(cwd, '.anydemo'), { recursive: true });
+    mkdirSync(join(cwd, '.seeflow'), { recursive: true });
     writeFileSync(join(outside, 'evil.ts'), '// outside');
-    // .anydemo/escape.ts is a symlink pointing outside the project root.
-    symlinkSync(join(outside, 'evil.ts'), join(cwd, '.anydemo', 'escape.ts'));
+    // .seeflow/escape.ts is a symlink pointing outside the project root.
+    symlinkSync(join(outside, 'evil.ts'), join(cwd, '.seeflow', 'escape.ts'));
 
     const bus = createEventBus();
     const captured = captureEvents(bus, 'demoA');
@@ -614,13 +614,13 @@ describe('runReset (US-008)', () => {
   }, 10_000);
 
   it('rejects scriptPath escape via symlink', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'anydemo-proxy-reset-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'seeflow-proxy-reset-'));
     tmpDirs.push(cwd);
-    const outside = mkdtempSync(join(tmpdir(), 'anydemo-proxy-reset-out-'));
+    const outside = mkdtempSync(join(tmpdir(), 'seeflow-proxy-reset-out-'));
     tmpDirs.push(outside);
-    mkdirSync(join(cwd, '.anydemo'), { recursive: true });
+    mkdirSync(join(cwd, '.seeflow'), { recursive: true });
     writeFileSync(join(outside, 'evil.ts'), '// outside');
-    symlinkSync(join(outside, 'evil.ts'), join(cwd, '.anydemo', 'escape.ts'));
+    symlinkSync(join(outside, 'evil.ts'), join(cwd, '.seeflow', 'escape.ts'));
 
     const bus = createEventBus();
     const captured = captureEvents(bus, 'demoA');

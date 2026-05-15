@@ -925,7 +925,7 @@ describe('DemoSchema', () => {
   });
 
   // US-004: ImageNodeDataSchema hard-cut from a `data:image/...` URL to a
-  // relative `path` under `<project>/.anydemo/`. The renderer resolves it via
+  // relative `path` under `<project>/.seeflow/`. The renderer resolves it via
   // the file-serving endpoint added in US-001. Path-safety mirrors htmlPath:
   // no absolute paths, no `..` traversal, no leading slash.
   it('parses a demo containing one imageNode with data.path (US-004)', () => {
@@ -1729,13 +1729,13 @@ describe('DemoSchema', () => {
   });
 
   it('existing example demos round-trip unchanged through a parse cycle (US-011 back-compat)', async () => {
-    // The three on-disk examples in /examples/*/.anydemo/demo.json predate
+    // The three on-disk examples in /examples/*/.seeflow/demo.json predate
     // US-011's parentId / group additions. Both fields are optional, so a
     // parse → serialize → parse cycle must produce a deep-equal demo.
     const examples = [
-      '../../../examples/order-pipeline/.anydemo/demo.json',
-      '../../../examples/checkout-demo/.anydemo/demo.json',
-      '../../../examples/todo-demo-target/.anydemo/demo.json',
+      '../../../examples/order-pipeline/.seeflow/demo.json',
+      '../../../examples/checkout-demo/.seeflow/demo.json',
+      '../../../examples/todo-demo-target/.seeflow/demo.json',
     ];
     for (const rel of examples) {
       const url = new URL(rel, import.meta.url);
@@ -1929,7 +1929,7 @@ describe('DemoSchema', () => {
   });
 
   // US-011 (illustrative-shapes-htmlnode): htmlNode is the new escape-hatch
-  // node type — references author-written HTML at `<project>/.anydemo/<htmlPath>`.
+  // node type — references author-written HTML at `<project>/.seeflow/<htmlPath>`.
   // `htmlPath` shares the path-safety refine used by imageNode.path; the schema
   // intentionally does NOT validate file existence (the US-014 renderer shows a
   // placeholder when the file is missing).

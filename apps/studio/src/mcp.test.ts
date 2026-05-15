@@ -29,18 +29,18 @@ const VALID_DEMO = {
 };
 
 const tmpRegistry = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'anydemo-mcp-reg-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seeflow-mcp-reg-'));
   return join(dir, 'registry.json');
 };
 
 const tmpRepoWithDemo = (demo: unknown = VALID_DEMO) => {
-  const repoDir = mkdtempSync(join(tmpdir(), 'anydemo-mcp-repo-'));
-  mkdirSync(join(repoDir, '.anydemo'));
-  writeFileSync(join(repoDir, '.anydemo', 'demo.json'), JSON.stringify(demo));
+  const repoDir = mkdtempSync(join(tmpdir(), 'seeflow-mcp-repo-'));
+  mkdirSync(join(repoDir, '.seeflow'));
+  writeFileSync(join(repoDir, '.seeflow', 'demo.json'), JSON.stringify(demo));
   return repoDir;
 };
 
-const tmpEmptyFolder = () => mkdtempSync(join(tmpdir(), 'anydemo-mcp-proj-'));
+const tmpEmptyFolder = () => mkdtempSync(join(tmpdir(), 'seeflow-mcp-proj-'));
 
 const buildApp = (opts: { projectBaseDir?: string } = {}) => {
   const registry = createRegistry({ path: tmpRegistry() });
@@ -103,19 +103,19 @@ describe('POST /mcp tools/list', () => {
     const envelope = await mcpRequest(app, 'tools/list', {});
     const names = (envelope.result?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
-      'anydemo_add_connector',
-      'anydemo_add_node',
-      'anydemo_create_project',
-      'anydemo_delete_connector',
-      'anydemo_delete_demo',
-      'anydemo_delete_node',
-      'anydemo_get_demo',
-      'anydemo_list_demos',
-      'anydemo_move_node',
-      'anydemo_patch_connector',
-      'anydemo_patch_node',
-      'anydemo_register_demo',
-      'anydemo_reorder_node',
+      'seeflow_add_connector',
+      'seeflow_add_node',
+      'seeflow_create_project',
+      'seeflow_delete_connector',
+      'seeflow_delete_demo',
+      'seeflow_delete_node',
+      'seeflow_get_demo',
+      'seeflow_list_demos',
+      'seeflow_move_node',
+      'seeflow_patch_connector',
+      'seeflow_patch_node',
+      'seeflow_register_demo',
+      'seeflow_reorder_node',
     ]);
   });
 
@@ -124,33 +124,33 @@ describe('POST /mcp tools/list', () => {
     const envelope = await mcpRequest(app, 'tools/list', {});
     const byName = new Map((envelope.result?.tools ?? []).map((t) => [t.name, t]));
 
-    const register = byName.get('anydemo_register_demo');
+    const register = byName.get('seeflow_register_demo');
     expect(register?.inputSchema?.type).toBe('object');
     const registerProps = register?.inputSchema?.properties as Record<string, unknown>;
     expect(Object.keys(registerProps)).toEqual(expect.arrayContaining(['repoPath', 'demoPath']));
 
-    const createProject = byName.get('anydemo_create_project');
+    const createProject = byName.get('seeflow_create_project');
     const cpProps = createProject?.inputSchema?.properties as Record<string, unknown>;
     expect(Object.keys(cpProps)).toEqual(['name']);
   });
 });
 
-describe('anydemo_list_demos', () => {
+describe('seeflow_list_demos', () => {
   it('returns the registry list (initially empty)', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_list_demos');
+    const envelope = await callTool(app, 'seeflow_list_demos');
     expect(expectOk(envelope)).toEqual([]);
   });
 
-  it('reflects entries added through anydemo_register_demo', async () => {
+  it('reflects entries added through seeflow_register_demo', async () => {
     const { app } = buildApp();
     const repoPath = tmpRepoWithDemo();
-    await callTool(app, 'anydemo_register_demo', {
+    await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
 
-    const envelope = await callTool(app, 'anydemo_list_demos');
+    const envelope = await callTool(app, 'seeflow_list_demos');
     const list = expectOk(envelope) as Array<{ slug: string; valid: boolean; name: string }>;
     expect(list).toHaveLength(1);
     expect(list[0]?.slug).toBe('checkout-flow');
@@ -158,17 +158,17 @@ describe('anydemo_list_demos', () => {
   });
 });
 
-describe('anydemo_get_demo', () => {
+describe('seeflow_get_demo', () => {
   it('returns the validated demo for a registered id', async () => {
     const { app } = buildApp();
     const repoPath = tmpRepoWithDemo();
-    const registerEnvelope = await callTool(app, 'anydemo_register_demo', {
+    const registerEnvelope = await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     const reg = expectOk(registerEnvelope) as { id: string };
 
-    const envelope = await callTool(app, 'anydemo_get_demo', { demoId: reg.id });
+    const envelope = await callTool(app, 'seeflow_get_demo', { demoId: reg.id });
     const body = expectOk(envelope) as {
       id: string;
       valid: boolean;
@@ -183,18 +183,18 @@ describe('anydemo_get_demo', () => {
 
   it('returns an isError result for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_get_demo', { demoId: 'does-not-exist' });
+    const envelope = await callTool(app, 'seeflow_get_demo', { demoId: 'does-not-exist' });
     expect(expectError(envelope)).toBe('not found');
   });
 });
 
-describe('anydemo_register_demo', () => {
+describe('seeflow_register_demo', () => {
   it('registers a valid demo and returns id + slug + sdk outcome', async () => {
     const { app, registry } = buildApp();
     const repoPath = tmpRepoWithDemo();
-    const envelope = await callTool(app, 'anydemo_register_demo', {
+    const envelope = await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     const body = expectOk(envelope) as {
       id: string;
@@ -208,9 +208,9 @@ describe('anydemo_register_demo', () => {
 
   it('errors when the demo file is missing on disk', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_register_demo', {
+    const envelope = await callTool(app, 'seeflow_register_demo', {
       repoPath: '/this/path/does/not/exist',
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     const text = expectError(envelope);
     expect(text).toContain('Demo file not found');
@@ -218,50 +218,50 @@ describe('anydemo_register_demo', () => {
   });
 });
 
-describe('anydemo_delete_demo', () => {
+describe('seeflow_delete_demo', () => {
   it('removes a registered demo and accepts id or slug', async () => {
     const { app, registry } = buildApp();
     const repoPath = tmpRepoWithDemo();
-    const regEnvelope = await callTool(app, 'anydemo_register_demo', {
+    const regEnvelope = await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
     });
     const reg = expectOk(regEnvelope) as { id: string; slug: string };
     expect(registry.list()).toHaveLength(1);
 
-    const byIdEnvelope = await callTool(app, 'anydemo_delete_demo', { demoId: reg.id });
+    const byIdEnvelope = await callTool(app, 'seeflow_delete_demo', { demoId: reg.id });
     expect(expectOk(byIdEnvelope)).toEqual({ ok: true });
     expect(registry.list()).toHaveLength(0);
 
     // Slug-based deletion mirrors REST DELETE /api/demos/:id behavior.
     const repoPath2 = tmpRepoWithDemo();
     const second = expectOk(
-      await callTool(app, 'anydemo_register_demo', {
+      await callTool(app, 'seeflow_register_demo', {
         repoPath: repoPath2,
-        demoPath: '.anydemo/demo.json',
+        demoPath: '.seeflow/demo.json',
       }),
     ) as { slug: string };
-    const bySlugEnvelope = await callTool(app, 'anydemo_delete_demo', { demoId: second.slug });
+    const bySlugEnvelope = await callTool(app, 'seeflow_delete_demo', { demoId: second.slug });
     expect(expectOk(bySlugEnvelope)).toEqual({ ok: true });
     expect(registry.list()).toHaveLength(0);
   });
 
   it('errors with "not found" for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_delete_demo', { demoId: 'does-not-exist' });
+    const envelope = await callTool(app, 'seeflow_delete_demo', { demoId: 'does-not-exist' });
     expect(expectError(envelope)).toBe('not found');
   });
 });
 
-describe('anydemo_create_project', () => {
-  it('scaffolds a new project folder and writes .anydemo/demo.json', async () => {
+describe('seeflow_create_project', () => {
+  it('scaffolds a new project folder and writes .seeflow/demo.json', async () => {
     const projectBaseDir = tmpEmptyFolder();
     const { app, registry } = buildApp({ projectBaseDir });
-    const envelope = await callTool(app, 'anydemo_create_project', { name: 'Brand New Demo' });
+    const envelope = await callTool(app, 'seeflow_create_project', { name: 'Brand New Demo' });
     const body = expectOk(envelope) as { id: string; slug: string; scaffolded: boolean };
     expect(body.scaffolded).toBe(true);
     expect(body.slug).toBe('brand-new-demo');
-    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.anydemo', 'demo.json'))).toBe(true);
+    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.seeflow', 'demo.json'))).toBe(true);
     expect(registry.list()).toHaveLength(1);
   });
 });
@@ -324,20 +324,20 @@ const registerFixture = async (
   demo: unknown = VALID_DEMO,
 ) => {
   const repoPath = tmpRepoWithDemo(demo);
-  const envelope = await callTool(app, 'anydemo_register_demo', {
+  const envelope = await callTool(app, 'seeflow_register_demo', {
     repoPath,
-    demoPath: '.anydemo/demo.json',
+    demoPath: '.seeflow/demo.json',
   });
   const reg = expectOk(envelope) as RegisterResult;
-  return { repoPath, demoFile: join(repoPath, '.anydemo', 'demo.json'), reg };
+  return { repoPath, demoFile: join(repoPath, '.seeflow', 'demo.json'), reg };
 };
 
-describe('anydemo_add_node', () => {
+describe('seeflow_add_node', () => {
   it('appends a new node and auto-generates an id when absent', async () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_add_node', {
+    const envelope = await callTool(app, 'seeflow_add_node', {
       demoId: reg.id,
       node: {
         type: 'shapeNode',
@@ -362,7 +362,7 @@ describe('anydemo_add_node', () => {
     const before = readFileSync(demoFile, 'utf8');
 
     // shapeNode without required `shape` — DemoSchema rejects the post-merge.
-    const envelope = await callTool(app, 'anydemo_add_node', {
+    const envelope = await callTool(app, 'seeflow_add_node', {
       demoId: reg.id,
       node: { type: 'shapeNode', position: { x: 0, y: 0 }, data: {} },
     });
@@ -373,7 +373,7 @@ describe('anydemo_add_node', () => {
 
   it('errors with "unknown demo" for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_add_node', {
+    const envelope = await callTool(app, 'seeflow_add_node', {
       demoId: 'does-not-exist',
       node: { type: 'shapeNode', position: { x: 0, y: 0 }, data: { shape: 'rectangle' } },
     });
@@ -381,12 +381,12 @@ describe('anydemo_add_node', () => {
   });
 });
 
-describe('anydemo_delete_node', () => {
+describe('seeflow_delete_node', () => {
   it('removes the node and cascades adjacent connectors in one write', async () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
 
-    const envelope = await callTool(app, 'anydemo_delete_node', { demoId: reg.id, nodeId: 'b' });
+    const envelope = await callTool(app, 'seeflow_delete_node', { demoId: reg.id, nodeId: 'b' });
     expect(expectOk(envelope)).toEqual({ ok: true });
 
     const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
@@ -401,7 +401,7 @@ describe('anydemo_delete_node', () => {
   it('errors with the node id in the message for an unknown nodeId', async () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app);
-    const envelope = await callTool(app, 'anydemo_delete_node', {
+    const envelope = await callTool(app, 'seeflow_delete_node', {
       demoId: reg.id,
       nodeId: 'missing',
     });
@@ -409,12 +409,12 @@ describe('anydemo_delete_node', () => {
   });
 });
 
-describe('anydemo_move_node', () => {
+describe('seeflow_move_node', () => {
   it('writes { x, y } back to the on-disk node position', async () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_move_node', {
+    const envelope = await callTool(app, 'seeflow_move_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       x: 250,
@@ -432,7 +432,7 @@ describe('anydemo_move_node', () => {
   it('errors for an unknown nodeId', async () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app);
-    const envelope = await callTool(app, 'anydemo_move_node', {
+    const envelope = await callTool(app, 'seeflow_move_node', {
       demoId: reg.id,
       nodeId: 'nope',
       x: 0,
@@ -442,7 +442,7 @@ describe('anydemo_move_node', () => {
   });
 });
 
-describe('anydemo_reorder_node', () => {
+describe('seeflow_reorder_node', () => {
   const onDiskOrder = (demoFile: string) =>
     (JSON.parse(readFileSync(demoFile, 'utf8')) as { nodes: Array<{ id: string }> }).nodes.map(
       (n) => n.id,
@@ -452,7 +452,7 @@ describe('anydemo_reorder_node', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
 
-    const envelope = await callTool(app, 'anydemo_reorder_node', {
+    const envelope = await callTool(app, 'seeflow_reorder_node', {
       demoId: reg.id,
       nodeId: 'a',
       op: 'forward',
@@ -465,7 +465,7 @@ describe('anydemo_reorder_node', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
 
-    const envelope = await callTool(app, 'anydemo_reorder_node', {
+    const envelope = await callTool(app, 'seeflow_reorder_node', {
       demoId: reg.id,
       nodeId: 'a',
       op: 'toIndex',
@@ -478,7 +478,7 @@ describe('anydemo_reorder_node', () => {
   it('errors for an unknown nodeId', async () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app, VALID_DEMO_THREE_NODES);
-    const envelope = await callTool(app, 'anydemo_reorder_node', {
+    const envelope = await callTool(app, 'seeflow_reorder_node', {
       demoId: reg.id,
       nodeId: 'missing',
       op: 'forward',
@@ -489,7 +489,7 @@ describe('anydemo_reorder_node', () => {
   it('rejects invalid op via the discriminated union', async () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app);
-    const envelope = await callTool(app, 'anydemo_reorder_node', {
+    const envelope = await callTool(app, 'seeflow_reorder_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       op: 'noSuchOp',
@@ -500,11 +500,11 @@ describe('anydemo_reorder_node', () => {
 
 // ---------- Node patch tool (US-004) ----------
 
-describe('anydemo_patch_node', () => {
+describe('seeflow_patch_node', () => {
   it('exposes NodePatchBodySchema fields plus demoId/nodeId in inputSchema', async () => {
     const { app } = buildApp();
     const envelope = await mcpRequest(app, 'tools/list', {});
-    const tool = (envelope.result?.tools ?? []).find((t) => t.name === 'anydemo_patch_node');
+    const tool = (envelope.result?.tools ?? []).find((t) => t.name === 'seeflow_patch_node');
     expect(tool).toBeDefined();
     const props = tool?.inputSchema?.properties as Record<string, unknown>;
     expect(Object.keys(props)).toEqual(
@@ -535,7 +535,7 @@ describe('anydemo_patch_node', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       name: 'POST /checkout (renamed)',
@@ -560,7 +560,7 @@ describe('anydemo_patch_node', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       name: 'Multi-Edit',
@@ -595,7 +595,7 @@ describe('anydemo_patch_node', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       position: { x: 42, y: 84 },
@@ -613,7 +613,7 @@ describe('anydemo_patch_node', () => {
     const { demoFile, reg } = await registerFixture(app);
     const before = readFileSync(demoFile, 'utf8');
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       borderColor: 'neon-pink',
@@ -627,7 +627,7 @@ describe('anydemo_patch_node', () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       somethingMadeUp: true,
@@ -637,7 +637,7 @@ describe('anydemo_patch_node', () => {
 
   it('returns isError for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: 'does-not-exist',
       nodeId: 'api-checkout',
       name: 'x',
@@ -649,7 +649,7 @@ describe('anydemo_patch_node', () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app);
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'missing',
       name: 'x',
@@ -663,7 +663,7 @@ describe('anydemo_patch_node', () => {
     const before = readFileSync(demoFile, 'utf8');
 
     // Empty name on a functional playNode trips DemoSchema after merge.
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'api-checkout',
       name: '',
@@ -697,20 +697,20 @@ describe('anydemo_patch_node', () => {
       connectors: [],
     });
     const reg = expectOk(
-      await callTool(app, 'anydemo_register_demo', {
+      await callTool(app, 'seeflow_register_demo', {
         repoPath,
-        demoPath: '.anydemo/demo.json',
+        demoPath: '.seeflow/demo.json',
       }),
     ) as RegisterResult;
 
-    const envelope = await callTool(app, 'anydemo_patch_node', {
+    const envelope = await callTool(app, 'seeflow_patch_node', {
       demoId: reg.id,
       nodeId: 'fc',
       name: 'After Patch',
     });
     expect(expectOk(envelope)).toEqual({ ok: true });
 
-    const demoFile = join(repoPath, '.anydemo', 'demo.json');
+    const demoFile = join(repoPath, '.seeflow', 'demo.json');
     const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
       nodes: Array<{ id: string; futureField?: string; data: { name: string } }>;
     };
@@ -756,12 +756,12 @@ const VALID_DEMO_WITH_CONN = {
   connectors: [{ id: 'a-to-b', source: 'a', target: 'b', kind: 'default', label: 'flow' }],
 };
 
-describe('anydemo_add_connector', () => {
+describe('seeflow_add_connector', () => {
   it('appends a new connector, defaults kind to default, auto-generates id', async () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_TWO_NODES);
 
-    const envelope = await callTool(app, 'anydemo_add_connector', {
+    const envelope = await callTool(app, 'seeflow_add_connector', {
       demoId: reg.id,
       connector: { source: 'a', target: 'b' },
     });
@@ -784,7 +784,7 @@ describe('anydemo_add_connector', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_TWO_NODES);
 
-    const envelope = await callTool(app, 'anydemo_add_connector', {
+    const envelope = await callTool(app, 'seeflow_add_connector', {
       demoId: reg.id,
       connector: {
         id: 'my-conn',
@@ -810,7 +810,7 @@ describe('anydemo_add_connector', () => {
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_TWO_NODES);
     const before = readFileSync(demoFile, 'utf8');
 
-    const envelope = await callTool(app, 'anydemo_add_connector', {
+    const envelope = await callTool(app, 'seeflow_add_connector', {
       demoId: reg.id,
       connector: { source: 'ghost', target: 'b' },
     });
@@ -821,7 +821,7 @@ describe('anydemo_add_connector', () => {
 
   it('errors with "unknown demo" for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_add_connector', {
+    const envelope = await callTool(app, 'seeflow_add_connector', {
       demoId: 'does-not-exist',
       connector: { source: 'a', target: 'b' },
     });
@@ -829,11 +829,11 @@ describe('anydemo_add_connector', () => {
   });
 });
 
-describe('anydemo_patch_connector', () => {
+describe('seeflow_patch_connector', () => {
   it('exposes ConnectorPatchBodySchema fields plus demoId/connectorId in inputSchema', async () => {
     const { app } = buildApp();
     const envelope = await mcpRequest(app, 'tools/list', {});
-    const tool = (envelope.result?.tools ?? []).find((t) => t.name === 'anydemo_patch_connector');
+    const tool = (envelope.result?.tools ?? []).find((t) => t.name === 'seeflow_patch_connector');
     expect(tool).toBeDefined();
     const props = tool?.inputSchema?.properties as Record<string, unknown>;
     expect(Object.keys(props)).toEqual(
@@ -863,7 +863,7 @@ describe('anydemo_patch_connector', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
       label: 'renamed',
@@ -901,7 +901,7 @@ describe('anydemo_patch_connector', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, demo);
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
       kind: 'default',
@@ -921,7 +921,7 @@ describe('anydemo_patch_connector', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
       kind: 'event',
@@ -954,7 +954,7 @@ describe('anydemo_patch_connector', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, demo);
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
       sourceHandle: null,
@@ -976,7 +976,7 @@ describe('anydemo_patch_connector', () => {
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
     const before = readFileSync(demoFile, 'utf8');
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
       kind: 'event',
@@ -989,7 +989,7 @@ describe('anydemo_patch_connector', () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
       somethingMadeUp: true,
@@ -999,7 +999,7 @@ describe('anydemo_patch_connector', () => {
 
   it('returns isError for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: 'does-not-exist',
       connectorId: 'a-to-b',
       label: 'x',
@@ -1011,7 +1011,7 @@ describe('anydemo_patch_connector', () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
 
-    const envelope = await callTool(app, 'anydemo_patch_connector', {
+    const envelope = await callTool(app, 'seeflow_patch_connector', {
       demoId: reg.id,
       connectorId: 'missing',
       label: 'x',
@@ -1020,7 +1020,7 @@ describe('anydemo_patch_connector', () => {
   });
 });
 
-describe('anydemo_delete_connector', () => {
+describe('seeflow_delete_connector', () => {
   const VALID_DEMO_WITH_TWO_CONNS = {
     ...VALID_DEMO_TWO_NODES,
     connectors: [
@@ -1033,7 +1033,7 @@ describe('anydemo_delete_connector', () => {
     const { app } = buildApp();
     const { demoFile, reg } = await registerFixture(app, VALID_DEMO_WITH_TWO_CONNS);
 
-    const envelope = await callTool(app, 'anydemo_delete_connector', {
+    const envelope = await callTool(app, 'seeflow_delete_connector', {
       demoId: reg.id,
       connectorId: 'a-to-b',
     });
@@ -1048,7 +1048,7 @@ describe('anydemo_delete_connector', () => {
   it('errors with the connector id in the message for an unknown connectorId', async () => {
     const { app } = buildApp();
     const { reg } = await registerFixture(app, VALID_DEMO_WITH_CONN);
-    const envelope = await callTool(app, 'anydemo_delete_connector', {
+    const envelope = await callTool(app, 'seeflow_delete_connector', {
       demoId: reg.id,
       connectorId: 'missing',
     });
@@ -1057,7 +1057,7 @@ describe('anydemo_delete_connector', () => {
 
   it('errors with "unknown demo" for an unknown demoId', async () => {
     const { app } = buildApp();
-    const envelope = await callTool(app, 'anydemo_delete_connector', {
+    const envelope = await callTool(app, 'seeflow_delete_connector', {
       demoId: 'does-not-exist',
       connectorId: 'a-to-b',
     });

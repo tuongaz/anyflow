@@ -98,7 +98,7 @@ const VALID_DEMO_THREE_NODES = {
 };
 
 const tmpRegistryPath = () =>
-  join(mkdtempSync(join(tmpdir(), 'anydemo-parity-reg-')), 'registry.json');
+  join(mkdtempSync(join(tmpdir(), 'seeflow-parity-reg-')), 'registry.json');
 
 interface DemoFixture {
   app: ReturnType<typeof createApp>;
@@ -114,9 +114,9 @@ const buildDemoFixture = (initialDemo: unknown): DemoFixture => {
   const registry = createRegistry({ path: tmpRegistryPath() });
   const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true });
 
-  const repoPath = mkdtempSync(join(tmpdir(), 'anydemo-parity-repo-'));
-  mkdirSync(join(repoPath, '.anydemo'));
-  const demoFile = join(repoPath, '.anydemo', 'demo.json');
+  const repoPath = mkdtempSync(join(tmpdir(), 'seeflow-parity-repo-'));
+  mkdirSync(join(repoPath, '.seeflow'));
+  const demoFile = join(repoPath, '.seeflow', 'demo.json');
   // operations.ts writes the canonical 2-space JSON + trailing newline back to
   // disk on every mutation, so the byte comparison only kicks in after the
   // first mutation runs. The initial seed bytes can be whatever — pretty or
@@ -127,7 +127,7 @@ const buildDemoFixture = (initialDemo: unknown): DemoFixture => {
   const entry = registry.upsert({
     name: demoName,
     repoPath,
-    demoPath: '.anydemo/demo.json',
+    demoPath: '.seeflow/demo.json',
     valid: true,
     lastModified: Date.now(),
   });
@@ -143,13 +143,13 @@ interface ProjectFixture {
 }
 
 // create_project fixture: empty base dir, no pre-registered demo. The tool
-// itself scaffolds the demo file + registers it under <base>/<slug>/.anydemo/demo.json.
+// itself scaffolds the demo file + registers it under <base>/<slug>/.seeflow/demo.json.
 const buildProjectFixture = (name: string): ProjectFixture => {
   const registry = createRegistry({ path: tmpRegistryPath() });
-  const projectBaseDir = mkdtempSync(join(tmpdir(), 'anydemo-parity-proj-'));
+  const projectBaseDir = mkdtempSync(join(tmpdir(), 'seeflow-parity-proj-'));
   const app = createApp({ mode: 'prod', staticRoot: './dist/web', registry, disableWatcher: true, projectBaseDir });
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'demo';
-  return { app, registry, projectBaseDir, demoFile: join(projectBaseDir, slug, '.anydemo', 'demo.json') };
+  return { app, registry, projectBaseDir, demoFile: join(projectBaseDir, slug, '.seeflow', 'demo.json') };
 };
 
 let rpcId = 1;
@@ -215,7 +215,7 @@ interface ParityScenario {
 // operations.ts never sees the same demoId twice.
 const SCENARIOS: ParityScenario[] = [
   {
-    toolName: 'anydemo_add_node',
+    toolName: 'seeflow_add_node',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_TWO_NODES);
       // Explicit id keeps the on-disk bytes deterministic — auto-generated ids
@@ -230,12 +230,12 @@ const SCENARIOS: ParityScenario[] = [
         demoFile: fix.demoFile,
         runRest: () => restJson(fix.app, 'POST', `/api/demos/${fix.demoId}/nodes`, newNode),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_add_node', { demoId: fix.demoId, node: newNode }),
+          callMcpTool(fix.app, 'seeflow_add_node', { demoId: fix.demoId, node: newNode }),
       };
     },
   },
   {
-    toolName: 'anydemo_patch_node',
+    toolName: 'seeflow_patch_node',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_TWO_NODES);
       const body = { name: 'Renamed', borderColor: 'blue' as const, width: 200 };
@@ -243,7 +243,7 @@ const SCENARIOS: ParityScenario[] = [
         demoFile: fix.demoFile,
         runRest: () => restJson(fix.app, 'PATCH', `/api/demos/${fix.demoId}/nodes/a`, body),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_patch_node', {
+          callMcpTool(fix.app, 'seeflow_patch_node', {
             demoId: fix.demoId,
             nodeId: 'a',
             ...body,
@@ -252,7 +252,7 @@ const SCENARIOS: ParityScenario[] = [
     },
   },
   {
-    toolName: 'anydemo_delete_node',
+    toolName: 'seeflow_delete_node',
     build: () => {
       // Three-node demo with chained connectors so the cascade-removal of
       // both a-to-b and b-to-c lands in the byte comparison.
@@ -261,12 +261,12 @@ const SCENARIOS: ParityScenario[] = [
         demoFile: fix.demoFile,
         runRest: () => restJson(fix.app, 'DELETE', `/api/demos/${fix.demoId}/nodes/b`),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_delete_node', { demoId: fix.demoId, nodeId: 'b' }),
+          callMcpTool(fix.app, 'seeflow_delete_node', { demoId: fix.demoId, nodeId: 'b' }),
       };
     },
   },
   {
-    toolName: 'anydemo_move_node',
+    toolName: 'seeflow_move_node',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_TWO_NODES);
       return {
@@ -277,7 +277,7 @@ const SCENARIOS: ParityScenario[] = [
             y: 654,
           }),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_move_node', {
+          callMcpTool(fix.app, 'seeflow_move_node', {
             demoId: fix.demoId,
             nodeId: 'a',
             x: 321,
@@ -287,7 +287,7 @@ const SCENARIOS: ParityScenario[] = [
     },
   },
   {
-    toolName: 'anydemo_reorder_node',
+    toolName: 'seeflow_reorder_node',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_THREE_NODES);
       return {
@@ -298,7 +298,7 @@ const SCENARIOS: ParityScenario[] = [
             index: 2,
           }),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_reorder_node', {
+          callMcpTool(fix.app, 'seeflow_reorder_node', {
             demoId: fix.demoId,
             nodeId: 'a',
             op: 'toIndex',
@@ -308,7 +308,7 @@ const SCENARIOS: ParityScenario[] = [
     },
   },
   {
-    toolName: 'anydemo_add_connector',
+    toolName: 'seeflow_add_connector',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_TWO_NODES);
       // Explicit id + kind so the on-disk connector record is deterministic.
@@ -317,7 +317,7 @@ const SCENARIOS: ParityScenario[] = [
         demoFile: fix.demoFile,
         runRest: () => restJson(fix.app, 'POST', `/api/demos/${fix.demoId}/connectors`, conn),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_add_connector', {
+          callMcpTool(fix.app, 'seeflow_add_connector', {
             demoId: fix.demoId,
             connector: conn,
           }),
@@ -325,7 +325,7 @@ const SCENARIOS: ParityScenario[] = [
     },
   },
   {
-    toolName: 'anydemo_patch_connector',
+    toolName: 'seeflow_patch_connector',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_WITH_CONN);
       const body = { label: 'renamed', style: 'dashed' as const, color: 'green' as const };
@@ -334,7 +334,7 @@ const SCENARIOS: ParityScenario[] = [
         runRest: () =>
           restJson(fix.app, 'PATCH', `/api/demos/${fix.demoId}/connectors/a-to-b`, body),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_patch_connector', {
+          callMcpTool(fix.app, 'seeflow_patch_connector', {
             demoId: fix.demoId,
             connectorId: 'a-to-b',
             ...body,
@@ -343,14 +343,14 @@ const SCENARIOS: ParityScenario[] = [
     },
   },
   {
-    toolName: 'anydemo_delete_connector',
+    toolName: 'seeflow_delete_connector',
     build: () => {
       const fix = buildDemoFixture(VALID_DEMO_WITH_CONN);
       return {
         demoFile: fix.demoFile,
         runRest: () => restJson(fix.app, 'DELETE', `/api/demos/${fix.demoId}/connectors/a-to-b`),
         runMcp: () =>
-          callMcpTool(fix.app, 'anydemo_delete_connector', {
+          callMcpTool(fix.app, 'seeflow_delete_connector', {
             demoId: fix.demoId,
             connectorId: 'a-to-b',
           }),
@@ -358,7 +358,7 @@ const SCENARIOS: ParityScenario[] = [
     },
   },
   {
-    toolName: 'anydemo_create_project',
+    toolName: 'seeflow_create_project',
     build: () => {
       const name = 'Parity Project';
       const restFix = buildProjectFixture(name);
@@ -379,7 +379,7 @@ const SCENARIOS: ParityScenario[] = [
           return body;
         },
         runMcp: async () => {
-          const body = (await callMcpTool(mcpFix.app, 'anydemo_create_project', {
+          const body = (await callMcpTool(mcpFix.app, 'seeflow_create_project', {
             name,
           })) as Record<string, unknown>;
           body.__demoFileBytes = readFileSync(mcpFix.demoFile, 'utf8');
@@ -432,7 +432,7 @@ describe('REST and MCP parity for every mutating tool', () => {
   // divergence and asserting the comparison fails, the parity loop above is
   // proven to be a meaningful structural check.
   it('synthetic regression: a deliberate divergence is caught by both assertions', async () => {
-    const [scenario] = SCENARIOS; // anydemo_add_node — happy path
+    const [scenario] = SCENARIOS; // seeflow_add_node — happy path
     if (!scenario) throw new Error('parity scenario missing');
 
     const restPair = scenario.build();
