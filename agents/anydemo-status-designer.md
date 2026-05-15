@@ -238,10 +238,15 @@ ones; the plan-review step lets the user ask for more.
    - `primaryLanguage: "go"` or `"rust"` → `interpreter: "bash"`, write shell with `curl` + `jq`
    - Unknown → default to `"bun"`
    Use longer ticks for slow signals.
-4. **Write scripts that are tiny and tolerant.** Each script body
-   should fit in ≤ 60 LOC. Wrap the read in a `try/catch` that turns
-   into a `state: "warn"` (signal missing) or `state: "error"`
+4. **Write scripts that are tiny, tolerant, and never mock.** Each
+   script body should fit in ≤ 60 LOC. Wrap the read in a `try/catch`
+   that turns into a `state: "warn"` (signal missing) or `state: "error"`
    (signal broken) report. Always emit at least one report per tick.
+   Scripts MUST read from real resources — a real database, a real queue
+   depth API, a real file. Never fabricate a state or invent a count.
+   If the resource is unreachable and you cannot determine its access
+   pattern from the brief, do NOT write a status script for that node —
+   omit the overlay entirely and note the gap in `rationale`.
 5. **Decide `maxLifetimeMs`.** Default `600000` (10 min). Bump for
    demos with genuinely long async legs.
 6. **Skip generously.** Three or four well-chosen statuses beat

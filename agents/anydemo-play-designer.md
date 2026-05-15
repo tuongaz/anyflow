@@ -259,14 +259,24 @@ Apply these rules in order. The first rule that fits the node wins.
    should fit in ≤ 80 LOC. Append-only state. JSON-on-stdout. One
    stderr line + non-zero exit on failure. Always emit a final
    `console.log(JSON.stringify(...))` so the studio has a `body`.
-5. **Decide `validationSafe`.** Mark `false` for anything that hits
+5. **Never mock.** Scripts MUST call real, running services. Do not
+   fabricate a response, stub a network call, or simulate what a
+   service would return. The only invented content allowed is *input
+   data* used to trigger the real service — a sample payload, a fixture
+   file dropped into a watched directory, a synthetic webhook body. The
+   data is invented; the service that receives it must be real.
+   If a service is unreachable and you cannot determine how to start it
+   from the brief, do NOT write a mock — surface the gap in `rationale`
+   and mark `validationSafe: false`. The orchestrator will ask the user.
+6. **Decide `validationSafe`.** Mark `false` for anything that hits
    real third-party SaaS, sends real notifications, charges real
-   cards, or mutates production data. Mark `true` for everything
+   cards, mutates production data, or whose target service the brief
+   does not confirm is locally runnable. Mark `true` for everything
    else.
-6. **Inject triggers if needed.** Walk every connector chain. If a
+7. **Inject triggers if needed.** Walk every connector chain. If a
    subgraph has no `playNode`-type entry, emit a `newTriggerNodes`
    entry and a matching overlay.
-7. **Emit.** Final message is the JSON code block — nothing else.
+8. **Emit.** Final message is the JSON code block — nothing else.
 
 ## Worked example
 

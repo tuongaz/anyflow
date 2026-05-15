@@ -50,6 +50,34 @@ Phase N has succeeded.
 
 ---
 
+## Core rule — no mocks, ever
+
+**NEVER write a script that mocks a service, fakes a response, or simulates
+what a real service would return.** There is no value in a demo that talks
+to itself. If a service cannot be reached, the demo is broken — not something
+to paper over with a fake.
+
+Scripts have exactly two purposes:
+
+1. **Trigger a real service** — call an actual running endpoint, drop a real
+   file into a watched directory, publish a real event to a real broker.
+   The only "invented" content allowed here is *input data* that is needed
+   to fire the trigger: a sample cart payload, a fixture file written to a
+   bucket, a synthetic webhook body. The data is invented; the service that
+   receives it is real.
+
+2. **Read real resource state** — query an actual database, poll an actual
+   queue depth, call an actual health endpoint. Report what the real system
+   says; never fabricate a state.
+
+If a required service is not running and cannot be started locally, **stop
+and ask the user** — ask them how to start it, whether there is a local
+equivalent, or whether this node should be skipped. Do not invent a
+workaround. A demo with one honest gap is better than a demo that silently
+lies about its own behavior.
+
+---
+
 ## Phase 0 — pre-flight (studio reachable)
 
 Resolve the studio URL: prefer `ANYDEMO_STUDIO_URL` env var, else
