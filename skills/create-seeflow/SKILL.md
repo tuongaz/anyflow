@@ -1,6 +1,6 @@
 ---
 name: create-seeflow
-description: Use when the user asks to create, generate, or scaffold a SeeFlow flow from a natural-language prompt (triggers: "create a flow", "show how X works", "diagram our checkout system", "add a flow to this repo"). Orchestrates four sub-agents and bun scripts to write a registered, validated flow under <project>/.seeflow/<slug>/.
+description: Use when the user asks to create, generate, or scaffold a SeeFlow flow from a natural-language prompt — "create a flow", "show how X works", "diagram our checkout system", "add a flow to this repo". Orchestrates four sub-agents and bun scripts to write a registered, validated flow under <project>/.seeflow/<slug>/.
 ---
 
 # create-seeflow
@@ -240,6 +240,11 @@ Retry budget: one retry on unparseable output, then surface and stop.
 
 Register a **skeleton** flow (nodes + connectors only, no scripts) so the user can review the canvas before any scripts are written.
 
+Paths (used in this phase and Phase 5):
+- `repoPath = $PWD`
+- `flowDir = $PWD/.seeflow/<slug>`
+- `flowPath = .seeflow/<slug>/seeflow.json`
+
 1. Build skeleton JSON from node draft — omit `playAction`, `statusAction`, `resetAction`. Keep `version`, `name`, `nodes`, `connectors`.
 2. Write to `/tmp/seeflow-<slug>-nodes.json`.
 3. Validate:
@@ -332,16 +337,15 @@ bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-draft.j
 
 ## Phase 5 — write script files + re-register full flow
 
-1. Paths: `repoPath = $PWD`, `flowDir = $PWD/.seeflow/<slug>`, `flowPath = .seeflow/<slug>/seeflow.json`.
-2. `mkdir -p $flowDir/scripts $flowDir/state`
-3. Write files (overwriting the Phase 2b skeleton):
+1. `mkdir -p $flowDir/scripts $flowDir/state`
+2. Write files (overwriting the Phase 2b skeleton):
    - `$flowDir/seeflow.json` — validated flow JSON with all actions.
    - `$flowDir/scripts/<name>` — one file per overlay `scriptBody`. `chmod +x`.
    - `$flowDir/state/.gitignore` — `*`.
-4. Re-register:
+3. Re-register:
 
 ```bash
-bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --flow "$flowPath"
+bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$flowPath"
 ```
 
 Prints `{id, slug}`. Use the new `id` for Phases 6 + 7.
