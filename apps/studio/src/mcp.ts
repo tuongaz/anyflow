@@ -34,7 +34,7 @@ import type { DemoWatcher } from './watcher.ts';
 export interface CreateMcpServerOptions {
   registry: Registry;
   watcher?: DemoWatcher;
-  /** Override base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  /** Override base directory for new projects. Defaults to ~/.seeflow. Tests inject a tmp dir. */
   projectBaseDir?: string;
 }
 
@@ -162,7 +162,7 @@ const DeleteConnectorInputSchema = z.object({
 
 const buildTools = (deps: OperationsDeps): McpTool[] => [
   {
-    name: 'anydemo_list_demos',
+    name: 'seeflow_list_demos',
     description: 'List every demo registered with the studio.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     handler: async () => {
@@ -171,7 +171,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_get_demo',
+    name: 'seeflow_get_demo',
     description: 'Get the full demo definition and on-disk state for a demoId.',
     inputSchema: DEMO_ID_INPUT_SCHEMA,
     handler: async (args) => {
@@ -189,7 +189,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_register_demo',
+    name: 'seeflow_register_demo',
     description: 'Register an existing demo file on disk with the studio.',
     inputSchema: inputSchemaFromZod(RegisterBodySchema),
     handler: async (args) => {
@@ -215,7 +215,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_delete_demo',
+    name: 'seeflow_delete_demo',
     description: 'Unregister a demo from the studio (the on-disk file is left untouched).',
     inputSchema: DEMO_ID_INPUT_SCHEMA,
     handler: async (args) => {
@@ -231,8 +231,8 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_create_project',
-    description: 'Create a new AnyDemo project folder, or register an existing one.',
+    name: 'seeflow_create_project',
+    description: 'Create a new SeeFlow project folder, or register an existing one.',
     inputSchema: inputSchemaFromZod(CreateProjectBodySchema),
     handler: async (args) => {
       const parsed = CreateProjectBodySchema.safeParse(args);
@@ -257,7 +257,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_add_node',
+    name: 'seeflow_add_node',
     description: 'Append a new node to a demo (cascade-safe; id auto-generated when omitted).',
     inputSchema: inputSchemaFromZod(AddNodeInputSchema),
     handler: async (args) => {
@@ -284,7 +284,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_delete_node',
+    name: 'seeflow_delete_node',
     description: 'Delete a node and cascade-remove every connector touching it.',
     inputSchema: inputSchemaFromZod(DeleteNodeInputSchema),
     handler: async (args) => {
@@ -313,7 +313,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_move_node',
+    name: 'seeflow_move_node',
     description: "Set a node's { x, y } canvas position.",
     inputSchema: inputSchemaFromZod(MoveNodeInputSchema),
     handler: async (args) => {
@@ -342,7 +342,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_patch_node',
+    name: 'seeflow_patch_node',
     description:
       'Update fields on an existing node (position, name, description, detail, colors, border, font, shape, dimensions).',
     inputSchema: inputSchemaFromZod(PatchNodeInputSchema),
@@ -372,7 +372,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_reorder_node',
+    name: 'seeflow_reorder_node',
     description:
       'Reorder a node within demo.nodes[] (forward / backward / toFront / toBack / toIndex).',
     inputSchema: inputSchemaFromZod(ReorderNodeInputSchema),
@@ -408,7 +408,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_add_connector',
+    name: 'seeflow_add_connector',
     description:
       "Append a new connector between two nodes (kind defaults to 'default'; id auto-generated when omitted).",
     inputSchema: inputSchemaFromZod(AddConnectorInputSchema),
@@ -438,7 +438,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_patch_connector',
+    name: 'seeflow_patch_connector',
     description:
       'Update fields on an existing connector (label, style, color, kind, per-kind payload, reconnect endpoints).',
     inputSchema: inputSchemaFromZod(PatchConnectorInputSchema),
@@ -470,7 +470,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
     },
   },
   {
-    name: 'anydemo_delete_connector',
+    name: 'seeflow_delete_connector',
     description: 'Delete a connector by id.',
     inputSchema: inputSchemaFromZod(DeleteConnectorInputSchema),
     handler: async (args) => {
@@ -511,7 +511,7 @@ const buildTools = (deps: OperationsDeps): McpTool[] => [
 export function createMcpServer(options: CreateMcpServerOptions): Server {
   const tools = buildTools({ registry: options.registry, watcher: options.watcher, projectBaseDir: options.projectBaseDir });
 
-  const server = new Server({ name: 'anydemo', version: '0.1.0' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'seeflow', version: '0.1.0' }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: tools.map(({ name, description, inputSchema }) => ({

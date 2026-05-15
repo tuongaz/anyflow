@@ -12,7 +12,7 @@ export interface SdkWriteResult {
 }
 
 /**
- * Writes `.anydemo/sdk/emit.ts` into a target repo iff the demo declares any
+ * Writes `.seeflow/sdk/emit.ts` into a target repo iff the demo declares any
  * node with `stateSource.kind === 'event'`. Idempotent: existing files are
  * never overwritten. The only place M1's CLI mutates a user repo.
  */
@@ -28,7 +28,7 @@ export function writeSdkEmitIfNeeded(repoPath: string, demo: Demo): SdkWriteResu
   );
   if (!hasEventState) return { outcome: 'skipped', filePath: null };
 
-  const sdkDir = join(repoPath, '.anydemo', 'sdk');
+  const sdkDir = join(repoPath, '.seeflow', 'sdk');
   const filePath = join(sdkDir, 'emit.ts');
   if (existsSync(filePath)) return { outcome: 'present', filePath };
 

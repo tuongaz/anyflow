@@ -83,14 +83,14 @@ const EMIT_STATUS_TO_EVENT = {
 const FilePathBodySchema = z.object({ path: z.string() });
 
 type ResolvedProjectFile =
-  | { kind: 'ok'; absPath: string; anydemoRoot: string }
+  | { kind: 'ok'; absPath: string; seeflowRoot: string }
   | { kind: 'unknownProject' }
   | { kind: 'invalidPath'; reason: string }
   | { kind: 'fileMissing'; absPath: string };
 
 // Shared path-safety + filesystem resolution for project-scoped file routes.
 // Performs textual rejection of absolute paths / `..` traversal, then layered
-// realpath verification that the resolved file stays inside `<project>/.anydemo/`
+// realpath verification that the resolved file stays inside `<project>/.seeflow/`
 // (defense against symlink escapes). Returns the realpath of an existing file
 // on success, or `fileMissing` with the would-be absolute path so callers can
 // soft-fail with that path included for clipboard fallback.
@@ -105,15 +105,15 @@ function resolveProjectFile(
   const guard = validateRelativePath(relPath);
   if (guard.kind === 'invalid') return { kind: 'invalidPath', reason: guard.reason };
 
-  const anydemoRoot = join(entry.repoPath, '.anydemo');
+  const seeflowRoot = join(entry.repoPath, '.seeflow');
   let realRoot: string;
   try {
-    realRoot = realpathSync(anydemoRoot);
+    realRoot = realpathSync(seeflowRoot);
   } catch {
-    return { kind: 'fileMissing', absPath: resolve(anydemoRoot, relPath) };
+    return { kind: 'fileMissing', absPath: resolve(seeflowRoot, relPath) };
   }
 
-  const target = resolve(anydemoRoot, relPath);
+  const target = resolve(seeflowRoot, relPath);
   let realTarget: string;
   try {
     realTarget = realpathSync(target);
@@ -126,7 +126,7 @@ function resolveProjectFile(
     return { kind: 'invalidPath', reason: 'path escapes project root' };
   }
 
-  return { kind: 'ok', absPath: realTarget, anydemoRoot: realRoot };
+  return { kind: 'ok', absPath: realTarget, seeflowRoot: realRoot };
 }
 
 // Allowed extensions for /files/upload. Lowercased; matched after dropping the
@@ -181,7 +181,7 @@ export interface ApiOptions {
    *  Tests use this to record call order across runPlay / runReset /
    *  stopAllPlays and to drive each in isolation. */
   proxy?: ProxyFacade;
-  /** Override base directory for new projects. Defaults to ~/.anydemo. Tests inject a tmp dir. */
+  /** Override base directory for new projects. Defaults to ~/.seeflow. Tests inject a tmp dir. */
   projectBaseDir?: string;
 }
 
@@ -287,7 +287,7 @@ export function createApi(options: ApiOptions): Hono {
   // POST /api/diagram/assemble — Phase 7a. The skill POSTs wiring + layout
   // and gets back the assembled demo (IDs normalized, dupes dropped, dangling
   // connectors removed, positions snapped to a 24px grid). Pure compute; the
-  // skill writes the response to $TARGET/.anydemo/demo.json. No schema
+  // skill writes the response to $TARGET/.seeflow/demo.json. No schema
   // validation here — call /demos/validate for that.
   api.post('/diagram/assemble', async (c) => {
     let body: unknown;
@@ -304,13 +304,13 @@ export function createApi(options: ApiOptions): Hono {
   });
 
   // POST /api/projects — UI-driven "Create new project" flow (US-020). Two
-  // branches based on whether the target folder already has an AnyDemo
-  // project set up at `<folderPath>/.anydemo/demo.json`:
+  // branches based on whether the target folder already has a SeeFlow
+  // project set up at `<folderPath>/.seeflow/demo.json`:
   //   1. Existing setup: read + validate the on-disk demo and register it
   //      as-is (no overwrite, no scaffolding). The user-supplied `name`
   //      becomes the registry display name; the on-disk demo's `name` is
   //      preserved on disk.
-  //   2. Fresh scaffold: mkdir -p the folder + .anydemo/, write a default
+  //   2. Fresh scaffold: mkdir -p the folder + .seeflow/, write a default
   //      scaffold demo.json keyed off `name`, and run the same SDK-emit
   //      helper write the CLI register flow uses (a no-op for an empty
   //      scaffold, but kept for parity).
@@ -363,9 +363,9 @@ export function createApi(options: ApiOptions): Hono {
   });
 
   // GET /api/projects/:id/files/<path> — stream a project-scoped file from
-  // <repoPath>/.anydemo/<path>. Path safety is layered: textual rejection
+  // <repoPath>/.seeflow/<path>. Path safety is layered: textual rejection
   // (absolute / traversal), then realpath check that the resolved file stays
-  // inside the project's .anydemo root (defends against symlink escapes).
+  // inside the project's .seeflow root (defends against symlink escapes).
   api.get('/projects/:id/files/:path{.+}', async (c) => {
     const rawPath = c.req.param('path');
     let relPath: string;
@@ -489,7 +489,7 @@ export function createApi(options: ApiOptions): Hono {
   });
 
   // POST /api/projects/:id/files/upload — accept a multipart image upload and
-  // persist it under `<project>/.anydemo/assets/`. The frontend (US-008 OS
+  // persist it under `<project>/.seeflow/assets/`. The frontend (US-008 OS
   // drop) sends `file` (Blob) and optionally `filename` (the original OS name)
   // in a multipart form; we sanitize the filename to a lowercased slug,
   // dedupe with `-2`, `-3` suffixes inside the assets dir, and return the
@@ -522,7 +522,7 @@ export function createApi(options: ApiOptions): Hono {
       return c.json({ error: 'invalid filename or extension' }, 400);
     }
 
-    const assetsDir = join(entry.repoPath, '.anydemo', 'assets');
+    const assetsDir = join(entry.repoPath, '.seeflow', 'assets');
     try {
       mkdirSync(assetsDir, { recursive: true });
     } catch (err) {

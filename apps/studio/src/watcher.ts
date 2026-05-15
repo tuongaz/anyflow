@@ -40,7 +40,7 @@ export interface DemoWatcher {
   /** Force a reparse synchronously. Useful for tests + initial load. */
   reparse(demoId: string): DemoSnapshot | null;
   /**
-   * Relative paths (under `<project>/.anydemo/`) currently being watched
+   * Relative paths (under `<project>/.seeflow/`) currently being watched
    * because they're referenced by a node's `data.htmlPath` or `data.path`.
    * Sorted for stable assertion order. Used by tests.
    */
@@ -49,7 +49,7 @@ export interface DemoWatcher {
 
 interface FileWatchEntry {
   fsWatcher: FSWatcher;
-  /** basename → relative path (rooted at `<project>/.anydemo/`) */
+  /** basename → relative path (rooted at `<project>/.seeflow/`) */
   files: Map<string, string>;
   /** basename → pending debounce timer for the next broadcast */
   timers: Map<string, ReturnType<typeof setTimeout>>;
@@ -129,12 +129,12 @@ export function createWatcher(deps: WatcherDeps): DemoWatcher {
   const reconcileFileWatchers = (
     demoId: string,
     handle: WatchHandle,
-    anydemoRoot: string,
+    seeflowRoot: string,
     refs: string[],
   ): void => {
     const desired = new Map<string, Map<string, string>>();
     for (const relPath of refs) {
-      const abs = join(anydemoRoot, relPath);
+      const abs = join(seeflowRoot, relPath);
       const dir = dirname(abs);
       const base = basename(abs);
       let dirMap = desired.get(dir);
@@ -266,7 +266,7 @@ export function createWatcher(deps: WatcherDeps): DemoWatcher {
         reconcileFileWatchers(
           demoId,
           handle,
-          join(entry.repoPath, '.anydemo'),
+          join(entry.repoPath, '.seeflow'),
           collectReferencedPaths(raw),
         );
       }
