@@ -3,9 +3,9 @@ dist/
 !apps/studio/dist/
 apps/studio/dist/*
 !apps/studio/dist/web
-/.anydemo/
-**/.anydemo/sdk/
-~/.anydemo
+/.seeflow/
+**/.seeflow/sdk/
+~/.seeflow
 *.log
 .DS_Store
 .playwright-mcp/
