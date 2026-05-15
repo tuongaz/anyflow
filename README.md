@@ -1,10 +1,10 @@
-# AnyDemo
+# SeeFlow
 
 > Architecture diagrams that actually run.
 
 Whiteboard diagrams and Confluence pages rot the moment they're drawn. They
 can't tell you whether `order.created` still flows from the API to the
-inventory worker — only running code can. AnyDemo turns your architecture
+inventory worker — only running code can. SeeFlow turns your architecture
 into a **playable canvas**: click a box, fire a real request, watch
 downstream services light up as your app emits events back.
 
@@ -27,8 +27,8 @@ record of how your system behaves — one that breaks loudly when it drifts.
 You need **[Bun](https://bun.sh) ≥ 1.3** and `git`. Then:
 
 ```bash
-git clone https://github.com/tuongaz/anydemo.git
-cd anydemo && bun install
+git clone https://github.com/tuongaz/seeflow.git
+cd seeflow && bun install
 make demo
 ```
 
@@ -38,22 +38,22 @@ make demo
 In the canvas, click **Play** on the `POST /todos/:id/complete` node — a
 real `bun` script runs, the node animates `running → done`, and the
 detail panel renders the response. Edit
-`examples/todo-demo-target/.anydemo/demo.json` and save — the canvas
+`examples/todo-demo-target/.seeflow/demo.json` and save — the canvas
 hot-reloads. When you're done, run `make stop`.
 
-> Prefer no clone? `npx -y @tuongaz/anydemo start --daemon` launches the
+> Prefer no clone? `npx -y @tuongaz/seeflow start --daemon` launches the
 > studio on its own; you'll still need to point `register --path <dir>` at
-> a folder that contains a `.anydemo/demo.json`.
+> a folder that contains a `.seeflow/demo.json`.
 
 ## Generate a demo from your own code (Claude Code plugin)
 
-Inside the cloned repo there's a Claude Code plugin (`create-anydemo`) that
-walks your codebase, picks a slice, and writes a `.anydemo/<slug>/demo.json`
+Inside the cloned repo there's a Claude Code plugin (`create-seeflow`) that
+walks your codebase, picks a slice, and writes a `.seeflow/<slug>/demo.json`
 for you — no manual diagramming. From Claude Code:
 
 ```
-/plugin marketplace add tuongaz/anydemo
-/plugin install create-anydemo@anydemo
+/plugin marketplace add tuongaz/seeflow
+/plugin install create-seeflow@seeflow
 ```
 
 Then in any project, just describe what you want:
@@ -64,13 +64,13 @@ Claude walks your code, drafts the nodes, asks you to confirm, then writes +
 registers the demo against your running studio. The plugin handles schema
 validation and end-to-end checks before opening the canvas.
 
-For deeper authoring, browse [`skills/create-anydemo/`](./skills/create-anydemo/)
+For deeper authoring, browse [`skills/create-seeflow/`](./skills/create-seeflow/)
 and [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) (the Zod
 source of truth).
 
 ## Author a demo by hand
 
-A demo is a single file at `<your-repo>/.anydemo/demo.json` — no build
+A demo is a single file at `<your-repo>/.seeflow/demo.json` — no build
 step, no DSL. See [`examples/todo-demo-target`](./examples/todo-demo-target)
 for a working three-node demo plus its play/status scripts, and
 [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) for the schema.
@@ -78,21 +78,21 @@ for a working three-node demo plus its play/status scripts, and
 Register your demo with:
 
 ```bash
-npx -y @tuongaz/anydemo register --path /path/to/your/repo
+npx -y @tuongaz/seeflow register --path /path/to/your/repo
 ```
 
 ## MCP server (Cursor, Windsurf, any MCP-aware agent)
 
-AnyDemo ships an MCP server so any MCP-aware coding agent (Claude Code,
+SeeFlow ships an MCP server so any MCP-aware coding agent (Claude Code,
 Cursor, Windsurf, etc.) can list, register, and edit demos directly —
 adding nodes, moving them, wiring connectors, patching styles. The studio
-must be running (`make demo` or `npx -y @tuongaz/anydemo start`); the MCP
+must be running (`make demo` or `npx -y @tuongaz/seeflow start`); the MCP
 server is a thin stdio shim that proxies to its `/mcp` endpoint.
 
 **Claude Code** — one command:
 
 ```bash
-claude mcp add anydemo -- npx -y -p @tuongaz/anydemo anydemo-mcp
+claude mcp add seeflow -- npx -y -p @tuongaz/seeflow seeflow-mcp
 ```
 
 **Anything that reads `.mcp.json`** (Claude Code project-scoped, Cursor,
@@ -101,23 +101,23 @@ etc.) — drop this into the project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "anydemo": {
+    "seeflow": {
       "command": "npx",
-      "args": ["-y", "-p", "@tuongaz/anydemo", "anydemo-mcp"]
+      "args": ["-y", "-p", "@tuongaz/seeflow", "seeflow-mcp"]
     }
   }
 }
 ```
 
 The shim talks to `http://127.0.0.1:4321/mcp` by default. Override with
-`ANYDEMO_STUDIO_URL` if the studio runs elsewhere. If the studio isn't
+`SEEFLOW_STUDIO_URL` if the studio runs elsewhere. If the studio isn't
 running, tool calls return a clear error instead of hanging.
 
-## Develop on AnyDemo itself
+## Develop on SeeFlow itself
 
 ```bash
-git clone https://github.com/tuongaz/anydemo.git
-cd anydemo
+git clone https://github.com/tuongaz/seeflow.git
+cd seeflow
 bun install
 make dev   # Vite (5173) + Hono studio (4321), both hot-reloading
 ```
