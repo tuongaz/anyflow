@@ -287,7 +287,7 @@ export function createApi(options: ApiOptions): Hono {
   // POST /api/diagram/assemble — Phase 7a. The skill POSTs wiring + layout
   // and gets back the assembled demo (IDs normalized, dupes dropped, dangling
   // connectors removed, positions snapped to a 24px grid). Pure compute; the
-  // skill writes the response to $TARGET/.seeflow/demo.json. No schema
+  // skill writes the response to $TARGET/.seeflow/seeflow.json. No schema
   // validation here — call /demos/validate for that.
   api.post('/diagram/assemble', async (c) => {
     let body: unknown;
@@ -305,13 +305,13 @@ export function createApi(options: ApiOptions): Hono {
 
   // POST /api/projects — UI-driven "Create new project" flow (US-020). Two
   // branches based on whether the target folder already has a SeeFlow
-  // project set up at `<folderPath>/.seeflow/demo.json`:
+  // project set up at `<folderPath>/.seeflow/seeflow.json`:
   //   1. Existing setup: read + validate the on-disk demo and register it
   //      as-is (no overwrite, no scaffolding). The user-supplied `name`
   //      becomes the registry display name; the on-disk demo's `name` is
   //      preserved on disk.
   //   2. Fresh scaffold: mkdir -p the folder + .seeflow/, write a default
-  //      scaffold demo.json keyed off `name`, and run the same SDK-emit
+  //      scaffold seeflow.json keyed off `name`, and run the same SDK-emit
   //      helper write the CLI register flow uses (a no-op for an empty
   //      scaffold, but kept for parity).
   api.post('/projects', async (c) => {
@@ -714,7 +714,7 @@ export function createApi(options: ApiOptions): Hono {
     return c.json({ ok: true, calledResetAction });
   });
 
-  // PATCH a single node's position back into the on-disk demo.json. This is
+  // PATCH a single node's position back into the on-disk seeflow.json. This is
   // the second (and only other) place the studio mutates user files — the
   // first being the SDK helper write in `register`. Atomic write via tempfile
   // + rename keeps editor diffs clean and avoids corruption mid-write.

@@ -35,7 +35,7 @@ Stop and ask for clarification only when the prompt is incoherent — never ask
 - The project root (`$PWD` at invocation — the directory the user is in).
 - `~/.seeflow/config.json` (optional; supplies studio host:port, default
   `http://localhost:4321`).
-- Existing `<project>/.seeflow/<slug>/demo.json` files, if any (multi-demo
+- Existing `<project>/.seeflow/<slug>/seeflow.json` files, if any (multi-demo
   per project is supported; check before creating).
 
 ## The pipeline
@@ -44,7 +44,7 @@ Stop and ask for clarification only when the prompt is incoherent — never ask
 Phase 0 — pre-flight: studio reachable?
 Phase 1 — seeflow-discoverer        → context brief (language + runtime + tests)
 Phase 2 — seeflow-node-planner      → node draft
-Phase 2b— write skeleton demo.json (nodes only) → register → user reviews canvas → approval
+Phase 2b— write skeleton seeflow.json (nodes only) → register → user reviews canvas → approval
 Phase 3 — seeflow-play-designer  ┐
           seeflow-status-designer├ parallel → overlays
                                  ┘
@@ -284,7 +284,7 @@ where the pipeline is.
 ## Phase 1 — discover
 
 Launch the `seeflow-discoverer` sub-agent with the user's prompt, the project
-root, and (if you found any) the existing `demo.json` for the matching slug.
+root, and (if you found any) the existing `seeflow.json` for the matching slug.
 The sub-agent has read-only tools (`Read`, `Grep`, `Glob`, `LS`, `Bash` for
 read-only commands).
 
@@ -384,7 +384,7 @@ structural problems early. Do not skip this step.
    bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-nodes.json
    ```
    On failure: fix the field-level issues (do not re-run the node-planner), then retry.
-4. Write `$demoDir/demo.json` with the skeleton and register:
+4. Write `$demoDir/seeflow.json` with the skeleton and register:
    ```bash
    bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$demoPath"
    ```
@@ -512,11 +512,11 @@ Proceed immediately after Phase 4 schema validation passes.
 
 1. **Compute paths**: `repoPath = $PWD`,
    `demoDir = $PWD/.seeflow/<slug>`,
-   `demoPath = .seeflow/<slug>/demo.json` (relative — that is what
+   `demoPath = .seeflow/<slug>/seeflow.json` (relative — that is what
    `register.ts` posts).
 2. **Create dirs**: `mkdir -p $demoDir/scripts $demoDir/state`.
-3. **Write the files** (overwriting the skeleton `demo.json` written in Phase 2b):
-   - `$demoDir/demo.json` — the fully-validated `Demo` object (pretty-printed),
+3. **Write the files** (overwriting the skeleton `seeflow.json` written in Phase 2b):
+   - `$demoDir/seeflow.json` — the fully-validated `Demo` object (pretty-printed),
      now including all `playAction` and `statusAction` fields.
    - `$demoDir/scripts/<playScriptName>` — one file per playOverlay
      `scriptBody`. Mark executable (`chmod +x`).

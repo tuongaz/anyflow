@@ -127,7 +127,7 @@ function makeProject(opts: { hasStatus: boolean; nodeId?: string; statusScriptNa
     ],
     connectors: [],
   };
-  const demoPath = join(cwd, '.seeflow', 'demo.json');
+  const demoPath = join(cwd, '.seeflow', 'seeflow.json');
   writeFileSync(demoPath, JSON.stringify(demo, null, 2));
   return {
     cwd,
@@ -137,7 +137,7 @@ function makeProject(opts: { hasStatus: boolean; nodeId?: string; statusScriptNa
       slug: 'demo-a',
       name: 'Test demo',
       repoPath: cwd,
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
       lastModified: Date.now(),
       valid: true,
     } satisfies DemoEntry,
@@ -348,13 +348,13 @@ describe('createStatusRunner', () => {
       ],
       connectors: [],
     };
-    writeFileSync(join(cwd, '.seeflow', 'demo.json'), JSON.stringify(demo));
+    writeFileSync(join(cwd, '.seeflow', 'seeflow.json'), JSON.stringify(demo));
     const entry: DemoEntry = {
       id: 'demoA',
       slug: 'demo-a',
       name: 'Lifetime test',
       repoPath: cwd,
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
       lastModified: Date.now(),
       valid: true,
     };

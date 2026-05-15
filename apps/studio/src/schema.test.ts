@@ -8,7 +8,7 @@ const readFixture = async (name: string): Promise<unknown> =>
 
 describe('DemoSchema', () => {
   it('parses a valid demo fixture', async () => {
-    const data = await readFixture('valid-demo.json');
+    const data = await readFixture('valid-seeflow.json');
     const result = DemoSchema.safeParse(data);
     if (!result.success) {
       throw new Error(
@@ -26,7 +26,7 @@ describe('DemoSchema', () => {
   });
 
   it('rejects an invalid demo fixture with a usable Zod error', async () => {
-    const data = await readFixture('invalid-demo.json');
+    const data = await readFixture('invalid-seeflow.json');
     const result = DemoSchema.safeParse(data);
     expect(result.success).toBe(false);
     if (result.success) return;
@@ -1729,13 +1729,13 @@ describe('DemoSchema', () => {
   });
 
   it('existing example demos round-trip unchanged through a parse cycle (US-011 back-compat)', async () => {
-    // The three on-disk examples in /examples/*/.seeflow/demo.json predate
+    // The three on-disk examples in /examples/*/.seeflow/seeflow.json predate
     // US-011's parentId / group additions. Both fields are optional, so a
     // parse → serialize → parse cycle must produce a deep-equal demo.
     const examples = [
-      '../../../examples/order-pipeline/.seeflow/demo.json',
-      '../../../examples/checkout-demo/.seeflow/demo.json',
-      '../../../examples/todo-demo-target/.seeflow/demo.json',
+      '../../../examples/order-pipeline/.seeflow/seeflow.json',
+      '../../../examples/checkout-demo/.seeflow/seeflow.json',
+      '../../../examples/todo-demo-target/.seeflow/seeflow.json',
     ];
     for (const rel of examples) {
       const url = new URL(rel, import.meta.url);

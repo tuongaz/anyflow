@@ -1,5 +1,5 @@
 // REST vs MCP parity: every mutating tool must produce byte-identical on-disk
-// demo.json and JSON-equal response bodies regardless of which transport
+// seeflow.json and JSON-equal response bodies regardless of which transport
 // invoked it. Since both layers call the same `*Impl(deps, args)` helpers in
 // operations.ts, this is structurally guaranteed — the test's job is to prove
 // it with side-by-side fixtures and an actual assertion. The synthetic
@@ -116,7 +116,7 @@ const buildDemoFixture = (initialDemo: unknown): DemoFixture => {
 
   const repoPath = mkdtempSync(join(tmpdir(), 'seeflow-parity-repo-'));
   mkdirSync(join(repoPath, '.seeflow'));
-  const demoFile = join(repoPath, '.seeflow', 'demo.json');
+  const demoFile = join(repoPath, '.seeflow', 'seeflow.json');
   // operations.ts writes the canonical 2-space JSON + trailing newline back to
   // disk on every mutation, so the byte comparison only kicks in after the
   // first mutation runs. The initial seed bytes can be whatever — pretty or
@@ -127,7 +127,7 @@ const buildDemoFixture = (initialDemo: unknown): DemoFixture => {
   const entry = registry.upsert({
     name: demoName,
     repoPath,
-    demoPath: '.seeflow/demo.json',
+    demoPath: '.seeflow/seeflow.json',
     valid: true,
     lastModified: Date.now(),
   });
@@ -143,7 +143,7 @@ interface ProjectFixture {
 }
 
 // create_project fixture: empty base dir, no pre-registered demo. The tool
-// itself scaffolds the demo file + registers it under <base>/<slug>/.seeflow/demo.json.
+// itself scaffolds the demo file + registers it under <base>/<slug>/.seeflow/seeflow.json.
 const buildProjectFixture = (name: string): ProjectFixture => {
   const registry = createRegistry({ path: tmpRegistryPath() });
   const projectBaseDir = mkdtempSync(join(tmpdir(), 'seeflow-parity-proj-'));
@@ -163,7 +163,7 @@ const buildProjectFixture = (name: string): ProjectFixture => {
     app,
     registry,
     projectBaseDir,
-    demoFile: join(projectBaseDir, slug, '.seeflow', 'demo.json'),
+    demoFile: join(projectBaseDir, slug, '.seeflow', 'seeflow.json'),
   };
 };
 
@@ -380,13 +380,13 @@ const SCENARIOS: ParityScenario[] = [
       const mcpFix = buildProjectFixture(name);
       return {
         // Comparing two separate scaffolds: the project tool creates a fresh
-        // demo.json under each fixture's projectBaseDir. Folders differ, file
+        // seeflow.json under each fixture's projectBaseDir. Folders differ, file
         // contents shouldn't.
         demoFile: '__pair__',
         runRest: async () => {
           const body = await restJson(restFix.app, 'POST', '/api/projects', { name });
           // Stash the demoFile bytes via a property-bag side channel so the
-          // outer test code can compare both fixtures' on-disk demo.json.
+          // outer test code can compare both fixtures' on-disk seeflow.json.
           (body as Record<string, unknown>).__demoFileBytes = readFileSync(
             restFix.demoFile,
             'utf8',

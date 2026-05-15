@@ -30,7 +30,7 @@ export function EmptyState() {
           <h1 className="text-2xl font-semibold tracking-tight">No demos registered yet</h1>
           <p className="text-sm text-muted-foreground">
             Point SeeFlow at any folder containing a{' '}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">.seeflow/demo.json</code> file
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">.seeflow/seeflow.json</code> file
             and it'll appear here.
           </p>
         </div>

@@ -74,25 +74,25 @@ describe('seeflow CLI register integration', () => {
       mkdirSync(join(repoDir, '.seeflow', 'checkout'), { recursive: true });
       mkdirSync(join(repoDir, '.seeflow', 'refund'), { recursive: true });
       writeFileSync(
-        join(repoDir, '.seeflow', 'checkout', 'demo.json'),
+        join(repoDir, '.seeflow', 'checkout', 'seeflow.json'),
         JSON.stringify({ ...VALID_DEMO, name: 'Checkout' }),
       );
       writeFileSync(
-        join(repoDir, '.seeflow', 'refund', 'demo.json'),
+        join(repoDir, '.seeflow', 'refund', 'seeflow.json'),
         JSON.stringify({ ...VALID_DEMO, name: 'Refund' }),
       );
 
       const baseEnv = { SEEFLOW_STUDIO_URL: studio.url };
 
       const first = await runCli(
-        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/checkout/demo.json'],
+        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/checkout/seeflow.json'],
         baseEnv,
       );
       expect(first.code).toBe(0);
       expect(first.stdout).toContain('Registered "Checkout"');
 
       const second = await runCli(
-        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/refund/demo.json'],
+        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/refund/seeflow.json'],
         baseEnv,
       );
       expect(second.code).toBe(0);

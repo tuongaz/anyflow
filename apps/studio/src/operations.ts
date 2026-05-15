@@ -23,7 +23,7 @@ import {
 import { writeSdkEmitIfNeeded } from './sdk-writer.ts';
 import type { DemoSnapshot, DemoWatcher } from './watcher.ts';
 
-const DEFAULT_DEMO_RELATIVE_PATH = '.seeflow/demo.json';
+const DEFAULT_DEMO_RELATIVE_PATH = '.seeflow/seeflow.json';
 
 export const RegisterBodySchema = z.object({
   name: z.string().min(1).optional(),
@@ -156,7 +156,7 @@ export const mergeNodeUpdates = (node: Record<string, unknown>, updates: NodePat
     if (updates[key] === undefined) continue;
     // US-011 (text-and-group-resize): empty string on the two free-text
     // metadata fields is the documented clear-on-serialize signal — strip the
-    // key instead of writing "" to disk so demo.json stays compact and
+    // key instead of writing "" to disk so seeflow.json stays compact and
     // round-tripping a cleared node doesn't reintroduce the field.
     if ((key === 'description' || key === 'detail') && updates[key] === '') {
       if (key in data) {
@@ -792,7 +792,7 @@ const buildHtmlNodeStarter = (nodeId: string): string =>
 // schema violation surfaces honestly instead of being silently papered over.
 // US-016: when the removed node is an htmlNode whose data.htmlPath matches the
 // studio-managed shape `blocks/<id>.html`, the companion file is removed AFTER
-// the demo.json write succeeds. Hand-edited paths are left alone (symmetric
+// the seeflow.json write succeeds. Hand-edited paths are left alone (symmetric
 // with US-015's "client-supplied htmlPath wins, no starter file written").
 export async function deleteNodeImpl(
   deps: OperationsDeps,

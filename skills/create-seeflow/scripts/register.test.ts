@@ -44,7 +44,7 @@ describe('registerDemo (stubbed fetch)', () => {
 
     const result = await registerDemo({
       repoPath: '/tmp/some-repo',
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
       name: 'My Demo',
       url: 'http://127.0.0.1:9999',
     });
@@ -58,7 +58,7 @@ describe('registerDemo (stubbed fetch)', () => {
     const sentBody = JSON.parse((captured[0]?.init?.body as string) ?? 'null');
     expect(sentBody).toEqual({
       repoPath: '/tmp/some-repo',
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
       name: 'My Demo',
     });
   });
@@ -72,11 +72,11 @@ describe('registerDemo (stubbed fetch)', () => {
 
     await registerDemo({
       repoPath: '/tmp/repo',
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
       url: 'http://localhost:1234',
     });
     const sentBody = JSON.parse((captured[0]?.init?.body as string) ?? 'null');
-    expect(sentBody).toEqual({ repoPath: '/tmp/repo', demoPath: '.seeflow/demo.json' });
+    expect(sentBody).toEqual({ repoPath: '/tmp/repo', demoPath: '.seeflow/seeflow.json' });
     expect('name' in sentBody).toBe(false);
   });
 
@@ -89,7 +89,7 @@ describe('registerDemo (stubbed fetch)', () => {
 
     const result = await registerDemo({
       repoPath: '/tmp/r',
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
       url: 'http://localhost:1234',
     });
     expect(result.ok).toBe(false);
@@ -126,7 +126,7 @@ describe('register.ts main()', () => {
     const seeflowDir = join(repoPath, '.seeflow');
     await mkdir(seeflowDir, { recursive: true });
     await writeFile(
-      join(seeflowDir, 'demo.json'),
+      join(seeflowDir, 'seeflow.json'),
       JSON.stringify({ version: 1, name: 'Checkout Flow', nodes: [], connectors: [] }),
       'utf8',
     );
@@ -135,7 +135,7 @@ describe('register.ts main()', () => {
       const sent = JSON.parse((init?.body as string) ?? 'null');
       expect(sent.name).toBe('Checkout Flow');
       expect(sent.repoPath).toBe(repoPath);
-      expect(sent.demoPath).toBe('.seeflow/demo.json');
+      expect(sent.demoPath).toBe('.seeflow/seeflow.json');
       return jsonResponse({ id: 'abc', slug: 'checkout-flow' }, 200);
     }) as typeof fetch;
 
@@ -146,7 +146,7 @@ describe('register.ts main()', () => {
       return true;
     }) as typeof process.stdout.write;
     try {
-      const code = await main(['--path', repoPath, '--demo', '.seeflow/demo.json']);
+      const code = await main(['--path', repoPath, '--demo', '.seeflow/seeflow.json']);
       expect(code).toBe(0);
     } finally {
       process.stdout.write = origWrite;
@@ -166,7 +166,7 @@ describe('register.ts main()', () => {
       return true;
     }) as typeof process.stderr.write;
     try {
-      const code = await main(['--path', '/tmp/non-existent-repo', '--demo', '.seeflow/demo.json']);
+      const code = await main(['--path', '/tmp/non-existent-repo', '--demo', '.seeflow/seeflow.json']);
       expect(code).toBe(1);
     } finally {
       process.stderr.write = origWrite;

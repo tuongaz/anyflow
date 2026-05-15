@@ -33,7 +33,7 @@ The launching prompt will give you:
    do not rename or retype existing nodes.
 3. **(optional) `editTarget`** — when `contextBrief.existingDemo.diffTarget`
    is `true`, the orchestrator also passes the parsed contents of the
-   existing `demo.json`. Use it to reuse existing `scriptPath`s when an
+   existing `seeflow.json`. Use it to reuse existing `scriptPath`s when an
    entity persists across the edit.
 
 ## Output contract

@@ -29,7 +29,7 @@ npx tuongaz/seeflow start
 ```
 
 That starts the studio at <http://localhost:4321>. Then register a demo from
-any repo that has a `.seeflow/demo.json`:
+any repo that has a `.seeflow/seeflow.json`:
 
 ```bash
 npx tuongaz/seeflow register --path /path/to/your/repo
@@ -47,13 +47,13 @@ make demo
 and opens it at <http://localhost:4321/d/todo-demo>. In the canvas, click
 **Play** on the `POST /todos/:id/complete` node — a real `bun` script runs,
 the node animates `running → done`, and the detail panel renders the response.
-Edit `examples/todo-demo-target/.seeflow/demo.json` and save — the canvas
+Edit `examples/todo-demo-target/.seeflow/seeflow.json` and save — the canvas
 hot-reloads. When you're done, run `make stop`.
 
 ## Generate a demo from your own code (Claude Code plugin)
 
 Inside the cloned repo there's a Claude Code plugin (`create-seeflow`) that
-walks your codebase, picks a slice, and writes a `.seeflow/<slug>/demo.json`
+walks your codebase, picks a slice, and writes a `.seeflow/<slug>/seeflow.json`
 for you — no manual diagramming. From Claude Code:
 
 ```
@@ -75,7 +75,7 @@ source of truth).
 
 ## Author a demo by hand
 
-A demo is a single file at `<your-repo>/.seeflow/demo.json` — no build
+A demo is a single file at `<your-repo>/.seeflow/seeflow.json` — no build
 step, no DSL. See [`examples/todo-demo-target`](./examples/todo-demo-target)
 for a working three-node demo plus its play/status scripts, and
 [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) for the schema.

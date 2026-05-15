@@ -18,7 +18,7 @@ import { DemoSchema } from './schema.ts';
 import { serve } from './server.ts';
 import { createStatusRunner } from './status-runner.ts';
 
-const DEFAULT_DEMO_PATH = '.seeflow/demo.json';
+const DEFAULT_DEMO_PATH = '.seeflow/seeflow.json';
 const HEALTH_TIMEOUT_MS = 10_000;
 const HEALTH_POLL_INTERVAL_MS = 150;
 
@@ -74,7 +74,7 @@ Options (start):
 Options (register):
   --path <dir>      Path to repo root (default: current directory)
   --demo <file>     Path to demo JSON, relative to repo root
-                    (default: .seeflow/demo.json)
+                    (default: .seeflow/seeflow.json)
   --no-start        Fail if studio is not already running
 
 Examples:

@@ -36,7 +36,7 @@ const tmpRegistry = () => {
 const tmpRepoWithDemo = (demo: unknown = VALID_DEMO) => {
   const repoDir = mkdtempSync(join(tmpdir(), 'seeflow-mcp-repo-'));
   mkdirSync(join(repoDir, '.seeflow'));
-  writeFileSync(join(repoDir, '.seeflow', 'demo.json'), JSON.stringify(demo));
+  writeFileSync(join(repoDir, '.seeflow', 'seeflow.json'), JSON.stringify(demo));
   return repoDir;
 };
 
@@ -153,7 +153,7 @@ describe('seeflow_list_demos', () => {
     const repoPath = tmpRepoWithDemo();
     await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
     });
 
     const envelope = await callTool(app, 'seeflow_list_demos');
@@ -170,7 +170,7 @@ describe('seeflow_get_demo', () => {
     const repoPath = tmpRepoWithDemo();
     const registerEnvelope = await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
     });
     const reg = expectOk(registerEnvelope) as { id: string };
 
@@ -200,7 +200,7 @@ describe('seeflow_register_demo', () => {
     const repoPath = tmpRepoWithDemo();
     const envelope = await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
     });
     const body = expectOk(envelope) as {
       id: string;
@@ -216,7 +216,7 @@ describe('seeflow_register_demo', () => {
     const { app } = buildApp();
     const envelope = await callTool(app, 'seeflow_register_demo', {
       repoPath: '/this/path/does/not/exist',
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
     });
     const text = expectError(envelope);
     expect(text).toContain('Demo file not found');
@@ -230,7 +230,7 @@ describe('seeflow_delete_demo', () => {
     const repoPath = tmpRepoWithDemo();
     const regEnvelope = await callTool(app, 'seeflow_register_demo', {
       repoPath,
-      demoPath: '.seeflow/demo.json',
+      demoPath: '.seeflow/seeflow.json',
     });
     const reg = expectOk(regEnvelope) as { id: string; slug: string };
     expect(registry.list()).toHaveLength(1);
@@ -244,7 +244,7 @@ describe('seeflow_delete_demo', () => {
     const second = expectOk(
       await callTool(app, 'seeflow_register_demo', {
         repoPath: repoPath2,
-        demoPath: '.seeflow/demo.json',
+        demoPath: '.seeflow/seeflow.json',
       }),
     ) as { slug: string };
     const bySlugEnvelope = await callTool(app, 'seeflow_delete_demo', { demoId: second.slug });
@@ -260,14 +260,14 @@ describe('seeflow_delete_demo', () => {
 });
 
 describe('seeflow_create_project', () => {
-  it('scaffolds a new project folder and writes .seeflow/demo.json', async () => {
+  it('scaffolds a new project folder and writes .seeflow/seeflow.json', async () => {
     const projectBaseDir = tmpEmptyFolder();
     const { app, registry } = buildApp({ projectBaseDir });
     const envelope = await callTool(app, 'seeflow_create_project', { name: 'Brand New Demo' });
     const body = expectOk(envelope) as { id: string; slug: string; scaffolded: boolean };
     expect(body.scaffolded).toBe(true);
     expect(body.slug).toBe('brand-new-demo');
-    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.seeflow', 'demo.json'))).toBe(true);
+    expect(existsSync(join(projectBaseDir, 'brand-new-demo', '.seeflow', 'seeflow.json'))).toBe(true);
     expect(registry.list()).toHaveLength(1);
   });
 });
@@ -332,10 +332,10 @@ const registerFixture = async (
   const repoPath = tmpRepoWithDemo(demo);
   const envelope = await callTool(app, 'seeflow_register_demo', {
     repoPath,
-    demoPath: '.seeflow/demo.json',
+    demoPath: '.seeflow/seeflow.json',
   });
   const reg = expectOk(envelope) as RegisterResult;
-  return { repoPath, demoFile: join(repoPath, '.seeflow', 'demo.json'), reg };
+  return { repoPath, demoFile: join(repoPath, '.seeflow', 'seeflow.json'), reg };
 };
 
 describe('seeflow_add_node', () => {
@@ -705,7 +705,7 @@ describe('seeflow_patch_node', () => {
     const reg = expectOk(
       await callTool(app, 'seeflow_register_demo', {
         repoPath,
-        demoPath: '.seeflow/demo.json',
+        demoPath: '.seeflow/seeflow.json',
       }),
     ) as RegisterResult;
 
@@ -716,7 +716,7 @@ describe('seeflow_patch_node', () => {
     });
     expect(expectOk(envelope)).toEqual({ ok: true });
 
-    const demoFile = join(repoPath, '.seeflow', 'demo.json');
+    const demoFile = join(repoPath, '.seeflow', 'seeflow.json');
     const onDisk = JSON.parse(readFileSync(demoFile, 'utf8')) as {
       nodes: Array<{ id: string; futureField?: string; data: { name: string } }>;
     };

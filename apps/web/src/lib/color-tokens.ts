@@ -2,7 +2,7 @@ import type { ColorToken } from '@/lib/api';
 import type { CSSProperties } from 'react';
 
 // Single source of truth for the curated palette. Tokens are stored on disk in
-// demo.json; the strings below are the actual CSS values rendered on screen.
+// seeflow.json; the strings below are the actual CSS values rendered on screen.
 //
 // • 'default' uses the shadcn HSL CSS variables so it adapts to light/dark
 //   automatically (--border, --card, --muted-foreground).

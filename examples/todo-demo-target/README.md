@@ -1,6 +1,6 @@
 # todo-demo-target — canonical SeeFlow M1 verification target
 
-A tiny Bun + Hono app paired with a hand-authored `.seeflow/demo.json` that
+A tiny Bun + Hono app paired with a hand-authored `.seeflow/seeflow.json` that
 exercises **every** Milestone-1 feature in one place. Use it as the run-book
 for the 9 verification steps below.
 
@@ -18,7 +18,7 @@ todo-demo-target/
 │   ├── event-bus.ts           # Tiny pub/sub
 │   └── worker.ts              # Subscribes to todo.completed → emits running → done
 └── .seeflow/
-    └── demo.json              # 3 nodes: create-todo, complete-todo, todo-worker (event)
+    └── seeflow.json              # 3 nodes: create-todo, complete-todo, todo-worker (event)
 ```
 
 ## Routes
@@ -105,11 +105,11 @@ then `Studio started (pid …)`, then the usual `Registered …` line. To prove
 the opt-out works, kill again and run with `--no-start` — it should error
 clearly: `Start it first: seeflow start`.
 
-### V5 — editing `demo.json` live-reloads the canvas (no refresh)
+### V5 — editing `seeflow.json` live-reloads the canvas (no refresh)
 
 With studio running and the **Todo Demo** canvas open:
 
-1. In another terminal, edit `examples/todo-demo-target/.seeflow/demo.json` —
+1. In another terminal, edit `examples/todo-demo-target/.seeflow/seeflow.json` —
    change `"label": "POST /todos"` to `"label": "POST /todos (live)"` and save.
    The label updates on the canvas within ~100ms; no browser refresh needed.
 2. Introduce a syntax error (e.g. delete a closing `}`). The canvas keeps the
@@ -195,7 +195,7 @@ matches the on-disk demo file.
 bun run apps/studio/src/cli.ts stop
 # (kill the demo target's terminal manually with ^C)
 
-# Forget the demo (does NOT delete the .seeflow/demo.json on disk):
+# Forget the demo (does NOT delete the .seeflow/seeflow.json on disk):
 DEMO_ID=$(curl -s http://localhost:4321/api/demos | \
   bun -e 'const list = await Bun.stdin.json(); console.log(list.find(d => d.slug === "todo-demo")?.id ?? "");')
 [ -n "$DEMO_ID" ] && curl -s -X DELETE "http://localhost:4321/api/demos/$DEMO_ID"

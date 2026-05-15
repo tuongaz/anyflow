@@ -62,7 +62,7 @@ async function main(): Promise<void> {
         issues: [
           {
             path: [],
-            message: 'Usage: validate-schema.ts <path-to-demo.json>',
+            message: 'Usage: validate-schema.ts <path-to-seeflow.json>',
             code: 'missing_argument',
           },
         ],

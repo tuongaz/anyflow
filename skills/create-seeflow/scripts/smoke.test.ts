@@ -25,7 +25,7 @@ function makeFixture(root: string): void {
   const seeflow = join(root, '.seeflow');
   mkdirSync(seeflow, { recursive: true });
   writeFileSync(
-    join(seeflow, 'demo.json'),
+    join(seeflow, 'seeflow.json'),
     JSON.stringify({
       version: 1,
       name: 'Todo Demo',
