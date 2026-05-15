@@ -24,7 +24,18 @@ record of how your system behaves — one that breaks loudly when it drifts.
 
 ## Quickstart (under a minute)
 
-You need **[Bun](https://bun.sh) ≥ 1.3** and `git`. Then:
+```bash
+npx tuongaz/seeflow start
+```
+
+That starts the studio at <http://localhost:4321>. Then register a demo from
+any repo that has a `.seeflow/demo.json`:
+
+```bash
+npx tuongaz/seeflow register --path /path/to/your/repo
+```
+
+**Alternative — check out the repo:**
 
 ```bash
 git clone https://github.com/tuongaz/seeflow.git
@@ -32,18 +43,12 @@ cd seeflow && bun install
 make demo
 ```
 
-`make demo` starts the studio in the background, registers the bundled
-**Todo Demo** example, and opens it at <http://localhost:4321/d/todo-demo>.
-
-In the canvas, click **Play** on the `POST /todos/:id/complete` node — a
-real `bun` script runs, the node animates `running → done`, and the
-detail panel renders the response. Edit
-`examples/todo-demo-target/.seeflow/demo.json` and save — the canvas
+`make demo` starts the studio, registers the bundled **Todo Demo** example,
+and opens it at <http://localhost:4321/d/todo-demo>. In the canvas, click
+**Play** on the `POST /todos/:id/complete` node — a real `bun` script runs,
+the node animates `running → done`, and the detail panel renders the response.
+Edit `examples/todo-demo-target/.seeflow/demo.json` and save — the canvas
 hot-reloads. When you're done, run `make stop`.
-
-> Prefer no clone? `npx -y @tuongaz/seeflow start --daemon` launches the
-> studio on its own; you'll still need to point `register --path <dir>` at
-> a folder that contains a `.seeflow/demo.json`.
 
 ## Generate a demo from your own code (Claude Code plugin)
 
