@@ -60,14 +60,37 @@ Then:
 curl --max-time 0.5 -fsS "$STUDIO_URL/health"
 ```
 
-On any failure (connection refused, timeout, non-2xx), print **exactly**:
+On any failure (connection refused, timeout, non-2xx):
 
-```
-Studio not reachable at <url>. Start it with: anydemo start
+1. Check whether the `anydemo` CLI is installed:
+
+```bash
+which anydemo
 ```
 
-…and STOP. Do not retry. Do not auto-start. The user must launch the studio
-themselves.
+2. Print the appropriate message and STOP:
+
+   **CLI found** (`which anydemo` exits 0):
+   ```
+   Studio not reachable at <url>. Start it with:
+
+     anydemo start
+   ```
+
+   **CLI not found** (`which anydemo` exits non-zero):
+   ```
+   Studio not reachable at <url> and the anydemo CLI is not installed.
+
+   To get started, either:
+
+     npx anydemo start          # run without installing
+
+   or check out the repo and run:
+
+     make dev                   # starts studio at http://localhost:4321
+   ```
+
+Do not retry. Do not auto-start. The user must launch the studio themselves.
 
 On success: continue to Phase 1.
 
@@ -343,7 +366,7 @@ decision.
 
 | Failure | Response |
 |---|---|
-| Studio `/health` fails (Phase 0) | Stop; print `Studio not reachable at <url>. Start it with: anydemo start`. No retry. |
+| Studio `/health` fails (Phase 0) | Check `which anydemo`; if found tell user `anydemo start`; if not found tell user `npx anydemo start` or `make dev`. No retry. |
 | Sub-agent returns unparseable output | Retry the sub-agent once with the parse error; if it fails again, surface to user and stop. |
 | Schema validation fails (Phase 4) | Loop back to the relevant designer with the Zod issue list. Max 3 retries; then surface issues verbatim. |
 | Register 400 (Phase 5) | Show response body; ask user "fix-and-retry / stop". |
