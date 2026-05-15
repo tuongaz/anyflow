@@ -36,11 +36,12 @@ Stop and ask for clarification only when the prompt is incoherent — never ask
 Phase 0 — pre-flight: studio reachable?
 Phase 1 — seeflow-discoverer        → context brief (language + runtime + tests)
 Phase 2 — seeflow-node-planner      → node draft
+Phase 2b— write skeleton demo.json (nodes only) → register → user reviews canvas → approval
 Phase 3 — seeflow-play-designer  ┐
           seeflow-status-designer├ parallel → overlays
                                  ┘
-Phase 4 — synthesize → validate-schema (no user confirmation)
-Phase 5 — write files → register.ts
+Phase 4 — synthesize → validate-schema
+Phase 5 — write script files → re-register full demo
 Phase 6 — validate-end-to-end.ts → trigger APIs → verify via SSE (retry up to 2x)
 Phase 7 — open browser on success / retry-or-stop on failure
 ```
@@ -75,6 +76,50 @@ and ask the user** — ask them how to start it, whether there is a local
 equivalent, or whether this node should be skipped. Do not invent a
 workaround. A demo with one honest gap is better than a demo that silently
 lies about its own behavior.
+
+---
+
+## Core rule — see the bigger picture before inserting data
+
+**Before writing a play script that INSERTs rows into a database, publishes
+directly to a queue, or writes records to a store, stop and ask: does the
+system already have a natural path for getting that data in?**
+
+Direct inserts bypass validation logic, business rules, and the very code
+paths the demo is meant to illuminate. They also produce demos that look
+artificial — the audience watches a raw SQL call instead of the real flow.
+Only use direct inserts when no other path exists.
+
+**Check these patterns first (ask the discoverer to surface them):**
+
+| Pattern | What to look for | Play action to use instead |
+|---|---|---|
+| **API endpoint** | A REST/gRPC/GraphQL endpoint that accepts the data | Call the endpoint (this is what users do in production) |
+| **File-drop processor** | A file watcher / `inotify` / `fsnotify` / S3-event listener that reads dropped files and loads them | Drop a real fixture file into the watched directory or bucket |
+| **Event/message producer** | A publisher service, CLI command, or webhook sender that writes to the queue/topic | Trigger the producer, not the queue directly |
+| **Seed / fixture command** | `make seed`, `bun run seed`, `./scripts/seed.sh`, ORM factory | Run the seed command — it already knows the correct shape |
+| **Webhook receiver** | An inbound webhook endpoint (`/webhooks/stripe`, `/events/github`) that parses the body and writes to the DB | POST a synthetic webhook body to the receiver |
+| **Admin / backoffice API** | An internal admin endpoint or gRPC method for creating records | Use it — it exists for exactly this purpose |
+| **File-based import** | A CSV/JSON/NDJSON import endpoint or CLI that bulk-loads records | Drop a fixture file or call the import endpoint |
+
+**Examples of what this looks like in practice:**
+
+- An order-pipeline demo needs an order in the DB → don't INSERT; call
+  `POST /api/orders` with a fixture body. The API validates, emits events, and
+  writes the row — the demo now shows the full intake path.
+- A data-warehouse pipeline needs rows in a staging table → don't INSERT; drop
+  a CSV fixture into the S3-compatible watched bucket. The file-processor picks
+  it up, transforms, and loads — the demo shows the ETL entry point.
+- A notification system needs a message in the queue → don't publish directly;
+  call the trigger service (`POST /api/notify`) which publishes on behalf of the
+  caller — the demo shows the producer, not a hidden bypass.
+- A recommendation engine needs user-event data → don't INSERT; fire a
+  synthetic `track` event at the analytics endpoint. The pipeline picks it up
+  and feeds the engine — the demo shows end-to-end ingestion.
+
+If none of the above patterns exist (truly no higher-level entry point),
+document the reason in `rationale` and only then resort to a direct
+INSERT/PUBLISH, clearly scoped to the minimum data needed.
 
 ---
 
@@ -212,13 +257,14 @@ Before launching any sub-agent, create a TodoWrite checklist so the user can
 track progress in real time. Create one todo per phase using `TaskCreate`:
 
 ```
-[ ] Phase 1 — Discover codebase (language, runtime, integration tests)
-[ ] Phase 2 — Plan nodes & connectors
-[ ] Phase 3 — Design Play + Status scripts (parallel)
-[ ] Phase 4 — Synthesize & validate schema
-[ ] Phase 5 — Write files & register demo
-[ ] Phase 6 — End-to-end validation (trigger APIs, verify via SSE)
-[ ] Phase 7 — Open browser
+[ ] Phase 1  — Discover codebase (language, runtime, integration tests)
+[ ] Phase 2  — Plan nodes & connectors
+[ ] Phase 2b — Register skeleton demo (nodes only) — await user node review
+[ ] Phase 3  — Design Play + Status scripts (parallel)
+[ ] Phase 4  — Synthesize & validate schema
+[ ] Phase 5  — Write script files & re-register full demo
+[ ] Phase 6  — End-to-end validation (trigger APIs, verify via SSE)
+[ ] Phase 7  — Open browser
 ```
 
 Mark each todo complete (via `TaskUpdate`) immediately after the phase
@@ -280,6 +326,14 @@ tools** — it reasons purely from the brief. It applies two mandatory passes:
 - **Abstraction rules second** — one node per service / workflow / worker /
   queue / DB (exceptions: independently-meaningful pipeline stages, fan-out
   consumers, branches).
+- **Connection limit** — each node should have at most **4 total connections**
+  (incoming + outgoing combined). A node with more connections is visually
+  overwhelming and signals a design problem. When a node would exceed the limit:
+  - **Split** it into two nodes if it has distinct responsibilities (e.g.
+    "API gateway — auth" vs "API gateway — routing").
+  - **Duplicate** a shared resource (see below) to break hub-and-spoke patterns.
+  - **Group** related nodes inside a `group` node and show one connector to
+    the group instead of N connectors to its children.
 
 Expected output:
 
@@ -292,7 +346,57 @@ Expected output:
 }
 ```
 
+**Duplication for clarity** — the "one node per service" default can be
+overridden when showing the same service or resource more than once makes the
+diagram easier to follow. This is preferable to drawing crossing connectors or
+forcing a single node to have many connections. Rules for duplicating:
+
+- Use the same `kind` and `name` as the original node.
+- Give each copy a unique `id` with a descriptive suffix
+  (e.g. `"orders-db-write"`, `"orders-db-read"`).
+- Prefer duplication on **shared resources** (databases, caches, queues) that
+  appear in multiple independent flows side by side.
+
 Same retry budget: one retry on unparseable output, then surface and stop.
+
+---
+
+## Phase 2b — node review checkpoint
+
+Before designing any scripts, register a **skeleton** demo (nodes + connectors only,
+no `playAction` / `statusAction`) so the user can review the canvas layout and catch
+structural problems early. Do not skip this step.
+
+1. Build a skeleton `Demo` JSON from the node draft — omit all `playAction`,
+   `statusAction`, and `resetAction` fields. Keep `version`, `name`, `nodes`,
+   and `connectors`.
+2. Write it to a temp path: `/tmp/seeflow-<slug>-nodes.json`.
+3. Validate schema:
+   ```bash
+   bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-nodes.json
+   ```
+   On failure: fix the field-level issues (do not re-run the node-planner), then retry.
+4. Write `$demoDir/demo.json` with the skeleton and register:
+   ```bash
+   bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$demoPath"
+   ```
+   Stash the `id` returned — you will reuse it in Phases 5 and 6.
+5. Open the studio URL in the user's browser:
+   ```bash
+   url="$STUDIO_URL/d/<slug>"
+   case "$(uname)" in Darwin) open "$url";; Linux) xdg-open "$url";; esac
+   ```
+6. Ask the user:
+
+   > The nodes are registered — please review the canvas at `<url>`.
+   > Do the nodes and layout look right? Any additions, removals, or renames before
+   > I start writing the play/status scripts?
+
+**Wait** for the user's response before proceeding to Phase 3.
+
+- **User approves** → continue to Phase 3.
+- **User requests changes** → collect all feedback, loop back to Phase 2 (re-run the
+  node-planner sub-agent with the user's corrections), then repeat Phase 2b.
 
 ---
 
@@ -312,7 +416,7 @@ target (if any). Both have read-only file tools (`Read`, `Grep`, `Glob`,
     "nodeId": "…",
     "playAction": { "kind": "script", "interpreter": "bun", "args": ["run"],
                     "scriptPath": "<slug>/scripts/<name>.ts",
-                    "input": {…}, "timeoutMs": 15000 },
+                    "input": {…}, "timeoutMs": 30000 },
     "scriptBody": "<full bun/python/node source as a string>",
     "validationSafe": true,
     "rationale": "…"
@@ -335,6 +439,24 @@ target (if any). Both have read-only file tools (`Read`, `Grep`, `Glob`,
   }]
 }
 ```
+
+**Sample data — look before inventing.** Before authoring any `input` payload
+or fixture data, the play-designer MUST search the project for existing data
+shapes. The discoverer surfaces `runtimeProfile.integrationTestDir` and
+`runtimeProfile.setupPattern` — use them as the starting point. Priority order:
+
+1. **Integration / e2e test fixtures** — copy payload shapes verbatim; they
+   are guaranteed to work against the real service.
+2. **Seed files or migration fixtures** — look for `seed.*`, `fixtures/`,
+   `testdata/`, or ORM factory files; extract realistic field values.
+3. **Documentation examples** — README / OpenAPI / Postman collections;
+   adapt the example body.
+4. **Invent only as a last resort** — and note in `rationale` that no
+   existing fixture was found.
+
+Using real fixture shapes (rather than `{"foo": "bar"}` placeholders) means
+the play script is more likely to pass real validation and more educational
+for the demo audience.
 
 `newTriggerNodes` (play-designer only) may inject synthetic source nodes
 (file-drop, webhook receiver, fixture producer) when no natural trigger
@@ -368,16 +490,15 @@ field; status-designer if a status field; node-planner otherwise) and retry.
 **Max 3 schema retries** before surfacing the raw issue list verbatim to the
 user and stopping.
 
-5. Proceed directly to Phase 5 — do not pause to present the plan or ask
-   the user for confirmation. Writing and validating quickly gives the user
-   something real to react to faster than a plan ever could.
+5. Proceed directly to Phase 5 — the user already reviewed and approved the
+   node layout in Phase 2b, so no additional confirmation is needed here.
 
 A worked plan example lives at `references/examples/checkout-flow-plan.md`
 (informational only — no longer shown to the user).
 
 ---
 
-## Phase 5 — write files + register
+## Phase 5 — write script files + re-register full demo
 
 Proceed immediately after Phase 4 schema validation passes.
 
@@ -386,21 +507,23 @@ Proceed immediately after Phase 4 schema validation passes.
    `demoPath = .seeflow/<slug>/demo.json` (relative — that is what
    `register.ts` posts).
 2. **Create dirs**: `mkdir -p $demoDir/scripts $demoDir/state`.
-3. **Write the files**:
-   - `$demoDir/demo.json` — the validated `Demo` object (pretty-printed).
+3. **Write the files** (overwriting the skeleton `demo.json` written in Phase 2b):
+   - `$demoDir/demo.json` — the fully-validated `Demo` object (pretty-printed),
+     now including all `playAction` and `statusAction` fields.
    - `$demoDir/scripts/<playScriptName>` — one file per playOverlay
      `scriptBody`. Mark executable (`chmod +x`).
    - `$demoDir/scripts/<statusScriptName>` — one file per statusOverlay
      `scriptBody`. Mark executable.
    - `$demoDir/state/.gitignore` — `*` (state files are runtime-only).
-4. **Register**:
+4. **Re-register** (updates the studio with the full demo):
 
 ```bash
 bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$demoPath"
 ```
 
 The script POSTs `{name, repoPath, demoPath}` to `/api/demos/register` and
-prints `{id, slug}` to stdout. Stash the `id` for Phase 6 + Phase 7.
+prints `{id, slug}` to stdout. The `id` from Phase 2b is superseded — use the
+new `id` for Phase 6 + Phase 7.
 
 If `register.ts` exits non-zero with a 400 body: show the body verbatim, ask
 the user whether to fix-and-retry (loop back to Phase 4) or stop. On any
@@ -546,7 +669,7 @@ Use: `service`, `endpoint`, `worker`, `workflow`, `queue`, `topic`, `bus`,
     "playAction": { "kind": "script", "interpreter": "bun", "args": ["run"],
                     "scriptPath": "checkout-flow/scripts/play-checkout.ts",
                     "input": { "items": [{"sku":"ABC","qty":1}] },
-                    "timeoutMs": 15000 },
+                    "timeoutMs": 30000 },
     "description": "Receives a cart, creates an order."
   }
 }
@@ -684,7 +807,14 @@ Constraints:
 - `input` (playAction only) is JSON-serialised and piped to the child's
   stdin then closed. The child reads from stdin with `Bun.stdin.text()` /
   `process.stdin` / `sys.stdin.read()`.
-- `timeoutMs` (playAction; max 600_000) caps spawn lifetime.
+- `timeoutMs` (playAction; max 600_000) caps spawn lifetime. **Be generous:**
+  - Simple HTTP call → 15 000 ms is fine.
+  - Go / Rust (compile on first run) → minimum **60 000 ms**, recommend **120 000 ms**.
+  - Java / Kotlin (JVM startup + compile) → minimum **120 000 ms**.
+  - Any script that seeds a database or runs migrations → **60 000 ms** minimum.
+  When in doubt, err on the side of a longer timeout; a script that completes
+  early is fine, but one that times out mid-execution leaves the demo in a broken
+  state that is harder to debug.
 - `maxLifetimeMs` (statusAction; max 3_600_000) caps continuous-tick
   lifetime. Default: 600_000 (10 min). Bump to 1_800_000 for long-async
   workflow demos.
