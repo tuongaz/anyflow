@@ -621,6 +621,20 @@ export interface CreateProjectResult {
   scaffolded: boolean;
 }
 
+export const deleteDemo = async (id: string): Promise<{ ok: true }> => {
+  const res = await fetch(`/api/demos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    let errorBody: { error?: string } | null = null;
+    try {
+      errorBody = (await res.json()) as { error?: string };
+    } catch {
+      // ignore
+    }
+    throw new Error(errorBody?.error ?? `DELETE /api/demos/${id} → ${res.status}`);
+  }
+  return (await res.json()) as { ok: true };
+};
+
 export const createProject = async (body: CreateProjectBody): Promise<CreateProjectResult> => {
   const res = await fetch('/api/projects', {
     method: 'POST',

@@ -76,6 +76,14 @@ export function App() {
     [refreshDemos],
   );
 
+  const onProjectUnregistered = useCallback(
+    (id: string) => {
+      refreshDemos();
+      if (demoId === id) navigate('/');
+    },
+    [refreshDemos, demoId],
+  );
+
   // On '/', skip the picker when there's nothing to pick: jump straight in if
   // only one demo is registered, or if the stored last-used demo still
   // resolves. Otherwise (2+ demos, no recall) StudioHome renders the picker.
@@ -119,7 +127,12 @@ export function App() {
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full w-full flex-col bg-background text-foreground">
-        <Header demos={demos} currentSlug={slug ?? undefined} onProjectCreated={onProjectCreated} />
+        <Header
+          demos={demos}
+          currentSlug={slug ?? undefined}
+          onProjectCreated={onProjectCreated}
+          onProjectUnregistered={onProjectUnregistered}
+        />
         <main className="min-h-0 flex-1">
           {slug ? (
             <DemoView

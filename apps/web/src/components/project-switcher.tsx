@@ -10,21 +10,39 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from '@/components/ui/command';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { CreateProjectResult, DemoSummary } from '@/lib/api';
+import { deleteDemo } from '@/lib/api';
 import { navigate } from '@/lib/router';
-import { ChevronsUpDown, Plus } from 'lucide-react';
+import { ChevronsUpDown, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export interface ProjectSwitcherProps {
   demos: DemoSummary[];
   currentSlug?: string;
   onProjectCreated?: (result: CreateProjectResult) => void;
+  onProjectUnregistered?: (id: string) => void;
 }
 
-export function ProjectSwitcher({ demos, currentSlug, onProjectCreated }: ProjectSwitcherProps) {
+export function ProjectSwitcher({
+  demos,
+  currentSlug,
+  onProjectCreated,
+  onProjectUnregistered,
+}: ProjectSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [unregisterTarget, setUnregisterTarget] = useState<DemoSummary | null>(null);
+  const [unregistering, setUnregistering] = useState(false);
+  const [unregisterError, setUnregisterError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -42,6 +60,33 @@ export function ProjectSwitcher({ demos, currentSlug, onProjectCreated }: Projec
   const handleCreated = (result: CreateProjectResult) => {
     onProjectCreated?.(result);
     navigate(`/d/${result.slug}`);
+  };
+
+  const openUnregisterDialog = (demo: DemoSummary) => {
+    setUnregisterTarget(demo);
+    setUnregisterError(null);
+  };
+
+  const closeUnregisterDialog = () => {
+    if (unregistering) return;
+    setUnregisterTarget(null);
+    setUnregisterError(null);
+  };
+
+  const handleUnregister = async () => {
+    if (!unregisterTarget) return;
+    setUnregistering(true);
+    setUnregisterError(null);
+    try {
+      await deleteDemo(unregisterTarget.id);
+      const id = unregisterTarget.id;
+      setUnregisterTarget(null);
+      onProjectUnregistered?.(id);
+    } catch (err) {
+      setUnregisterError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUnregistering(false);
+    }
   };
 
   return (
@@ -82,12 +127,26 @@ export function ProjectSwitcher({ demos, currentSlug, onProjectCreated }: Projec
                         setOpen(false);
                         navigate(`/d/${demo.slug}`);
                       }}
-                      className="flex flex-col items-start gap-0.5"
+                      className="group flex items-center justify-between gap-2"
                     >
-                      <span className="font-medium">{demo.name}</span>
-                      <span className="text-xs text-muted-foreground truncate w-full">
-                        {demo.repoPath}
-                      </span>
+                      <div className="flex min-w-0 flex-col items-start gap-0.5">
+                        <span className="font-medium">{demo.name}</span>
+                        <span className="w-full truncate text-xs text-muted-foreground">
+                          {demo.repoPath}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Unregister ${demo.name}`}
+                        className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpen(false);
+                          openUnregisterDialog(demo);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -111,11 +170,57 @@ export function ProjectSwitcher({ demos, currentSlug, onProjectCreated }: Projec
           </Command>
         </PopoverContent>
       </Popover>
+
       <CreateProjectDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={handleCreated}
       />
+
+      <Dialog
+        open={unregisterTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) closeUnregisterDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-md" data-testid="unregister-project-dialog">
+          <DialogHeader>
+            <DialogTitle>Unregister project?</DialogTitle>
+            <DialogDescription>
+              This removes <strong>{unregisterTarget?.name}</strong> from SeeFlow. Your files at{' '}
+              <code className="text-xs">{unregisterTarget?.repoPath}</code> will not be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          {unregisterError ? (
+            <div
+              role="alert"
+              data-testid="unregister-project-error"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {unregisterError}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeUnregisterDialog}
+              disabled={unregistering}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleUnregister}
+              disabled={unregistering}
+              data-testid="unregister-project-confirm"
+            >
+              {unregistering ? 'Unregistering…' : 'Unregister'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
