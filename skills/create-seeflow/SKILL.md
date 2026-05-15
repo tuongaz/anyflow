@@ -249,7 +249,7 @@ Register a **skeleton** flow (nodes + connectors only, no scripts) so the user c
    On failure: fix field-level issues in-place (no re-run of node-planner), retry.
 4. Write `$flowDir/seeflow.json` and register:
    ```bash
-   bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$flowPath"
+   bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --flow "$flowPath"
    ```
    Stash the returned `id`.
 5. Open studio in browser:
@@ -341,7 +341,7 @@ bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-draft.j
 4. Re-register:
 
 ```bash
-bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$flowPath"
+bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --flow "$flowPath"
 ```
 
 Prints `{id, slug}`. Use the new `id` for Phases 6 + 7.

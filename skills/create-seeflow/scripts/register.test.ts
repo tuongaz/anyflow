@@ -146,7 +146,7 @@ describe('register.ts main()', () => {
       return true;
     }) as typeof process.stdout.write;
     try {
-      const code = await main(['--path', repoPath, '--demo', '.seeflow/seeflow.json']);
+      const code = await main(['--path', repoPath, '--flow', '.seeflow/seeflow.json']);
       expect(code).toBe(0);
     } finally {
       process.stdout.write = origWrite;
@@ -166,7 +166,7 @@ describe('register.ts main()', () => {
       return true;
     }) as typeof process.stderr.write;
     try {
-      const code = await main(['--path', '/tmp/non-existent-repo', '--demo', '.seeflow/seeflow.json']);
+      const code = await main(['--path', '/tmp/non-existent-repo', '--flow', '.seeflow/seeflow.json']);
       expect(code).toBe(1);
     } finally {
       process.stderr.write = origWrite;

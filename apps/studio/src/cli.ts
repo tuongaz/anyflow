@@ -73,7 +73,7 @@ Options (start):
 
 Options (register):
   --path <dir>      Path to repo root (default: current directory)
-  --demo <file>     Path to demo JSON, relative to repo root
+  --flow <file>     Path to flow JSON, relative to repo root
                     (default: .seeflow/seeflow.json)
   --no-start        Fail if studio is not already running
 
@@ -180,7 +180,7 @@ function runStop() {
 
 async function runRegister() {
   const repoPath = resolve(flagValue('path') ?? '.');
-  const demoPathArg = flagValue('demo') ?? DEFAULT_DEMO_PATH;
+  const demoPathArg = flagValue('flow') ?? DEFAULT_DEMO_PATH;
   const noStart = hasFlag('no-start');
   const config = readConfig();
   const overrideUrl = process.env.SEEFLOW_STUDIO_URL?.replace(/\/+$/, '');
@@ -189,7 +189,7 @@ async function runRegister() {
   const fullPath = isAbsolute(demoPathArg) ? demoPathArg : join(repoPath, demoPathArg);
   if (!existsSync(fullPath)) {
     console.error(`No demo file at ${fullPath}`);
-    console.error(`Create ${DEFAULT_DEMO_PATH} in your repo, or pass --demo <path>.`);
+    console.error(`Create ${DEFAULT_DEMO_PATH} in your repo, or pass --flow <path>.`);
     process.exit(1);
   }
 

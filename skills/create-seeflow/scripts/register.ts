@@ -67,9 +67,9 @@ function readNameFromDemoFile(repoPath: string, demoPath: string): string | unde
 
 export async function main(argv: string[]): Promise<number> {
   const repoPathArg = flagValue(argv, 'path');
-  const demoPathArg = flagValue(argv, 'demo');
+  const demoPathArg = flagValue(argv, 'flow');
   if (!repoPathArg || !demoPathArg) {
-    process.stderr.write('Usage: register.ts --path <repoPath> --demo <demoPath>\n');
+    process.stderr.write('Usage: register.ts --path <repoPath> --flow <flowPath>\n');
     return 1;
   }
   const repoPath = resolve(repoPathArg);

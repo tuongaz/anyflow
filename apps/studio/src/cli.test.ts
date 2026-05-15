@@ -85,14 +85,14 @@ describe('seeflow CLI register integration', () => {
       const baseEnv = { SEEFLOW_STUDIO_URL: studio.url };
 
       const first = await runCli(
-        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/checkout/seeflow.json'],
+        ['register', '--no-start', '--path', repoDir, '--flow', '.seeflow/checkout/seeflow.json'],
         baseEnv,
       );
       expect(first.code).toBe(0);
       expect(first.stdout).toContain('Registered "Checkout"');
 
       const second = await runCli(
-        ['register', '--no-start', '--path', repoDir, '--demo', '.seeflow/refund/seeflow.json'],
+        ['register', '--no-start', '--path', repoDir, '--flow', '.seeflow/refund/seeflow.json'],
         baseEnv,
       );
       expect(second.code).toBe(0);
