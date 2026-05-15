@@ -47,23 +47,53 @@ prefer the dedicated tools (`LS`, `Read`, `Glob`, `Grep`) when they fit.
 ## Workflow
 
 1. **Reconnoitre.** Start with `LS` on `projectRoot` and `Glob`/`Grep` for
-   obvious entry points (`package.json`, `src/index.*`, `apps/*/src/*`,
+   obvious entry points (`package.json`, `go.mod`, `requirements.txt`,
+   `pyproject.toml`, `Cargo.toml`, `src/index.*`, `apps/*/src/*`,
    `cmd/*/main.go`, `manage.py`, `Dockerfile`, `docker-compose*`,
    `.anydemo/`). Skim the top-level README if present.
-2. **Map the surface.** Find HTTP endpoints, queue/event topics, workflow
+2. **Profile the runtime.** Extract the language, package manager, dev
+   command, test command, and default service port. Populate
+   `runtimeProfile` (see schema below). Check in this order:
+   - `package.json` → `scripts.dev`, `scripts.start`, `scripts.test`
+   - `go.mod` → language is Go; check `Makefile` for run/test targets
+   - `requirements.txt` / `pyproject.toml` → Python; check `Makefile`
+   - `Cargo.toml` → Rust; check `Makefile`
+   - `.env`, `.env.example`, `docker-compose*` → extract `PORT` or
+     service port assignments
+   - `Makefile` → extract `dev`, `test`, `integration-test`, `e2e`,
+     `smoke` targets
+3. **Inspect integration / blackbox / e2e tests.** This is the most
+   valuable source for understanding how the app is actually started and
+   how its APIs are called. Look for:
+   - Directories named `test/`, `tests/`, `e2e/`, `integration/`,
+     `blackbox/`, `testdata/`, `__tests__/`
+   - Files matching `*_test.go`, `*.test.ts`, `*.spec.ts`, `*.test.py`,
+     `*_integration_test.*`, `*_e2e_test.*`
+   - `TestMain`, `beforeAll`, `setup`, `globalSetup` — these reveal how
+     services are started before tests run
+   - `supertest`, `httptest.NewServer`, `TestClient`, `requests.Session` —
+     these reveal the actual port/base-URL pattern the tests use
+   - Helper / fixture files that seed test data (payload shapes used in
+     tests become the `input` for play scripts)
+   - Record the key file paths and the port/URL pattern in
+     `runtimeProfile.integrationTestDir` and `runtimeProfile.integrationTestCommand`
+   **Why this matters:** integration tests already solved "how to start
+   the app and call its endpoints." Play scripts should replicate that
+   pattern, not guess it.
+4. **Map the surface.** Find HTTP endpoints, queue/event topics, workflow
    definitions (Temporal/Airflow/Argo/etc.), background workers, scheduled
    jobs, databases, external SaaS integrations, and file/object stores
    that look relevant to `userPrompt`.
-3. **Triangulate scope.** Decide which entities the user *clearly* means
+5. **Triangulate scope.** Decide which entities the user *clearly* means
    to show and which they *clearly* do not. When in doubt, prefer
    inclusion in `rootEntities` and call out the ambiguity in
    `audienceFraming` rather than silently dropping it.
-4. **Resolve the edit case.** If `existingDemo` is provided, compare its
+6. **Resolve the edit case.** If `existingDemo` is provided, compare its
    nodes against the inferred scope and decide whether this run is an
    **edit** of that demo (set `existingDemo.diffTarget: true`) or a
    **new flow that happens to overlap** (set `diffTarget: false` and
    treat it as new).
-5. **Return the brief.** Your **final message** must be a single fenced
+7. **Return the brief.** Your **final message** must be a single fenced
    JSON code block matching the schema below — nothing else. No prose
    around it. The orchestrator parses your last message with
    `JSON.parse` after stripping the fence.
@@ -82,6 +112,16 @@ prefer the dedicated tools (`LS`, `Read`, `Glob`, `Grep`) when they fit.
     { "path": "src/checkout/api.ts", "why": "POST /checkout handler — primary trigger" },
     { "path": "src/payments/service.ts", "why": "external Stripe leg" }
   ],
+  "runtimeProfile": {
+    "primaryLanguage": "typescript",
+    "packageManager": "bun",
+    "devCommand": "bun run dev",
+    "testCommand": "bun test",
+    "servicePort": 3001,
+    "integrationTestDir": "tests/integration",
+    "integrationTestCommand": "bun test tests/integration",
+    "setupPattern": "Tests call http://localhost:3001 directly after starting server with bun run dev"
+  },
   "existingDemo": null
 }
 ```
@@ -105,6 +145,31 @@ Field-by-field:
   `{ path, why }` with `path` relative to `projectRoot`. Aim for 4–12
   entries; do not dump every file you opened. Prefer the *primary*
   handler / definition / config file per entity over auxiliary ones.
+  Include key integration/e2e test files here when they reveal endpoint
+  shapes, payload formats, or port assignments.
+- **`runtimeProfile`** *(object, required)* — everything the play/status
+  designers need to write faithful scripts without re-reading the
+  codebase:
+  - `primaryLanguage` *(string)* — `"typescript"`, `"python"`, `"go"`,
+    `"rust"`, `"javascript"`, etc.
+  - `packageManager` *(string)* — `"bun"`, `"npm"`, `"yarn"`, `"pnpm"`,
+    `"pip"`, `"poetry"`, `"cargo"`, `"go"`, etc.
+  - `devCommand` *(string)* — command used to start the app locally
+    (e.g. `"bun run dev"`, `"go run ./cmd/server"`, `"python -m app"`)
+  - `testCommand` *(string)* — command used to run the unit test suite
+  - `servicePort` *(number | null)* — the port the primary HTTP service
+    listens on. `null` if not determinable.
+  - `integrationTestDir` *(string | null)* — relative path to the
+    integration/e2e/blackbox test directory. `null` if none found.
+  - `integrationTestCommand` *(string | null)* — command to run
+    integration/e2e tests locally (from `Makefile`, `package.json`, or
+    README). `null` if not found.
+  - `setupPattern` *(string)* — 1–2 sentences describing what the
+    integration tests do to start the app and call its endpoints. This
+    is the key insight play-script authors need. Example: `"Tests start
+    a real server with Start() in TestMain then call
+    http://localhost:3001 with standard http.Client."` Use `"unknown"`
+    if no integration tests were found.
 - **`existingDemo`** *(object | null)* — `null` if no `existingDemo`
   input or if the run is a new flow. Otherwise:
   `{ "slug": "<slug>", "nodeCount": <number>, "diffTarget": <boolean> }`.
@@ -162,8 +227,19 @@ existingDemo: null
     { "path": "src/event-bus.ts", "why": "Defines order.created publish/subscribe surface" },
     { "path": "src/queue.ts", "why": "Shipments queue producer/consumer contract" },
     { "path": "src/workers.ts", "why": "inventory-worker and shipping-worker — async legs" },
-    { "path": "src/store.ts", "why": "Order state mutations (status transitions: pending → paid → shipped)" }
+    { "path": "src/store.ts", "why": "Order state mutations (status transitions: pending → paid → shipped)" },
+    { "path": "src/server.test.ts", "why": "Integration tests — reveals POST /orders payload shape and port 3001" }
   ],
+  "runtimeProfile": {
+    "primaryLanguage": "typescript",
+    "packageManager": "bun",
+    "devCommand": "bun run dev",
+    "testCommand": "bun test",
+    "servicePort": 3001,
+    "integrationTestDir": "src",
+    "integrationTestCommand": "bun test src/server.test.ts",
+    "setupPattern": "Tests import and call Start() directly (in-process), then POST to http://localhost:3001/orders with JSON body {cart:[{sku,qty}]}. Port read from ORDER_PIPELINE_PORT env var, defaulting to 3001."
+  },
   "existingDemo": null
 }
 ```

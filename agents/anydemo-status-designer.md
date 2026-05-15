@@ -27,7 +27,7 @@ The launching prompt will give you:
 
 1. **`contextBrief`** — the JSON object returned by `anydemo-discoverer`
    (`userIntent`, `audienceFraming`, `scope.{rootEntities,outOfScope}`,
-   `codePointers[]`, `existingDemo`).
+   `codePointers[]`, `runtimeProfile`, `existingDemo`).
 2. **`nodeDraft`** — the JSON object returned by `anydemo-node-planner`
    (`name`, `slug`, `nodes[]`, `connectors[]`). You may not rename or
    retype existing nodes.
@@ -230,10 +230,14 @@ ones; the plan-review step lets the user ask for more.
    confirm how to read the signal — table name, HTTP path, queue
    depth API, workflow describe call. Quote the path/method in the
    script body so a reader can audit it.
-3. **Pick the interpreter and tick.** Default to `bun` + 1000 ms tick
-   for AnyDemo workspaces. Use the project's natural runtime when it
-   differs (`python3 -u` for python projects). Use longer ticks for
-   slow signals.
+3. **Pick the interpreter and tick.** Use `contextBrief.runtimeProfile`
+   to select the interpreter — never guess:
+   - `primaryLanguage: "typescript"` / `"javascript"` + `packageManager: "bun"` → `interpreter: "bun"`, `args: ["run"]`
+   - `primaryLanguage: "typescript"` / `"javascript"` + other manager → `interpreter: "node"`
+   - `primaryLanguage: "python"` → `interpreter: "python3"`, `args: ["-u"]` (unbuffered — mandatory for streaming status)
+   - `primaryLanguage: "go"` or `"rust"` → `interpreter: "bash"`, write shell with `curl` + `jq`
+   - Unknown → default to `"bun"`
+   Use longer ticks for slow signals.
 4. **Write scripts that are tiny and tolerant.** Each script body
    should fit in ≤ 60 LOC. Wrap the read in a `try/catch` that turns
    into a `state: "warn"` (signal missing) or `state: "error"`

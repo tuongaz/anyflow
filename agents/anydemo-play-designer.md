@@ -26,7 +26,7 @@ The launching prompt will give you:
 
 1. **`contextBrief`** — the JSON object returned by `anydemo-discoverer`
    (`userIntent`, `audienceFraming`, `scope.{rootEntities,outOfScope}`,
-   `codePointers[]`, `existingDemo`).
+   `codePointers[]`, `runtimeProfile`, `existingDemo`).
 2. **`nodeDraft`** — the JSON object returned by `anydemo-node-planner`
    (`name`, `slug`, `nodes[]`, `connectors[]`). Every node's `id`,
    `type`, `data.kind`, and `data.stateSource` is fixed at this phase;
@@ -242,10 +242,19 @@ Apply these rules in order. The first rule that fits the node wins.
    confirm the trigger surface (endpoint path + method, queue name,
    event topic, fixture directory). Avoid making the script fetch a
    path that does not exist.
-3. **Pick interpreters and inputs.** Use the project's natural
-   runtime (`bun` for the AnyDemo workspaces, `python3` for python
-   projects, etc.). Build the smallest possible `input` that
-   demonstrates the behaviour. Do NOT embed real production data.
+3. **Pick interpreters and inputs.** Use `contextBrief.runtimeProfile`
+   to select the interpreter — never guess:
+   - `primaryLanguage: "typescript"` or `"javascript"` + `packageManager: "bun"` → `interpreter: "bun"`, `args: ["run"]`
+   - `primaryLanguage: "typescript"` or `"javascript"` + `packageManager: "npm"/"yarn"/"pnpm"` → `interpreter: "node"`, `args: []`
+   - `primaryLanguage: "python"` → `interpreter: "python3"`, `args: ["-u"]`
+   - `primaryLanguage: "go"` → `interpreter: "bash"`, write a shell script that uses `curl`
+   - `primaryLanguage: "rust"` → `interpreter: "bash"`, write a shell script that uses `curl`
+   - Unknown → default to `"bun"`
+   Use `runtimeProfile.servicePort` for the base URL (never hardcode a port
+   without grounding it there). Use `runtimeProfile.setupPattern` to
+   understand the exact payload shape and endpoint path the integration
+   tests proved work. Build the smallest possible `input` that demonstrates
+   the behaviour. Do NOT embed real production data.
 4. **Write scripts that are tiny and idempotent.** Each script body
    should fit in ≤ 80 LOC. Append-only state. JSON-on-stdout. One
    stderr line + non-zero exit on failure. Always emit a final

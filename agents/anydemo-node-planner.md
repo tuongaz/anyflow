@@ -92,28 +92,62 @@ Each node entry has:
     entities that are *triggers* the audience can act on (HTTP endpoints,
     cron-fire surfaces, click sources, fixture producers).
   - `"stateNode"` — node whose state evolves and is observable. Use for
-    everything else that participates in the flow (workers, queues, DBs,
-    workflow engines, external APIs). Some stateNodes will also get a
-    playAction in Phase 3 (e.g. a "fast-forward" Play on a long async
-    leg) — that is the play-designer's call, not yours.
-  - `"shapeNode"`, `"iconNode"`, `"htmlNode"`, `"imageNode"`,
-    `"groupNode"` — decorative; do NOT use at this phase. The plan stays
-    pure functional nodes; decoration is a future story.
+    everything that participates in the flow and may carry a statusAction
+    (workers, queues, DBs, workflow engines, external APIs, caches).
+  - `"shapeNode"` — illustrative node with no actions. Use ONLY for
+    actors and pure-external systems that the demo references but does
+    not monitor: a human user/customer (`shape: "user"`), an external
+    cloud platform (`shape: "cloud"`), a third-party SaaS whose health
+    is not tracked (`shape: "cloud"`). Everything with observable state
+    must be a `stateNode`, not a `shapeNode`.
+  - `"iconNode"`, `"htmlNode"`, `"imageNode"`, `"groupNode"` — do NOT
+    use at this phase.
 - **`data.name`** *(string)* — the on-canvas header. Use the spelling the
   audience would recognise (`"POST /checkout"`, `"Payments Service"`,
   `"Order DB"`). Title-case proper services; keep HTTP verbs uppercase.
-- **`data.kind`** *(string)* — one of: `service`, `endpoint`, `worker`,
-  `workflow`, `queue`, `topic`, `cache`, `db`, `store`, `scheduler`,
-  `external-api`, `trigger`, `bus`. This is free-form text in the schema
-  but converge on one of these labels so downstream designers can switch
-  on it. Pick the closest fit.
-- **`data.stateSource`** — `{ "kind": "request" }` for nodes that produce
+- **`data.kind`** *(string, playNode / stateNode only)* — semantic label
+  that tells the status-designer what kind of script to write. Use the
+  closest entry from this table; do not invent new values:
+
+  | Resource | `data.kind` | Typical `stateSource` |
+  |---|---|---|
+  | HTTP service / API | `service` | `request` |
+  | Single HTTP endpoint | `endpoint` | `request` |
+  | Background worker / consumer | `worker` | `event` |
+  | Workflow engine (Temporal, Airflow…) | `workflow` | `event` |
+  | Message queue (SQS, RabbitMQ, BullMQ…) | `queue` | `event` |
+  | Pub/sub topic (Kafka, NATS…) | `topic` | `event` |
+  | In-process event bus | `bus` | `event` |
+  | Relational / document / key-value DB | `db` | `event` |
+  | Object / file store (S3, GCS, local FS) | `store` | `event` |
+  | Cache (Redis, Memcached) | `cache` | `event` |
+  | Cron / scheduler | `scheduler` | `event` |
+  | External SaaS API (Stripe, SendGrid…) | `external-api` | `request` |
+  | Click / user-action trigger | `trigger` | `request` |
+
+- **`data.shape`** *(string, shapeNode only)* — visual rendering. Pick the
+  illustrative shape that best matches the entity's role:
+
+  | Shape | Renders as | Use for |
+  |---|---|---|
+  | `database` | Cylinder | DB / store (decorative only — use stateNode when you need live status) |
+  | `server` | Server rack | On-premise server / compute node |
+  | `user` | Person silhouette | Human actor / customer / operator |
+  | `queue` | Stack of items | Queue visual (decorative only) |
+  | `cloud` | Cloud outline | External SaaS / third-party platform |
+  | `rectangle` | Box | Generic grouping label |
+  | `ellipse` | Oval | Generic annotation |
+  | `sticky` | Sticky note | Callout / explanation |
+  | `text` | Plain text | In-canvas text label |
+
+- **`data.stateSource`** *(playNode / stateNode only)* — `{ "kind": "request" }` for nodes that produce
   state from synchronous calls (endpoints, services responding to a play
   click); `{ "kind": "event" }` for everything driven by async events
   (workers, queue consumers, workflow ticks).
-- **`data.description`** *(string, ≤ 200 chars)* — one-line caption shown
-  under the node header. Describe the entity's job from the audience's
-  perspective.
+- **`data.description`** *(string, ≤ 15 words)* — short caption shown
+  directly on the node. Must be ≤ 15 words — longer text overflows the
+  node card. Write a tight verb phrase from the audience's perspective
+  (e.g. `"Accepts cart, creates order"` not a full sentence).
 - **`oneNodeRationale`** *(string, ≤ 200 chars)* — a justification for why
   this entity is exactly one node (not zero, not many). The orchestrator
   surfaces this to the user as part of the plan-review step. Write
@@ -141,6 +175,37 @@ Do not emit `method`/`url`/`eventName`/`queueName` on connectors whose
 `kind` is `"default"`. Do not emit `eventName` on `"http"` connectors,
 etc. The schema is discriminated on `kind` and the play-designer will
 echo the corresponding playAction off these fields.
+
+## Resource nodes are mandatory
+
+Databases, storage, queues, event buses, caches, and file stores are the most
+valuable nodes on the canvas — they are where the audience can SEE state
+change between Play clicks. **Never omit them.**
+
+| Resource kind | Examples | Must show when… |
+|---|---|---|
+| **Database / store** | Postgres, MySQL, MongoDB, SQLite, DynamoDB, Firestore | Any service reads or writes to it |
+| **File / object store** | S3, GCS, local FS, uploads dir | Any node reads or writes files |
+| **Message queue** | SQS, RabbitMQ, BullMQ, NATS, Redis queue, Celery | Any node enqueues or dequeues |
+| **Event bus / topic** | Kafka, Pub/Sub, EventBridge, in-process bus, WebSocket hub | Any node publishes or subscribes |
+| **Cache** | Redis, Memcached, in-process LRU | Any node reads or invalidates it |
+| **External SaaS** | Stripe, SendGrid, Twilio, OpenAI, Slack | Any node makes an outbound API call |
+
+**The rule:** if a service touches one of these resources, the resource gets
+its own node and a connector pointing to it. The audience watching the
+demo should be able to see data land in the database, events flow through the
+bus, jobs queue up — not just see the service that caused it.
+
+Do NOT skip a resource node because:
+- "It's just a side effect" — side effects are exactly what the audience needs to see.
+- "The service already has a node" — the service and its resource are two
+  different things; both deserve a node.
+- "There's no status script for it yet" — that is the status-designer's job.
+  Put the node in; the status-designer will wire it.
+- "It wasn't listed in `rootEntities`" — `rootEntities` is the discoverer's
+  view of services, not a complete node list. Infer resources from behavior.
+- "It's internal to the service" — internal HTTP routes are implementation
+  detail; an external DB or queue the service calls is NOT internal.
 
 ## Node abstraction rules
 
@@ -210,10 +275,27 @@ exceptions, collapse it.
    anything in `outOfScope`. If a `codePointers.why` mentions an entity
    not in `rootEntities`, ask yourself whether it should be added — the
    discoverer might have surfaced something in passing.
-2. **Apply the rules.** For each candidate, decide: ONE node (default)
-   or N nodes (only if it matches an exception). Write the rationale as
-   you go — if you cannot articulate a clean rationale, default to ONE.
-3. **Pick the trigger.** Exactly one node should be a `playNode`. It is
+2. **Surface all resource nodes.** Before applying abstraction rules,
+   collect every resource that belongs on the canvas using TWO passes:
+
+   **Pass A — named resources:** scan `rootEntities` and `codePointers`
+   for anything that is a database, queue, event bus, cache, file store,
+   or external SaaS. Add each as a candidate `stateNode`.
+
+   **Pass B — inferred resources:** for each service node, ask "where
+   does its state land?" If a service saves records → there is a store.
+   If a service publishes events → there is a bus or topic. If a service
+   enqueues jobs → there is a queue. Add these even when the brief does
+   not name them by path or entity name. A service that writes to a DB
+   without that DB having its own node is a broken canvas.
+
+   Missing a database or queue is always wrong — the audience needs to
+   see state land somewhere.
+3. **Apply the abstraction rules.** For each candidate, decide: ONE node
+   (default) or N nodes (only if it matches an exception). Write the
+   rationale as you go — if you cannot articulate a clean rationale,
+   default to ONE.
+4. **Pick the trigger.** Exactly one node should be a `playNode`. It is
    the entity the audience clicks first to start the flow. The
    play-designer may later inject more triggers, but you produce
    exactly one initial `playNode`. Mark every other functional entity
@@ -221,15 +303,17 @@ exceptions, collapse it.
    - Pick the playNode based on `userIntent`: synchronous-API demos
      trigger on the endpoint; pipeline / event demos trigger on the
      fixture-producer or first publisher.
-4. **Wire connectors.** For every flow edge implied by the brief, add a
-   connector. Pick the most specific `kind` available
-   (`http` > `event` > `queue` > `default`). Connectors are directional:
-   `source` produces, `target` consumes.
-5. **Sanity-check.** No orphan nodes (every node either has an inbound
+5. **Wire connectors.** For every flow edge implied by the brief, add a
+   connector, including edges from services INTO their resource nodes
+   (service → DB, service → queue, service → event bus). Pick the most
+   specific `kind` available (`http` > `event` > `queue` > `default`).
+   Connectors are directional: `source` produces, `target` consumes.
+6. **Sanity-check.** No orphan nodes (every node either has an inbound
    connector OR is the trigger). No connector points to or from an id
    that is not in `nodes[]`. Exactly one `playNode`. Slug is unique and
-   kebab-case.
-6. **Emit.** Final message is the JSON code block. No preamble, no
+   kebab-case. Every resource — whether named in the brief or inferred
+   from service behavior — has a node and at least one connector.
+7. **Emit.** Final message is the JSON code block. No preamble, no
    explanation around the fence.
 
 ## Edit case
@@ -290,7 +374,7 @@ editTarget: null
         "name": "POST /orders",
         "kind": "service",
         "stateSource": { "kind": "request" },
-        "description": "HTTP entry — accepts a cart, creates an order, publishes order.created."
+        "description": "Accepts a cart, creates an order, publishes order.created."
       },
       "oneNodeRationale": "Single HTTP service. Internal routes (orders, payments) are implementation detail."
     },
@@ -301,7 +385,7 @@ editTarget: null
         "name": "Event Bus",
         "kind": "bus",
         "stateSource": { "kind": "event" },
-        "description": "In-process pub/sub surface that fans order.created to async consumers."
+        "description": "Fans order.created to async consumers."
       },
       "oneNodeRationale": "Named bus abstraction in the codebase — one channel, not many."
     },
@@ -323,7 +407,7 @@ editTarget: null
         "name": "Shipping Worker",
         "kind": "worker",
         "stateSource": { "kind": "event" },
-        "description": "Drains the shipments queue and moves orders to shipped."
+        "description": "Drains the shipments queue, moves orders to shipped."
       },
       "oneNodeRationale": "Exception 2: fan-out consumer whose work is its own business concept."
     },
@@ -433,6 +517,9 @@ downstream entities.
 - Final message is ONE fenced JSON block, nothing else.
 - Exactly one `playNode`; everything else `stateNode`.
 - Every connector references node ids that exist in `nodes[]`.
+- Every database, queue, event bus, cache, file store, and external SaaS
+  mentioned in the brief MUST have a node. Omitting a resource node is
+  always wrong.
 - Cite an exception by number (`Exception 1/2/3`) in `oneNodeRationale`
   whenever you emit multiple nodes for one underlying entity.
 - When in doubt: collapse, don't split.

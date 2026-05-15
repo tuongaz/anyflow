@@ -34,19 +34,19 @@ Stop and ask for clarification only when the prompt is incoherent — never ask
 
 ```
 Phase 0 — pre-flight: studio reachable?
-Phase 1 — anydemo-discoverer        → context brief
+Phase 1 — anydemo-discoverer        → context brief (language + runtime + tests)
 Phase 2 — anydemo-node-planner      → node draft
 Phase 3 — anydemo-play-designer  ┐
           anydemo-status-designer├ parallel → overlays
                                  ┘
-Phase 4 — synthesize → validate-schema → present plan → wait for "go"
+Phase 4 — synthesize → validate-schema (no user confirmation)
 Phase 5 — write files → register.ts
-Phase 6 — validate-end-to-end.ts → interpret JSON (retry up to 2x)
+Phase 6 — validate-end-to-end.ts → trigger APIs → verify via SSE (retry up to 2x)
 Phase 7 — open browser on success / retry-or-stop on failure
 ```
 
 Each phase is **gated** on the previous one. Do not start Phase N+1 until
-Phase N has succeeded. Do not skip Phase 4's user confirmation.
+Phase N has succeeded.
 
 ---
 
@@ -73,12 +73,40 @@ On success: continue to Phase 1.
 
 ---
 
+## After Phase 0 — list tasks
+
+Before launching any sub-agent, create a TodoWrite checklist so the user can
+track progress in real time. Create one todo per phase using `TaskCreate`:
+
+```
+[ ] Phase 1 — Discover codebase (language, runtime, integration tests)
+[ ] Phase 2 — Plan nodes & connectors
+[ ] Phase 3 — Design Play + Status scripts (parallel)
+[ ] Phase 4 — Synthesize & validate schema
+[ ] Phase 5 — Write files & register demo
+[ ] Phase 6 — End-to-end validation (trigger APIs, verify via SSE)
+[ ] Phase 7 — Open browser
+```
+
+Mark each todo complete (via `TaskUpdate`) immediately after the phase
+succeeds — before starting the next one. This gives the user a live view of
+where the pipeline is.
+
+---
+
 ## Phase 1 — discover
 
 Launch the `anydemo-discoverer` sub-agent with the user's prompt, the project
 root, and (if you found any) the existing `demo.json` for the matching slug.
 The sub-agent has read-only tools (`Read`, `Grep`, `Glob`, `LS`, `Bash` for
 read-only commands).
+
+The discoverer MUST:
+- Identify the primary language and runtime (`runtimeProfile`)
+- Find integration / blackbox / e2e tests and extract the setup pattern they
+  use (ports, base URLs, payload shapes) — this is how play scripts are
+  grounded in reality rather than guessing
+- Surface `runtimeProfile.setupPattern` with the exact pattern
 
 Expected output (the sub-agent's final message must be parseable JSON):
 
@@ -88,6 +116,16 @@ Expected output (the sub-agent's final message must be parseable JSON):
   "audienceFraming": "…",
   "scope": { "rootEntities": ["…"], "outOfScope": ["…"] },
   "codePointers": [{ "path": "…", "why": "…" }],
+  "runtimeProfile": {
+    "primaryLanguage": "typescript",
+    "packageManager": "bun",
+    "devCommand": "bun run dev",
+    "testCommand": "bun test",
+    "servicePort": 3001,
+    "integrationTestDir": "tests/integration",
+    "integrationTestCommand": "bun test tests/integration",
+    "setupPattern": "Tests call http://localhost:3001 with JSON payloads after starting the server"
+  },
   "existingDemo": null
 }
 ```
@@ -101,11 +139,14 @@ problem to the user and stop.
 ## Phase 2 — plan nodes
 
 Launch `anydemo-node-planner` with the context brief. The planner has **no
-tools** — it is pure reasoning over the brief. It applies the abstraction
-rules (one node per Temporal workflow / Airflow DAG / microservice / DB /
-external SaaS / queue / cache / scheduler / file store / search engine) and
-the three exception cases (independently-meaningful pipelines, fan-outs,
-choices/branches).
+tools** — it reasons purely from the brief. It applies two mandatory passes:
+
+- **Resource nodes first** — every DB, queue, event bus, cache, file store,
+  and external SaaS touched by the flow gets its own `stateNode`, whether
+  named in `rootEntities` or inferred from service behavior.
+- **Abstraction rules second** — one node per service / workflow / worker /
+  queue / DB (exceptions: independently-meaningful pipeline stages, fan-out
+  consumers, branches).
 
 Expected output:
 
@@ -168,7 +209,7 @@ exists in the draft.
 
 ---
 
-## Phase 4 — synthesize, validate, present
+## Phase 4 — synthesize + validate schema
 
 In the main thread:
 
@@ -193,25 +234,18 @@ field; status-designer if a status field; node-planner otherwise) and retry.
 **Max 3 schema retries** before surfacing the raw issue list verbatim to the
 user and stopping.
 
-5. **Render the plan** using the template at `references/plan-format.md`.
-   Include the node list (with `+ / ~ / -` annotations against any existing
-   demo), connectors, files-to-write, and the explicit prompt:
+5. Proceed directly to Phase 5 — do not pause to present the plan or ask
+   the user for confirmation. Writing and validating quickly gives the user
+   something real to react to faster than a plan ever could.
 
-```
-Reply 'go' to write, or describe what to change.
-```
-
-Do NOT write any files until the user replies `go`. Any other reply is a
-change request — fold it back into the relevant phase (a node tweak goes
-back to Phase 2; a Play tweak goes back to Phase 3) and re-present.
-
-A worked plan example lives at `references/examples/checkout-flow-plan.md`.
+A worked plan example lives at `references/examples/checkout-flow-plan.md`
+(informational only — no longer shown to the user).
 
 ---
 
 ## Phase 5 — write files + register
 
-On `go`:
+Proceed immediately after Phase 4 schema validation passes.
 
 1. **Compute paths**: `repoPath = $PWD`,
    `demoDir = $PWD/.anydemo/<slug>`,
@@ -243,7 +277,8 @@ state.
 
 ## Phase 6 — end-to-end validation
 
-Run the validator with the registered id:
+This phase MUST run. Do not skip it, do not simulate it, do not report
+success without running the script and reading its output.
 
 ```bash
 bun skills/create-anydemo/scripts/validate-end-to-end.ts <id>
@@ -252,29 +287,34 @@ bun skills/create-anydemo/scripts/validate-end-to-end.ts <id>
 The script:
 
 - GETs `/api/demos/<id>` (expects 200, `valid: true`).
-- For each `playNode` (and any `stateNode` with a `playAction`) where
-  `validationSafe !== false`, POSTs `/api/demos/<id>/play/<nodeId>`.
-- Opens SSE at `/api/events?demoId=<id>` and waits up to 10s per
-  status-bearing node for at least one `node:status` event whose
-  `state !== 'error'`.
-- Hard ceiling of ~2 minutes total; SIGTERMs stragglers past the deadline.
+- Opens an SSE channel at `/api/events?demoId=<id>` **before** triggering
+  any play, so events are buffered from the start.
+- For each node with a `playAction` where `validationSafe !== false`,
+  POSTs `/api/demos/<id>/play/<nodeId>` and awaits the HTTP response
+  (the play endpoint is synchronous — it waits for the script to finish).
+- After all plays complete, drains the SSE channel to collect
+  `node:done` / `node:error` events for play nodes and `node:status`
+  events for status nodes. SSE outcome takes precedence over HTTP when
+  both are available.
+- Hard ceiling of ~2 minutes total.
 - Emits a single JSON line: `{ok, plays, statuses, skipped}`.
 
-**Interpret the JSON, do not just print it.** On `ok: true`: continue to
-Phase 7. On `ok: false`:
+**Interpret the JSON, do not just print it.** Every `plays[*]` entry with
+`outcome: "failed"` represents a play script that errored — this is a
+real failure, not a warning. On `ok: true`: continue to Phase 7.
+On `ok: false`:
 
 1. Read `plays[*].outcome` + `plays[*].error` and `statuses[*].outcome` to
    identify failing nodes.
-2. Propose a fix-up plan (e.g. "the play script at `…/play-checkout.ts`
-   failed with `ECONNREFUSED`; the running app may not be listening on the
-   port the script targets — update the script's URL OR ask the user to
-   start the app").
-3. Loop back to Phase 4 with the fix-up plan baked in. **Max 2 fix-up
-   retries.** After the second failure, present the failures to the user
-   verbatim with the prompt `retry / stop` and let the user decide.
+2. Propose a concrete fix-up (e.g. "play-checkout.ts failed with
+   `ECONNREFUSED` — the app is not listening on port 3001; update the
+   script's base URL or ask the user to start the app first").
+3. Edit the failing scripts in-place, then re-run Phase 6 against the same
+   registered `<id>`. **Max 2 fix-up retries.** After the second failure,
+   present the failures verbatim and ask the user `retry / stop`.
 
-The fix-up loop never re-runs `register.ts` from scratch — it edits the
-existing files and re-issues Phase 6 against the same registered id.
+The fix-up loop never re-runs `register.ts` — it edits scripts and re-runs
+Phase 6 only.
 
 ---
 
@@ -347,6 +387,12 @@ covers ~95% of node design.
 `name`, `kind`, `stateSource`, `playAction`. Optional: `statusAction`,
 `description`, `detail`, visual overrides.
 
+`description` is shown directly on the node card — keep it **≤ 15 words**.
+
+`kind` drives the semantic label and tells the status-designer what to monitor.
+Use: `service`, `endpoint`, `worker`, `workflow`, `queue`, `topic`, `bus`,
+`db`, `store`, `cache`, `scheduler`, `external-api`, `trigger`.
+
 ```json
 {
   "id": "checkout-api", "type": "playNode", "position": { "x": 100, "y": 200 },
@@ -364,7 +410,9 @@ covers ~95% of node design.
 
 **stateNode** — functional node WITHOUT a mandatory Play (Play and status
 are both optional). Used for downstream services / databases / workers the
-audience watches but doesn't trigger directly.
+audience watches but doesn't trigger directly. Use the same `kind` values as
+`playNode` — `"db"` for databases, `"queue"` for queues, `"cache"` for
+caches, `"store"` for file/object stores, `"bus"` for event buses, etc.
 
 ```json
 {
@@ -379,13 +427,31 @@ audience watches but doesn't trigger directly.
 }
 ```
 
-**shapeNode** — decorative rectangle / ellipse / sticky / text / database /
-server / user / queue / cloud. No `kind`/`stateSource`/`playAction`. Use to
-visually group or label.
+**shapeNode** — illustrative or geometric node with no actions or live state.
+Use for actors and external references the demo doesn't monitor. Pick `shape`
+from the table:
+
+| `shape` | Renders as | Best for |
+|---|---|---|
+| `database` | Cylinder | DB label (decorative; use `stateNode` when monitoring) |
+| `server` | Server rack | On-premise server or compute |
+| `user` | Person silhouette | Human actor / customer / operator |
+| `queue` | Stack | Queue label (decorative) |
+| `cloud` | Cloud outline | External SaaS or third-party platform |
+| `rectangle` | Box | Grouping boundary |
+| `ellipse` | Oval | Generic annotation |
+| `sticky` | Sticky note | Callout or explanation |
+| `text` | Plain text | In-canvas text label |
 
 ```json
+{ "id": "customer", "type": "shapeNode", "position": { "x": 0, "y": 200 },
+  "data": { "shape": "user", "name": "Customer" } }
+
+{ "id": "stripe", "type": "shapeNode", "position": { "x": 800, "y": 200 },
+  "data": { "shape": "cloud", "name": "Stripe", "borderStyle": "dashed" } }
+
 { "id": "boundary", "type": "shapeNode", "position": { "x": 50, "y": 50 },
-  "data": { "shape": "rectangle", "name": "External", "borderStyle": "dashed" } }
+  "data": { "shape": "rectangle", "name": "Internal services", "borderStyle": "dashed" } }
 ```
 
 **iconNode** — single Lucide glyph with optional caption. Decorative only.

@@ -3,6 +3,7 @@ import { resolveStudioUrl } from './studio-config';
 
 const DEFAULT_HARD_CEILING_MS = 120_000;
 const DEFAULT_STATUS_WAIT_MS = 10_000;
+const SSE_PLAY_CONFIRM_MS = 5_000; // extra window after HTTP response to receive node:done/error via SSE
 
 export interface PlayOutcome {
   nodeId: string;
@@ -181,6 +182,7 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
   const statuses: StatusOutcome[] = [];
   const skipped: SkippedItem[] = [];
 
+  // Fetch and validate demo registration
   const demoRes = await globalThis.fetch(`${url}/api/demos/${options.demoId}`);
   if (!demoRes.ok) {
     return {
@@ -224,34 +226,39 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
   }
   const statusTargets = nodes.filter(hasStatusAction).map((n) => n.id);
 
+  // Open SSE channel BEFORE triggering any plays so node:done/node:error events
+  // emitted during play execution are buffered and not lost.
   let channel: SseChannel | undefined;
-  if (statusTargets.length > 0) {
-    try {
-      const sseRes = await globalThis.fetch(`${url}/api/events?demoId=${options.demoId}`, {
-        headers: { accept: 'text/event-stream' },
-      });
-      if (!sseRes.ok || !sseRes.body) {
-        for (const nid of statusTargets) {
-          statuses.push({
-            nodeId: nid,
-            outcome: 'failed',
-            error: `failed to open SSE stream: HTTP ${sseRes.status}`,
-          });
-        }
-      } else {
-        channel = openSseChannel(sseRes.body);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+  try {
+    const sseRes = await globalThis.fetch(`${url}/api/events?demoId=${options.demoId}`, {
+      headers: { accept: 'text/event-stream' },
+    });
+    if (sseRes.ok && sseRes.body) {
+      channel = openSseChannel(sseRes.body);
+    } else if (statusTargets.length > 0) {
       for (const nid of statusTargets) {
         statuses.push({
           nodeId: nid,
           outcome: 'failed',
-          error: `failed to open SSE stream: ${message}`,
+          error: `failed to open SSE stream: HTTP ${sseRes.status}`,
         });
       }
     }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (statusTargets.length > 0) {
+      for (const nid of statusTargets) {
+        statuses.push({ nodeId: nid, outcome: 'failed', error: `failed to open SSE stream: ${message}` });
+      }
+    }
   }
+
+  // Trigger all plays sequentially and collect HTTP-level results.
+  // The play endpoint is synchronous: it awaits the script and returns the
+  // final outcome in the HTTP body. SSE events are emitted before the HTTP
+  // response, so they should already be in the channel buffer by the time
+  // each fetch() resolves.
+  const httpResults = new Map<string, { runId?: string; httpError?: string; body?: unknown }>();
 
   for (const nodeId of playTargets) {
     if (Date.now() > overallDeadline) {
@@ -265,7 +272,7 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      plays.push({ nodeId, outcome: 'failed', error: message });
+      httpResults.set(nodeId, { httpError: message });
       continue;
     }
     let body: unknown;
@@ -275,73 +282,127 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
       body = null;
     }
     if (!res.ok) {
-      plays.push({ nodeId, outcome: 'failed', body, error: `HTTP ${res.status}` });
-      continue;
-    }
-    const parsed = (body ?? {}) as { runId?: string; error?: string };
-    if (typeof parsed.error === 'string' && parsed.error.length > 0) {
-      plays.push({ nodeId, outcome: 'failed', runId: parsed.runId, body });
+      httpResults.set(nodeId, { httpError: `HTTP ${res.status}`, body });
     } else {
-      plays.push({ nodeId, outcome: 'ok', runId: parsed.runId, body });
+      const parsed = (body ?? {}) as { runId?: string; error?: string };
+      httpResults.set(nodeId, {
+        runId: parsed.runId,
+        httpError: typeof parsed.error === 'string' && parsed.error.length > 0 ? parsed.error : undefined,
+        body,
+      });
     }
   }
 
-  if (channel && statusTargets.length > 0) {
-    const observed = new Map<string, StatusOutcome>();
-    const remaining = new Set(statusTargets);
-    const phaseDeadline = Math.min(Date.now() + statusWaitMs, overallDeadline);
+  // Drain SSE events: collect node:done / node:error for play nodes AND
+  // node:status for status nodes. Stop early once all pending targets are
+  // accounted for, or when the drain deadline is reached.
+  const ssePlayResults = new Map<string, { type: 'done' | 'error'; message?: string }>();
+  const sseStatusReports = new Map<string, StatusFirstReport>();
 
-    while (remaining.size > 0) {
-      const left = phaseDeadline - Date.now();
+  if (channel) {
+    // Plays we still need SSE confirmation for (those that had a clean HTTP response)
+    const pendingPlays = new Set(
+      playTargets.filter((id) => httpResults.has(id) && !httpResults.get(id)?.httpError),
+    );
+    const pendingStatuses = new Set(statusTargets.filter((id) => !statuses.find((s) => s.nodeId === id)));
+
+    const drainDeadline = Math.min(
+      Date.now() + Math.max(SSE_PLAY_CONFIRM_MS, statusWaitMs),
+      overallDeadline,
+    );
+
+    while (pendingPlays.size + pendingStatuses.size > 0) {
+      const left = drainDeadline - Date.now();
       if (left <= 0) break;
       const evt = await channel.next(left);
       if (!evt) break;
-      if (evt.event !== 'node:status') continue;
-      let payload: {
-        nodeId?: unknown;
-        state?: unknown;
-        summary?: unknown;
-        detail?: unknown;
-        ts?: unknown;
-      };
-      try {
-        payload = JSON.parse(evt.data);
-      } catch {
-        continue;
-      }
-      const pid = payload?.nodeId;
-      const state = payload?.state;
-      if (typeof pid !== 'string' || typeof state !== 'string') continue;
-      if (!remaining.has(pid)) continue;
-      if (state === 'error') continue;
-      observed.set(pid, {
-        nodeId: pid,
-        outcome: 'ok',
-        firstReport: {
+
+      if (evt.event === 'node:done' || evt.event === 'node:error') {
+        let payload: { nodeId?: unknown; message?: unknown };
+        try {
+          payload = JSON.parse(evt.data);
+        } catch {
+          continue;
+        }
+        const nid = payload?.nodeId;
+        if (typeof nid !== 'string' || !pendingPlays.has(nid)) continue;
+        ssePlayResults.set(nid, {
+          type: evt.event === 'node:done' ? 'done' : 'error',
+          message: typeof payload.message === 'string' ? payload.message : undefined,
+        });
+        pendingPlays.delete(nid);
+      } else if (evt.event === 'node:status') {
+        let payload: { nodeId?: unknown; state?: unknown; summary?: unknown; detail?: unknown; ts?: unknown };
+        try {
+          payload = JSON.parse(evt.data);
+        } catch {
+          continue;
+        }
+        const nid = payload?.nodeId;
+        const state = payload?.state;
+        if (typeof nid !== 'string' || typeof state !== 'string') continue;
+        if (!pendingStatuses.has(nid)) continue;
+        if (state === 'error') continue;
+        sseStatusReports.set(nid, {
           state,
           summary: typeof payload.summary === 'string' ? payload.summary : undefined,
           detail: typeof payload.detail === 'string' ? payload.detail : undefined,
           ts: typeof payload.ts === 'number' ? payload.ts : undefined,
-        },
-      });
-      remaining.delete(pid);
-    }
-    channel.close();
-
-    const overallExceeded = Date.now() > overallDeadline;
-    for (const nid of statusTargets) {
-      const seen = observed.get(nid);
-      if (seen) {
-        statuses.push(seen);
-      } else {
-        statuses.push({
-          nodeId: nid,
-          outcome: 'failed',
-          error: overallExceeded
-            ? 'hard ceiling exceeded before status received'
-            : 'no non-error status received within timeout',
         });
+        pendingStatuses.delete(nid);
       }
+    }
+
+    channel.close();
+  }
+
+  // Resolve final play outcomes: SSE confirmation takes precedence over HTTP,
+  // because SSE reflects the actual script execution result. If SSE is missing
+  // (channel failed to open), fall back to HTTP result.
+  for (const nodeId of playTargets) {
+    if (plays.find((p) => p.nodeId === nodeId)) continue; // already recorded (ceiling exceeded)
+
+    const http = httpResults.get(nodeId);
+    if (!http) continue; // should not happen
+
+    const sse = ssePlayResults.get(nodeId);
+
+    if (http.httpError) {
+      // HTTP-level failure — no need to check SSE
+      plays.push({ nodeId, outcome: 'failed', runId: http.runId, body: http.body, error: http.httpError });
+    } else if (sse?.type === 'error') {
+      // HTTP returned ok but SSE confirmed the script errored
+      plays.push({
+        nodeId,
+        outcome: 'failed',
+        runId: http.runId,
+        body: http.body,
+        error: sse.message ?? 'script error confirmed via SSE node:error event',
+      });
+    } else if (sse?.type === 'done') {
+      // Both HTTP and SSE agree: success
+      plays.push({ nodeId, outcome: 'ok', runId: http.runId, body: http.body });
+    } else {
+      // No SSE event received (channel unavailable or timed out). HTTP says ok.
+      plays.push({ nodeId, outcome: 'ok', runId: http.runId, body: http.body });
+    }
+  }
+
+  // Resolve final status outcomes
+  const overallExceeded = Date.now() > overallDeadline;
+  for (const nodeId of statusTargets) {
+    if (statuses.find((s) => s.nodeId === nodeId)) continue; // already recorded (SSE open failure)
+    const report = sseStatusReports.get(nodeId);
+    if (report) {
+      statuses.push({ nodeId, outcome: 'ok', firstReport: report });
+    } else {
+      statuses.push({
+        nodeId,
+        outcome: 'failed',
+        error: overallExceeded
+          ? 'hard ceiling exceeded before status received'
+          : 'no non-error status received within timeout',
+      });
     }
   }
 
