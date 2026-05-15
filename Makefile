@@ -10,7 +10,7 @@ ITERATIONS ?= 10
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-anydemo-schema verify-anydemo-schema-sync smoke-create-anydemo
+.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-anydemo-schema verify-anydemo-schema-sync smoke-create-anydemo release
 
 ANYDEMO_SCHEMA_SRC := apps/studio/src/schema.ts
 ANYDEMO_SCHEMA_DST := skills/create-anydemo/vendored/schema.ts
@@ -102,3 +102,6 @@ verify-anydemo-schema-sync: ## Fail if vendored schema has drifted from apps/stu
 
 smoke-create-anydemo: ## End-to-end smoke: registers TWO demos in one repo via plugin scripts (studio must be running)
 	@bun run skills/create-anydemo/scripts/smoke.ts
+
+release: ## Publish @tuongaz/anydemo to npm (runs prepublishOnly: web build + README copy)
+	cd apps/studio && npm publish --access public
