@@ -1,6 +1,6 @@
 {
   "name": "@tuongaz/anydemo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local studio that hosts file-defined demos as React Flow canvases wired to a running app via REST + SSE + Zod schema.",
   "keywords": [
     "anydemo",
@@ -25,10 +25,17 @@
   "author": "Tuong Le",
   "type": "module",
   "bin": {
-    "anydemo": "./bin/anydemo",
-    "anydemo-mcp": "./bin/anydemo-mcp"
+    "anydemo": "bin/anydemo",
+    "anydemo-mcp": "bin/anydemo-mcp"
   },
-  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "public", "README.md"],
+  "files": [
+    "bin",
+    "src",
+    "!src/**/*.test.ts",
+    "dist/web",
+    "public",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18"
   },

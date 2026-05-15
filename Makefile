@@ -103,5 +103,7 @@ verify-anydemo-schema-sync: ## Fail if vendored schema has drifted from apps/stu
 smoke-create-anydemo: ## End-to-end smoke: registers TWO demos in one repo via plugin scripts (studio must be running)
 	@bun run skills/create-anydemo/scripts/smoke.ts
 
-release: ## Publish @tuongaz/anydemo to npm (runs prepublishOnly: web build + README copy)
-	cd apps/studio && npm publish --access public
+OTP ?=
+
+release: ## Publish @tuongaz/anydemo to npm (OTP=123456 make release if 2FA is required)
+	cd apps/studio && npm publish --access public $(if $(OTP),--otp $(OTP),)
