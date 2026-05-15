@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-const NAV_EVENT = 'anydemo:navigate';
+const NAV_EVENT = 'seeflow:navigate';
 
 const subscribe = (listener: () => void) => {
   window.addEventListener('popstate', listener);

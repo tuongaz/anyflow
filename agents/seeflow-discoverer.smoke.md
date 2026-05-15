@@ -1,7 +1,7 @@
-# anydemo-discoverer — smoke fixture
+# seeflow-discoverer — smoke fixture
 
 This is a **documentation** smoke test, not an executable script. It tells
-maintainers how to manually exercise the `anydemo-discoverer` agent
+maintainers how to manually exercise the `seeflow-discoverer` agent
 against the repo's `examples/order-pipeline` project and what a passing
 brief should look like.
 
@@ -19,14 +19,14 @@ From a Claude Code session anywhere with this plugin installed:
    launching prompt should contain the three structured inputs:
 
    ```
-   Launch the anydemo-discoverer sub-agent with these inputs:
+   Launch the seeflow-discoverer sub-agent with these inputs:
 
      userPrompt:   "show how the order pipeline works"
      projectRoot:  <absolute path to examples/order-pipeline>
      existingDemo: null
 
    It must return a single fenced JSON block matching the contract
-   in agents/anydemo-discoverer.md and nothing else.
+   in agents/seeflow-discoverer.md and nothing else.
    ```
 
 3. Read the agent's final message.
@@ -72,12 +72,12 @@ surfaces, e.g. `GET /admin/stats`.
 - `src/store.ts`
 
 Each `why` should one-line the role that file plays in the demo. Extra
-pointers (e.g. `package.json`, `.anydemo/demo.json`) are acceptable.
+pointers (e.g. `package.json`, `.seeflow/demo.json`) are acceptable.
 
 `userIntent` should commit to an end-to-end flow framing rather than
 hedge ("maybe", "if that's what they meant"). `audienceFraming` should
 mention both the engineering view and the business / outcome view (the
-AnyDemo default audience).
+SeeFlow default audience).
 
 ## Red flags (treat as failed smoke)
 
@@ -97,7 +97,7 @@ AnyDemo default audience).
 
 Re-run this smoke whenever:
 
-- `agents/anydemo-discoverer.md` is edited.
+- `agents/seeflow-discoverer.md` is edited.
 - The structure of `examples/order-pipeline/src/` changes meaningfully
   (new top-level file, removed worker, renamed entity).
 - The output contract in the agent prompt changes — also update the

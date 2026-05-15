@@ -1,4 +1,4 @@
-export const ICON_RECENTS_STORAGE_KEY = 'anydemo:icon-recents';
+export const ICON_RECENTS_STORAGE_KEY = 'seeflow:icon-recents';
 
 const MAX_RECENTS = 16;
 

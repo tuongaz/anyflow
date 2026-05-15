@@ -1,4 +1,4 @@
-export const DETAIL_PANEL_WIDTH_KEY = 'anydemo:detail-panel-width';
+export const DETAIL_PANEL_WIDTH_KEY = 'seeflow:detail-panel-width';
 
 export const DETAIL_PANEL_WIDTH_DEFAULT = 380;
 export const DETAIL_PANEL_WIDTH_MIN = 320;

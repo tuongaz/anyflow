@@ -116,7 +116,7 @@ export interface ImageDataDefaults {
 
 /** Build the `data` object for a freshly-created image node. Image uses
  * `borderWidth` (US-014), not `borderSize`. No `fontSize` — image renders
- * no body text. `path` is a relative path under `<project>/.anydemo/`
+ * no body text. `path` is a relative path under `<project>/.seeflow/`
  * (US-004 hard-cut from base64 data URLs). */
 export function buildNewImageData(
   path: string,

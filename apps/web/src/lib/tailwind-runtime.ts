@@ -7,7 +7,7 @@ export const TAILWIND_RUNTIME_SRC = '/runtime/tailwind.js';
 /** Marker attribute placed on the injected <script> tag so subsequent calls
  *  can short-circuit. Distinct from the `src` URL check so the marker stays
  *  recognizable even if the URL is hashed/rewritten in the future. */
-export const TAILWIND_RUNTIME_MARKER = 'data-anydemo-tailwind-runtime';
+export const TAILWIND_RUNTIME_MARKER = 'data-seeflow-tailwind-runtime';
 
 /** Inject the Tailwind Play CDN runtime into <head> exactly once per page.
  *  Idempotent — subsequent calls are no-ops, so it's safe to invoke from a

@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Check, Copy, Terminal } from 'lucide-react';
 import { useState } from 'react';
 
-const REGISTER_COMMAND = 'npx anydemo register --path .';
+const REGISTER_COMMAND = 'npx seeflow register --path .';
 
 export function EmptyState() {
   const [copied, setCopied] = useState(false);
@@ -19,7 +19,7 @@ export function EmptyState() {
 
   return (
     <div
-      data-testid="anydemo-empty-state"
+      data-testid="seeflow-empty-state"
       className="flex h-full w-full items-center justify-center bg-background p-6"
     >
       <div className="flex max-w-lg flex-col items-center gap-6 text-center">
@@ -29,8 +29,8 @@ export function EmptyState() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">No demos registered yet</h1>
           <p className="text-sm text-muted-foreground">
-            Point AnyDemo at any folder containing a{' '}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">.anydemo/demo.json</code> file
+            Point SeeFlow at any folder containing a{' '}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">.seeflow/demo.json</code> file
             and it'll appear here.
           </p>
         </div>

@@ -98,7 +98,7 @@ export interface ShapeNodeData extends NodeVisual, NodeDescription {
   name?: string;
 }
 
-// Decorative image node — references a file under `<project>/.anydemo/` by
+// Decorative image node — references a file under `<project>/.seeflow/` by
 // relative path (US-004 hard-cut from base64). Mirrors ImageNodeDataSchema in
 // apps/studio/src/schema.ts; the renderer fetches via the file-serving
 // endpoint at `GET /api/projects/:id/files/:path`.
@@ -142,7 +142,7 @@ export interface IconNodeData extends NodeDescription {
 }
 
 // Decorative htmlNode — references author-written HTML at
-// `<project>/.anydemo/<htmlPath>` (US-011 schema, US-014 renderer). The
+// `<project>/.seeflow/<htmlPath>` (US-011 schema, US-014 renderer). The
 // renderer fetches the file via the project file-serving endpoint, sanitizes
 // the contents via `sanitizeHtml`, and injects the result. Mirrors
 // `HtmlNodeDataSchema` in `apps/studio/src/schema.ts`.

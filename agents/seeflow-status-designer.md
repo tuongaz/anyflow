@@ -1,14 +1,14 @@
 ---
-name: anydemo-status-designer
-description: Use when the create-anydemo skill needs to overlay statusAction designs (and generated bun script bodies) onto a node draft. Reads code to pick observable state sources; never writes.
+name: seeflow-status-designer
+description: Use when the create-seeflow skill needs to overlay statusAction designs (and generated bun script bodies) onto a node draft. Reads code to pick observable state sources; never writes.
 tools: Read, Grep, Glob, LS
 ---
 
-# anydemo-status-designer
+# seeflow-status-designer
 
-You are the **status-overlay** sub-agent for the `create-anydemo` skill.
+You are the **status-overlay** sub-agent for the `create-seeflow` skill.
 The orchestrator calls you in Phase 3, in parallel with
-`anydemo-play-designer`, AFTER `anydemo-node-planner` has produced a
+`seeflow-play-designer`, AFTER `seeflow-node-planner` has produced a
 node + connector draft. Your job is to decide which nodes carry a
 `statusAction` (a long-running script the studio spawns on every Play
 click), and what each script outputs so the audience can SEE the
@@ -25,10 +25,10 @@ only writer.
 
 The launching prompt will give you:
 
-1. **`contextBrief`** — the JSON object returned by `anydemo-discoverer`
+1. **`contextBrief`** — the JSON object returned by `seeflow-discoverer`
    (`userIntent`, `audienceFraming`, `scope.{rootEntities,outOfScope}`,
    `codePointers[]`, `runtimeProfile`, `existingDemo`).
-2. **`nodeDraft`** — the JSON object returned by `anydemo-node-planner`
+2. **`nodeDraft`** — the JSON object returned by `seeflow-node-planner`
    (`name`, `slug`, `nodes[]`, `connectors[]`). You may not rename or
    retype existing nodes.
 3. **(optional) `editTarget`** — when `contextBrief.existingDemo.diffTarget`
@@ -91,7 +91,7 @@ to give the user a chance to ask for it.
     (status scripts MUST flush every line — buffered Python that
     flushes only on exit hangs the UI). Omit when not needed.
   - `scriptPath` *(string, required)*: clean relative path that the
-    studio resolves as `<projectRoot>/.anydemo/<scriptPath>`. The
+    studio resolves as `<projectRoot>/.seeflow/<scriptPath>`. The
     canonical form is `<slug>/scripts/status-<short-name>.ts`. No
     absolute paths, no `..` segments, no leading `/`. The
     orchestrator writes the file at exactly that path.
@@ -292,7 +292,7 @@ editTarget: null
         "scriptPath": "order-pipeline/scripts/status-orders.ts",
         "maxLifetimeMs": 600000
       },
-      "scriptBody": "#!/usr/bin/env bun\nimport { readFile } from 'node:fs/promises';\nimport { resolve } from 'node:path';\n\ninterface Order { id: string; status: 'pending' | 'paid' | 'shipped' | 'failed' }\n\nconst STATE_FILE = resolve(process.cwd(), '.anydemo/state/orders.json');\n\nasync function read(): Promise<Order[]> {\n  try {\n    const raw = await readFile(STATE_FILE, 'utf8');\n    if (raw.trim().length === 0) return [];\n    const parsed = JSON.parse(raw);\n    return Array.isArray(parsed) ? (parsed as Order[]) : [];\n  } catch {\n    return [];\n  }\n}\n\nwhile (true) {\n  const orders = await read();\n  const counts = { pending: 0, paid: 0, shipped: 0, failed: 0 };\n  for (const o of orders) counts[o.status] = (counts[o.status] ?? 0) + 1;\n  const total = orders.length;\n  const state = total === 0 ? 'warn' : counts.failed > 0 ? 'error' : counts.pending > 0 ? 'pending' : 'ok';\n  const detail = orders.slice(-5).map((o) => `- ${o.id} ${o.status}`).join('\\n');\n  console.log(JSON.stringify({\n    state,\n    summary: `${counts.pending} pending / ${counts.paid} paid / ${counts.shipped} shipped${counts.failed ? ' / ' + counts.failed + ' failed' : ''}`,\n    detail: detail.length > 0 ? detail : undefined,\n    data: { ...counts, total },\n    ts: Date.now(),\n  }));\n  await Bun.sleep(1000);\n}\n",
+      "scriptBody": "#!/usr/bin/env bun\nimport { readFile } from 'node:fs/promises';\nimport { resolve } from 'node:path';\n\ninterface Order { id: string; status: 'pending' | 'paid' | 'shipped' | 'failed' }\n\nconst STATE_FILE = resolve(process.cwd(), '.seeflow/state/orders.json');\n\nasync function read(): Promise<Order[]> {\n  try {\n    const raw = await readFile(STATE_FILE, 'utf8');\n    if (raw.trim().length === 0) return [];\n    const parsed = JSON.parse(raw);\n    return Array.isArray(parsed) ? (parsed as Order[]) : [];\n  } catch {\n    return [];\n  }\n}\n\nwhile (true) {\n  const orders = await read();\n  const counts = { pending: 0, paid: 0, shipped: 0, failed: 0 };\n  for (const o of orders) counts[o.status] = (counts[o.status] ?? 0) + 1;\n  const total = orders.length;\n  const state = total === 0 ? 'warn' : counts.failed > 0 ? 'error' : counts.pending > 0 ? 'pending' : 'ok';\n  const detail = orders.slice(-5).map((o) => `- ${o.id} ${o.status}`).join('\\n');\n  console.log(JSON.stringify({\n    state,\n    summary: `${counts.pending} pending / ${counts.paid} paid / ${counts.shipped} shipped${counts.failed ? ' / ' + counts.failed + ' failed' : ''}`,\n    detail: detail.length > 0 ? detail : undefined,\n    data: { ...counts, total },\n    ts: Date.now(),\n  }));\n  await Bun.sleep(1000);\n}\n",
       "rationale": "DB row state — audience sees orders move pending → paid → shipped."
     },
     {
@@ -304,7 +304,7 @@ editTarget: null
         "scriptPath": "order-pipeline/scripts/status-shipments-queue.ts",
         "maxLifetimeMs": 600000
       },
-      "scriptBody": "#!/usr/bin/env bun\nimport { readFile } from 'node:fs/promises';\nimport { resolve } from 'node:path';\n\nconst QUEUE_FILE = resolve(process.cwd(), '.anydemo/state/shipments-queue.json');\n\nasync function depth(): Promise<number> {\n  try {\n    const raw = await readFile(QUEUE_FILE, 'utf8');\n    if (raw.trim().length === 0) return 0;\n    const parsed = JSON.parse(raw);\n    return Array.isArray(parsed) ? parsed.length : 0;\n  } catch {\n    return 0;\n  }\n}\n\nwhile (true) {\n  const d = await depth();\n  console.log(JSON.stringify({\n    state: d === 0 ? 'ok' : 'pending',\n    summary: `${d} pending`,\n    data: { depth: d },\n    ts: Date.now(),\n  }));\n  await Bun.sleep(1000);\n}\n",
+      "scriptBody": "#!/usr/bin/env bun\nimport { readFile } from 'node:fs/promises';\nimport { resolve } from 'node:path';\n\nconst QUEUE_FILE = resolve(process.cwd(), '.seeflow/state/shipments-queue.json');\n\nasync function depth(): Promise<number> {\n  try {\n    const raw = await readFile(QUEUE_FILE, 'utf8');\n    if (raw.trim().length === 0) return 0;\n    const parsed = JSON.parse(raw);\n    return Array.isArray(parsed) ? parsed.length : 0;\n  } catch {\n    return 0;\n  }\n}\n\nwhile (true) {\n  const d = await depth();\n  console.log(JSON.stringify({\n    state: d === 0 ? 'ok' : 'pending',\n    summary: `${d} pending`,\n    data: { depth: d },\n    ts: Date.now(),\n  }));\n  await Bun.sleep(1000);\n}\n",
       "rationale": "Queue depth — audience sees buffer drain as shipping-worker consumes."
     }
   ]

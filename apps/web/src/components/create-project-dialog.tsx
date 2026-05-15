@@ -65,7 +65,7 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: CreatePro
         <DialogHeader>
           <DialogTitle>Create new project</DialogTitle>
           <DialogDescription>
-            The project will be created at <code>~/.anydemo/&lt;slug&gt;</code>.
+            The project will be created at <code>~/.seeflow/&lt;slug&gt;</code>.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

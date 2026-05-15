@@ -12,7 +12,7 @@
  */
 import type { ConnectorStylePatch, NodeStylePatch } from '@/components/style-strip';
 
-const STORAGE_KEY = 'anydemo:last-used-style:v1';
+const STORAGE_KEY = 'seeflow:last-used-style:v1';
 
 export interface LastUsedStyle {
   node: Partial<NodeStylePatch>;

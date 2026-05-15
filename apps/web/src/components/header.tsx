@@ -16,7 +16,7 @@ export function Header({ demos, currentSlug, onProjectCreated }: HeaderProps) {
         onClick={() => navigate('/')}
         className="text-sm font-semibold tracking-tight hover:text-foreground/80"
       >
-        AnyDemo Studio
+        SeeFlow Studio
       </button>
       <div className="flex items-center gap-3">
         <ProjectSwitcher

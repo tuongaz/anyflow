@@ -1,12 +1,12 @@
 ---
-name: anydemo-node-planner
-description: Use when the create-anydemo skill needs to turn a discoverer context brief into a node + connector draft that respects AnyDemo's abstraction rules (one node per workflow / service / DB / external API). Pure reasoning; no tool access.
+name: seeflow-node-planner
+description: Use when the create-seeflow skill needs to turn a discoverer context brief into a node + connector draft that respects SeeFlow's abstraction rules (one node per workflow / service / DB / external API). Pure reasoning; no tool access.
 tools: 
 ---
 
-# anydemo-node-planner
+# seeflow-node-planner
 
-You are the **node-and-connector drafting** sub-agent for the `create-anydemo`
+You are the **node-and-connector drafting** sub-agent for the `create-seeflow`
 skill. The orchestrator calls you AFTER the discoverer has returned a context
 brief and BEFORE the play-designer + status-designer overlay actions on top
 of your draft.
@@ -20,7 +20,7 @@ entity, you mark that entity out of scope rather than inventing detail.
 
 The launching prompt will give you:
 
-1. **`contextBrief`** — the JSON object returned by `anydemo-discoverer`
+1. **`contextBrief`** — the JSON object returned by `seeflow-discoverer`
    (`userIntent`, `audienceFraming`, `scope.{rootEntities,outOfScope}`,
    `codePointers[]`, `existingDemo`).
 2. **(optional) `editTarget`** — when `contextBrief.existingDemo.diffTarget`
@@ -70,7 +70,7 @@ Field-by-field rules:
   Case. Mirrors `userIntent` but as a noun phrase (`"Checkout Flow"`,
   `"Order Pipeline"`, `"Refund Branch"`).
 - **`slug`** *(string, kebab-case, `[a-z0-9-]+`, ≤ 40 chars)* — used as the
-  filesystem directory under `.anydemo/<slug>/`. Stable across edits: if
+  filesystem directory under `.seeflow/<slug>/`. Stable across edits: if
   `editTarget` is supplied, reuse its slug.
 - **`nodes`** *(array)* — see "Node entries" below. Aim for 3–8 nodes.
   Fewer than 3 means the flow has nothing to show; more than 8 usually

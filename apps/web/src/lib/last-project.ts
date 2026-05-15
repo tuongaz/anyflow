@@ -1,6 +1,6 @@
 import type { DemoSummary } from '@/lib/api';
 
-export const LAST_PROJECT_STORAGE_KEY = 'anydemo:last-project';
+export const LAST_PROJECT_STORAGE_KEY = 'seeflow:last-project';
 
 export const readLastProjectId = (): string | null => {
   if (typeof window === 'undefined') return null;

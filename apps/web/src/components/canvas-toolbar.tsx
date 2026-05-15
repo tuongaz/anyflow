@@ -26,7 +26,7 @@ import { useState } from 'react';
  * drop branch in demo-canvas continues to compile against a single source of
  * truth for the marker literal.
  */
-export const HTML_BLOCK_DND_TYPE = 'application/x-anydemo-create-html-block';
+export const HTML_BLOCK_DND_TYPE = 'application/x-seeflow-create-html-block';
 
 export interface CanvasToolbarProps {
   /** Currently armed draw shape, or null when not in draw mode. */
