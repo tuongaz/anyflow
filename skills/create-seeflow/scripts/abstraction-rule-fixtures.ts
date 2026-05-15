@@ -1,5 +1,5 @@
 /**
- * Abstraction-rule fixtures for the `anydemo-node-planner` sub-agent.
+ * Abstraction-rule fixtures for the `seeflow-node-planner` sub-agent.
  *
  * These are the canonical input/output pairs a correct planner must satisfy.
  * They are exported from a NON-test module so a future LLM-eval harness can

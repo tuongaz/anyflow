@@ -56,7 +56,7 @@ const validDemo: DemoFixture = {
 let tmpRoot: string;
 
 beforeAll(async () => {
-  tmpRoot = await mkdtemp(join(tmpdir(), 'anydemo-validate-schema-'));
+  tmpRoot = await mkdtemp(join(tmpdir(), 'seeflow-validate-schema-'));
 });
 
 afterAll(async () => {

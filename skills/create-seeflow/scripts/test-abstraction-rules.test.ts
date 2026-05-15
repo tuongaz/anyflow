@@ -1,5 +1,5 @@
 /**
- * Contract tests for the `anydemo-node-planner` sub-agent's abstraction rules.
+ * Contract tests for the `seeflow-node-planner` sub-agent's abstraction rules.
  *
  * Fixtures live in `./abstraction-rule-fixtures.ts` (a non-test module) so a
  * future LLM-eval harness can import them. This file asserts the contract

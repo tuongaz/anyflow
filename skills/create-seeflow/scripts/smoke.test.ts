@@ -22,10 +22,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 // + DemoSchema check. The real fixture lives at examples/todo-demo-target but
 // these tests stub fetch so we never touch the real studio.
 function makeFixture(root: string): void {
-  const anydemo = join(root, '.anydemo');
-  mkdirSync(anydemo, { recursive: true });
+  const seeflow = join(root, '.seeflow');
+  mkdirSync(seeflow, { recursive: true });
   writeFileSync(
-    join(anydemo, 'demo.json'),
+    join(seeflow, 'demo.json'),
     JSON.stringify({
       version: 1,
       name: 'Todo Demo',
@@ -50,15 +50,15 @@ function makeFixture(root: string): void {
       connectors: [],
     }),
   );
-  mkdirSync(join(anydemo, 'scripts'), { recursive: true });
-  writeFileSync(join(anydemo, 'scripts', 'play.ts'), '#!/usr/bin/env bun\nconsole.log("noop");\n');
+  mkdirSync(join(seeflow, 'scripts'), { recursive: true });
+  writeFileSync(join(seeflow, 'scripts', 'play.ts'), '#!/usr/bin/env bun\nconsole.log("noop");\n');
 }
 
 let tmpRoot: string;
 let fixturePath: string;
 
 beforeAll(() => {
-  tmpRoot = mkdtempSync(join(tmpdir(), 'anydemo-smoke-test-'));
+  tmpRoot = mkdtempSync(join(tmpdir(), 'seeflow-smoke-test-'));
   fixturePath = join(tmpRoot, 'todo-demo-target');
   makeFixture(fixturePath);
 });
@@ -81,7 +81,7 @@ describe('runSmoke', () => {
     const result = await runSmoke({ url: 'http://127.0.0.1:65535', fixturePath });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Studio not reachable at http://127.0.0.1:65535');
-    expect(result.error).toContain('anydemo start');
+    expect(result.error).toContain('seeflow start');
   });
 
   it('returns ok:false when the fixture directory does not exist', async () => {

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 export const DEFAULT_STUDIO_URL = 'http://localhost:4321';
 
 export function defaultConfigPath(): string {
-  return join(homedir(), '.anydemo', 'config.json');
+  return join(homedir(), '.seeflow', 'config.json');
 }
 
 export function resolveStudioUrl(configPath: string = defaultConfigPath()): string {

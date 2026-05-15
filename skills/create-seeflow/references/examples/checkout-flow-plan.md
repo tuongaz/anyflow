@@ -39,11 +39,11 @@ Connectors (5)
   + shipping-worker  --http →   orders-db             UPDATE status=shipped
 
 Files to write:
-  + .anydemo/checkout-flow/demo.json
-  + .anydemo/checkout-flow/scripts/play-checkout.ts
-  + .anydemo/checkout-flow/scripts/status-orders.ts
-  + .anydemo/checkout-flow/scripts/status-shipping.ts
-  + .anydemo/checkout-flow/state/.gitignore
+  + .seeflow/checkout-flow/demo.json
+  + .seeflow/checkout-flow/scripts/play-checkout.ts
+  + .seeflow/checkout-flow/scripts/status-orders.ts
+  + .seeflow/checkout-flow/scripts/status-shipping.ts
+  + .seeflow/checkout-flow/state/.gitignore
 
 Rationale: checkout-api is the sync trigger (Play sends a cart fixture to
 /checkout via the running app on :3000). payments-stripe is a black-box
@@ -99,10 +99,10 @@ Connectors (7) — 2 new, 5 unchanged
   (5 unchanged)
 
 Files to write:
-  ~ .anydemo/checkout-flow/demo.json                          (4 new nodes/connectors)
-  + .anydemo/checkout-flow/scripts/play-refund.ts             (new)
-  + .anydemo/checkout-flow/scripts/status-refunds.ts          (new)
-  ~ .anydemo/checkout-flow/scripts/status-orders.ts           (reports refund linkage)
+  ~ .seeflow/checkout-flow/demo.json                          (4 new nodes/connectors)
+  + .seeflow/checkout-flow/scripts/play-refund.ts             (new)
+  + .seeflow/checkout-flow/scripts/status-refunds.ts          (new)
+  ~ .seeflow/checkout-flow/scripts/status-orders.ts           (reports refund linkage)
 
 Rationale: refund-api is a second sync endpoint, so it earns its own
 Play (refunds are independent business meaning vs initial checkout).

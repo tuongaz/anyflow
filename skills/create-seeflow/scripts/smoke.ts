@@ -89,7 +89,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
   if (!reachable) {
     return {
       ok: false,
-      error: `Studio not reachable at ${url}. Start it with: anydemo start`,
+      error: `Studio not reachable at ${url}. Start it with: seeflow start`,
     };
   }
 
@@ -98,7 +98,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
     return { ok: false, error: `todo-demo-target fixture not found at ${fixture}` };
   }
 
-  const tmpRepo = mkdtempSync(join(tmpdir(), 'anydemo-smoke-'));
+  const tmpRepo = mkdtempSync(join(tmpdir(), 'seeflow-smoke-'));
   let firstId: string | undefined;
   let secondId: string | undefined;
 
@@ -108,10 +108,10 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
       filter: (src) => !src.includes('node_modules'),
     });
 
-    // 1. Register the bundled demo at .anydemo/demo.json.
+    // 1. Register the bundled demo at .seeflow/demo.json.
     const firstReg = await registerDemo({
       repoPath: tmpRepo,
-      demoPath: '.anydemo/demo.json',
+      demoPath: '.seeflow/demo.json',
       url,
     });
     if (!firstReg.ok) {
@@ -131,8 +131,8 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
     }
     firstId = firstBody.id;
 
-    // 2. Write a SECOND demo at .anydemo/sample/demo.json — validate via vendored schema.
-    const secondDir = join(tmpRepo, '.anydemo', 'sample');
+    // 2. Write a SECOND demo at .seeflow/sample/demo.json — validate via vendored schema.
+    const secondDir = join(tmpRepo, '.seeflow', 'sample');
     mkdirSync(secondDir, { recursive: true });
     const secondPath = join(secondDir, 'demo.json');
     writeFileSync(secondPath, JSON.stringify(secondDemoFixture(), null, 2));
@@ -148,7 +148,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
 
     const secondReg = await registerDemo({
       repoPath: tmpRepo,
-      demoPath: '.anydemo/sample/demo.json',
+      demoPath: '.seeflow/sample/demo.json',
       url,
     });
     if (!secondReg.ok) {
@@ -207,7 +207,7 @@ export async function runSmoke(options: SmokeOptions = {}): Promise<SmokeResult>
     //    slug must be stable, and the FIRST demo's id must NOT change.
     const reReg = await registerDemo({
       repoPath: tmpRepo,
-      demoPath: '.anydemo/sample/demo.json',
+      demoPath: '.seeflow/sample/demo.json',
       url,
     });
     if (!reReg.ok) {

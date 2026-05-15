@@ -68,7 +68,7 @@ const isCleanRelativePath = (s: string): boolean => {
 
 // Script-based action: the studio spawns `<interpreter> [...args] <scriptPath>`
 // from the project's repoPath. `scriptPath` is a relative path under
-// `<project>/.anydemo/`; `args` (optional) prepend to the interpreter; `input`
+// `<project>/.seeflow/`; `args` (optional) prepend to the interpreter; `input`
 // (optional) gets JSON-serialized and written to the child's stdin then closed;
 // `timeoutMs` caps execution (default applied at the spawn layer, not here).
 const ScriptActionSchema = z.object({
@@ -76,7 +76,7 @@ const ScriptActionSchema = z.object({
   interpreter: z.string().min(1),
   args: z.array(z.string()).optional(),
   scriptPath: z.string().min(1).refine(isCleanRelativePath, {
-    message: 'scriptPath must be a relative path under .anydemo/ (no absolute / traversal)',
+    message: 'scriptPath must be a relative path under .seeflow/ (no absolute / traversal)',
   }),
   input: z.unknown().optional(),
   timeoutMs: z.number().int().positive().max(600_000).optional(),
@@ -99,7 +99,7 @@ const StatusActionSchema = z.object({
   interpreter: z.string().min(1),
   args: z.array(z.string()).optional(),
   scriptPath: z.string().min(1).refine(isCleanRelativePath, {
-    message: 'scriptPath must be a relative path under .anydemo/ (no absolute / traversal)',
+    message: 'scriptPath must be a relative path under .seeflow/ (no absolute / traversal)',
   }),
   maxLifetimeMs: z.number().int().positive().max(3_600_000).optional(),
 });
@@ -195,14 +195,14 @@ const ShapeNodeSchema = z.object({
   data: ShapeNodeDataSchema,
 });
 
-// Decorative image node — references a file under `<project>/.anydemo/` by
+// Decorative image node — references a file under `<project>/.seeflow/` by
 // relative path (US-004 hard-cut from base64 data URLs to path-backed files).
 // `path` is the same kind of relative path as `htmlPath` on htmlNode: rooted
-// at `.anydemo/`, no leading slash, no `..` segments. The renderer fetches via
+// at `.seeflow/`, no leading slash, no `..` segments. The renderer fetches via
 // `GET /api/projects/:id/files/:path`.
 const ImageNodeDataSchema = z.object({
   path: z.string().min(1).refine(isCleanRelativePath, {
-    message: 'path must be a relative path under .anydemo/ (no absolute / traversal)',
+    message: 'path must be a relative path under .seeflow/ (no absolute / traversal)',
   }),
   alt: z.string().optional(),
   ...NodeVisualBaseShape,
@@ -218,9 +218,9 @@ const ImageNodeSchema = z.object({
 
 // US-011 (illustrative-shapes-htmlnode): htmlNode is the escape-hatch node type
 // for content the curated nodes don't cover — references author-written HTML at
-// `<project>/.anydemo/<htmlPath>`. The renderer fetches via the file-serving
+// `<project>/.seeflow/<htmlPath>`. The renderer fetches via the file-serving
 // endpoint and sanitizes before injecting (US-013/US-014). `htmlPath` uses the
-// same path-safety refine as imageNode.path: relative under `.anydemo/`, no
+// same path-safety refine as imageNode.path: relative under `.seeflow/`, no
 // absolute root, no `..` traversal. Spreads NodeVisualBaseShape so authors can
 // theme the wrapper (border / background / radius / font) with the same fields
 // available on every other visual node.
@@ -232,7 +232,7 @@ const ImageNodeSchema = z.object({
 // placeholder visual) without ERRORING (without failing demo parse).
 const HtmlNodeDataSchema = z.object({
   htmlPath: z.string().min(1).refine(isCleanRelativePath, {
-    message: 'htmlPath must be a relative path under .anydemo/ (no absolute / traversal)',
+    message: 'htmlPath must be a relative path under .seeflow/ (no absolute / traversal)',
   }),
   name: z.string().optional(),
   ...NodeVisualBaseShape,

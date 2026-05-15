@@ -1,12 +1,12 @@
 ---
-name: create-anydemo
-description: Use when the user asks to create, generate, or scaffold an AnyDemo flow from a natural-language prompt (triggers like "create a demo", "show how X works", "make me a flow of Y", "diagram our checkout system"). Orchestrates four sub-agents and bun scripts to write a registered, validated demo under <project>/.anydemo/<slug>/.
+name: create-seeflow
+description: Use when the user asks to create, generate, or scaffold an SeeFlow flow from a natural-language prompt (triggers like "create a demo", "show how X works", "make me a flow of Y", "diagram our checkout system"). Orchestrates four sub-agents and bun scripts to write a registered, validated demo under <project>/.seeflow/<slug>/.
 ---
 
-# create-anydemo
+# create-seeflow
 
 Turn a natural-language prompt ("show how checkout works") into a registered,
-runnable, validated AnyDemo flow under `<project>/.anydemo/<slug>/`. You — the
+runnable, validated SeeFlow flow under `<project>/.seeflow/<slug>/`. You — the
 main thread — orchestrate four sub-agents and a handful of bun scripts; you
 never read the user's codebase directly.
 
@@ -25,19 +25,19 @@ Stop and ask for clarification only when the prompt is incoherent — never ask
 
 - The user's full natural-language prompt.
 - The project root (`$PWD` at invocation — the directory the user is in).
-- `~/.anydemo/config.json` (optional; supplies studio host:port, default
+- `~/.seeflow/config.json` (optional; supplies studio host:port, default
   `http://localhost:4321`).
-- Existing `<project>/.anydemo/<slug>/demo.json` files, if any (multi-demo
+- Existing `<project>/.seeflow/<slug>/demo.json` files, if any (multi-demo
   per project is supported; check before creating).
 
 ## The pipeline
 
 ```
 Phase 0 — pre-flight: studio reachable?
-Phase 1 — anydemo-discoverer        → context brief (language + runtime + tests)
-Phase 2 — anydemo-node-planner      → node draft
-Phase 3 — anydemo-play-designer  ┐
-          anydemo-status-designer├ parallel → overlays
+Phase 1 — seeflow-discoverer        → context brief (language + runtime + tests)
+Phase 2 — seeflow-node-planner      → node draft
+Phase 3 — seeflow-play-designer  ┐
+          seeflow-status-designer├ parallel → overlays
                                  ┘
 Phase 4 — synthesize → validate-schema (no user confirmation)
 Phase 5 — write files → register.ts
@@ -108,7 +108,7 @@ Python costs more than it saves.
 *TypeScript app* — call the real checkout endpoint using the project's own
 type definitions:
 ```typescript
-// .anydemo/checkout-flow/scripts/play-checkout.ts
+// .seeflow/checkout-flow/scripts/play-checkout.ts
 import type { CartPayload } from "../../src/types"; // reuse project types
 const input: CartPayload = JSON.parse(await Bun.stdin.text());
 const res = await fetch("http://localhost:3001/checkout", {
@@ -120,7 +120,7 @@ console.log(await res.json());
 
 *Go app* — use the project's existing models and HTTP client:
 ```go
-// .anydemo/order-flow/scripts/play-order.go
+// .seeflow/order-flow/scripts/play-order.go
 package main
 import (
     "encoding/json"
@@ -150,7 +150,7 @@ back, note the reason in `rationale`.
 ## Phase 0 — pre-flight (studio reachable)
 
 Resolve the studio URL: prefer `ANYDEMO_STUDIO_URL` env var, else
-`~/.anydemo/config.json`'s `port` field, else default `http://localhost:4321`.
+`~/.seeflow/config.json`'s `port` field, else default `http://localhost:4321`.
 Then:
 
 ```bash
@@ -159,33 +159,33 @@ curl --max-time 0.5 -fsS "$STUDIO_URL/health"
 
 On any failure (connection refused, timeout, non-2xx):
 
-1. Check whether the `anydemo` CLI is installed:
+1. Check whether the `seeflow` CLI is installed:
 
 ```bash
-which anydemo
+which seeflow
 ```
 
 2. Print the appropriate message and STOP:
 
-   **CLI found** (`which anydemo` exits 0):
+   **CLI found** (`which seeflow` exits 0):
    ```
    Studio not reachable at <url>. Start it with:
 
-     anydemo start
+     seeflow start
    ```
 
-   **CLI not found** (`which anydemo` exits non-zero):
+   **CLI not found** (`which seeflow` exits non-zero):
    ```
-   Studio not reachable at <url> and the anydemo CLI is not installed.
+   Studio not reachable at <url> and the seeflow CLI is not installed.
 
    To get started, either:
 
-     npx tuongaz/anyflow        # run without installing
+     npx @tuongaz/seeflow       # run without installing
 
    or check out the repo and run:
 
-     git clone https://github.com/tuongaz/anydemo.git
-     cd anydemo
+     git clone https://github.com/tuongaz/seeflow.git
+     cd seeflow
      make dev                   # starts studio at http://localhost:4321
    ```
 
@@ -229,7 +229,7 @@ where the pipeline is.
 
 ## Phase 1 — discover
 
-Launch the `anydemo-discoverer` sub-agent with the user's prompt, the project
+Launch the `seeflow-discoverer` sub-agent with the user's prompt, the project
 root, and (if you found any) the existing `demo.json` for the matching slug.
 The sub-agent has read-only tools (`Read`, `Grep`, `Glob`, `LS`, `Bash` for
 read-only commands).
@@ -271,7 +271,7 @@ problem to the user and stop.
 
 ## Phase 2 — plan nodes
 
-Launch `anydemo-node-planner` with the context brief. The planner has **no
+Launch `seeflow-node-planner` with the context brief. The planner has **no
 tools** — it reasons purely from the brief. It applies two mandatory passes:
 
 - **Resource nodes first** — every DB, queue, event bus, cache, file store,
@@ -298,13 +298,13 @@ Same retry budget: one retry on unparseable output, then surface and stop.
 
 ## Phase 3 — design Play + status (parallel)
 
-Launch `anydemo-play-designer` and `anydemo-status-designer` **in parallel**
+Launch `seeflow-play-designer` and `seeflow-status-designer` **in parallel**
 (send a single message with two `Task` tool calls; do not serialise them).
 Both receive the same input: the context brief + the node draft + the edit
 target (if any). Both have read-only file tools (`Read`, `Grep`, `Glob`,
 `LS`).
 
-`anydemo-play-designer` returns:
+`seeflow-play-designer` returns:
 
 ```json
 {
@@ -321,7 +321,7 @@ target (if any). Both have read-only file tools (`Read`, `Grep`, `Glob`,
 }
 ```
 
-`anydemo-status-designer` returns:
+`seeflow-status-designer` returns:
 
 ```json
 {
@@ -355,11 +355,11 @@ In the main thread:
    `validationSafe: false` into a list called `unsafeNodeIds` (used in
    Phase 6 to tell the validator which nodes to skip).
 3. **Write** the merged `Demo` to a temporary path
-   (e.g. `/tmp/anydemo-<slug>-draft.json`).
+   (e.g. `/tmp/seeflow-<slug>-draft.json`).
 4. **Validate** locally:
 
 ```bash
-bun skills/create-anydemo/scripts/validate-schema.ts /tmp/anydemo-<slug>-draft.json
+bun skills/create-seeflow/scripts/validate-schema.ts /tmp/seeflow-<slug>-draft.json
 ```
 
 Exit 0 with `{"ok":true}` → continue. Exit 1 with `{"ok":false,"issues":[…]}`
@@ -382,8 +382,8 @@ A worked plan example lives at `references/examples/checkout-flow-plan.md`
 Proceed immediately after Phase 4 schema validation passes.
 
 1. **Compute paths**: `repoPath = $PWD`,
-   `demoDir = $PWD/.anydemo/<slug>`,
-   `demoPath = .anydemo/<slug>/demo.json` (relative — that is what
+   `demoDir = $PWD/.seeflow/<slug>`,
+   `demoPath = .seeflow/<slug>/demo.json` (relative — that is what
    `register.ts` posts).
 2. **Create dirs**: `mkdir -p $demoDir/scripts $demoDir/state`.
 3. **Write the files**:
@@ -396,7 +396,7 @@ Proceed immediately after Phase 4 schema validation passes.
 4. **Register**:
 
 ```bash
-bun skills/create-anydemo/scripts/register.ts --path "$repoPath" --demo "$demoPath"
+bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$demoPath"
 ```
 
 The script POSTs `{name, repoPath, demoPath}` to `/api/demos/register` and
@@ -416,7 +416,7 @@ success without running the script and reading its output.
 
 ```bash
 # Pass --skip-nodes only when unsafeNodeIds is non-empty (comma-separated list)
-bun skills/create-anydemo/scripts/validate-end-to-end.ts <id> [--skip-nodes <nodeId1>,<nodeId2>]
+bun skills/create-seeflow/scripts/validate-end-to-end.ts <id> [--skip-nodes <nodeId1>,<nodeId2>]
 ```
 
 `unsafeNodeIds` was built in Phase 4 from `playOverlays` entries where `validationSafe: false`.
@@ -487,7 +487,7 @@ decision.
 
 | Failure | Response |
 |---|---|
-| Studio `/health` fails (Phase 0) | Check `which anydemo`; if found tell user `anydemo start`; if not found tell user `npx tuongaz/anyflow` or `git clone https://github.com/tuongaz/anydemo.git && cd anydemo && make dev`. No retry. |
+| Studio `/health` fails (Phase 0) | Check `which seeflow`; if found tell user `seeflow start`; if not found tell user `npx @tuongaz/seeflow` or `git clone https://github.com/tuongaz/seeflow.git && cd seeflow && make dev`. No retry. |
 | Sub-agent returns unparseable output | Retry the sub-agent once with the parse error; if it fails again, surface to user and stop. |
 | Schema validation fails (Phase 4) | Loop back to the relevant designer with the Zod issue list. Max 3 retries; then surface issues verbatim. |
 | Register 400 (Phase 5) | Show response body; ask user "fix-and-retry / stop". |
@@ -505,7 +505,7 @@ Two retry budgets, both hard caps:
 
 ## Schema cheatsheet
 
-The full Zod schema lives at `skills/create-anydemo/vendored/schema.ts`. Read
+The full Zod schema lives at `skills/create-seeflow/vendored/schema.ts`. Read
 it when you need exact field-level truth. Below is the one-page recap that
 covers ~95% of node design.
 
@@ -614,7 +614,7 @@ and the children come along.
 ```
 
 **htmlNode** — escape-hatch for content the curated nodes don't cover.
-`htmlPath` is a relative path under `.anydemo/` to author-written HTML; the
+`htmlPath` is a relative path under `.seeflow/` to author-written HTML; the
 renderer fetches + sanitises before injecting.
 
 ```json
@@ -622,7 +622,7 @@ renderer fetches + sanitises before injecting.
   "data": { "htmlPath": "checkout-flow/legend.html", "width": 400 } }
 ```
 
-**imageNode** — decorative image at a relative path under `.anydemo/`.
+**imageNode** — decorative image at a relative path under `.seeflow/`.
 
 ```json
 { "id": "logo", "type": "imageNode", "position": { "x": 0, "y": 0 },
@@ -673,7 +673,7 @@ All three are `ScriptAction` shapes:
 
 Constraints:
 
-- `scriptPath` MUST be a relative path under `.anydemo/`. No leading slash,
+- `scriptPath` MUST be a relative path under `.seeflow/`. No leading slash,
   no `..` traversal, no Windows-style drive letters.
 - `interpreter` MUST match `runtimeProfile.primaryLanguage` (see "Core rule —
   match the project's primary language"). Fallback to `bash`/`python3` only
@@ -707,10 +707,10 @@ JSON object per line.
 
 | Agent | Tools | Used for |
 |---|---|---|
-| `anydemo-discoverer` | `Read, Grep, Glob, LS, Bash` (read-only) | Phase 1: explore codebase, return context brief |
-| `anydemo-node-planner` | (none — pure reasoning) | Phase 2: pick nodes + connectors from brief |
-| `anydemo-play-designer` | `Read, Grep, Glob, LS` | Phase 3: design playActions + script bodies |
-| `anydemo-status-designer` | `Read, Grep, Glob, LS` | Phase 3: design statusActions + script bodies |
+| `seeflow-discoverer` | `Read, Grep, Glob, LS, Bash` (read-only) | Phase 1: explore codebase, return context brief |
+| `seeflow-node-planner` | (none — pure reasoning) | Phase 2: pick nodes + connectors from brief |
+| `seeflow-play-designer` | `Read, Grep, Glob, LS` | Phase 3: design playActions + script bodies |
+| `seeflow-status-designer` | `Read, Grep, Glob, LS` | Phase 3: design statusActions + script bodies |
 
 Each agent's full system prompt + worked example lives in
 `agents/<agent>.md`. All four sub-agents share the same `examples/order-pipeline`

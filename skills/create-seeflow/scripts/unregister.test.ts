@@ -16,7 +16,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 let tmpRoot: string;
 
 beforeAll(async () => {
-  tmpRoot = await mkdtemp(join(tmpdir(), 'anydemo-unregister-'));
+  tmpRoot = await mkdtemp(join(tmpdir(), 'seeflow-unregister-'));
 });
 
 afterAll(async () => {
