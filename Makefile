@@ -105,5 +105,6 @@ smoke-create-anydemo: ## End-to-end smoke: registers TWO demos in one repo via p
 
 OTP ?=
 
-release: ## Publish @tuongaz/anydemo to npm (OTP=123456 make release if 2FA is required)
-	cd apps/studio && npm publish --access public $(if $(OTP),--otp $(OTP),)
+release: ## Publish @tuongaz/anyflow to npm (NPM_TOKEN=<tok> make release; add OTP=<code> if 2FA is required)
+	@test -n "$(NPM_TOKEN)" || (echo "ERROR: NPM_TOKEN is not set" >&2; exit 1)
+	cd apps/studio && npm publish --access public --//registry.npmjs.org/:_authToken=$(NPM_TOKEN) $(if $(OTP),--otp $(OTP),)

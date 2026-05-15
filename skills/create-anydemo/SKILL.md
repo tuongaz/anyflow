@@ -111,10 +111,12 @@ which anydemo
 
    To get started, either:
 
-     npx anydemo start          # run without installing
+     npx tuongaz/anyflow        # run without installing
 
    or check out the repo and run:
 
+     git clone https://github.com/tuongaz/anydemo.git
+     cd anydemo
      make dev                   # starts studio at http://localhost:4321
    ```
 
@@ -401,7 +403,7 @@ decision.
 
 | Failure | Response |
 |---|---|
-| Studio `/health` fails (Phase 0) | Check `which anydemo`; if found tell user `anydemo start`; if not found tell user `npx anydemo start` or `make dev`. No retry. |
+| Studio `/health` fails (Phase 0) | Check `which anydemo`; if found tell user `anydemo start`; if not found tell user `npx tuongaz/anyflow` or `git clone https://github.com/tuongaz/anydemo.git && cd anydemo && make dev`. No retry. |
 | Sub-agent returns unparseable output | Retry the sub-agent once with the parse error; if it fails again, surface to user and stop. |
 | Schema validation fails (Phase 4) | Loop back to the relevant designer with the Zod issue list. Max 3 retries; then surface issues verbatim. |
 | Register 400 (Phase 5) | Show response body; ask user "fix-and-retry / stop". |
