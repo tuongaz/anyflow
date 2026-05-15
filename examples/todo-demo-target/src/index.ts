@@ -9,7 +9,7 @@ const bus = createEventBus();
 const store = createTodoStore([
   {
     id: 'seed-1',
-    title: 'Try AnyDemo',
+    title: 'Try SeeFlow',
     completed: false,
     createdAt: Date.now(),
     completedAt: null,

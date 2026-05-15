@@ -276,7 +276,7 @@ export function EditableEdge({
           <div
             data-testid={`edge-endpoint-source-${id}`}
             data-pinned={sourcePinned ? 'true' : 'false'}
-            className="anydemo-connector-endpoint-dot"
+            className="seeflow-connector-endpoint-dot"
             style={{
               transform: `translate(-50%, -50%) translate(${sourceShift.cx}px, ${sourceShift.cy}px)`,
             }}
@@ -284,7 +284,7 @@ export function EditableEdge({
           <div
             data-testid={`edge-endpoint-target-${id}`}
             data-pinned={targetPinned ? 'true' : 'false'}
-            className="anydemo-connector-endpoint-dot"
+            className="seeflow-connector-endpoint-dot"
             style={{
               transform: `translate(-50%, -50%) translate(${targetShift.cx}px, ${targetShift.cy}px)`,
             }}

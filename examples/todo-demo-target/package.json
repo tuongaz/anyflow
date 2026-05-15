@@ -1,5 +1,5 @@
 {
-  "name": "@anydemo/example-todo-demo-target",
+  "name": "@seeflow/example-todo-demo-target",
   "version": "0.0.0",
   "private": true,
   "type": "module",

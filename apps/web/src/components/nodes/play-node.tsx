@@ -139,7 +139,7 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
       className={cn(
         'group flex flex-col justify-center overflow-hidden rounded-lg border-[3px] shadow-sm transition-shadow',
         sized ? 'h-full w-full' : '',
-        isRunning ? 'anydemo-node-pulse' : '',
+        isRunning ? 'seeflow-node-pulse' : '',
       )}
       style={containerStyle}
       data-status={status ?? 'idle'}

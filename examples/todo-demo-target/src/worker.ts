@@ -1,6 +1,6 @@
 import type { EventBus, TodoCompletedEvent } from './event-bus.ts';
 
-const STUDIO_URL = (globalThis.process?.env?.ANYDEMO_STUDIO_URL ?? 'http://localhost:4321').replace(
+const STUDIO_URL = (globalThis.process?.env?.SEEFLOW_STUDIO_URL ?? 'http://localhost:4321').replace(
   /\/+$/,
   '',
 );
@@ -45,7 +45,7 @@ export function startWorker(bus: EventBus): () => void {
     const demoId = cachedDemoId;
     if (!demoId) {
       console.warn(
-        `[worker] studio at ${STUDIO_URL} has no demo with slug "${DEMO_SLUG}"; skipping emit. Run \`anydemo register --path .\` first.`,
+        `[worker] studio at ${STUDIO_URL} has no demo with slug "${DEMO_SLUG}"; skipping emit. Run \`seeflow register --path .\` first.`,
       );
       return;
     }

@@ -13,7 +13,7 @@ interface Todo {
   createdAt: number;
 }
 
-const STATE_FILE = resolve(process.cwd(), '.anydemo/state/todos.json');
+const STATE_FILE = resolve(process.cwd(), '.seeflow/state/todos.json');
 
 async function readStdinJson(): Promise<Input> {
   const raw = await Bun.stdin.text();
@@ -51,5 +51,5 @@ todos.push(todo);
 await writeFile(STATE_FILE, `${JSON.stringify(todos, null, 2)}\n`);
 
 console.log(
-  JSON.stringify({ ok: true, todoId: todo.id, demoId: process.env.ANYDEMO_DEMO_ID }),
+  JSON.stringify({ ok: true, todoId: todo.id, demoId: process.env.SEEFLOW_DEMO_ID }),
 );

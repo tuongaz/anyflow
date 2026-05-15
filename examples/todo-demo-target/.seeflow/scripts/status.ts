@@ -19,7 +19,7 @@ interface StatusReport {
   ts?: number;
 }
 
-const STATE_FILE = resolve(process.cwd(), '.anydemo/state/todos.json');
+const STATE_FILE = resolve(process.cwd(), '.seeflow/state/todos.json');
 const TICK_MS = 1000;
 
 async function readTodos(): Promise<Todo[]> {

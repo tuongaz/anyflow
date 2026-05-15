@@ -23,7 +23,7 @@
           ],
           "scriptPath": "scripts/play.ts"
         },
-        "description": "Appends a new todo to .anydemo/state/todos.json. Reads an optional { text } JSON object from stdin (defaults to 'New todo') and prints { ok, todoId, demoId } to stdout."
+        "description": "Appends a new todo to .seeflow/state/todos.json. Reads an optional { text } JSON object from stdin (defaults to 'New todo') and prints { ok, todoId, demoId } to stdout."
       }
     },
     {

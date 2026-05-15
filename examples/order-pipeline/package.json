@@ -1,5 +1,5 @@
 {
-  "name": "@anydemo/example-order-pipeline",
+  "name": "@seeflow/example-order-pipeline",
   "version": "0.0.0",
   "private": true,
   "type": "module",

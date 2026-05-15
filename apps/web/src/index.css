@@ -49,10 +49,10 @@
      * in demo-canvas) so the dot reads the same VISUAL size at every zoom
      * level. Falls back to 1 (no compensation) until the first onMove sets the
      * var. */
-    --anydemo-handle-fill: hsl(var(--background));
-    --anydemo-handle-border-color: hsl(var(--primary) / 0.6);
-    --anydemo-handle-border-width: calc(1px / var(--rf-zoom, 1));
-    --anydemo-handle-size: calc(17px / var(--rf-zoom, 1));
+    --seeflow-handle-fill: hsl(var(--background));
+    --seeflow-handle-border-color: hsl(var(--primary) / 0.6);
+    --seeflow-handle-border-width: calc(1px / var(--rf-zoom, 1));
+    --seeflow-handle-size: calc(17px / var(--rf-zoom, 1));
   }
 
   .dark {
@@ -97,13 +97,13 @@
   /* Scroll surfaces that should stay scrollable but hide the scrollbar chrome.
    * Used by the command palette list — the palette is a search-first surface
    * and the scrollbar gutter is visual noise that competes with the rows. */
-  .anydemo-no-scrollbar {
+  .seeflow-no-scrollbar {
     scrollbar-width: none;
   }
-  .anydemo-no-scrollbar::-webkit-scrollbar {
+  .seeflow-no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-  @keyframes anydemo-ping-fast {
+  @keyframes seeflow-ping-fast {
     0% {
       transform: scale(1);
       opacity: 1;
@@ -115,9 +115,9 @@
     }
   }
   .animate-ping-fast {
-    animation: anydemo-ping-fast 0.7s cubic-bezier(0, 0, 0.2, 1);
+    animation: seeflow-ping-fast 0.7s cubic-bezier(0, 0, 0.2, 1);
   }
-  @keyframes anydemo-node-pulse {
+  @keyframes seeflow-node-pulse {
     0%,
     100% {
       box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
@@ -126,8 +126,8 @@
       box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
     }
   }
-  .anydemo-node-pulse {
-    animation: anydemo-node-pulse 1.4s ease-in-out infinite;
+  .seeflow-node-pulse {
+    animation: seeflow-node-pulse 1.4s ease-in-out infinite;
   }
   @keyframes inline-edit-shake {
     0%,
@@ -251,17 +251,17 @@ button:disabled {
   opacity: 0.85;
 }
 
-/* Outlet handles use the shared --anydemo-handle-* tokens defined in :root so
+/* Outlet handles use the shared --seeflow-handle-* tokens defined in :root so
  * outlets and connector endpoint dots read as the same affordance — same 17px
  * size, same primary/60 1px border, same background fill. Change the tokens
  * once and both call-sites follow. The transform offsets below stack the dots
  * `~outlineOffset` outward from the node body so their CENTER continues to sit
  * on the outer selection-rect edge midpoint (consistent with US-007). */
 .react-flow__node .react-flow__handle {
-  background: var(--anydemo-handle-fill) !important;
-  border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color) !important;
-  width: var(--anydemo-handle-size) !important;
-  height: var(--anydemo-handle-size) !important;
+  background: var(--seeflow-handle-fill) !important;
+  border: var(--seeflow-handle-border-width) solid var(--seeflow-handle-border-color) !important;
+  width: var(--seeflow-handle-size) !important;
+  height: var(--seeflow-handle-size) !important;
 }
 
 /* Bigger pointer hit-area on connection handles. The pseudo-element extends
@@ -320,7 +320,7 @@ button:disabled {
  *
  * Paired with `reconnectRadius={10}` so the SVG `r=10` (17px diameter hit
  * region) sits concentric with the smaller visible portal-dot (sized via the
- * shared --anydemo-handle-size token), giving the user a generous click area
+ * shared --seeflow-handle-size token), giving the user a generous click area
  * without enlarging the visible affordance.
  *
  * US-027: override xyflow's default `cursor: move` on the reconnect anchor
@@ -365,7 +365,7 @@ button:disabled {
  * that outranks the `z-index: 1000` used by selected nodes (US-023) and
  * keeps the dot visible even when a sibling node overlaps the endpoint.
  *
- * Uses the shared --anydemo-handle-* tokens so visuals stay identical to
+ * Uses the shared --seeflow-handle-* tokens so visuals stay identical to
  * the node outlet dots — same diameter, fill, and border. A simple gray
  * circle outline on the theme background, matching the outlets that
  * appear on a selected node.
@@ -380,12 +380,12 @@ button:disabled {
  * perimeter pin for the moved side), that fill meant the dot looked solid
  * black for every reconnected connector — too heavy a visual for what's
  * really just an interaction affordance. */
-.anydemo-connector-endpoint-dot {
+.seeflow-connector-endpoint-dot {
   position: absolute;
-  width: var(--anydemo-handle-size);
-  height: var(--anydemo-handle-size);
-  background: var(--anydemo-handle-fill);
-  border: var(--anydemo-handle-border-width) solid var(--anydemo-handle-border-color);
+  width: var(--seeflow-handle-size);
+  height: var(--seeflow-handle-size);
+  background: var(--seeflow-handle-fill);
+  border: var(--seeflow-handle-border-width) solid var(--seeflow-handle-border-color);
   border-radius: 50%;
   pointer-events: none;
   z-index: 2000;
@@ -405,7 +405,7 @@ button:disabled {
  * connection drag is in flight (covers both direct cursor-over-node AND
  * near-miss within RECONNECT_BUFFER_PX so the snap target the user
  * actually gets matches the visual cue). */
-.react-flow.anydemo-connecting
+.react-flow.seeflow-connecting
   .react-flow__node:not([data-connect-source="true"])
   .react-flow__handle {
   opacity: 0 !important;
@@ -422,11 +422,11 @@ button:disabled {
  * types (shape, play, state, image, icon, html); the group node renders
  * its border on the outer `.react-flow__node-group` wrapper itself, so
  * that gets a sibling rule below. */
-.react-flow.anydemo-connecting .react-flow__node[data-connect-target="true"] > div {
+.react-flow.seeflow-connecting .react-flow__node[data-connect-target="true"] > div {
   border-color: hsl(var(--muted-foreground)) !important;
   border-style: dashed !important;
 }
-.react-flow.anydemo-connecting .react-flow__node-group[data-connect-target="true"] {
+.react-flow.seeflow-connecting .react-flow__node-group[data-connect-target="true"] {
   border-color: hsl(var(--muted-foreground)) !important;
   border-style: dashed !important;
 }
@@ -583,7 +583,7 @@ button:disabled {
 /* US-007: when a node is selected, its 4 connection handles relocate from
  * the node body's edge midpoints to the OUTER selection-rectangle's edge
  * midpoints — 4px outward, matching the `outlineOffset: 4px` on each node
- * container. Combined with the size set by `--anydemo-handle-size` (17px,
+ * container. Combined with the size set by `--seeflow-handle-size` (17px,
  * shared with connector endpoint dots), this anchors the outlets to the
  * selection rect rather than the node chrome.
  *

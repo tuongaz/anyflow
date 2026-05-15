@@ -180,7 +180,7 @@ function resolveIllustrativeColors(data: ShapeNodeData): {
 
 // Handles stay hidden by default and only render on the active (selected) node
 // — the `selected && '!opacity-100'` branch in each <Handle>'s className. While
-// a connection is in progress, `.react-flow.anydemo-connecting .react-flow__handle`
+// a connection is in progress, `.react-flow.seeflow-connecting .react-flow__handle`
 // (apps/web/src/index.css) globally forces `opacity: 1` so drop targets light
 // up across all nodes during the drag, preserving the US-014 auto-snap UX.
 const HANDLE_CLASS = 'opacity-0 transition-opacity';

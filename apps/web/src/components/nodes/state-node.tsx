@@ -113,7 +113,7 @@ function StateNodeImpl({ id, data, selected, isConnectable }: NodeProps<StateNod
       className={cn(
         'group flex flex-col justify-center overflow-hidden rounded-lg border-[3px] border-dashed shadow-sm transition-shadow',
         sized ? 'h-full w-full' : '',
-        status === 'running' ? 'anydemo-node-pulse' : '',
+        status === 'running' ? 'seeflow-node-pulse' : '',
       )}
       style={containerStyle}
       data-status={status}

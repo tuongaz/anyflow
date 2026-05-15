@@ -6,8 +6,8 @@
 // `borderColor` / `backgroundColor` are already-resolved CSS color values (the
 // caller in shape-node.tsx pre-resolves them via `colorTokenStyle`), not
 // `ColorToken` strings. When unset, the SVG falls through to the theme-aware
-// CSS-var fallbacks documented below (`var(--anydemo-node-border)` /
-// `var(--anydemo-node-bg)`).
+// CSS-var fallbacks documented below (`var(--seeflow-node-border)` /
+// `var(--seeflow-node-bg)`).
 export interface ShapePartProps {
   width: number;
   height: number;
@@ -22,8 +22,8 @@ export interface ShapePartProps {
 // theming. When the caller-resolved prop is undefined, the SVG inherits
 // whatever value the surrounding CSS context provides, falling through to the
 // host's currentColor when no var binding exists.
-export const BORDER_FALLBACK = 'var(--anydemo-node-border)';
-export const BG_FALLBACK = 'var(--anydemo-node-bg)';
+export const BORDER_FALLBACK = 'var(--seeflow-node-border)';
+export const BG_FALLBACK = 'var(--seeflow-node-bg)';
 export const DEFAULT_STROKE_WIDTH = 2;
 
 export function dashFor(style: ShapePartProps['borderStyle']): string | undefined {

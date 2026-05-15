@@ -8,5 +8,5 @@
     "noEmit": true,
     "rootDir": "."
   },
-  "include": ["src/**/*", ".anydemo/scripts/**/*"]
+  "include": ["src/**/*", ".seeflow/scripts/**/*"]
 }

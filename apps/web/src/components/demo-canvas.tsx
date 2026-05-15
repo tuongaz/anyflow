@@ -739,7 +739,7 @@ const nodeTypes = {
   imageNode: ImageNode,
   iconNode: IconNode,
   // US-014: file-backed escape-hatch node — fetches author HTML at
-  // `<project>/.anydemo/<htmlPath>`, sanitizes (US-013), and renders with
+  // `<project>/.seeflow/<htmlPath>`, sanitizes (US-013), and renders with
   // Tailwind Play CDN (US-012). Missing files render PlaceholderCard.
   htmlNode: HtmlNode,
   // US-011: container node grouping other nodes via `parentId`. React Flow
@@ -2689,7 +2689,7 @@ export function DemoCanvas({
     // Verify the right-click landed inside the canvas (not on a popover,
     // menu, etc. that escaped through a Radix portal). Endpoint dots have
     // their own right-click handler (US-007) — let those through too.
-    if (target?.closest('.anydemo-connector-endpoint-dot')) return;
+    if (target?.closest('.seeflow-connector-endpoint-dot')) return;
     e.preventDefault();
     e.stopPropagation();
     contextNodeIdRef.current = null;
@@ -3533,7 +3533,7 @@ export function DemoCanvas({
 
   return (
     <div
-      data-testid="anydemo-canvas"
+      data-testid="seeflow-canvas"
       ref={wrapperRef}
       className="relative h-full w-full"
       style={wrapperCursor ? { cursor: wrapperCursor } : undefined}
@@ -3578,7 +3578,7 @@ export function DemoCanvas({
         fitView
         nodesDraggable={!!onNodePositionChange && !drawShape}
         nodesConnectable={!!onCreateConnector && !drawShape}
-        className={connecting ? 'anydemo-connecting' : undefined}
+        className={connecting ? 'seeflow-connecting' : undefined}
         onConnect={onConnect}
         // US-004: reject any connection where either endpoint is a text-shape
         // node — pure annotations are never connectable. See the
@@ -3623,7 +3623,7 @@ export function DemoCanvas({
         connectionRadius={32}
         // US-024: SVG EdgeAnchor circle r=10 → 20px hit-region diameter, kept
         // intentionally larger than the visible portal-rendered endpoint dot
-        // (sized via the shared --anydemo-handle-size token, also driving
+        // (sized via the shared --seeflow-handle-size token, also driving
         // outlet handle size) so the user gets a generous click target. The
         // SVG circle itself is rendered transparent via
         // `.react-flow__edgeupdater` CSS — only the portal dot is visible.

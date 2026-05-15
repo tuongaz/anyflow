@@ -29,7 +29,7 @@ const CATEGORY_ORDER: readonly CommandCategory[] = [
   'Help',
 ];
 
-const RECENT_STORAGE_KEY = 'anydemo:command-palette:recent';
+const RECENT_STORAGE_KEY = 'seeflow:command-palette:recent';
 const RECENT_MAX = 5;
 
 const COMMANDS_BY_ID = new Map<CommandId, CommandDef>(COMMANDS.map((c) => [c.id, c]));
@@ -277,7 +277,7 @@ export function CommandPalette({ open, onOpenChange, runCommand, ctx }: CommandP
             className={cn(
               'max-h-[50vh] overflow-y-auto',
               flat.length > 0 ? 'py-1' : '',
-              'anydemo-no-scrollbar',
+              'seeflow-no-scrollbar',
             )}
           >
             {flat.length === 0 ? (
