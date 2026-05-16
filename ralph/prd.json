@@ -253,7 +253,7 @@
         "Verify in browser using dev-browser skill — open the Share menu on a loaded demo and confirm 'Export to seeflow.dev' is visible"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

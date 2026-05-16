@@ -220,3 +220,17 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - The 123 lint errors shown by `bun run lint` at root are pre-existing in cdk.out/; use `biome check <specific-file>` to verify new files are clean
   - Browser verification note: Manual verification needed — no browser tools configured in this session
 ---
+
+## 2026-05-16 - US-015
+- Added `onExportToCloud?: () => void` prop to ShareMenu; renders 'Export to seeflow.dev' item with Upload icon when provided
+- Updated null guard in ShareMenu: `!onDownloadPdf && !onDownloadPng && !onExportToCloud` so cloud-only config still shows trigger
+- Added `EXPORT_TO_CLOUD_LABEL` constant and `data-testid="share-menu-export-cloud"` for testability
+- Updated demo-view.tsx: imports ExportDialog, adds `exportDialogOpen` state, passes `onExportToCloud` to ShareMenu, renders ExportDialog
+- Added 4 new ShareMenu tests: trigger renders with only cloud prop, cloud item visible, cloud item absent without prop, clicking calls handler
+- Files changed: apps/web/src/components/share-menu.tsx, apps/web/src/components/share-menu.test.tsx, apps/web/src/pages/demo-view.tsx
+- All 12 ShareMenu tests pass; typecheck and biome clean on changed files
+- **Learnings for future iterations:**
+  - ShareMenu null guard must include all optional props — adding a new prop requires updating the early-return check
+  - ExportDialog is rendered conditionally on `demoId` — guards against rendering with an empty projectId
+  - Browser verification note: Manual verification needed — no browser tools configured in this session
+---
