@@ -90,11 +90,6 @@ export function Home() {
         <section className="relative max-w-6xl mx-auto px-6 pt-6 md:pt-24 pb-8 md:pb-16 text-center">
           <BgGrid className="absolute inset-0 -z-10 [mask-image:radial-gradient(ellipse_at_center,white,transparent_70%)]" />
 
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900/50 text-xs font-medium text-zinc-400 mb-5 md:mb-8 backdrop-blur-sm">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-            v1.0 is now live
-          </div>
-
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-semibold tracking-tight text-zinc-100 mb-6 max-w-4xl mx-auto leading-tight">
             Architecture diagrams that{' '}
             <span
@@ -114,7 +109,7 @@ export function Home() {
             wired directly to your running application.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex items-center justify-center">
             <div
               className="flex items-center justify-between w-full sm:w-auto bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-300"
               style={{ fontFamily: "'JetBrains Mono', monospace" }}
@@ -134,13 +129,6 @@ export function Home() {
                 )}
               </button>
             </div>
-            <button
-              type="button"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg px-5 py-2.5 text-sm font-medium transition-all"
-            >
-              <PlayCircle size={18} className="text-emerald-400" />
-              Play Demo
-            </button>
           </div>
 
           {/* Hero canvas mockup */}
@@ -284,6 +272,82 @@ export function Home() {
           </div>
         </section>
 
+        {/* AI Integration */}
+        <section id="ai" className="py-8 md:py-20 border-t border-zinc-800/50">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="flex flex-col lg:flex-row items-center gap-6 md:gap-12">
+              <div className="lg:w-1/2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-500/20 bg-purple-500/10 text-xs font-medium text-purple-400 mb-4 md:mb-6">
+                  <Wand2 size={12} />
+                  Claude Code Plugin
+                </div>
+                <h2 className="text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
+                  Zero to running demo in one prompt.
+                </h2>
+                <p className="text-zinc-400 text-base leading-relaxed mb-4 md:mb-6">
+                  Don't want to write JSON? The SeeFlow Claude Code plugin reads your codebase,
+                  understands your architecture, and generates the full diagram and request scripts
+                  automatically.
+                </p>
+                <ul className="space-y-3 mb-5 md:mb-8 text-sm text-zinc-300">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>Scans routes and database connections</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>
+                      Generates{' '}
+                      <code className="bg-zinc-800 px-1 rounded text-xs text-zinc-400">
+                        seeflow.json
+                      </code>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>
+                      Works with Claude Code, Codex, Cursor, Windsurf and any MCP-compatible editor
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="lg:w-1/2 w-full">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
+                  <div
+                    className="flex items-center px-4 py-3 border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    Terminal
+                  </div>
+                  <div
+                    className="p-4 text-sm leading-relaxed"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    <div className="text-zinc-300 mb-2">
+                      <span className="text-emerald-400">❯</span> /create-seeflow show me the
+                      shopping cart feature
+                    </div>
+                    <div className="text-zinc-500 pl-4 mb-2">
+                      Analyzing codebase...
+                      <br />
+                      Found 3 services: API Gateway, Payment Worker, Inventory DB.
+                      <br />
+                      Generating seeflow.json...
+                      <br />
+                      Wiring up demo scripts...
+                    </div>
+                    <div className="text-zinc-300 pl-4 flex items-center gap-2">
+                      <CheckCircle size={14} className="text-emerald-400" />
+                      Success! Diagram running on localhost:4321
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Problem */}
         <section id="problem" className="max-w-6xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50">
           <div className="text-center mb-8 md:mb-16">
@@ -339,11 +403,11 @@ export function Home() {
                   1
                 </div>
                 <h3 className="text-lg font-medium text-zinc-100 mb-2 tracking-tight">
-                  Define as JSON
+                  Ask your favourite vibe code editor
                 </h3>
                 <p className="text-sm text-zinc-400">
-                  Map your services, databases, and queues in a simple config file living alongside
-                  your code.
+                  Use the SeeFlow plugin in Claude Code, Cursor, Windsurf, or Codex to generate your
+                  diagram from your codebase in seconds.
                 </p>
               </div>
 
@@ -440,184 +504,6 @@ export function Home() {
           </div>
         </section>
 
-        {/* AI Integration */}
-        <section id="ai" className="py-8 md:py-20 border-t border-zinc-800/50">
-          <div className="max-w-6xl mx-auto px-6">
-            <div className="flex flex-col lg:flex-row items-center gap-6 md:gap-12">
-              <div className="lg:w-1/2">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-500/20 bg-purple-500/10 text-xs font-medium text-purple-400 mb-4 md:mb-6">
-                  <Wand2 size={12} />
-                  Claude Code Plugin
-                </div>
-                <h2 className="text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
-                  Zero to running demo in one prompt.
-                </h2>
-                <p className="text-zinc-400 text-base leading-relaxed mb-4 md:mb-6">
-                  Don't want to write JSON? The SeeFlow Claude Code plugin reads your codebase,
-                  understands your architecture, and generates the full diagram and request scripts
-                  automatically.
-                </p>
-                <ul className="space-y-3 mb-5 md:mb-8 text-sm text-zinc-300">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
-                    <span>Scans routes and database connections</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
-                    <span>
-                      Generates{' '}
-                      <code className="bg-zinc-800 px-1 rounded text-xs text-zinc-400">
-                        seeflow.json
-                      </code>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
-                    <span>
-                      Works with Claude Code, Codex, Cursor, Windsurf and any MCP-compatible editor
-                    </span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="lg:w-1/2 w-full">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
-                  <div
-                    className="flex items-center px-4 py-3 border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400"
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    Terminal
-                  </div>
-                  <div
-                    className="p-4 text-sm leading-relaxed"
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    <div className="text-zinc-300 mb-2">
-                      <span className="text-emerald-400">❯</span> /create-seeflow show me the
-                      shopping cart feature
-                    </div>
-                    <div className="text-zinc-500 pl-4 mb-2">
-                      Analyzing codebase...
-                      <br />
-                      Found 3 services: API Gateway, Payment Worker, Inventory DB.
-                      <br />
-                      Generating seeflow.json...
-                      <br />
-                      Wiring up demo scripts...
-                    </div>
-                    <div className="text-zinc-300 pl-4 flex items-center gap-2">
-                      <CheckCircle size={14} className="text-emerald-400" />
-                      Success! Diagram running on localhost:4000
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* JSON Config */}
-        <section
-          id="docs"
-          className="max-w-4xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50 text-center"
-        >
-          <h2 className="text-2xl font-semibold tracking-tight text-zinc-100 mb-4">
-            No magic, just JSON.
-          </h2>
-          <p className="text-zinc-400 text-base mb-6 md:mb-10 max-w-xl mx-auto">
-            Define your architecture using a declarative configuration that lives in your repo.
-          </p>
-
-          <div className="text-left rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
-            <div className="flex items-center px-4 py-3 border-b border-zinc-800 bg-zinc-900/80">
-              <div className="flex gap-1.5 mr-4">
-                <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
-                <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
-                <div className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
-              </div>
-              <span
-                className="text-xs text-zinc-500"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                seeflow.json
-              </span>
-            </div>
-            <div className="p-6 overflow-x-auto">
-              <pre
-                className="text-xs sm:text-sm text-zinc-300"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                <code>
-                  {`{
-  `}
-                  <span className="text-blue-400">"name"</span>
-                  {': '}
-                  <span className="text-emerald-400">"Order Pipeline"</span>
-                  {`,
-  `}
-                  <span className="text-blue-400">"nodes"</span>
-                  {`: {
-    `}
-                  <span className="text-blue-400">"gateway"</span>
-                  {`: {
-      `}
-                  <span className="text-blue-400">"type"</span>
-                  {': '}
-                  <span className="text-emerald-400">"service"</span>
-                  {`,
-      `}
-                  <span className="text-blue-400">"label"</span>
-                  {': '}
-                  <span className="text-emerald-400">"API Gateway"</span>
-                  {`,
-      `}
-                  <span className="text-blue-400">"onPlay"</span>
-                  {': { '}
-                  <span className="text-blue-400">"script"</span>
-                  {': '}
-                  <span className="text-emerald-400">"post-order.js"</span>
-                  {` }
-    },
-    `}
-                  <span className="text-blue-400">"db"</span>
-                  {`: {
-      `}
-                  <span className="text-blue-400">"type"</span>
-                  {': '}
-                  <span className="text-emerald-400">"database"</span>
-                  {`,
-      `}
-                  <span className="text-blue-400">"status"</span>
-                  {': { '}
-                  <span className="text-blue-400">"listen"</span>
-                  {': '}
-                  <span className="text-emerald-400">"metrics/db-health"</span>
-                  {` }
-    }
-  },
-  `}
-                  <span className="text-blue-400">"edges"</span>
-                  {`: [
-    { `}
-                  <span className="text-blue-400">"from"</span>
-                  {': '}
-                  <span className="text-emerald-400">"gateway"</span>
-                  {', '}
-                  <span className="text-blue-400">"to"</span>
-                  {': '}
-                  <span className="text-emerald-400">"db"</span>
-                  {', '}
-                  <span className="text-blue-400">"type"</span>
-                  {': '}
-                  <span className="text-emerald-400">"http"</span>
-                  {` }
-  ]
-}`}
-                </code>
-              </pre>
-            </div>
-          </div>
-        </section>
       </main>
 
       {/* Footer */}
