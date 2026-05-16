@@ -469,6 +469,73 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
     expect(labels.some((t) => t === 'Body content')).toBe(true);
   });
 
+  it('rectangle WITH name: dblclick on border (target is outer wrapper, not header/body) opens description edit', () => {
+    // Bug regression: clicking the 3px border sets e.target to the outer wrapper.
+    // closest('[data-testid="shape-node-header"]') and closest('[data-testid="shape-node-body"]')
+    // both return null, so the old code fell through to setEditing('name') — opening the title
+    // InlineEdit when the user expected to type in the body. This is most visible after a drag
+    // (users click near the node edge to re-enter edit mode).
+    const setterCalls: unknown[] = [];
+    const internals = (
+      React as unknown as {
+        __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED: {
+          ReactCurrentDispatcher: { current: Hooks | null };
+        };
+      }
+    ).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+    const prev = internals.ReactCurrentDispatcher.current;
+    internals.ReactCurrentDispatcher.current = {
+      useState: <S,>(initial: S | (() => S)) => {
+        const value = typeof initial === 'function' ? (initial as () => S)() : initial;
+        const setter = (v: unknown) => setterCalls.push(v);
+        return [value, setter as unknown as (v: S | ((prev: S) => S)) => void];
+      },
+      useCallback: <T,>(fn: T) => fn,
+      useMemo: <T,>(fn: () => T) => fn(),
+      useRef: <T,>(initial: T) => ({ current: initial }),
+      useEffect: () => {},
+    };
+    let tree: unknown;
+    try {
+      const impl = (ShapeNode as unknown as { type: (p: NodeProps) => unknown }).type;
+      tree = impl({
+        id: 's1',
+        type: 'shapeNode',
+        data: {
+          name: 'My Title',
+          description: 'My body',
+          shape: 'rectangle',
+          onNameChange: () => {},
+          onDescriptionChange: () => {},
+        },
+        selected: false,
+        isConnectable: true,
+        xPos: 0,
+        yPos: 0,
+        zIndex: 0,
+        dragging: false,
+        deletable: true,
+        draggable: true,
+        selectable: true,
+      } as unknown as NodeProps);
+    } finally {
+      internals.ReactCurrentDispatcher.current = prev;
+    }
+    // Find the outer div's onDoubleClick handler
+    const outerDiv = findAll(
+      tree,
+      (el) => typeof (el.props as { onDoubleClick?: unknown }).onDoubleClick === 'function',
+    ).at(0);
+    expect(outerDiv).toBeDefined();
+    const handler = (outerDiv!.props as { onDoubleClick: (e: unknown) => void }).onDoubleClick;
+    // Simulate border click: target has no header/body ancestor (closest always null)
+    const borderTarget = { closest: (_: string) => null };
+    handler({ target: borderTarget, stopPropagation: () => {} });
+    // Must open description edit, not name edit
+    expect(setterCalls).toContain('description');
+    expect(setterCalls).not.toContain('name');
+  });
+
   it('sticky NEVER renders a header even when a name is set (description-only shape)', () => {
     // Sticky intentionally drops the Name concept — see DetailPanel,
     // which hides the Name field for stickies. The on-canvas label is

@@ -296,11 +296,12 @@ function ShapeNodeImpl({ id, data, selected, isConnectable }: NodeProps<ShapeNod
               if (nameEditable) setEditing('name');
               return;
             }
-            if (target?.closest('[data-testid="shape-node-body"]')) {
-              if (descEditable) setEditing('description');
-              else if (nameEditable) setEditing('name');
-              return;
-            }
+            // Body click OR border click (target is the outer wrapper itself) — always
+            // route to description. Without this return, clicking the 3px border would
+            // fall through to `setEditing('name')` below, opening the title editor.
+            if (descEditable) setEditing('description');
+            else if (nameEditable) setEditing('name');
+            return;
           }
           // Ellipse + sticky render description as their centered label and
           // have no Name concept; an empty rectangle (single-label mode)

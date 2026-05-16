@@ -18,9 +18,9 @@ function ViewerLayout() {
 export function App() {
   return (
     <Routes>
+      <Route path="/" element={<Home />} />
       <Route element={<ViewerLayout />}>
         <Route path="/flow/:uuid" element={<FlowView />} />
-        <Route path="/" element={<Home />} />
       </Route>
     </Routes>
   );
