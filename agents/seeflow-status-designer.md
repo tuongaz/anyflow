@@ -205,7 +205,7 @@ see, with sketches of what the script should observe:
   fixture drop already shows "I was clicked"; layering a status on
   top adds noise.
 - **Decorative nodes** — `shapeNode`, `iconNode`, `htmlNode`,
-  `imageNode`, `groupNode`. The schema does not even allow it for
+  `imageNode`. The schema does not even allow it for
   most of these, but the rule holds for any node that exists for
   layout reasons rather than because the system has an observable
   state there.

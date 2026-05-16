@@ -8,7 +8,7 @@ const readFixture = async (name: string): Promise<unknown> =>
 
 describe('DemoSchema', () => {
   it('parses a valid demo fixture', async () => {
-    const data = await readFixture('valid-seeflow.json');
+    const data = await readFixture('valid-demo.json');
     const result = DemoSchema.safeParse(data);
     if (!result.success) {
       throw new Error(
@@ -26,7 +26,7 @@ describe('DemoSchema', () => {
   });
 
   it('rejects an invalid demo fixture with a usable Zod error', async () => {
-    const data = await readFixture('invalid-seeflow.json');
+    const data = await readFixture('invalid-demo.json');
     const result = DemoSchema.safeParse(data);
     expect(result.success).toBe(false);
     if (result.success) return;
@@ -381,12 +381,6 @@ describe('DemoSchema', () => {
           position: { x: 0, y: 400 },
           data: { icon: 'lock', locked: true },
         },
-        {
-          id: 'g',
-          type: 'group' as const,
-          position: { x: 0, y: 500 },
-          data: { name: 'G', locked: true },
-        },
       ],
       connectors: [],
     };
@@ -400,7 +394,6 @@ describe('DemoSchema', () => {
     expect((byId.get('shape')?.data as { locked?: boolean }).locked).toBe(true);
     expect((byId.get('img')?.data as { locked?: boolean }).locked).toBe(true);
     expect((byId.get('icon')?.data as { locked?: boolean }).locked).toBe(true);
-    expect((byId.get('g')?.data as { locked?: boolean }).locked).toBe(true);
   });
 
   it('accepts nodes that omit the new visual fields entirely (backwards compatible)', () => {
@@ -1012,10 +1005,9 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(demo).success).toBe(false);
   });
 
-  // US-014 (text-and-group-resize): image nodes gain an optional `borderWidth`
-  // (1–8) that mirrors the group's chrome field. `borderColor` + `borderStyle`
-  // already come via NodeVisualBaseShape — these tests pin the new field's
-  // accept/reject behavior alongside back-compat for unset fields.
+  // US-014: image nodes gain an optional `borderWidth` (1–8). `borderColor`
+  // + `borderStyle` already come via NodeVisualBaseShape — these tests pin
+  // the new field's accept/reject behavior alongside back-compat for unset fields.
   it('round-trips an image node with borderColor / borderWidth / borderStyle (US-014)', () => {
     const demo = {
       version: 1 as const,
@@ -1417,321 +1409,8 @@ describe('DemoSchema', () => {
     expect(DemoSchema.safeParse(make(12)).success).toBe(true);
   });
 
-  // US-011: group node + parentId foundation. parentId is optional on every
-  // node variant, the group variant is new, and pre-existing demo files
-  // round-trip unchanged (they have no parentId / group nodes).
-  it('round-trips a group node with optional label + size (US-011)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'group-demo',
-      nodes: [
-        {
-          id: 'group-1',
-          type: 'group' as const,
-          position: { x: 10, y: 20 },
-          data: { name: 'Auth flow', width: 320, height: 220 },
-        },
-      ],
-      connectors: [],
-    };
-    const result = DemoSchema.safeParse(demo);
-    if (!result.success) {
-      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-    }
-    const node = result.data.nodes[0];
-    if (node?.type !== 'group') throw new Error('expected group node');
-    expect(node.data.name).toBe('Auth flow');
-    expect(node.data.width).toBe(320);
-    expect(node.data.height).toBe(220);
-  });
-
-  it('accepts a group node with no label and no size (US-011)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'minimal-group',
-      nodes: [{ id: 'group-1', type: 'group' as const, position: { x: 0, y: 0 }, data: {} }],
-      connectors: [],
-    };
-    expect(DemoSchema.safeParse(demo).success).toBe(true);
-  });
-
-  it('round-trips a group with two parent-linked children (US-011 fixture shape)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'group-with-children',
-      nodes: [
-        {
-          id: 'group-1',
-          type: 'group' as const,
-          position: { x: 0, y: 0 },
-          data: { name: 'API', width: 320, height: 220 },
-        },
-        {
-          id: 'child-a',
-          type: 'stateNode' as const,
-          position: { x: 20, y: 40 },
-          parentId: 'group-1',
-          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
-        },
-        {
-          id: 'child-b',
-          type: 'stateNode' as const,
-          position: { x: 180, y: 40 },
-          parentId: 'group-1',
-          data: { name: 'B', kind: 'svc', stateSource: { kind: 'request' as const } },
-        },
-      ],
-      connectors: [],
-    };
-    const result = DemoSchema.safeParse(demo);
-    if (!result.success) {
-      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-    }
-    expect(result.data.nodes).toHaveLength(3);
-    expect(result.data.nodes[1]?.parentId).toBe('group-1');
-    expect(result.data.nodes[2]?.parentId).toBe('group-1');
-  });
-
-  it('rejects a node whose parentId references an unknown node (US-011)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'orphan-child',
-      nodes: [
-        {
-          id: 'child-a',
-          type: 'stateNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'ghost-group',
-          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
-        },
-      ],
-      connectors: [],
-    };
-    const result = DemoSchema.safeParse(demo);
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    const issue = result.error.issues.find((i) => i.path.includes('parentId'));
-    expect(issue).toBeDefined();
-    expect(issue?.message).toContain('ghost-group');
-  });
-
-  it('rejects a node that lists itself as its parent (US-011)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'self-parent',
-      nodes: [
-        {
-          id: 'n1',
-          type: 'stateNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'n1',
-          data: { name: 'A', kind: 'svc', stateSource: { kind: 'request' as const } },
-        },
-      ],
-      connectors: [],
-    };
-    expect(DemoSchema.safeParse(demo).success).toBe(false);
-  });
-
-  it('accepts every existing node type with an optional parentId (back-compat for US-011)', () => {
-    // Each variant must round-trip with AND without parentId.
-    const demo = {
-      version: 1 as const,
-      name: 'parent-everywhere',
-      nodes: [
-        {
-          id: 'group-1',
-          type: 'group' as const,
-          position: { x: 0, y: 0 },
-          data: { name: 'G' },
-        },
-        {
-          id: 'p1',
-          type: 'playNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'group-1',
-          data: {
-            name: 'P',
-            kind: 'svc',
-            stateSource: { kind: 'request' as const },
-            playAction: {
-              kind: 'script' as const,
-              interpreter: 'bun',
-              scriptPath: 'scripts/play.ts',
-            },
-          },
-        },
-        {
-          id: 's1',
-          type: 'stateNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'group-1',
-          data: { name: 'S', kind: 'svc', stateSource: { kind: 'request' as const } },
-        },
-        {
-          id: 'sh1',
-          type: 'shapeNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'group-1',
-          data: { shape: 'rectangle' as const },
-        },
-        {
-          id: 'img1',
-          type: 'imageNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'group-1',
-          data: { path: 'assets/parented.png' },
-        },
-        {
-          id: 'ic1',
-          type: 'iconNode' as const,
-          position: { x: 0, y: 0 },
-          parentId: 'group-1',
-          data: { icon: 'check' },
-        },
-      ],
-      connectors: [],
-    };
-    const result = DemoSchema.safeParse(demo);
-    if (!result.success) {
-      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-    }
-    // parentId survives the round-trip for each variant.
-    for (let i = 1; i < result.data.nodes.length; i++) {
-      expect(result.data.nodes[i]?.parentId).toBe('group-1');
-    }
-  });
-
-  // US-001 (text-and-group-resize): group nodes gain optional style fields
-  // (backgroundColor, borderColor, borderWidth 1–8, borderStyle). They must
-  // round-trip when set and stay absent when omitted (the latter covered by
-  // existing US-011 tests above).
-  it('round-trips a group node with all style fields set (US-001 text-and-group-resize)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'styled-group',
-      nodes: [
-        {
-          id: 'group-1',
-          type: 'group' as const,
-          position: { x: 0, y: 0 },
-          data: {
-            name: 'API',
-            width: 320,
-            height: 220,
-            backgroundColor: 'slate' as const,
-            borderColor: 'blue' as const,
-            borderWidth: 3,
-            borderStyle: 'dashed' as const,
-          },
-        },
-      ],
-      connectors: [],
-    };
-    const result = DemoSchema.safeParse(demo);
-    if (!result.success) {
-      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-    }
-    const node = result.data.nodes[0];
-    if (node?.type !== 'group') throw new Error('expected group node');
-    expect(node.data.backgroundColor).toBe('slate');
-    expect(node.data.borderColor).toBe('blue');
-    expect(node.data.borderWidth).toBe(3);
-    expect(node.data.borderStyle).toBe('dashed');
-  });
-
-  it('accepts a group node with no style fields (US-001 back-compat)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'minimal-group',
-      nodes: [
-        {
-          id: 'group-1',
-          type: 'group' as const,
-          position: { x: 0, y: 0 },
-          data: { width: 320, height: 220 },
-        },
-      ],
-      connectors: [],
-    };
-    const result = DemoSchema.safeParse(demo);
-    if (!result.success) {
-      throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-    }
-    const node = result.data.nodes[0];
-    if (node?.type !== 'group') throw new Error('expected group node');
-    expect(node.data.backgroundColor).toBeUndefined();
-    expect(node.data.borderColor).toBeUndefined();
-    expect(node.data.borderWidth).toBeUndefined();
-    expect(node.data.borderStyle).toBeUndefined();
-  });
-
-  it('rejects a group node with borderWidth outside the 1–8 range (US-001)', () => {
-    const tooSmall = {
-      version: 1 as const,
-      name: 'g',
-      nodes: [
-        {
-          id: 'g',
-          type: 'group' as const,
-          position: { x: 0, y: 0 },
-          data: { borderWidth: 0 },
-        },
-      ],
-      connectors: [],
-    };
-    expect(DemoSchema.safeParse(tooSmall).success).toBe(false);
-
-    const tooLarge = {
-      ...tooSmall,
-      nodes: [
-        {
-          ...tooSmall.nodes[0],
-          data: { borderWidth: 9 },
-        },
-      ],
-    };
-    expect(DemoSchema.safeParse(tooLarge).success).toBe(false);
-  });
-
-  it('rejects a group node with an unknown borderStyle (US-001)', () => {
-    const demo = {
-      version: 1 as const,
-      name: 'g',
-      nodes: [
-        {
-          id: 'g',
-          type: 'group' as const,
-          position: { x: 0, y: 0 },
-          data: { borderStyle: 'wobbly' as unknown as 'solid' },
-        },
-      ],
-      connectors: [],
-    };
-    expect(DemoSchema.safeParse(demo).success).toBe(false);
-  });
-
-  it('loads the group-fixture.json smoke fixture with one group + 2 children (US-011)', async () => {
-    const data = await readFixture('group-fixture.json');
-    const result = DemoSchema.safeParse(data);
-    if (!result.success) {
-      throw new Error(
-        `expected group-fixture.json to parse, got: ${JSON.stringify(result.error.issues, null, 2)}`,
-      );
-    }
-    expect(result.data.nodes).toHaveLength(3);
-    const group = result.data.nodes.find((n) => n.id === 'group-1');
-    if (!group || group.type !== 'group') throw new Error('expected group node');
-    expect(group.data.name).toBe('Auth flow');
-    const children = result.data.nodes.filter((n) => n.parentId === 'group-1');
-    expect(children).toHaveLength(2);
-    expect(children.map((c) => c.id).sort()).toEqual(['child-a', 'child-b']);
-  });
-
-  it('pre-US-011 demos (no parentId / group nodes) round-trip unchanged (US-011 back-compat)', () => {
-    // Demos authored before US-011 have no parentId or group nodes. Both
-    // fields are optional, so a parse → serialize → parse cycle must produce
-    // a deep-equal result with no injected keys.
+  it('demos without group nodes round-trip unchanged', () => {
+    // Demos without group nodes produce a deep-equal result with no injected keys.
     const raw = {
       version: 1,
       name: 'Legacy Demo',
@@ -1867,19 +1546,6 @@ describe('DemoSchema', () => {
             position: { x: 0, y: 0 },
             data: {
               icon: 'shopping-cart',
-              description: 'short body',
-              detail: 'long-form notes',
-            },
-          },
-        },
-        {
-          id: 'group',
-          node: {
-            id: 'n-group',
-            type: 'group',
-            position: { x: 0, y: 0 },
-            data: {
-              name: 'group label',
               description: 'short body',
               detail: 'long-form notes',
             },
@@ -2171,34 +1837,6 @@ describe('DemoSchema', () => {
       expect(result.data.connectors).toHaveLength(2);
     });
 
-    it('accepts an htmlNode with an optional parentId pointing at a group (US-011 parentId back-compat)', () => {
-      const demo = {
-        version: 1 as const,
-        name: 'html-in-group',
-        nodes: [
-          {
-            id: 'group-1',
-            type: 'group' as const,
-            position: { x: 0, y: 0 },
-            data: { name: 'G' },
-          },
-          {
-            id: 'html-1',
-            type: 'htmlNode' as const,
-            position: { x: 20, y: 40 },
-            parentId: 'group-1',
-            data: { htmlPath: 'blocks/inner.html' },
-          },
-        ],
-        connectors: [],
-      };
-      const result = DemoSchema.safeParse(demo);
-      if (!result.success) {
-        throw new Error(`expected to parse, got: ${JSON.stringify(result.error.issues)}`);
-      }
-      const html = result.data.nodes.find((n) => n.id === 'html-1');
-      expect(html?.parentId).toBe('group-1');
-    });
   });
 
   // US-001: script-based playAction + optional statusAction + StatusReport.

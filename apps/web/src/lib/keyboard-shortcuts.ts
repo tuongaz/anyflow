@@ -84,7 +84,6 @@ export type CommandId =
   | 'view.zoomToSelection'
   | 'layout.tidy'
   | 'selection.deselect'
-  | 'group.ungroup'
   | 'help.commandPalette'
   | 'export.pdf'
   | 'export.png'
@@ -285,13 +284,6 @@ export const COMMANDS: readonly CommandDef[] = [
     description: 'Clear selection and exit draw mode',
     category: 'Selection',
     shortcut: formatShortcut({ key: 'Escape' }),
-  },
-  {
-    id: 'group.ungroup',
-    label: 'Ungroup',
-    category: 'Selection',
-    shortcut: formatShortcut({ meta: true, key: 'G' }),
-    enabled: (ctx) => ctx.hasSelection,
   },
   {
     id: 'help.commandPalette',

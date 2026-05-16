@@ -29,8 +29,8 @@ export const ColorTokenSchema = z.enum([
 // optional — existing demo files predate them and must continue to parse.
 // US-019: `locked` freezes a node in place (no drag / resize / delete) and
 // renders a lock badge on its top-right corner. Absent → unlocked default.
-// Mirrored explicitly into IconNodeDataSchema + GroupNodeDataSchema below
-// since those variants don't spread this base shape.
+// Mirrored explicitly into IconNodeDataSchema below
+// since that variant doesn't spread this base shape.
 const NodeVisualBaseShape = {
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
@@ -48,8 +48,8 @@ const NodeVisualBaseShape = {
 // is the short body text rendered on the canvas under the node header (and as
 // light-bold text in the sidebar). `detail` is the long-form free-text body
 // rendered only in the sidebar. Both optional so unset fields round-trip
-// unchanged. Spread into every node-data schema below since Group / Icon don't
-// share NodeVisualBaseShape.
+// unchanged. Spread into every node-data schema below since Icon doesn't
+// spread NodeVisualBaseShape.
 const NodeDescriptionBaseShape = {
   description: z.string().optional(),
   detail: z.string().optional(),

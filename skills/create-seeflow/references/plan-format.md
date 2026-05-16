@@ -67,7 +67,7 @@ user can scan it:
 - `Play + status` — for nodes carrying both.
 - `(no play, no status)` — for nodes the audience sees but does not
   interact with directly (databases viewed via another node's status,
-  decorative shapes, group containers).
+  decorative shapes).
 
 Examples:
 
@@ -78,7 +78,6 @@ Examples:
 ~ fulfilment-worker     [stateNode]   (no play, no status) -- UNCHANGED
 - email-sent            [stateNode]   REMOVED (was in existing demo)
 + user                  [iconNode]    (decorative)
-+ services-group        [group]       (groups checkout-api + payments-service)
 ```
 
 ## Connectors column conventions

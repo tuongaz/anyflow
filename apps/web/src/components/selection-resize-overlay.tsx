@@ -10,11 +10,11 @@ import {
 /**
  * US-007: multi-select bounding-box resize overlay.
  *
- * Rendered when 2+ loose nodes are selected (not all sharing the same group
- * parent). Draws a dashed bounding rect around the union of the selection
- * with 8 resize handles (4 corners + 4 edges); dragging a handle scales every
- * selected node — and its size — via the shared `scaleNodesWithinRect` helper
- * (US-002). Shift held during the drag locks the aspect ratio.
+ * Rendered when 2+ nodes are selected. Draws a dashed bounding rect around
+ * the union of the selection with 8 resize handles (4 corners + 4 edges);
+ * dragging a handle scales every selected node — and its size — via the
+ * shared `scaleNodesWithinRect` helper (US-002). Shift held during the drag
+ * locks the aspect ratio.
  *
  * Locked nodes within the selection pass through unchanged (handled inside
  * the helper, not here). The whole batch dispatches via `onMultiResize` as a
@@ -26,7 +26,6 @@ import {
 export interface OverlayInputNode {
   id: string;
   position: { x: number; y: number };
-  parentId?: string;
   data: { width?: number; height?: number; locked?: boolean };
 }
 
@@ -72,21 +71,9 @@ export function computeUnionRect(nodes: readonly OverlayInputNode[]): Rect | nul
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/**
- * Eligibility check: the overlay should render only when ≥ 2 selected nodes
- * are NOT all children of the same group. Otherwise the per-group resize
- * gesture (US-006) already covers the case and a second overlay would just
- * fight it. A selection that mixes loose nodes with grouped children counts
- * as eligible — those nodes scale independently of any group.
- */
+/** The overlay renders when ≥ 2 nodes are selected. */
 export function selectionEligibleForOverlay(selected: readonly OverlayInputNode[]): boolean {
-  if (selected.length < 2) return false;
-  const firstParent = selected[0]?.parentId;
-  if (firstParent === undefined) return true;
-  for (const n of selected) {
-    if (n.parentId !== firstParent) return true;
-  }
-  return false;
+  return selected.length >= 2;
 }
 
 /**

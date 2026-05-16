@@ -13,8 +13,7 @@ The example assumes the discoverer found:
   and books a shipment via the Shippo API.
 
 The node-planner produced four functional nodes (one per service / DB /
-worker), one decorative `user` icon, and one `group` to fence in the
-internal services. The play-designer placed a Play on the checkout endpoint
+worker) and one decorative `user` icon. The play-designer placed a Play on the checkout endpoint
 (sync API trigger), and the status-designer placed statuses on the orders
 DB (row state) and the shipping worker (idle/busy).
 
@@ -23,13 +22,12 @@ DB (row state) and the shipping worker (idle/busy).
 ```
 ## Plan for "show how checkout works"
 
-Nodes (6)
+Nodes (5)
   + user                [iconNode]    (decorative)
   + checkout-api        [playNode]    Play: POST /checkout (cart fixture)
   + payments-stripe     [stateNode]   (no play, no status — external SaaS black-box)
   + orders-db           [stateNode]   status: orders row state polling
   + shipping-worker     [stateNode]   status: worker idle / busy / processed-count
-  + internal-services   [group]       (contains checkout-api + payments-stripe + orders-db + shipping-worker)
 
 Connectors (5)
   + user             --default→ checkout-api          clicks checkout
@@ -87,11 +85,11 @@ becomes:
 ```
 ## Plan for "add refund handling to the checkout flow"
 
-Nodes (8) — 2 new, 1 modified, 5 unchanged
+Nodes (7) — 2 new, 1 modified, 4 unchanged
   + refund-api          [playNode]    Play: POST /checkout/refund (refund fixture)
   + refunds-db          [stateNode]   status: refunds row state polling
   ~ orders-db           [stateNode]   status script now also reports refund linkage
-  (5 unchanged: user, checkout-api, payments-stripe, shipping-worker, internal-services)
+  (4 unchanged: user, checkout-api, payments-stripe, shipping-worker)
 
 Connectors (7) — 2 new, 5 unchanged
   + refund-api       --http→ payments-stripe       POST /v1/refunds

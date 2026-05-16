@@ -34,12 +34,6 @@ import {
 import { type AutoLayoutNode, applyLayout } from '@/lib/auto-layout';
 import { buildPastePayload } from '@/lib/clipboard';
 import { captureViewportPng, downloadDataUrl } from '@/lib/export-png';
-import {
-  type GroupableNode,
-  expandGroupNodeIds,
-  selectUngroupableSet,
-  toAbsolutePosition,
-} from '@/lib/group-ops';
 import { computeIconInsertPosition } from '@/lib/icon-insert';
 import { pushRecent } from '@/lib/icon-recents';
 import { performImageDropUpload } from '@/lib/image-upload-flow';
@@ -523,133 +517,11 @@ export function DemoView({
     [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, dropUndoTop, markMutation],
   );
 
-  // US-006: atomic inactive-group resize. The canvas pre-computes the group's
-  // new dims AND every direct child's scaled position/size; this callback
-  // commits the whole batch as a SINGLE undo entry. Mirrors the onStyleNodes
-  // batch pattern — Cmd+Z reverts every child mutation AND the group's dims
-  // together. Active groups still flow through `onNodeResize` (single-node
-  // behavior). Optimistic overrides are fanned out before the PATCHes so the
-  // canvas stays pinned through the SSE round-trip.
-  const onGroupResizeWithChildren = useCallback(
-    (update: {
-      groupId: string;
-      groupDims: { width: number; height: number; x: number; y: number };
-      childUpdates: {
-        id: string;
-        position: { x: number; y: number };
-        width?: number;
-        height?: number;
-      }[];
-      live: boolean;
-    }) => {
-      if (!demoId) return;
-      const group = demoNodes?.find((n) => n.id === update.groupId);
-      if (!group) return;
-      const groupPrev = {
-        width: group.data.width,
-        height: group.data.height,
-        position: { x: group.position.x, y: group.position.y },
-      };
-      const groupNext = {
-        width: update.groupDims.width,
-        height: update.groupDims.height,
-        position: { x: update.groupDims.x, y: update.groupDims.y },
-      };
-      type DimsPatch = {
-        width?: number;
-        height?: number;
-        position: { x: number; y: number };
-      };
-      type ChildTarget = { id: string; prev: DimsPatch; next: DimsPatch };
-      const childTargets: ChildTarget[] = [];
-      for (const cu of update.childUpdates) {
-        const child = demoNodes?.find((n) => n.id === cu.id);
-        if (!child) continue;
-        const cData = child.data as { width?: number; height?: number };
-        const prev: DimsPatch = {
-          position: { x: child.position.x, y: child.position.y },
-        };
-        if (cData.width !== undefined) prev.width = cData.width;
-        if (cData.height !== undefined) prev.height = cData.height;
-        const next: DimsPatch = { position: cu.position };
-        if (cu.width !== undefined) next.width = cu.width;
-        if (cu.height !== undefined) next.height = cu.height;
-        childTargets.push({ id: cu.id, prev, next });
-      }
-      // Optimistic overrides: pin the group's new dims + each child's scaled
-      // position/size through the PATCH round-trip + SSE echo so the canvas
-      // doesn't snap back to the pre-resize rect mid-flight.
-      setNodeOverride(update.groupId, {
-        position: groupNext.position,
-        data: { width: groupNext.width, height: groupNext.height },
-      } as Partial<DemoNode>);
-      for (const t of childTargets) {
-        const dataPatch: { width?: number; height?: number } = {};
-        if (t.next.width !== undefined) dataPatch.width = t.next.width;
-        if (t.next.height !== undefined) dataPatch.height = t.next.height;
-        setNodeOverride(t.id, {
-          position: t.next.position,
-          ...(Object.keys(dataPatch).length > 0 ? { data: dataPatch } : {}),
-        } as Partial<DemoNode>);
-      }
-      setEditError(null);
-      markMutation();
-      pushUndo({
-        do: async () => {
-          await Promise.allSettled([
-            updateNode(demoId, update.groupId, groupNext),
-            ...childTargets.map((t) => updateNode(demoId, t.id, t.next)),
-          ]);
-        },
-        undo: async () => {
-          await Promise.allSettled([
-            updateNode(demoId, update.groupId, groupPrev),
-            ...childTargets.map((t) => updateNode(demoId, t.id, t.prev)),
-          ]);
-        },
-        // US-016: per-tick resize during a live drag pushes many entries
-        // through this callback. The coalesce key folds them into a single
-        // undo entry — the first push captures the original `undo` (pre-
-        // gesture state); subsequent pushes within COALESCE_WINDOW_MS replace
-        // `do` with the new final state while preserving that original
-        // `undo`. Net: one Cmd+Z reverts the entire gesture.
-        coalesceKey: `group:${update.groupId}:resize`,
-      });
-      // Per-tick during a live drag: the optimistic overrides + coalesced
-      // undo entry are enough to drive the visual and the redo path. Skip
-      // the PATCH fan-out so each frame doesn't fire N+1 HTTP requests —
-      // that's the dominant cost during a long resize gesture and the
-      // cause of the resize feeling sluggish. Pointer-up fires one final
-      // call with `live: false` that commits to the server.
-      if (update.live) return;
-      // Fire-and-forget fan-out. Per-node failure drops that node's override
-      // so the canvas falls back to server state; we surface a single banner.
-      Promise.all(
-        [
-          { id: update.groupId, patch: groupNext },
-          ...childTargets.map((t) => ({ id: t.id, patch: t.next })),
-        ].map(async (op) => {
-          try {
-            await updateNode(demoId, op.id, op.patch);
-            return null;
-          } catch (err) {
-            dropNodeOverride(op.id);
-            return err instanceof Error ? err.message : String(err);
-          }
-        }),
-      ).then((errs) => {
-        const first = errs.find((e): e is string => e !== null);
-        if (first) setEditError(first);
-      });
-    },
-    [demoId, demoNodes, setNodeOverride, dropNodeOverride, pushUndo, markMutation],
-  );
-
   // US-007: atomic multi-select bounding-box resize. The canvas overlay
   // pre-computes each scaled node's position/size and dispatches the whole
   // batch via this callback; we commit it as ONE undo entry — Cmd+Z reverts
-  // every node's position + size together. Mirrors `onGroupResizeWithChildren`
-  // (US-006) and `onStyleNodes` (US-008): snapshot prev for each target, fan
+  // every node's position + size together. Mirrors `onStyleNodes` (US-008):
+  // snapshot prev for each target, fan
   // out optimistic overrides BEFORE the PATCHes so the canvas stays pinned
   // through the SSE round-trip, push ONE undo, then fire-and-forget PATCH
   // fan-out. Per-node PATCH failure drops that node's override + surfaces a
@@ -996,21 +868,6 @@ export function DemoView({
       // the right-click menu also disables the Delete item for a locked
       // node so this branch only fires from a stale callback.
       if ((node.data as { locked?: boolean }).locked === true) return;
-      // US-014: when the to-delete node is a group, the operation must expand
-      // to include every node whose `parentId` references it so the group +
-      // its children leave together. The schema's `superRefine` rejects
-      // orphaned children (parentId references a missing parent), so deleting
-      // the group alone would 400 unless its children are also gone. We route
-      // group deletes through `onDeleteSelectionRef.current` (the batch path)
-      // so the cascade collapses into ONE undo entry covering the group + its
-      // children + every cascaded connector — see `onDeleteSelection` below
-      // for the implementation. The ref indirection avoids a forward-reference
-      // TDZ issue (onDeleteSelection is defined after onDeleteNode).
-      if (node.type === 'group') {
-        const expanded = expandGroupNodeIds([nodeId], (demoNodes ?? []) as GroupableNode[]);
-        onDeleteSelectionRef.current?.(expanded, []);
-        return;
-      }
       // Snapshot the node + every cascaded connector BEFORE the delete API
       // call, so undo can recreate them all (preserving original ids and
       // adjacency order). The server cascades via the same source/target
@@ -1164,18 +1021,11 @@ export function DemoView({
   // in parallel, and pushes ONE undo entry that re-creates the whole batch on
   // Cmd+Z (single keystroke restores N nodes + their connectors). Mirrors the
   // onTidy / onStyleNodes batch shape.
-  // US-014: when a group node is among the to-delete ids, expand to include
-  // every node whose `parentId` matches one of those group ids (flat groups
-  // only — schema rejects nested groups). The expansion happens once, before
-  // the existing delete path runs, and children are ordered BEFORE their
-  // parent in the server-call sequence so the schema's `superRefine`
-  // ("parentId references known node") never sees a moment where a child's
-  // parent has already left disk.
   const onDeleteSelection = useCallback(
     (nodeIds: string[], connectorIds: string[]) => {
       if (!demoId) return;
       if (nodeIds.length === 0 && connectorIds.length === 0) return;
-      const expandedNodeIds = expandGroupNodeIds(nodeIds, (demoNodes ?? []) as GroupableNode[]);
+      const expandedNodeIds = nodeIds;
       // US-019: skip locked nodes silently. Locked nodes opt out of every
       // delete path (right-click, Delete key, batch). Their cascaded
       // connectors are still pruned only if the OTHER endpoint is also
@@ -1227,21 +1077,7 @@ export function DemoView({
       ];
       if (allDoomedNodeIds.length > 0) markNodesDeleted(allDoomedNodeIds);
       if (allDoomedConnIds.length > 0) markConnectorsDeleted(allDoomedConnIds);
-      // US-014: ORDER the per-server delete sequence so children (whose
-      // parentId references another doomed node) go BEFORE the parent. The
-      // schema's `superRefine` rejects any state where a node's `parentId`
-      // references a missing parent; if the parent left disk first, the
-      // intermediate state has an orphaned child and the parent's delete
-      // would 400 mid-batch. Children-first keeps every intermediate state
-      // schema-valid. Stable order otherwise (the order from `expandedNodeIds`).
-      const childFirstNodeSnapshots = [
-        ...nodeSnapshots.filter(
-          (n) => n.parentId !== undefined && cascadingNodeIdSet.has(n.parentId),
-        ),
-        ...nodeSnapshots.filter(
-          (n) => !(n.parentId !== undefined && cascadingNodeIdSet.has(n.parentId)),
-        ),
-      ];
+      const childFirstNodeSnapshots = nodeSnapshots;
       // Trim selection so the inspector closes / multi-selection shrinks
       // immediately.
       setSelectedIds((prev) => prev.filter((id) => !cascadingNodeIdSet.has(id)));
@@ -1267,11 +1103,6 @@ export function DemoView({
         do: async () => {
           if (allDoomedNodeIds.length > 0) markNodesDeleted(allDoomedNodeIds);
           if (allDoomedConnIds.length > 0) markConnectorsDeleted(allDoomedConnIds);
-          // US-014: serialize the per-node deletes in children-first order so
-          // the schema invariant (parentId references resolvable node) stays
-          // satisfied at every intermediate state. The studio's per-demo write
-          // lock would serialize parallel calls anyway, but explicit ordering
-          // is what guarantees children go first.
           for (const n of childFirstNodeSnapshots) {
             await deleteNode(demoId, n.id).catch(() => {});
           }
@@ -1280,8 +1111,6 @@ export function DemoView({
         undo: async () => {
           if (allDoomedNodeIds.length > 0) unmarkNodesDeleted(allDoomedNodeIds);
           if (allDoomedConnIds.length > 0) unmarkConnectorsDeleted(allDoomedConnIds);
-          // US-014 mirror: re-create parents BEFORE children so the child's
-          // parentId resolves on creation. Reverse of the do-leg order.
           for (let i = childFirstNodeSnapshots.length - 1; i >= 0; i--) {
             const n = childFirstNodeSnapshots[i];
             if (!n) continue;
@@ -1290,7 +1119,6 @@ export function DemoView({
               type: n.type,
               position: n.position,
               data: n.data as unknown as Record<string, unknown>,
-              ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
             });
           }
           for (const c of [...cascadedConnectors, ...explicitConnSnapshots]) {
@@ -1865,194 +1693,6 @@ export function DemoView({
     ],
   );
 
-  // US-013: dissolve N group nodes back into free nodes. Children's positions
-  // are rebased into absolute canvas-space so they keep their visible position
-  // even when their parent group is removed; `parentId` is cleared via the
-  // PATCH null-protocol from US-012. Persists as ONE undo entry covering the
-  // whole batch (any N ≥ 1) — Cmd+Z re-creates every dissolved group and
-  // restores every child's relative position + parentId. Children that are
-  // already free (no `parentId === groupId`) are skipped silently. The Zod
-  // superRefine in apps/studio/src/schema.ts rejects a node whose `parentId`
-  // references a missing group, so children are unparented BEFORE the group
-  // is deleted on disk (and on undo the group is re-created BEFORE children
-  // are re-parented).
-  const ungroupGroupIds = useCallback(
-    (groupIds: string[]) => {
-      if (!demoId || !demoNodes || groupIds.length === 0) return;
-      const overrides = nodeOverridesRef.current;
-      const liveParentId = (n: DemoNode): string | undefined => {
-        const override = overrides[n.id] as { parentId?: string | null } | undefined;
-        if (override && 'parentId' in override) {
-          return override.parentId ?? undefined;
-        }
-        return n.parentId;
-      };
-      const livePosition = (n: DemoNode): Position => {
-        const override = overrides[n.id] as { position?: Position } | undefined;
-        return override?.position ?? n.position;
-      };
-
-      type GroupPlan = {
-        groupSnapshot: DemoNode;
-        groupPosition: Position;
-        children: { id: string; absolute: Position; relative: Position; prevParentId?: string }[];
-      };
-      const plans: GroupPlan[] = [];
-      for (const groupId of groupIds) {
-        const group = demoNodes.find((n) => n.id === groupId);
-        if (!group || group.type !== 'group') continue;
-        const groupPosition = livePosition(group);
-        const children = demoNodes
-          .filter((c) => liveParentId(c) === groupId)
-          .map((c) => {
-            const relative = livePosition(c);
-            return {
-              id: c.id,
-              relative: { x: relative.x, y: relative.y },
-              absolute: toAbsolutePosition(relative, groupPosition),
-              prevParentId: groupId,
-            };
-          });
-        plans.push({
-          groupSnapshot: { ...group, position: groupPosition } as DemoNode,
-          groupPosition,
-          children,
-        });
-      }
-      if (plans.length === 0) return;
-
-      const allGroupIds = plans.map((p) => p.groupSnapshot.id);
-      const allChildIds = plans.flatMap((p) => p.children.map((c) => c.id));
-
-      setEditError(null);
-      // Optimistic: hide every dissolved group and rebase every child into
-      // absolute canvas space within the same React tick.
-      markNodesDeleted(allGroupIds);
-      for (const plan of plans) {
-        for (const c of plan.children) {
-          // Optimistic clear: `parentId: undefined` removes the per-node
-          // parent link in the merged override (mergeNodeOverride's spread
-          // overwrites the prior `parentId: groupId`). The wire-format PATCH
-          // below uses `parentId: null` per the US-012 clear-on-null contract.
-          setNodeOverride(c.id, {
-            position: c.absolute,
-            parentId: undefined,
-          });
-        }
-      }
-      // The previously-grouped children remain selected as a multi-selection
-      // (so the user can immediately re-group, drag, or delete them). The
-      // dissolved groups themselves drop out of the selection naturally as
-      // they're removed from the canvas.
-      setSelectedIds(allChildIds);
-      markMutation();
-
-      const persistUngroup = async () => {
-        // Unparent every child FIRST so the schema doesn't reject the file
-        // mid-write when the group disappears beneath a still-parented child.
-        for (const plan of plans) {
-          for (const c of plan.children) {
-            await updateNode(demoId, c.id, {
-              position: c.absolute,
-              parentId: null,
-            });
-          }
-        }
-        // Then drop the now-childless groups.
-        for (const groupId of allGroupIds) {
-          await deleteNode(demoId, groupId);
-        }
-      };
-      const revertUngroup = async () => {
-        // Inverse order: re-create every group first so children's restored
-        // `parentId` references resolve, then re-parent + rebase every child.
-        for (const plan of plans) {
-          const snap = plan.groupSnapshot;
-          await createNode(demoId, {
-            id: snap.id,
-            type: snap.type,
-            position: snap.position,
-            data: snap.data as unknown as Record<string, unknown>,
-          });
-        }
-        for (const plan of plans) {
-          for (const c of plan.children) {
-            await updateNode(demoId, c.id, {
-              position: c.relative,
-              parentId: c.prevParentId ?? null,
-            });
-          }
-        }
-      };
-
-      persistUngroup()
-        .then(() => {
-          markMutation();
-          pushUndo({
-            do: async () => {
-              markNodesDeleted(allGroupIds);
-              await persistUngroup();
-            },
-            undo: async () => {
-              unmarkNodesDeleted(allGroupIds);
-              await revertUngroup();
-            },
-          });
-        })
-        .catch((err) => {
-          // Roll back optimistic state on failure: un-hide groups and drop
-          // the child overrides so absolute/relative positions revert.
-          unmarkNodesDeleted(allGroupIds);
-          for (const childId of allChildIds) dropNodeOverride(childId);
-          setEditError(err instanceof Error ? err.message : String(err));
-          console.error('ungroup failed', err);
-        });
-    },
-    [
-      demoId,
-      demoNodes,
-      setNodeOverride,
-      dropNodeOverride,
-      markNodesDeleted,
-      unmarkNodesDeleted,
-      pushUndo,
-      markMutation,
-    ],
-  );
-
-  // US-013: single-group entry point. Programmatic callers (or any future
-  // story that needs to dissolve one specific group by id) route through
-  // here; menu paths call `ungroupSelectedGroups` instead. Shares the do/undo
-  // closures with the batch path so behaviour is identical.
-  const ungroupNode = useCallback(
-    (groupId: string) => {
-      ungroupGroupIds([groupId]);
-    },
-    [ungroupGroupIds],
-  );
-
-  // US-013: dissolve every group node in the supplied selection. The Group
-  // and Ungroup right-click items are mutually exclusive in the menu, so a
-  // selection that already contains at least one group renders Ungroup and
-  // not Group (eligibility computed via `selectUngroupableSet`). Single-group
-  // selections delegate to `ungroupNode` so both APIs share the same code
-  // path; multi-group selections batch through the shared internal helper
-  // with a single undo entry covering all of them.
-  const ungroupSelectedGroups = useCallback(
-    (selectedIds: string[]) => {
-      if (!demoNodes) return;
-      const groupIds = selectUngroupableSet(selectedIds, demoNodes as GroupableNode[]);
-      if (groupIds.length === 0) return;
-      if (groupIds.length === 1) {
-        const onlyId = groupIds[0];
-        if (onlyId !== undefined) ungroupNode(onlyId);
-        return;
-      }
-      ungroupGroupIds(groupIds);
-    },
-    [demoNodes, ungroupNode, ungroupGroupIds],
-  );
-
   const onConnectorLabelChange = useCallback(
     (connId: string, label: string) => {
       if (!demoId) return;
@@ -2277,16 +1917,6 @@ export function DemoView({
     [demoNodes, demoConnectors],
   );
 
-  // Paste the clipboard. `flowPos` (when set) anchors the paste at a specific
-  // point — used by the right-click menu's "Paste" item which records the
-  // cursor's flow-space position. When null (keyboard Ctrl/Cmd+V), every
-  // pasted top-level node is offset by +24,+24 from its original position.
-  //
-  // US-022 parent-child preservation: a child whose `parentId` is ALSO in the
-  // copied set is rewired to the new parent id; its (parent-relative) position
-  // is preserved verbatim so it lands at the same offset inside the new parent
-  // (NOT double-translated by the absolute paste offset). Top-level nodes
-  // (no parent, or parent not in the copy set) receive the absolute offset.
   const onPasteNodes = useCallback(
     (flowPos: Position | null) => {
       if (!demoId) return;
@@ -2847,9 +2477,6 @@ export function DemoView({
           if (selectedConnectorIdsRef.current.length > 0) setSelectedConnectorIds([]);
           if (activeShapeRef.current !== null) setActiveShape(null);
           return;
-        case 'group.ungroup':
-          ungroupSelectedGroups([...selectedIdsRef.current]);
-          return;
         case 'help.commandPalette':
           setPaletteOpen(true);
           return;
@@ -2883,7 +2510,6 @@ export function DemoView({
       demoNodes,
       demoConnectors,
       onTidy,
-      ungroupSelectedGroups,
     ],
   );
 
@@ -3350,7 +2976,6 @@ export function DemoView({
           onNodePositionChange={onNodePositionChange}
           onNodePositionsChange={onNodePositionsChange}
           onNodeResize={onNodeResize}
-          onGroupResizeWithChildren={onGroupResizeWithChildren}
           onMultiResize={onMultiResize}
           onNodeNameChange={onNodeNameChange}
           onNodeDescriptionChange={onNodeDescriptionChange}
@@ -3374,7 +2999,6 @@ export function DemoView({
           onPasteAt={onPasteNodes}
           onCopySelection={demoId ? onCopyNodes : undefined}
           onPasteSelection={demoId ? () => onPasteNodes(null) : undefined}
-          onUngroupSelection={demoId ? ungroupSelectedGroups : undefined}
           onToggleNodeLock={demoId ? onToggleNodeLock : undefined}
           hasClipboard={hasClipboard}
           selectedNodes={selectedNodes}

@@ -54,8 +54,8 @@ export interface NodeVisual {
   /**
    * US-019: when true the node is frozen — cannot be dragged, resized, or
    * deleted by accident — and renders a lock badge in its top-right corner.
-   * Absent → unlocked default. Mirrored explicitly into IconNodeData /
-   * GroupNodeData (those variants don't extend NodeVisual).
+   * Absent → unlocked default. Mirrored explicitly into IconNodeData
+   * (that variant doesn't extend NodeVisual).
    */
   locked?: boolean;
 }
@@ -102,9 +102,8 @@ export interface ShapeNodeData extends NodeVisual, NodeDescription {
 // relative path (US-004 hard-cut from base64). Mirrors ImageNodeDataSchema in
 // apps/studio/src/schema.ts; the renderer fetches via the file-serving
 // endpoint at `GET /api/projects/:id/files/:path`.
-// US-014: optional `borderWidth` (1–8) mirrors `GroupNodeData.borderWidth` so
-// the property panel can drive an image border with the same control set.
-// `borderColor` and `borderStyle` come via NodeVisual.
+// US-014: optional `borderWidth` (1–8). `borderColor` and `borderStyle` come
+// via NodeVisual.
 export interface ImageNodeData extends NodeVisual, NodeDescription {
   path: string;
   alt?: string;
@@ -151,39 +150,9 @@ export interface HtmlNodeData extends NodeVisual, NodeDescription {
   name?: string;
 }
 
-// US-011: container node grouping other nodes via their `parentId`. No
-// semantic payload; chrome (dashed border, transparent fill) lives in CSS.
-// `width`/`height` size the group's bounding box for the renderer.
-export interface GroupNodeData extends NodeDescription {
-  name?: string;
-  width?: number;
-  height?: number;
-  /** US-019: lock state mirror — see NodeVisual.locked. */
-  locked?: boolean;
-  /** US-001/US-005: group chrome overrides. When any field is absent, the
-   * default chrome from `apps/web/src/index.css` (`.react-flow__node-group`:
-   * 1px dashed, transparent fill) applies. Field naming follows the PRD
-   * (`borderWidth`, NOT `borderSize` like shape nodes use). */
-  backgroundColor?: ColorToken;
-  borderColor?: ColorToken;
-  borderWidth?: number;
-  borderStyle?: 'solid' | 'dashed' | 'dotted';
-  /** US-008: transient flag injected by demo-canvas when the user has entered
-   * this group via double-click. Never persisted to disk — drives the
-   * property-panel "group style" branch and the `[data-active]` CSS chrome. */
-  isActive?: boolean;
-}
-
 interface NodeBase {
   id: string;
   position: { x: number; y: number };
-  /**
-   * US-011: optional parent-node id. When set, React Flow positions this
-   * node relative to the parent's top-left and drags the parent + children
-   * together. Mirrors the optional `parentId` on every node variant in
-   * apps/studio/src/schema.ts.
-   */
-  parentId?: string;
 }
 
 export type DemoNode =
@@ -192,7 +161,6 @@ export type DemoNode =
   | (NodeBase & { type: 'shapeNode'; data: ShapeNodeData })
   | (NodeBase & { type: 'imageNode'; data: ImageNodeData })
   | (NodeBase & { type: 'iconNode'; data: IconNodeData })
-  | (NodeBase & { type: 'group'; data: GroupNodeData })
   | (NodeBase & { type: 'htmlNode'; data: HtmlNodeData });
 
 export type ConnectorStyle = 'solid' | 'dashed' | 'dotted';
@@ -339,19 +307,11 @@ export const updateNodePosition = async (
 
 export interface UpdateNodeBody {
   position?: { x: number; y: number };
-  /**
-   * US-012: set or clear the node's parent (group). `null` is the wire-format
-   * signal to clear the field on disk (mirrors sourcePin/targetPin); a string
-   * sets it; `undefined` leaves it untouched. Final validity (reference + no
-   * self-parent) is gated by DemoSchema's superRefine on the studio side.
-   */
-  parentId?: string | null;
   name?: string;
   borderColor?: ColorToken;
   backgroundColor?: ColorToken;
   borderSize?: number;
-  /** US-008: group chrome border-thickness (1–8). Distinct from shape nodes'
-   * open-ended `borderSize` — see `GroupNodeData.borderWidth`. */
+  /** Image node border-thickness (1–8). Distinct from shape nodes' `borderSize`. */
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   fontSize?: number;
@@ -473,11 +433,9 @@ export const updateConnector = async (
 
 export interface CreateNodeBody {
   id?: string;
-  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode' | 'group' | 'htmlNode';
+  type: 'playNode' | 'stateNode' | 'shapeNode' | 'imageNode' | 'iconNode' | 'htmlNode';
   position: { x: number; y: number };
   data: Record<string, unknown>;
-  /** US-011: optional parent-node id (must reference an existing node). */
-  parentId?: string;
 }
 
 export const createNode = async (

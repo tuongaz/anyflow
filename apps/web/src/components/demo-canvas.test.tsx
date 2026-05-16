@@ -4,13 +4,11 @@ import {
   type ClipboardShortcutEventLike,
   DemoCanvas,
   type DemoCanvasProps,
-  type GroupShortcutEventLike,
   classifyHandleDropFailure,
   classifyReconnectBodyDrop,
   computeUnmovedLockPin,
   eventTargetIsOtherNode,
   handleClipboardShortcut,
-  handleGroupShortcut,
 } from '@/components/demo-canvas';
 import { CloudShape } from '@/components/nodes/shapes/cloud';
 import { DatabaseShape } from '@/components/nodes/shapes/database';
@@ -23,7 +21,6 @@ import {
 } from '@/components/selection-resize-overlay';
 import { StyleStrip } from '@/components/style-strip';
 import type { DemoNode } from '@/lib/api';
-import type { GroupableNode } from '@/lib/group-ops';
 import { type Connection, type Node, ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 
@@ -167,15 +164,6 @@ function makeConnection(source: string, target: string): Connection {
   return { source, target, sourceHandle: null, targetHandle: null };
 }
 
-function makeGroupNode(id: string): DemoNode {
-  return {
-    id,
-    type: 'group',
-    position: { x: 0, y: 0 },
-    data: { width: 200, height: 200 },
-  };
-}
-
 describe('DemoCanvas', () => {
   it('wires selectNodesOnDrag={false} on the ReactFlow root', () => {
     // US-018: dragging an unselected node moves it without auto-selecting
@@ -304,13 +292,11 @@ describe('DemoCanvas', () => {
       expect(validator(makeConnection('a', 'b'))).toBe(true);
     });
 
-    it('accepts a connection between two non-shape nodes (e.g. group)', () => {
+    it('accepts a connection between two non-text shape nodes (second coverage)', () => {
       // The validator's text-shape predicate gates on `type === 'shapeNode'
-      // && data.shape === 'text'` — any other node type (group, play, state,
-      // image, icon) must pass through. We use group as a representative
-      // non-shape node here since makeGroupNode is already in scope.
-      const validator = getValidator([makeGroupNode('g1'), makeGroupNode('g2')]);
-      expect(validator(makeConnection('g1', 'g2'))).toBe(true);
+      // && data.shape === 'text'` — non-text shapes must pass through.
+      const validator = getValidator([makeShapeNode('s1'), makeShapeNode('s2')]);
+      expect(validator(makeConnection('s1', 's2'))).toBe(true);
     });
 
     it('accepts a connection when an endpoint id is missing from the nodes prop', () => {
@@ -407,15 +393,13 @@ describe('DemoCanvas', () => {
       expect(validator(makeConnection('fresh-text', 'existing'))).toBe(false);
     });
 
-    it('isValidConnection accepts an edge across a group boundary', () => {
-      // Connections between nodes at different parentId levels (top-level
-      // ↔ inside-group) must still work — there is no parentId-spanning
-      // gate in our validator and adding one would break a documented
-      // capability.
-      const child: DemoNode = { ...makeShapeNode('child'), parentId: 'g1' };
+    it('isValidConnection accepts an edge between any two non-text shape nodes', () => {
+      // The validator does not gate on node relationship — any two shape nodes
+      // that are not text can be connected.
+      const child: DemoNode = makeShapeNode('child');
       const top = makeShapeNode('top');
       const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g1'), child, top],
+        nodes: [child, top],
         selectedNodeIds: [],
         onCreateConnector: () => {},
       });
@@ -657,14 +641,13 @@ describe('DemoCanvas', () => {
       wrapper: 0,
       rfInstance: 1,
       // US-018 added editHandlesRef (slot 3, after storeApiRef) so every
-      // draw-* ref shifted down by one. The group enter/exit feature added
-      // `activeGroupIdRef` (slot 3, after storeApiRef) too, shifting all
-      // later refs down by another slot. Update this map alongside any
+      // draw-* ref shifted down by one. activeGroupIdRef removed, shifting
+      // all draw-* refs back up by one. Update this map alongside any
       // future useRef addition above drawShape.
-      drawShape: 12,
-      drawStart: 13,
-      drawCurrent: 14,
-      drawing: 15,
+      drawShape: 11,
+      drawStart: 12,
+      drawCurrent: 13,
+      drawing: 14,
     } as const;
 
     // Bracket access on a sparse array returns `T | undefined`; this asserts
@@ -902,15 +885,15 @@ describe('DemoCanvas', () => {
     // illustrative-shape visuals. The wrapper itself stays chrome-less
     // (shapeChromeStyle('database') already returns {} per US-009 / AC #4).
     //
-    // useState slot order (US-003 lifted drawShape out of demo-canvas):
-    //   slot 3 = drawStart   slot 4 = drawCurrent
+    // useState slot order (activeGroupId removed, US-003 lifted drawShape out of demo-canvas):
+    //   slot 2 = drawStart   slot 3 = drawCurrent
     // ghostRect is computed from drawStart + drawCurrent so both must be set
     // for the ghost JSX branch to render. activeShape comes in via props.
 
     it('renders <DatabaseShape> inside the ghost when activeShape="database"', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'database' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -930,10 +913,10 @@ describe('DemoCanvas', () => {
 
     it('passes width/height from ghostRect to DatabaseShape so the preview scales with the drag', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
+      overrides[2] = { x: 100, y: 100 };
       // 200 wide, 140 tall (matches database SHAPE_DEFAULT_SIZE for an at-
       // template ghost — the cylinder reads proportional).
-      overrides[4] = { x: 300, y: 240 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'database' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -963,8 +946,8 @@ describe('DemoCanvas', () => {
 
     it('does NOT render DatabaseShape in the ghost for non-database shapes', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'rectangle' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -989,8 +972,8 @@ describe('DemoCanvas', () => {
   describe('US-022: server drag-create ghost renders ServerShape', () => {
     it('renders <ServerShape> inside the ghost when activeShape="server"', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'server' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1006,8 +989,8 @@ describe('DemoCanvas', () => {
 
     it('passes width/height from ghostRect to ServerShape so the preview scales with the drag', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'server' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1032,8 +1015,8 @@ describe('DemoCanvas', () => {
 
     it('does NOT render ServerShape in the ghost for non-server shapes', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'database' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1051,8 +1034,8 @@ describe('DemoCanvas', () => {
   describe('US-023: user drag-create ghost renders UserShape', () => {
     it('renders <UserShape> inside the ghost when activeShape="user"', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'user' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1068,8 +1051,8 @@ describe('DemoCanvas', () => {
 
     it('does NOT render UserShape in the ghost for non-user shapes', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'server' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1087,8 +1070,8 @@ describe('DemoCanvas', () => {
   describe('US-024: queue drag-create ghost renders QueueShape', () => {
     it('renders <QueueShape> inside the ghost when activeShape="queue"', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'queue' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1104,8 +1087,8 @@ describe('DemoCanvas', () => {
 
     it('does NOT render QueueShape in the ghost for non-queue shapes', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'user' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1123,8 +1106,8 @@ describe('DemoCanvas', () => {
   describe('US-025: cloud drag-create ghost renders CloudShape', () => {
     it('renders <CloudShape> inside the ghost when activeShape="cloud"', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'cloud' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1140,8 +1123,8 @@ describe('DemoCanvas', () => {
 
     it('does NOT render CloudShape in the ghost for non-cloud shapes', () => {
       const overrides: unknown[] = [];
-      overrides[3] = { x: 100, y: 100 };
-      overrides[4] = { x: 300, y: 240 };
+      overrides[2] = { x: 100, y: 100 };
+      overrides[3] = { x: 300, y: 240 };
       const tree = callDemoCanvas({ activeShape: 'queue' }, { useStateOverrides: overrides });
       const ghost = findElement(
         tree,
@@ -1155,229 +1138,7 @@ describe('DemoCanvas', () => {
     });
   });
 
-  describe('right-click context menu Ungroup item visibility', () => {
-    // The create-group menu item has been removed; the marquee multi-select
-    // still works for every other batch action (copy/paste/delete/style/
-    // lock). Ungroup remains for dissolving existing groups.
-    const findByTestId = (tree: unknown, id: string) =>
-      findElement(tree, (el) => (el.props as { 'data-testid'?: unknown })['data-testid'] === id);
-
-    it('shows Ungroup when a group is in the selection', () => {
-      const tree = callDemoCanvas({
-        nodes: [makeShapeNode('a'), makeShapeNode('b'), makeGroupNode('g')],
-        selectedNodeIds: ['a', 'b', 'g'],
-        onUngroupSelection: () => {},
-      });
-      expect(findByTestId(tree, 'node-context-menu-group')).toBeNull();
-      expect(findByTestId(tree, 'node-context-menu-ungroup')).not.toBeNull();
-    });
-  });
-
-  describe('group enter/exit: double-click required to control children', () => {
-    // The group-enter feature: children of a group are gated until the user
-    // double-clicks the group to "enter" it. Each rule below corresponds to
-    // one bullet in the PRD:
-    //   • child of an inactive group → selectable: false, draggable: false,
-    //     and `data-gated-child` attribute set (the CSS hook that disables
-    //     pointer-events so mouse gestures pass through to the parent group)
-    //   • child of the ACTIVE group → no extra gating
-    //   • dbl-click on a group → activeGroupId state updated → children unlock
-    //   • single-click on a gated child → click is redirected to the parent
-    //     group's id (onSelectionChange + onNodeClick both fire with parent)
-    //   • pane click → activeGroupId cleared
-    //   • edge between two children of an inactive group → selectable: false
-    function childOf(id: string, parentId: string): DemoNode {
-      const base = makeShapeNode(id);
-      return { ...base, parentId };
-    }
-
-    it('children of an inactive group are non-selectable, non-draggable, and gated via data attribute', () => {
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
-        selectedNodeIds: [],
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfNodes = rf.props.nodes as Node[];
-      const a = rfNodes.find((n) => n.id === 'a');
-      const b = rfNodes.find((n) => n.id === 'b');
-      const g = rfNodes.find((n) => n.id === 'g');
-      expect(a?.selectable).toBe(false);
-      expect(a?.draggable).toBe(false);
-      expect(a?.domAttributes as unknown).toEqual({ 'data-gated-child': 'true' });
-      expect(b?.selectable).toBe(false);
-      expect(b?.draggable).toBe(false);
-      expect(b?.domAttributes as unknown).toEqual({ 'data-gated-child': 'true' });
-      // The group itself is not gated — it's the entry point.
-      expect(g?.selectable).toBeUndefined();
-      expect(g?.draggable).toBeUndefined();
-      expect(g?.domAttributes).toBeUndefined();
-    });
-
-    it('child has its label/description edit callbacks stripped while gated', () => {
-      // Without this strip, a user could bypass the "double-click first"
-      // requirement by double-clicking a child's body to enter inline label
-      // edit — the child renderers wire onDoubleClick to setIsEditing(true)
-      // when data.onLabelChange is present.
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        selectedNodeIds: [],
-        onNodeNameChange: () => {},
-        onNodeDescriptionChange: () => {},
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfNodes = rf.props.nodes as Node[];
-      const a = rfNodes.find((n) => n.id === 'a');
-      const data = a?.data as Record<string, unknown> | undefined;
-      expect(data?.onNameChange).toBeUndefined();
-      expect(data?.onDescriptionChange).toBeUndefined();
-    });
-
-    it('marks the active group with data.isActive so the chrome can re-style', () => {
-      // activeGroupId is the FIRST `useState` in DemoCanvas after US-003
-      // lifted drawShape to demo-view. Force-set it to the group id so the
-      // buildNode path treats this group as entered.
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-          selectedNodeIds: [],
-          onNodeNameChange: () => {},
-        },
-        { useStateOverrides: [/* activeGroupId */ 'g'] },
-      );
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfNodes = rf.props.nodes as Node[];
-      const g = rfNodes.find((n) => n.id === 'g');
-      const a = rfNodes.find((n) => n.id === 'a');
-      expect((g?.data as { isActive?: boolean }).isActive).toBe(true);
-      // And the gating is lifted on the active group's children: they now
-      // get back the label-edit callback and are selectable + draggable.
-      expect(a?.selectable).toBeUndefined();
-      expect(a?.draggable).toBeUndefined();
-      expect((a?.data as { onNameChange?: unknown }).onNameChange).toBeDefined();
-    });
-
-    it('onNodeDoubleClick on a group is wired (enters the group)', () => {
-      // We can't observe the state update through the hook shim, but we can
-      // verify that the wired handler delegates to the group case: calling
-      // it with a non-group node should NOT throw, and the wiring exists.
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g')],
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const onNodeDoubleClick = rf.props.onNodeDoubleClick as
-        | ((e: unknown, node: { id: string; type?: string }) => void)
-        | undefined;
-      expect(onNodeDoubleClick).toBeDefined();
-      // Should accept group and non-group nodes without throwing.
-      onNodeDoubleClick?.({}, { id: 'g', type: 'group' });
-      onNodeDoubleClick?.({}, { id: 'a', type: 'shapeNode' });
-    });
-
-    it('clicking a gated child redirects the click to the parent group', () => {
-      // The redirect feeds both onSelectionChange and onNodeClick with the
-      // parent group's id, so the detail panel + selection ring both land on
-      // the group (matching the outcome of clicking the group's border).
-      const selChanges: Array<[string[], string[]]> = [];
-      const clicks: string[] = [];
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        selectedNodeIds: [],
-        onSelectionChange: (ns, cs) => selChanges.push([[...ns], [...cs]]),
-        onNodeClick: (id) => clicks.push(id),
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const onNodeClick = rf.props.onNodeClick as (e: unknown, node: Node) => void;
-      onNodeClick({}, { id: 'a', type: 'shapeNode', position: { x: 0, y: 0 }, data: {} } as Node);
-      expect(selChanges).toEqual([[['g'], []]]);
-      expect(clicks).toEqual(['g']);
-    });
-
-    it('clicking a non-descendant node while a group is active exits the group', () => {
-      // When activeGroupId is 'g' and the user clicks a node OUTSIDE the
-      // group (no parentId or a different parent), the click should still
-      // forward to onNodeClick — and the activeGroupId state should be
-      // cleared (we can't observe state, but the click MUST forward to the
-      // user's callback so the detail panel opens for the clicked node).
-      const clicks: string[] = [];
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeGroupNode('g'), childOf('a', 'g'), makeShapeNode('outside')],
-          onNodeClick: (id) => clicks.push(id),
-        },
-        { useStateOverrides: [/* activeGroupId */ 'g'] },
-      );
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const onNodeClick = rf.props.onNodeClick as (e: unknown, node: Node) => void;
-      onNodeClick({}, {
-        id: 'outside',
-        type: 'shapeNode',
-        position: { x: 0, y: 0 },
-        data: {},
-      } as Node);
-      expect(clicks).toEqual(['outside']);
-    });
-
-    it('pane click forwards onPaneClick (and clears the active group)', () => {
-      // The state clear isn't observable through the hook shim, but the
-      // wrapped handler MUST forward to the parent's onPaneClick so the
-      // detail panel closes — that's the contract callers rely on.
-      const paneClicks: number[] = [];
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        onPaneClick: () => paneClicks.push(1),
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const onPaneClick = rf.props.onPaneClick as (e: unknown) => void;
-      onPaneClick({});
-      expect(paneClicks).toEqual([1]);
-    });
-
-    it('edge between two children of an inactive group is non-selectable', () => {
-      // Both endpoints inside the same gated group → the edge is dropped
-      // from the selectable set. handleEdgeClickWithGroupGate (below) routes
-      // a click on that edge to the parent group instead.
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
-        connectors: [{ id: 'e1', source: 'a', target: 'b', kind: 'default' }],
-        selectedNodeIds: [],
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfEdges = rf.props.edges as Array<{ id: string; selectable?: boolean }>;
-      const e1 = rfEdges.find((e) => e.id === 'e1');
-      expect(e1?.selectable).toBe(false);
-    });
-
-    it('clicking a gated edge redirects to selecting the parent group', () => {
-      const selChanges: Array<[string[], string[]]> = [];
-      const clicks: string[] = [];
-      const tree = callDemoCanvas({
-        nodes: [makeGroupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
-        connectors: [{ id: 'e1', source: 'a', target: 'b', kind: 'default' }],
-        selectedNodeIds: [],
-        onSelectionChange: (ns, cs) => selChanges.push([[...ns], [...cs]]),
-        onConnectorClick: (id) => clicks.push(`conn:${id}`),
-        onNodeClick: (id) => clicks.push(`node:${id}`),
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const onEdgeClick = rf.props.onEdgeClick as (
-        e: unknown,
-        edge: { id: string; source: string; target: string },
-      ) => void;
-      onEdgeClick({}, { id: 'e1', source: 'a', target: 'b' });
-      expect(selChanges).toEqual([[['g'], []]]);
-      // The redirect surfaces the click on the parent group (a node), not
-      // on the connector — onConnectorClick should NOT fire for a gated edge.
-      expect(clicks).toEqual(['node:g']);
-    });
+  describe('selected connectors render LAST', () => {
 
     it('selected connectors render LAST so their EdgeUpdateAnchor wins hit-testing over overlapping siblings', () => {
       // Every edge sits at zIndex 0 (under nodes), so when two unselected
@@ -1410,500 +1171,6 @@ describe('DemoCanvas', () => {
     });
   });
 
-  describe('US-006: group onResize branches on data.isActive', () => {
-    // The wrapper sits in `buildNode` (demo-canvas.tsx) and exposes two
-    // group-resize channels on the rfNode's `data`:
-    //   - `onResize` (per-tick + final) → bounds-only forward to `onNodeResize`.
-    //     Children stay anchored to their original parent-relative positions
-    //     across every tick — feeding the next tick's baseline through
-    //     optimistic overrides previously caused exponential expand/shrink.
-    //   - `onResizeFinal` (mouse-release only, fires AFTER the per-tick path)
-    //     → batches the group's final dims with proportionally scaled child
-    //     positions/sizes via `onGroupResizeWithChildren`. Active (entered)
-    //     groups are exempt from child scaling. The end-only firing is what
-    //     keeps the runaway expand/shrink bug from coming back.
-    // We exercise both channels directly off the rfNode so the assertions
-    // exactly match what `useResizeGesture` calls at every stage of the
-    // gesture. activeGroupId is the FIRST useState in demo-canvas.tsx after
-    // US-003 lifted drawShape to demo-view — slot 0 drives it.
-    const ACTIVE_GROUP_STATE_SLOT = 0;
-
-    function makeSizedGroup(
-      id: string,
-      pos: { x: number; y: number },
-      dims: { width: number; height: number },
-    ): DemoNode {
-      return {
-        id,
-        type: 'group',
-        position: pos,
-        data: { width: dims.width, height: dims.height },
-      };
-    }
-
-    function makeSizedChild(
-      id: string,
-      parentId: string,
-      pos: { x: number; y: number },
-      dims: { width: number; height: number },
-      extra: { locked?: boolean } = {},
-    ): DemoNode {
-      return {
-        id,
-        type: 'shapeNode',
-        parentId,
-        position: pos,
-        data: { name: id, shape: 'rectangle', ...dims, ...extra },
-      };
-    }
-
-    type OnGroupBatch = NonNullable<DemoCanvasProps['onGroupResizeWithChildren']>;
-
-    function getGroupOnResize(
-      props: Partial<DemoCanvasProps>,
-      opts: { active?: boolean } = {},
-    ): (id: string, dims: { width: number; height: number; x: number; y: number }) => void {
-      // Inject `activeGroupId` into the state slot when the test wants an
-      // active group; otherwise leave the slot default (null).
-      const useStateOverrides: ReadonlyArray<unknown> = opts.active
-        ? Array.from({ length: ACTIVE_GROUP_STATE_SLOT + 1 }, (_v, i) =>
-            i === ACTIVE_GROUP_STATE_SLOT ? 'g' : undefined,
-          )
-        : [];
-      const tree = callDemoCanvas(props, { useStateOverrides });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfNodes = rf.props.nodes as Node[];
-      const group = rfNodes.find((n) => n.id === 'g');
-      if (!group) throw new Error('group rfNode not found');
-      const cb = (group.data as { onResize?: unknown }).onResize as
-        | ((id: string, dims: { width: number; height: number; x: number; y: number }) => void)
-        | undefined;
-      if (typeof cb !== 'function') throw new Error('group onResize callback not wired');
-      return cb;
-    }
-
-    // Counterpart to `getGroupOnResize` for the end-only `data.onResizeFinal`
-    // channel. Returns the callback so a test can simulate the mouse-release
-    // dispatch with explicit (newDims, startDims) and assert the batched
-    // child-scaling result.
-    function getGroupOnResizeFinal(
-      props: Partial<DemoCanvasProps>,
-      opts: { active?: boolean } = {},
-    ): (
-      id: string,
-      dims: { width: number; height: number; x: number; y: number },
-      start: { width: number; height: number; x: number; y: number },
-    ) => void {
-      const useStateOverrides: ReadonlyArray<unknown> = opts.active
-        ? Array.from({ length: ACTIVE_GROUP_STATE_SLOT + 1 }, (_v, i) =>
-            i === ACTIVE_GROUP_STATE_SLOT ? 'g' : undefined,
-          )
-        : [];
-      const tree = callDemoCanvas(props, { useStateOverrides });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfNodes = rf.props.nodes as Node[];
-      const group = rfNodes.find((n) => n.id === 'g');
-      if (!group) throw new Error('group rfNode not found');
-      const cb = (group.data as { onResizeFinal?: unknown }).onResizeFinal as
-        | ((
-            id: string,
-            dims: { width: number; height: number; x: number; y: number },
-            start: { width: number; height: number; x: number; y: number },
-          ) => void)
-        | undefined;
-      if (typeof cb !== 'function') throw new Error('group onResizeFinal callback not wired');
-      return cb;
-    }
-
-    it('inactive-group resize forwards to onNodeResize (bounds-only, no child scaling)', () => {
-      // Group resize is now always bounds-only — children stay anchored at
-      // their original parent-relative positions/sizes. The previous "scale
-      // children" branch was removed because per-tick scaling with optimistic
-      // overrides feeding back into the next tick's baseline produced
-      // exponential expand/shrink as the user moved the mouse.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResize({
-        nodes: [
-          makeSizedGroup('g', { x: 10, y: 20 }, { width: 100, height: 80 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 10, y: 20, width: 200, height: 160 });
-      expect(captured.length).toBe(0);
-      expect(single).toEqual([['g', { x: 10, y: 20, width: 200, height: 160 }]]);
-    });
-
-    it('inactive-group resize with locked children also forwards to onNodeResize', () => {
-      // Bounds-only resize: locked children get the same pass-through as
-      // unlocked children. The previous locked-child-skip path inside the
-      // scaling helper is no longer reachable since we don't scale at all.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResize({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-          makeSizedChild('c2', 'g', { x: 50, y: 50 }, { width: 30, height: 30 }, { locked: true }),
-        ],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      expect(captured.length).toBe(0);
-      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
-    });
-
-    it('active-group resize calls onNodeResize only — children untouched', () => {
-      // activeGroupId === 'g' via the state slot override. The wrapper
-      // forwards the resize to `onNodeResize` (single-node path); the
-      // batched callback must NOT fire.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResize(
-        {
-          nodes: [
-            makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-            makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-          ],
-          onNodeResize: (id, dims) => single.push([id, dims]),
-          onGroupResizeWithChildren: (u) => captured.push(u),
-        },
-        { active: true },
-      );
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      expect(captured.length).toBe(0);
-      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
-    });
-
-    it('falls back to onNodeResize when onGroupResizeWithChildren is not wired', () => {
-      // Legacy callers without the batch prop still see the group resize
-      // — children just stay put (pre-US-006 behavior).
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResize({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        // onGroupResizeWithChildren intentionally absent
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
-    });
-
-    it('non-group nodes still route directly through onNodeResize', () => {
-      // Sanity that the buildNode wrapper only swaps for group nodes — a
-      // shape node's data.onResize must be the raw onNodeResize prop. If
-      // this regresses, every non-group node would resize as if it were a
-      // group (no-op since no children) and the batched path would silently
-      // misfire on plain shapes.
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const tree = callDemoCanvas({
-        nodes: [makeShapeNode('s1')],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        onGroupResizeWithChildren: () => {},
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const s1 = (rf.props.nodes as Node[]).find((n) => n.id === 's1');
-      if (!s1) throw new Error('shape rfNode not found');
-      const onResize = (s1.data as { onResize?: unknown }).onResize as (
-        id: string,
-        d: { width: number; height: number; x: number; y: number },
-      ) => void;
-      onResize('s1', { x: 0, y: 0, width: 40, height: 30 });
-      expect(single).toEqual([['s1', { x: 0, y: 0, width: 40, height: 30 }]]);
-    });
-
-    it('inactive-group resize with no children also forwards to onNodeResize', () => {
-      // Childless group goes through the same simple bounds-only path.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResize({
-        nodes: [makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 })],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      expect(captured.length).toBe(0);
-      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
-    });
-
-    it('group with unknown old dims falls back to onNodeResize (defensive)', () => {
-      // makeGroupNode in this test file gives width=200/height=200 by
-      // default, but a freshly-created group's data may not yet have dims.
-      // Construct one without width/height to verify the defensive path.
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const noDimsGroup: DemoNode = {
-        id: 'g',
-        type: 'group',
-        position: { x: 0, y: 0 },
-        data: {},
-      };
-      const cb = getGroupOnResize({
-        nodes: [noDimsGroup, makeSizedChild('c1', 'g', { x: 0, y: 0 }, { width: 10, height: 10 })],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      expect(captured.length).toBe(0);
-      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
-    });
-
-    // ---- onResizeFinal path: mouse-release batches scaled children ----
-
-    it('wires data.onResizeFinal on group nodes (end-only channel present)', () => {
-      // buildNode must expose the end-only callback alongside the per-tick
-      // one so useResizeGesture can dispatch the child-scaling batch on
-      // mouse release. Without this wiring, the end-only path is silently
-      // dropped and resize feels like the children never update.
-      const tree = callDemoCanvas({
-        nodes: [makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 })],
-        onNodeResize: () => {},
-        onGroupResizeWithChildren: () => {},
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const group = (rf.props.nodes as Node[]).find((n) => n.id === 'g');
-      if (!group) throw new Error('group rfNode not found');
-      expect(typeof (group.data as { onResizeFinal?: unknown }).onResizeFinal).toBe('function');
-    });
-
-    it('inactive-group onResizeFinal dispatches scaled children via onGroupResizeWithChildren (live: false)', () => {
-      // Scale from 100×100 → 200×200 (factor 2x both axes). Child at
-      // relative (10, 10) with 20×20 → (20, 20) with 40×40 in the new rect.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const cb = getGroupOnResizeFinal({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: () => {},
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
-      expect(captured).toHaveLength(1);
-      const batch = captured[0];
-      if (!batch) throw new Error('expected batch dispatch');
-      expect(batch.groupId).toBe('g');
-      expect(batch.groupDims).toEqual({ x: 0, y: 0, width: 200, height: 200 });
-      expect(batch.live).toBe(false);
-      expect(batch.childUpdates).toEqual([
-        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
-      ]);
-    });
-
-    it('inactive-group onResizeFinal scales using the START rect, NOT current data dims', () => {
-      // Regression guard for the exponential expand/shrink bug: if the
-      // handler reads the group's `data.width`/`data.height` (which by now
-      // reflect the LATEST per-tick optimistic override = the final dims),
-      // the computed scale factor is ~1.0 and children never move. The
-      // start rect passed by useResizeGesture is the only stable baseline.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const cb = getGroupOnResizeFinal({
-        // Group's stored data.width/height already == FINAL dims (200×200),
-        // simulating the per-tick optimistic-override echo.
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 200, height: 200 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: () => {},
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      // Pass start = 100×100 explicitly. Scale factor must come from start
-      // → 2x → child becomes (20, 20) size 40×40.
-      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
-      expect(captured).toHaveLength(1);
-      const batch = captured[0];
-      if (!batch) throw new Error('expected batch dispatch');
-      expect(batch.childUpdates).toEqual([
-        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
-      ]);
-    });
-
-    it('inactive-group onResizeFinal skips locked children in the batch', () => {
-      // scaleNodesWithinRect passes locked nodes through unchanged. Verify
-      // the batch reflects that: c2 (locked) stays at its original position
-      // and size, while c1 scales 2x.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const cb = getGroupOnResizeFinal({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-          makeSizedChild('c2', 'g', { x: 50, y: 50 }, { width: 30, height: 30 }, { locked: true }),
-        ],
-        onNodeResize: () => {},
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
-      expect(captured).toHaveLength(1);
-      const batch = captured[0];
-      if (!batch) throw new Error('expected batch dispatch');
-      expect(batch.childUpdates).toEqual([
-        { id: 'c1', position: { x: 20, y: 20 }, width: 40, height: 40 },
-        { id: 'c2', position: { x: 50, y: 50 }, width: 30, height: 30 },
-      ]);
-    });
-
-    it('active-group onResizeFinal does NOT scale children (single-node semantics)', () => {
-      // Entered groups resize like any other node — the user has explicitly
-      // entered the group to edit its bounds independently of its children.
-      // The end-only callback must early-return; per-tick `onResize` already
-      // pushed the group's dims to `onNodeResize`.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const cb = getGroupOnResizeFinal(
-        {
-          nodes: [
-            makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-            makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-          ],
-          onNodeResize: () => {},
-          onGroupResizeWithChildren: (u) => captured.push(u),
-        },
-        { active: true },
-      );
-      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
-      expect(captured.length).toBe(0);
-    });
-
-    it('inactive-group onResizeFinal with zero-width start is a no-op for children', () => {
-      // Degenerate start rect (zero on either axis) yields a singular scale.
-      // The batch dispatch is skipped so we don't accidentally NaN child
-      // positions. The per-tick path already committed the group's bounds.
-      const captured: Parameters<OnGroupBatch>[0][] = [];
-      const cb = getGroupOnResizeFinal({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: () => {},
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 0, height: 100 });
-      expect(captured.length).toBe(0);
-    });
-
-    it('inactive-group onResizeFinal falls back to onNodeResize when batch prop is absent', () => {
-      // Legacy callers that haven't wired onGroupResizeWithChildren still
-      // get the group's final dims through the standard single-node channel.
-      // Children stay at their parent-relative positions (no scaling
-      // happens — that's the price of skipping the batch prop).
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResizeFinal({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        // onGroupResizeWithChildren intentionally absent
-      });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
-      expect(single).toEqual([['g', { x: 0, y: 0, width: 200, height: 200 }]]);
-    });
-
-    it('non-group nodes do NOT expose data.onResizeFinal', () => {
-      // The end-only channel is group-specific. Shape nodes (and every
-      // other variant) only need the per-tick onResize. Leaving the field
-      // undefined keeps useResizeGesture's `onResizeFinalRef.current?.()`
-      // chain a clean no-op for non-group resize gestures.
-      const tree = callDemoCanvas({
-        nodes: [makeShapeNode('s1')],
-        onNodeResize: () => {},
-        onGroupResizeWithChildren: () => {},
-      });
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const s1 = (rf.props.nodes as Node[]).find((n) => n.id === 's1');
-      if (!s1) throw new Error('shape rfNode not found');
-      expect((s1.data as { onResizeFinal?: unknown }).onResizeFinal).toBeUndefined();
-    });
-  });
-
-  describe('group resize is bounds-only across ticks', () => {
-    // Group resize forwards every tick straight to `onNodeResize` with the
-    // absolute new dims (no scaling, no per-tick batched callback). This
-    // sanity test pins that behavior so a future regression to "scale
-    // children" can't reintroduce the exponential expand/shrink the user
-    // hit while dragging the resize corner.
-    function makeSizedGroup(
-      id: string,
-      pos: { x: number; y: number },
-      dims: { width: number; height: number },
-    ): DemoNode {
-      return {
-        id,
-        type: 'group',
-        position: pos,
-        data: { width: dims.width, height: dims.height },
-      };
-    }
-    function makeSizedChild(
-      id: string,
-      parentId: string,
-      pos: { x: number; y: number },
-      dims: { width: number; height: number },
-    ): DemoNode {
-      return {
-        id,
-        type: 'shapeNode',
-        parentId,
-        position: pos,
-        data: { name: id, shape: 'rectangle', ...dims },
-      };
-    }
-    function getGroupOnResize(props: Partial<DemoCanvasProps>) {
-      const tree = callDemoCanvas(props);
-      const rf = findElement(tree, (el) => el.type === ReactFlow);
-      if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-      const rfNodes = rf.props.nodes as Node[];
-      const group = rfNodes.find((n) => n.id === 'g');
-      if (!group) throw new Error('group rfNode not found');
-      const cb = (group.data as { onResize?: unknown }).onResize as
-        | ((id: string, dims: { width: number; height: number; x: number; y: number }) => void)
-        | undefined;
-      if (typeof cb !== 'function') throw new Error('group onResize callback not wired');
-      return cb;
-    }
-
-    it('per-tick group resize forwards every tick to onNodeResize with absolute dims', () => {
-      const captured: Array<{
-        groupId: string;
-        groupDims: { width: number; height: number; x: number; y: number };
-        childUpdates: Array<{
-          id: string;
-          position: { x: number; y: number };
-          width?: number;
-          height?: number;
-        }>;
-      }> = [];
-      const single: Array<[string, { width: number; height: number; x: number; y: number }]> = [];
-      const cb = getGroupOnResize({
-        nodes: [
-          makeSizedGroup('g', { x: 0, y: 0 }, { width: 100, height: 100 }),
-          makeSizedChild('c1', 'g', { x: 10, y: 10 }, { width: 20, height: 20 }),
-        ],
-        onNodeResize: (id, dims) => single.push([id, dims]),
-        onGroupResizeWithChildren: (u) => captured.push(u),
-      });
-      cb('g', { x: 0, y: 0, width: 110, height: 110 });
-      cb('g', { x: 0, y: 0, width: 150, height: 150 });
-      cb('g', { x: 0, y: 0, width: 200, height: 200 });
-      // No batched scaling — every tick goes through the single-node path.
-      expect(captured.length).toBe(0);
-      expect(single).toEqual([
-        ['g', { x: 0, y: 0, width: 110, height: 110 }],
-        ['g', { x: 0, y: 0, width: 150, height: 150 }],
-        ['g', { x: 0, y: 0, width: 200, height: 200 }],
-      ]);
-    });
-  });
-
   describe('US-007: multi-select bounding-box resize overlay', () => {
     // The overlay component itself decides presence via
     // `selectionEligibleForOverlay`; here we test the canvas-side wiring —
@@ -1915,7 +1182,7 @@ describe('DemoCanvas', () => {
       id: string,
       pos: { x: number; y: number },
       dims: { width: number; height: number },
-      extra: { locked?: boolean; parentId?: string } = {},
+      extra: { locked?: boolean } = {},
     ): DemoNode {
       const node: DemoNode = {
         id,
@@ -1926,7 +1193,6 @@ describe('DemoCanvas', () => {
       if (extra.locked !== undefined) {
         (node.data as { locked?: boolean }).locked = extra.locked;
       }
-      if (extra.parentId !== undefined) node.parentId = extra.parentId;
       return node;
     }
 
@@ -1967,31 +1233,6 @@ describe('DemoCanvas', () => {
       if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
       const selected = overlay.props.selectedNodes as ReadonlyArray<unknown>;
       expect(selected).toEqual([]);
-    });
-
-    it('preserves each selected node’s parentId so the overlay can gate same-group selections', () => {
-      // Same-group children — the overlay's own eligibility check (tested in
-      // selection-resize-overlay.test.tsx) returns false here; the canvas
-      // just needs to forward the parentId so the gating can fire.
-      const { overlay } = findOverlay({
-        nodes: [
-          {
-            id: 'g',
-            type: 'group',
-            position: { x: 0, y: 0 },
-            data: { width: 200, height: 200 },
-          },
-          makeSizedShape('c1', { x: 10, y: 10 }, { width: 30, height: 30 }, { parentId: 'g' }),
-          makeSizedShape('c2', { x: 50, y: 50 }, { width: 30, height: 30 }, { parentId: 'g' }),
-        ],
-        selectedNodeIds: ['c1', 'c2'],
-      });
-      if (!overlay) throw new Error('SelectionResizeOverlay not in DemoCanvas tree');
-      const selected = overlay.props.selectedNodes as ReadonlyArray<{
-        id: string;
-        parentId?: string;
-      }>;
-      expect(selected.map((n) => n.parentId)).toEqual(['g', 'g']);
     });
 
     it('forwards the onMultiResize prop unchanged so resize-stop dispatches to the parent', () => {
@@ -2041,460 +1282,6 @@ describe('DemoCanvas', () => {
       const a = selected.find((n) => n.id === 'a');
       expect(a?.position).toEqual({ x: 25, y: 30 });
       expect(a?.data).toEqual({ width: 70, height: 70, locked: true });
-    });
-  });
-
-  describe('US-008: inject isActive into StyleStrip selectedNodes', () => {
-    // The strip's "entered group" branch keys off data.isActive, but the
-    // selectedNodes prop carries the on-disk shape (no transient flags).
-    // The canvas injects isActive: true on the group whose id matches the
-    // local activeGroupId state — slot 0 in useStateOverrides after US-003
-    // lifted drawShape to demo-view. These tests pin the injection contract
-    // so the strip never has to ask the canvas for the active id separately.
-    function findStripNodes(tree: unknown): DemoNode[] | null {
-      const strip = findElement(tree, (el) => el.type === StyleStrip);
-      if (!strip) return null;
-      return strip.props.nodes as DemoNode[];
-    }
-
-    it('injects data.isActive=true on the group whose id matches activeGroupId', () => {
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeGroupNode('g1'), makeShapeNode('s1')],
-          selectedNodeIds: ['g1'],
-          selectedNodes: [makeGroupNode('g1')],
-          onStyleNode: () => {},
-          onStyleConnector: () => {},
-        },
-        // Slot 0 = activeGroupId (drawShape was lifted to demo-view in
-        // US-003). Setting slot 0 = 'g1' simulates the user having double-
-        // clicked into g1.
-        { useStateOverrides: ['g1'] },
-      );
-      const nodes = findStripNodes(tree);
-      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
-      const group = nodes.find((n) => n.id === 'g1');
-      expect(group?.type).toBe('group');
-      expect((group?.data as { isActive?: boolean }).isActive).toBe(true);
-    });
-
-    it('does NOT inject isActive when the active group is not in the selection', () => {
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeGroupNode('g1'), makeShapeNode('s1')],
-          selectedNodeIds: ['s1'],
-          selectedNodes: [makeShapeNode('s1')],
-          onStyleNode: () => {},
-          onStyleConnector: () => {},
-        },
-        { useStateOverrides: ['g1'] },
-      );
-      const nodes = findStripNodes(tree);
-      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
-      const shape = nodes.find((n) => n.id === 's1');
-      // A shape node should never carry isActive — it's a group-only flag.
-      expect((shape?.data as { isActive?: boolean }).isActive).toBeUndefined();
-    });
-
-    it('does NOT inject isActive when activeGroupId is null (no group entered)', () => {
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeGroupNode('g1')],
-          selectedNodeIds: ['g1'],
-          selectedNodes: [makeGroupNode('g1')],
-          onStyleNode: () => {},
-          onStyleConnector: () => {},
-        },
-        // Default activeGroupId is null (useState slot 0 unset).
-        { useStateOverrides: [] },
-      );
-      const nodes = findStripNodes(tree);
-      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
-      const group = nodes.find((n) => n.id === 'g1');
-      expect((group?.data as { isActive?: boolean }).isActive).toBeUndefined();
-    });
-
-    it('passes through non-group nodes unchanged when a different group is active', () => {
-      const tree = callDemoCanvas(
-        {
-          nodes: [makeGroupNode('g1'), makeShapeNode('s1')],
-          selectedNodeIds: ['g1', 's1'],
-          selectedNodes: [makeGroupNode('g1'), makeShapeNode('s1')],
-          onStyleNode: () => {},
-          onStyleConnector: () => {},
-        },
-        { useStateOverrides: ['g1'] },
-      );
-      const nodes = findStripNodes(tree);
-      if (!nodes) throw new Error('StyleStrip not rendered in DemoCanvas tree');
-      // The matched group gets isActive=true; the shape passes through.
-      const group = nodes.find((n) => n.id === 'g1');
-      const shape = nodes.find((n) => n.id === 's1');
-      expect((group?.data as { isActive?: boolean }).isActive).toBe(true);
-      expect((shape?.data as { isActive?: boolean }).isActive).toBeUndefined();
-    });
-  });
-
-  describe('US-010: group gestures ignore events from child nodes', () => {
-    // Synthetic event target with a `closest` method that returns a
-    // configured-by-data-id stub `.react-flow__node` ancestor (or null). Used
-    // to drive the dblclick activate-guard test cases without a real DOM.
-    function mkTarget(dataId: string | null): EventTarget {
-      const ancestor =
-        dataId === null
-          ? null
-          : {
-              getAttribute: (name: string): string | null => (name === 'data-id' ? dataId : null),
-            };
-      return {
-        closest: (_sel: string) => ancestor,
-      } as unknown as EventTarget;
-    }
-
-    function childOf(id: string, parentId: string): DemoNode {
-      const base = makeShapeNode(id);
-      return { ...base, parentId };
-    }
-
-    describe('eventTargetIsOtherNode helper', () => {
-      it('returns false when target is null', () => {
-        expect(eventTargetIsOtherNode(null, 'g')).toBe(false);
-      });
-
-      it('returns false when target has no closest method', () => {
-        expect(eventTargetIsOtherNode({} as EventTarget, 'g')).toBe(false);
-      });
-
-      it('returns false when no .react-flow__node ancestor exists', () => {
-        expect(eventTargetIsOtherNode(mkTarget(null), 'g')).toBe(false);
-      });
-
-      it('returns false when closest .react-flow__node carries the same data-id', () => {
-        expect(eventTargetIsOtherNode(mkTarget('g'), 'g')).toBe(false);
-      });
-
-      it('returns true when closest .react-flow__node carries a different data-id', () => {
-        expect(eventTargetIsOtherNode(mkTarget('child'), 'g')).toBe(true);
-      });
-
-      it('returns false when data-id attribute is missing on the matched element', () => {
-        const target = {
-          closest: (_sel: string) => ({
-            getAttribute: (_name: string) => null,
-          }),
-        } as unknown as EventTarget;
-        expect(eventTargetIsOtherNode(target, 'g')).toBe(false);
-      });
-    });
-
-    describe('onNodeDoubleClick activate guard', () => {
-      it('wires onNodeDoubleClick on the ReactFlow root', () => {
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        expect(typeof rf.props.onNodeDoubleClick).toBe('function');
-      });
-
-      it('dblclick on a group with empty event.target activates (no closest ancestor)', () => {
-        // No event.target / closest → guard is permissive; the group's own
-        // dblclick is allowed. Mainly verifies no throw on the absent-target
-        // path (xyflow always provides target, but defensive-coding the
-        // missing case keeps the handler robust under unit-test inputs).
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
-          e: { target: EventTarget | null },
-          node: Node,
-        ) => void;
-        // Should not throw on a null/empty target.
-        onNodeDoubleClick({ target: null }, {
-          id: 'g',
-          type: 'group',
-          position: { x: 0, y: 0 },
-          data: {},
-        } as Node);
-      });
-
-      it('dblclick whose event.target is inside the group itself does not throw', () => {
-        // event.target.closest('.react-flow__node') → { data-id: 'g' } — same
-        // as the group's id, so the guard PASSES and the handler proceeds to
-        // activate. The actual setActiveGroupId call is swallowed by the hook
-        // shim, but verifying no throw is the contract the handler exposes.
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
-          e: { target: EventTarget | null },
-          node: Node,
-        ) => void;
-        onNodeDoubleClick({ target: mkTarget('g') }, {
-          id: 'g',
-          type: 'group',
-          position: { x: 0, y: 0 },
-          data: {},
-        } as Node);
-      });
-
-      it('dblclick whose event.target is inside a child node does not throw (guard bails)', () => {
-        // event.target.closest('.react-flow__node') → { data-id: 'a' } — a
-        // child, not the group. The activate guard returns true so the
-        // handler bails BEFORE setActiveGroupId. We verify the no-throw path
-        // (the state isn't observable through the hook shim) and rely on the
-        // helper test above to cover the actual gate decision.
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
-          e: { target: EventTarget | null },
-          node: Node,
-        ) => void;
-        onNodeDoubleClick({ target: mkTarget('a') }, {
-          id: 'g',
-          type: 'group',
-          position: { x: 0, y: 0 },
-          data: {},
-        } as Node);
-      });
-
-      it('dblclick on a non-group node is a no-op even with target inside another node', () => {
-        // node.type !== 'group' → early return; the guard never runs. The
-        // existing per-node dblclick affordances (e.g. shape label edit) are
-        // not affected by this handler.
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        const onNodeDoubleClick = rf.props.onNodeDoubleClick as (
-          e: { target: EventTarget | null },
-          node: Node,
-        ) => void;
-        onNodeDoubleClick({ target: mkTarget('g') }, {
-          id: 'a',
-          type: 'shapeNode',
-          position: { x: 0, y: 0 },
-          data: {},
-        } as Node);
-      });
-    });
-
-    describe('mousedown drag guard', () => {
-      it('onNodeDragStop with only a child in draggedNodes commits the child position only', () => {
-        // Under xyflow 12, mousedown on a child node initiates only that
-        // child's drag — the parent group's `useDrag` does not run because
-        // the group's wrapper is a DOM sibling of the child's wrapper (not an
-        // ancestor). The drag-stop callback receives the `draggedNodes` array
-        // xyflow assembled; verifying that ONLY the child id is in the
-        // commit batch is the canonical assertion that the group did not
-        // join the drag.
-        const positions: Array<{ id: string; position: { x: number; y: number } }> = [];
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-          onNodePositionsChange: (updates) => positions.push(...updates),
-          onNodePositionChange: (id, position) => positions.push({ id, position }),
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        const onNodeDragStop = rf.props.onNodeDragStop as (
-          e: unknown,
-          node: Node,
-          draggedNodes: Node[],
-        ) => void;
-        const child: Node = {
-          id: 'a',
-          type: 'shapeNode',
-          position: { x: 25, y: 15 },
-          data: {},
-        };
-        onNodeDragStop({}, child, [child]);
-        expect(positions).toEqual([{ id: 'a', position: { x: 25, y: 15 } }]);
-        // Group is never in the commit batch — its position remains at the
-        // canvas's source-of-truth value (whatever the parent prop carries).
-        expect(positions.some((p) => p.id === 'g')).toBe(false);
-      });
-
-      it('onNodeDragStop with the group in draggedNodes commits the group position', () => {
-        // Counter-test: when xyflow actually does dispatch a group drag (i.e.
-        // mousedown landed on the group's chrome — label slot, border, or
-        // empty interior), the group's id makes it into the commit batch.
-        // Children follow via xyflow's parent-anchored child rendering and
-        // would NOT appear in `draggedNodes` (xyflow only commits the
-        // primary dragged node when the group has selected children — the
-        // parent-anchor handles child positions implicitly).
-        const positions: Array<{ id: string; position: { x: number; y: number } }> = [];
-        const tree = callDemoCanvas({
-          nodes: [makeGroupNode('g'), childOf('a', 'g')],
-          onNodePositionsChange: (updates) => positions.push(...updates),
-          onNodePositionChange: (id, position) => positions.push({ id, position }),
-        });
-        const rf = findElement(tree, (el) => el.type === ReactFlow);
-        if (!rf) throw new Error('ReactFlow element not found in DemoCanvas tree');
-        const onNodeDragStop = rf.props.onNodeDragStop as (
-          e: unknown,
-          node: Node,
-          draggedNodes: Node[],
-        ) => void;
-        const group: Node = {
-          id: 'g',
-          type: 'group',
-          position: { x: 40, y: 60 },
-          data: {},
-        };
-        onNodeDragStop({}, group, [group]);
-        expect(positions).toEqual([{ id: 'g', position: { x: 40, y: 60 } }]);
-      });
-    });
-  });
-
-  // Cmd/Ctrl + G shortcut wiring is exercised via the exported
-  // `handleGroupShortcut` helper. The create-group branch is intentionally
-  // removed (the right-click "Group" item is also gone), so only the ungroup
-  // and no-op paths are exercised here.
-  describe('Cmd/Ctrl + G ungroups (create-group disabled) via handleGroupShortcut', () => {
-    const makeEvent = (
-      overrides: Partial<GroupShortcutEventLike> = {},
-    ): GroupShortcutEventLike & { prevented: boolean } => {
-      const ev = {
-        metaKey: false,
-        ctrlKey: false,
-        key: 'g',
-        prevented: false,
-        preventDefault() {
-          this.prevented = true;
-        },
-        ...overrides,
-      } as GroupShortcutEventLike & { prevented: boolean };
-      return ev;
-    };
-
-    const looseShape = (id: string): GroupableNode => ({
-      id,
-      type: 'shapeNode',
-      position: { x: 0, y: 0 },
-    });
-    const groupNode = (id: string): GroupableNode => ({
-      id,
-      type: 'group',
-      position: { x: 0, y: 0 },
-      width: 200,
-      height: 200,
-    });
-    const childOf = (id: string, parentId: string): GroupableNode => ({
-      id,
-      type: 'shapeNode',
-      position: { x: 0, y: 0 },
-      parentId,
-    });
-
-    it('does NOT create a group from 3 loose nodes (create-group is disabled)', () => {
-      const event = makeEvent({ metaKey: true });
-      const ungroupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b', 'c'],
-        nodes: [looseShape('a'), looseShape('b'), looseShape('c')],
-        activeElement: null,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(handled).toBe(false);
-      expect(event.prevented).toBe(false);
-      expect(ungroupCalls).toEqual([]);
-    });
-
-    it('ungroups when Cmd+G fires with a single group node selected', () => {
-      const event = makeEvent({ metaKey: true });
-      const ungroupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['g'],
-        nodes: [groupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
-        activeElement: null,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(handled).toBe(true);
-      expect(event.prevented).toBe(true);
-      expect(ungroupCalls).toEqual([['g']]);
-    });
-
-    it('ungroups when Cmd+G fires with all children of one group selected', () => {
-      const event = makeEvent({ metaKey: true });
-      const ungroupCalls: string[][] = [];
-      handleGroupShortcut({
-        event,
-        selectedNodeIds: ['a', 'b'],
-        nodes: [groupNode('g'), childOf('a', 'g'), childOf('b', 'g')],
-        activeElement: null,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(ungroupCalls).toEqual([['g']]);
-    });
-
-    it('no-ops when Cmd+G fires with an empty selection', () => {
-      const event = makeEvent({ metaKey: true });
-      const ungroupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: [],
-        nodes: [],
-        activeElement: null,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(handled).toBe(false);
-      expect(event.prevented).toBe(false);
-      expect(ungroupCalls).toEqual([]);
-    });
-
-    it('does not fire when focus is in an INPUT (let the browser handle the keystroke)', () => {
-      const event = makeEvent({ metaKey: true });
-      const fakeInput = { tagName: 'INPUT' } as unknown as Element;
-      const ungroupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['g'],
-        nodes: [groupNode('g')],
-        activeElement: fakeInput,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(handled).toBe(false);
-      expect(event.prevented).toBe(false);
-      expect(ungroupCalls).toEqual([]);
-    });
-
-    it('does not fire without the Cmd/Ctrl modifier (plain "g" is a typeable letter)', () => {
-      const event = makeEvent({ key: 'g' });
-      const ungroupCalls: string[][] = [];
-      const handled = handleGroupShortcut({
-        event,
-        selectedNodeIds: ['g'],
-        nodes: [groupNode('g')],
-        activeElement: null,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(handled).toBe(false);
-      expect(event.prevented).toBe(false);
-      expect(ungroupCalls).toEqual([]);
-    });
-
-    it('does not fire when the key is not "g" (Cmd+A, Cmd+Z etc. pass through)', () => {
-      const event = makeEvent({ metaKey: true, key: 'a' });
-      const ungroupCalls: string[][] = [];
-      handleGroupShortcut({
-        event,
-        selectedNodeIds: ['g'],
-        nodes: [groupNode('g')],
-        activeElement: null,
-        onUngroupSelection: (ids) => ungroupCalls.push(ids),
-      });
-      expect(ungroupCalls).toEqual([]);
     });
   });
 
@@ -2845,10 +1632,9 @@ describe('DemoCanvas', () => {
       // ref and find the one initialised with null + later set to a node id.
       const refSink: { current: unknown }[] = [];
       const useStateOverrides: unknown[] = [];
-      // US-003 lifted drawShape to demo-view; contextMenuPos shifted from
-      // slot 6 to 5, contextOnNode from 7 to 6.
-      useStateOverrides[5] = { x: 100, y: 100 };
-      useStateOverrides[6] = true;
+      // activeGroupId removed; contextMenuPos now at slot 4, contextOnNode at slot 5.
+      useStateOverrides[4] = { x: 100, y: 100 };
+      useStateOverrides[5] = true;
       const tree = callDemoCanvas(
         {
           nodes: [lockedShape('a')],
@@ -2868,8 +1654,8 @@ describe('DemoCanvas', () => {
       }
       // Re-render with the populated ref so the gate sees the locked id.
       const useStateOverrides2: unknown[] = [];
-      useStateOverrides2[5] = { x: 100, y: 100 };
-      useStateOverrides2[6] = true;
+      useStateOverrides2[4] = { x: 100, y: 100 };
+      useStateOverrides2[5] = true;
       const refSink2: { current: unknown }[] = [];
       const tree2 = callDemoCanvas(
         {
@@ -2912,8 +1698,8 @@ describe('DemoCanvas', () => {
       // Copy/Unlock/Delete all render. The pane-right-click path (which
       // intentionally produces this menu) is unchanged.
       const useStateOverrides: unknown[] = [];
-      useStateOverrides[5] = { x: 100, y: 100 };
-      useStateOverrides[6] = false; // contextOnNode: false (pane-mode)
+      useStateOverrides[4] = { x: 100, y: 100 };
+      useStateOverrides[5] = false; // contextOnNode: false (pane-mode)
       const tree = callDemoCanvas(
         {
           nodes: [lockedShape('a')],

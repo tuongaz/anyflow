@@ -11,7 +11,6 @@
  *   - shape rectangle/ellipse/sticky → borderSize + fontSize
  *   - shape text                      → fontSize only (text stays chromeless)
  *   - image                           → borderWidth (image has no label text)
- *   - group                           → borderWidth (groups have no body text)
  *   - icon                            → none (schema has no borderSize/
  *                                       fontSize fields; the `text-xs`
  *                                       className already renders the icon
@@ -63,7 +62,6 @@ const SHAPE_ELLIPSE_FIELDS = [
 ] as const;
 const SHAPE_TEXT_FIELDS = ['fontSize'] as const;
 const IMAGE_FIELDS = ['borderColor', 'borderWidth', 'borderStyle'] as const;
-const GROUP_FIELDS = ['borderColor', 'backgroundColor', 'borderWidth', 'borderStyle'] as const;
 
 export interface ShapeDataDefaults {
   // Index signature lets the result satisfy `CreateNodeBody.data`
@@ -132,24 +130,3 @@ export function buildNewImageData(
   };
 }
 
-export interface GroupDataDefaults {
-  [key: string]: unknown;
-  width: number;
-  height: number;
-  borderWidth: number;
-}
-
-/** Build the `data` object for a freshly-created group node. Groups use
- * `borderWidth` (US-001), not `borderSize`. No `fontSize` — groups render
- * a label slot but not body text. */
-export function buildNewGroupData(
-  dims: { width: number; height: number },
-  lastUsed?: Partial<NodeStylePatch>,
-): GroupDataDefaults {
-  return {
-    width: dims.width,
-    height: dims.height,
-    borderWidth: NEW_NODE_BORDER_WIDTH,
-    ...pick(lastUsed, GROUP_FIELDS),
-  };
-}

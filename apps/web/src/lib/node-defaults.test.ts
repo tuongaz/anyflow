@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import {
   NEW_NODE_BORDER_WIDTH,
   NEW_NODE_FONT_SIZE,
-  buildNewGroupData,
   buildNewImageData,
   buildNewShapeData,
 } from './node-defaults';
@@ -60,24 +59,6 @@ describe('buildNewImageData', () => {
     expect('borderSize' in data).toBe(false);
     // US-004: on-disk field is `path`, not `image` (base64 hard-cut).
     expect('image' in data).toBe(false);
-  });
-});
-
-describe('buildNewGroupData', () => {
-  it('group gets borderWidth=1 (NOT borderSize) and no fontSize', () => {
-    const data = buildNewGroupData({ width: 320, height: 240 });
-    expect(data.width).toBe(320);
-    expect(data.height).toBe(240);
-    expect(data.borderWidth).toBe(NEW_NODE_BORDER_WIDTH);
-    // groups render no body text — fontSize is intentionally absent.
-    expect('fontSize' in data).toBe(false);
-    expect('borderSize' in data).toBe(false);
-  });
-
-  it('preserves requested dims', () => {
-    const data = buildNewGroupData({ width: 999, height: 1 });
-    expect(data.width).toBe(999);
-    expect(data.height).toBe(1);
   });
 });
 
@@ -210,37 +191,3 @@ describe('buildNewImageData with lastUsed', () => {
   });
 });
 
-describe('buildNewGroupData with lastUsed', () => {
-  it('an empty lastUsed reproduces the factory defaults exactly', () => {
-    const baseline = buildNewGroupData({ width: 320, height: 240 });
-    const overlaid = buildNewGroupData({ width: 320, height: 240 }, {});
-    expect(overlaid).toEqual(baseline);
-  });
-
-  it('consumes borderColor / backgroundColor / borderWidth / borderStyle', () => {
-    const data = buildNewGroupData(
-      { width: 320, height: 240 },
-      {
-        borderColor: 'blue',
-        backgroundColor: 'amber',
-        borderWidth: 5,
-        borderStyle: 'dotted',
-      },
-    );
-    expect(data.borderColor).toBe('blue');
-    expect(data.backgroundColor).toBe('amber');
-    expect(data.borderWidth).toBe(5);
-    expect(data.borderStyle).toBe('dotted');
-  });
-
-  it('drops shape-only fields like fontSize, cornerRadius, borderSize', () => {
-    const data = buildNewGroupData(
-      { width: 320, height: 240 },
-      { fontSize: 22, cornerRadius: 8, borderSize: 9, borderColor: 'green' },
-    );
-    expect(data.borderColor).toBe('green');
-    expect('fontSize' in data).toBe(false);
-    expect('cornerRadius' in data).toBe(false);
-    expect('borderSize' in data).toBe(false);
-  });
-});

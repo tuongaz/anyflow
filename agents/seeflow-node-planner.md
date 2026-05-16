@@ -100,8 +100,7 @@ Each node entry has:
     cloud platform (`shape: "cloud"`), a third-party SaaS whose health
     is not tracked (`shape: "cloud"`). Everything with observable state
     must be a `stateNode`, not a `shapeNode`.
-  - `"iconNode"`, `"htmlNode"`, `"imageNode"`, `"groupNode"` — do NOT
-    use at this phase.
+  - `"iconNode"`, `"htmlNode"`, `"imageNode"` — do NOT use at this phase.
 - **`data.name`** *(string)* — the on-canvas header. Use the spelling the
   audience would recognise (`"POST /checkout"`, `"Payments Service"`,
   `"Order DB"`). Title-case proper services; keep HTTP verbs uppercase.

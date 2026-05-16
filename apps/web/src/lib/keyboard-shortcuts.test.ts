@@ -426,7 +426,6 @@ describe('COMMANDS registry (US-002)', () => {
     'view.zoomToSelection',
     'layout.tidy',
     'selection.deselect',
-    'group.ungroup',
     'help.commandPalette',
     'export.pdf',
     'export.png',

@@ -1,6 +1,5 @@
 import { CanvasToolbar, HTML_BLOCK_DND_TYPE, TOOLBAR_SHAPES } from '@/components/canvas-toolbar';
 import { EditableEdge, type EditableEdgeData } from '@/components/edges/editable-edge';
-import { GroupNode } from '@/components/nodes/group-node';
 import { HtmlNode } from '@/components/nodes/html-node';
 import { IconNode } from '@/components/nodes/icon-node';
 import { ImageNode } from '@/components/nodes/image-node';
@@ -47,9 +46,7 @@ import {
   getNodeIntersection,
   projectCursorToPerimeter,
 } from '@/lib/floating-edge-geometry';
-import { type GroupableNode, planGroupShortcutAction, selectUngroupableSet } from '@/lib/group-ops';
 import { NEW_NODE_BORDER_WIDTH } from '@/lib/node-defaults';
-import { scaleNodesWithinRect } from '@/lib/scale-nodes';
 import { cn } from '@/lib/utils';
 import {
   Background,
@@ -157,32 +154,6 @@ export interface DemoCanvasProps {
     nodeId: string,
     dims: { width: number; height: number; x: number; y: number },
   ) => void;
-  /**
-   * US-006: atomic inactive-group resize. Fired in place of `onNodeResize`
-   * when a NON-active group is resized: the canvas pre-computes the group's
-   * new dims AND the scaled positions/sizes of every direct child (via the
-   * shared `scaleNodesWithinRect` helper). The parent commits the whole batch
-   * as ONE undo entry so a single Cmd+Z reverts every child mutation along
-   * with the group's own dims. Active groups (data.isActive === true) still
-   * route through `onNodeResize` so resizing an entered group leaves the
-   * children untouched. Absent → the canvas falls back to `onNodeResize` for
-   * the group only (legacy single-node-resize behavior; children stay put).
-   */
-  onGroupResizeWithChildren?: (update: {
-    groupId: string;
-    groupDims: { width: number; height: number; x: number; y: number };
-    childUpdates: {
-      id: string;
-      position: { x: number; y: number };
-      width?: number;
-      height?: number;
-    }[];
-    // True while the user is still dragging the resize control. The parent
-    // uses this to defer expensive PATCH fan-out until pointer-up — optimistic
-    // overrides drive the live visual; PATCHes only fire on the final
-    // (resize-end) dispatch when `live` is false.
-    live: boolean;
-  }) => void;
   /**
    * US-007: atomic multi-select bounding-box resize. Fired once per resize-stop
    * with EVERY scaled node's final position (and, for sized nodes, width/
@@ -459,15 +430,6 @@ export interface DemoCanvasProps {
    */
   onUnpinEndpoint?: (connectorId: string, kind: 'source' | 'target') => void;
   /**
-   * US-013: dissolve every group node in the current selection. Wired enables
-   * the "Ungroup" item in the right-click menu (visible when ≥ 1 of the
-   * selected nodes is a group — mutually exclusive with the "Group" item
-   * above). Parent owns persistence + the single undo entry covering the
-   * whole batch (children's parentId cleared, absolute positions restored,
-   * group nodes removed).
-   */
-  onUngroupSelection?: (selectedNodeIds: string[]) => void;
-  /**
    * US-019: flip the lock state for a batch of nodes as one undo entry.
    * Wiring this enables the right-click "Lock"/"Unlock" menu item. The
    * parent's existing mixed-selection convention applies: if ANY id is
@@ -742,10 +704,6 @@ const nodeTypes = {
   // `<project>/.seeflow/<htmlPath>`, sanitizes (US-013), and renders with
   // Tailwind Play CDN (US-012). Missing files render PlaceholderCard.
   htmlNode: HtmlNode,
-  // US-011: container node grouping other nodes via `parentId`. React Flow
-  // positions children relative to the group; dragging the group moves the
-  // group + every child together.
-  group: GroupNode,
 };
 const edgeTypes = { editableEdge: EditableEdge };
 
@@ -1190,67 +1148,13 @@ const isEditableTarget = (el: Element | null): boolean => {
 };
 
 /**
- * US-017: Cmd/Ctrl + G keyboard handler — pure function that consumes a
- * KeyboardEvent-shape, decides on a group/ungroup action via
- * `planGroupShortcutAction`, and dispatches to the provided callbacks. Exported
- * so demo-canvas.test.tsx can drive the gesture without a real DOM (Bun's
- * test env has no `window` / `KeyboardEvent`). Returns `true` when the event
- * was handled (i.e. preventDefault was called and a callback fired), `false`
- * for pass-through (wrong key, no-op selection, focus in an editor, etc.).
- *
- * Why pure: the production wiring lives in a `useEffect` that registers a
- * window keydown listener; the effect body is just `handleGroupShortcut(...)`.
- * The hook-shim test runner in demo-canvas.test.tsx makes `useEffect` a no-op,
- * so the only way to exercise the handler under tests is to call it directly
- * with synthetic deps — which is also better unit-isolation.
- */
-export interface GroupShortcutEventLike {
-  metaKey: boolean;
-  ctrlKey: boolean;
-  key: string;
-  preventDefault: () => void;
-}
-
-export interface GroupShortcutDeps {
-  event: GroupShortcutEventLike;
-  selectedNodeIds: readonly string[];
-  nodes: readonly GroupableNode[];
-  activeElement: Element | null;
-  onUngroupSelection?: (selectedNodeIds: string[]) => void;
-}
-
-export function handleGroupShortcut(deps: GroupShortcutDeps): boolean {
-  const { event, selectedNodeIds, nodes, activeElement, onUngroupSelection } = deps;
-  // Bail before any work when this isn't the shortcut — pre-filter keeps the
-  // hot path cheap for every other keystroke. macOS uses metaKey, Win/Linux
-  // ctrlKey; either flips the gate (Shift+G is intentionally NOT a synonym).
-  if (!(event.metaKey || event.ctrlKey)) return false;
-  if (event.key !== 'g' && event.key !== 'G') return false;
-  // Don't fire when focus is in a text input / contenteditable — the user is
-  // typing, and Cmd+G may also map to a browser-native "Find next" binding
-  // inside form controls we don't own.
-  if (isEditableTarget(activeElement)) return false;
-
-  const plan = planGroupShortcutAction(selectedNodeIds, nodes);
-  // The create-group path is intentionally disabled (the right-click "Group"
-  // item is also removed). Cmd+G now only dispatches the ungroup branch so
-  // existing groups can still be dissolved from the keyboard.
-  if (plan.kind !== 'ungroup') return false;
-  event.preventDefault();
-  if (!onUngroupSelection) return false;
-  onUngroupSelection(plan.groupIds);
-  return true;
-}
-
-/**
  * US-022: Cmd/Ctrl + C and Cmd/Ctrl + V keyboard handler. Pure function that
  * consumes a KeyboardEvent-shape, decides on a copy / paste action, and
- * dispatches to the provided callbacks. Mirrors the `handleGroupShortcut`
- * shape: exported so demo-canvas.test.tsx can drive the gesture without a
- * real DOM, and the production wiring is a thin `useEffect` whose body forwards
- * into this helper. Returns `true` when the event was handled (preventDefault
- * called + a callback fired), `false` for pass-through (wrong chord, no-op
- * selection, focus in an editor, etc.).
+ * dispatches to the provided callbacks. Exported so demo-canvas.test.tsx can
+ * drive the gesture without a real DOM, and the production wiring is a thin
+ * `useEffect` whose body forwards into this helper. Returns `true` when the
+ * event was handled (preventDefault called + a callback fired), `false` for
+ * pass-through (wrong chord, no-op selection, focus in an editor, etc.).
  *
  * Selection-empty (Cmd+C) and clipboard-empty (Cmd+V) cases are no-ops so the
  * browser's native chord handling can fall through if relevant (e.g. inside
@@ -1340,7 +1244,6 @@ export function DemoCanvas({
   onNodePositionChange,
   onNodePositionsChange,
   onNodeResize,
-  onGroupResizeWithChildren,
   onMultiResize,
   onNodeNameChange,
   onNodeDescriptionChange,
@@ -1380,7 +1283,6 @@ export function DemoCanvas({
   onRequestIconReplace,
   onPinEndpoint,
   onUnpinEndpoint,
-  onUngroupSelection,
   onToggleNodeLock,
   activeShape,
   onSelectShape,
@@ -1404,19 +1306,6 @@ export function DemoCanvas({
   // local `useState` implementation.
   const drawShape = activeShape;
   const setDrawShape = onSelectShape;
-  // Group enter/exit state: the id of the group the user has entered via
-  // double-click. While set, the group's children become individually
-  // selectable / draggable / connectable; while null, every child is gated so
-  // a click on a child surfaces as a click on the containing group (the
-  // child has selectable+draggable false and the click is redirected to the
-  // parent's id). The state is UI-only — it does not persist.
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  // Mirror into a ref so the ESC handler and node-click redirect read the
-  // live value without re-binding.
-  const activeGroupIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    activeGroupIdRef.current = activeGroupId;
-  }, [activeGroupId]);
   // Mid-connect (or mid-reconnect) flag drives a wrapper class so handles on
   // every node stay visible until the gesture releases — the source has
   // US-018: per-edge imperative handle map. Each EditableEdge registers its
@@ -1665,15 +1554,7 @@ export function DemoCanvas({
         setDropPopover(null);
         return;
       }
-      // 4. Exit the active group (set by double-click on a group). Ranked
-      //    ahead of selection clear so an ESC while inside a group exits the
-      //    group first; a second ESC then clears the selection.
-      if (activeGroupIdRef.current !== null) {
-        e.preventDefault();
-        setActiveGroupId(null);
-        return;
-      }
-      // 5. Selection clear.
+      // 4. Selection clear.
       const hadNodeSel = selectedIdSetRef.current.size > 0;
       const hadConnSel = selectedConnIdSetRef.current.size > 0;
       if (hadNodeSel || hadConnSel) {
@@ -1684,23 +1565,6 @@ export function DemoCanvas({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [exitDrawMode]);
-
-  // Cmd/Ctrl + G — only dispatches the ungroup branch. The create-group path
-  // is intentionally off (see `handleGroupShortcut`); the listener body is a
-  // thin shim that forwards the current props.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      handleGroupShortcut({
-        event: e,
-        selectedNodeIds,
-        nodes: nodes as GroupableNode[],
-        activeElement: document.activeElement,
-        onUngroupSelection,
-      });
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selectedNodeIds, nodes, onUngroupSelection]);
 
   // US-022: Cmd/Ctrl + C / Cmd/Ctrl + V — copy/paste the current selection.
   // Mirrors the US-017 pattern: pure helper drives the dispatch, the listener
@@ -1829,8 +1693,7 @@ export function DemoCanvas({
     !!onDeleteNode ||
     !!onCopyNode ||
     !!onPasteAt ||
-    !!onUnpinEndpoint ||
-    !!onUngroupSelection;
+    !!onUnpinEndpoint;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Whether the most recent right-click landed on a node (true) vs. the empty
   // pane (false). Used to gate per-node items (Copy / reorder / Delete) which
@@ -1902,15 +1765,6 @@ export function DemoCanvas({
     onRequestIconReplace(id);
   }, [onRequestIconReplace]);
 
-  // US-013: forward the current selection to the parent's ungroup op. The
-  // parent re-filters via `selectUngroupableSet` (same filter the menu's
-  // eligibility check uses, below), so a selection that mixes groups with
-  // free nodes still produces a clean batch of just the groups.
-  const handleUngroupPick = useCallback(() => {
-    if (!onUngroupSelection) return;
-    onUngroupSelection([...selectedNodeIds]);
-  }, [onUngroupSelection, selectedNodeIds]);
-
   // US-019: flip the lock state from the right-click menu. Single-node
   // right-click acts on the right-clicked id; multi-selection right-click
   // (contextNodeIdRef cleared by `onWrapperContextMenuCapture`) acts on the
@@ -1979,11 +1833,6 @@ export function DemoCanvas({
   // source of truth — sourceNodes/rfEdges are recomputed off these sets.
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
   // US-013: how many of the currently-selected nodes are groups (eligible
-  // for the right-click "Ungroup" item).
-  const ungroupableCount = useMemo(
-    () => selectUngroupableSet(selectedNodeIds, nodes as GroupableNode[]).length,
-    [selectedNodeIds, nodes],
-  );
   // US-019: lock-aware predicates the right-click menu consumes. A single
   // node right-click checks the right-clicked id; a multi-selection
   // right-click checks every selected id and switches the menu label:
@@ -2014,12 +1863,6 @@ export function DemoCanvas({
     for (const id of selectedNodeIds) {
       const base = nodes.find((n) => n.id === id);
       if (!base) continue;
-      // Groups own their own corner-resize gesture (which also scales their
-      // children). Letting the multi-select overlay scale a group too would
-      // mean two competing handles on the same node — clunky, and the overlay
-      // path scales the group's box without cascading to children. Exclude
-      // groups so the overlay only governs free nodes.
-      if (base.type === 'group') continue;
       const override = overrides?.[id];
       const oData = (override?.data ?? {}) as {
         width?: number;
@@ -2030,7 +1873,6 @@ export function DemoCanvas({
       overlayInputs.push({
         id,
         position: override?.position ?? base.position,
-        parentId: base.parentId,
         data: {
           width: oData.width ?? bData.width,
           height: oData.height ?? bData.height,
@@ -2041,142 +1883,10 @@ export function DemoCanvas({
     return overlayInputs;
   }, [nodes, nodeOverrides, selectedNodeIds]);
 
-  // US-008: enrich `selectedNodes` with the transient `data.isActive` flag for
-  // the group matching activeGroupId. The StyleStrip uses this to gate its
-  // "entered-group chrome editor" branch. selectedNodes is the on-disk shape
-  // (no transient flags) — we only inject the flag right before handing it to
-  // the strip, mirroring the equivalent injection in `buildNode`.
-  const selectedNodesForStyleStrip = useMemo<DemoNode[]>(() => {
-    if (!selectedNodes) return [];
-    if (activeGroupId === null) return selectedNodes;
-    return selectedNodes.map((n) =>
-      n.type === 'group' && n.id === activeGroupId
-        ? ({ ...n, data: { ...n.data, isActive: true } } as DemoNode)
-        : n,
-    );
-  }, [selectedNodes, activeGroupId]);
-
-  // When the active group disappears from `nodes` (ungrouped, deleted, or the
-  // demo loaded a different file), drop the activeGroupId so the gating
-  // doesn't leak across an unrelated set of nodes. The lookup is cheap (O(N))
-  // and only fires when the underlying `nodes` array changes.
-  useEffect(() => {
-    if (activeGroupId === null) return;
-    const stillExists = nodes.some((n) => n.id === activeGroupId && n.type === 'group');
-    if (!stillExists) setActiveGroupId(null);
-  }, [nodes, activeGroupId]);
-
-  // Map child node id → parent group id, computed once per `nodes` change.
-  // Drives the group-enter gating in `buildNode` (child whose parent is not
-  // active becomes non-selectable / non-draggable) and the redirect inside
-  // `handleNodeClick` (a click on a gated child surfaces as a click on its
-  // parent group). Children without a parent are simply absent from the map.
-  const parentIdById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const n of nodes) {
-      if (n.parentId !== undefined) m.set(n.id, n.parentId);
-    }
-    return m;
-  }, [nodes]);
-  // Ref mirror for use inside event handlers without re-binding.
-  const parentIdByIdRef = useRef(parentIdById);
-  useEffect(() => {
-    parentIdByIdRef.current = parentIdById;
-  }, [parentIdById]);
-
-  // Per-tick group resize: only the group's own bounds update during the
-  // drag. Children stay at their original PARENT-RELATIVE positions so the
-  // per-tick path never feeds optimistic overrides back into the next tick's
-  // baseline (the exponential expand/shrink bug that killed the previous
-  // live-scale-children path). The child scaling fires once at mouse release
-  // via `onGroupNodeResizeFinal` below.
-  const onGroupNodeResize = useCallback(
-    (groupId: string, dims: { width: number; height: number; x: number; y: number }) => {
-      onNodeResize?.(groupId, dims);
-    },
-    [onNodeResize],
-  );
-
-  // End-only group resize: fires once at mouse release with the FINAL group
-  // dims and the START dims captured at gesture start. The start rect is the
-  // stable "old" baseline used to compute the scale — reading the current
-  // `nodes` here would see the per-tick optimistic overrides and yield a
-  // scale factor of ~1.0 (no children would move). Active (entered) groups
-  // bypass the scale path: children inside an entered group resize the
-  // GROUP only, leaving each child untouched (single-node-resize semantics).
-  const onGroupNodeResizeFinal = useCallback(
-    (
-      groupId: string,
-      dims: { width: number; height: number; x: number; y: number },
-      start: { width: number; height: number; x: number; y: number },
-    ) => {
-      if (activeGroupId === groupId) {
-        // Active-group resize: forwarded by the per-tick path already; the
-        // final-tick onResize also fires from useResizeGesture's onResizeEnd.
-        // No batched child work needed.
-        return;
-      }
-      // No baseline rect (zero-width or -height start) → nothing meaningful
-      // to scale. The per-tick path already persisted the group's new dims.
-      if (start.width === 0 || start.height === 0) return;
-      const children = nodes.filter((n) => n.parentId === groupId);
-      // Children live in PARENT-RELATIVE coordinates (xyflow's parentId
-      // wiring keeps them anchored to the group's top-left), so the scale
-      // is computed in parent space too: both rects start at {x:0, y:0}.
-      const scalable = children.map((c) => {
-        const cData = c.data as { width?: number; height?: number; locked?: boolean };
-        return {
-          id: c.id,
-          position: { x: c.position.x, y: c.position.y },
-          width: cData.width,
-          height: cData.height,
-          data: { locked: cData.locked },
-        };
-      });
-      const scaled = scaleNodesWithinRect(
-        scalable,
-        { x: 0, y: 0, width: start.width, height: start.height },
-        { x: 0, y: 0, width: dims.width, height: dims.height },
-      );
-      const childUpdates = scaled.map((s) => {
-        const u: {
-          id: string;
-          position: { x: number; y: number };
-          width?: number;
-          height?: number;
-        } = { id: s.id, position: s.position };
-        if (s.width !== undefined) u.width = s.width;
-        if (s.height !== undefined) u.height = s.height;
-        return u;
-      });
-      // Prefer the batched callback so the group + every child commit as a
-      // SINGLE undo entry. Without the batch prop wired the per-tick path
-      // already handled the group's own dims; children stay where they are.
-      if (onGroupResizeWithChildren) {
-        onGroupResizeWithChildren({
-          groupId,
-          groupDims: dims,
-          childUpdates,
-          live: false,
-        });
-        return;
-      }
-      onNodeResize?.(groupId, dims);
-    },
-    [nodes, activeGroupId, onNodeResize, onGroupResizeWithChildren],
-  );
+  const selectedNodesForStyleStrip = selectedNodes ?? [];
 
   const sourceNodes = useMemo<Node[]>(() => {
     const buildNode = (merged: DemoNode): Node => {
-      // Group enter/exit gate: true when this node lives inside a group the
-      // user has NOT entered. Below, we use it to drop the label/description
-      // edit callbacks (so a double-click on a gated child can't bypass the
-      // "double-click the group first" requirement) and to mark the rfNode
-      // as `selectable: false`. Drag stays enabled so the user can grab a
-      // child directly to reposition it without first entering the group.
-      // The clicks the gated child does dispatch get redirected to the
-      // parent group by `handleNodeClickWithGroupGate`.
-      const gatedByGroup = merged.parentId !== undefined && merged.parentId !== activeGroupId;
       const node: Node = {
         id: merged.id,
         type: merged.type,
@@ -2197,16 +1907,9 @@ export function DemoCanvas({
           // is suppressed and the node renders byte-identical to legacy.
           statusReport: statusByNode?.[merged.id],
           onPlay: onPlayNode,
-          // Group nodes split the resize into two channels:
-          //   - per-tick `onResize` updates the group's own bounds live
-          //   - end-only `onResizeFinal` scales children once at mouse
-          //     release against the captured start rect
-          // Non-group nodes use `onNodeResize` directly per-tick.
-          onResize: merged.type === 'group' ? onGroupNodeResize : onNodeResize,
-          onResizeFinal: merged.type === 'group' ? onGroupNodeResizeFinal : undefined,
+          onResize: onNodeResize,
           setResizing,
           onNameChange: (() => {
-            if (gatedByGroup) return undefined;
             // Ellipse drops the Name concept entirely — its centered label
             // renders `description`, and the detail panel hides the Name
             // field. Suppressing the callback also makes
@@ -2219,7 +1922,6 @@ export function DemoCanvas({
             return onNodeNameChange;
           })(),
           onDescriptionChange: (() => {
-            if (gatedByGroup) return undefined;
             // Rectangle, ellipse, and sticky shapes render a description body — wire
             // the canvas-side inline edit so dblclick on the body lands an
             // edit. Other shape kinds (text/database) and imageNode /
@@ -2239,10 +1941,6 @@ export function DemoCanvas({
           // mount by the node component (lazy useState initializer); leaving
           // it set on later renders is harmless.
           autoEditOnMount: pendingEditNodeId === merged.id ? true : undefined,
-          // True for the group the user has entered via double-click. The
-          // GroupNode component (via CSS / data-active) renders a stronger
-          // chrome so the user can see which group is currently editable.
-          isActive: merged.type === 'group' && merged.id === activeGroupId ? true : undefined,
         },
         selected: selectedNodeIdSet.has(merged.id),
       };
@@ -2252,9 +1950,6 @@ export function DemoCanvas({
       // data) on resize-stop.
       if (merged.data.width !== undefined) node.width = merged.data.width;
       if (merged.data.height !== undefined) node.height = merged.data.height;
-      // US-011: forward `parentId` so React Flow positions this node relative
-      // to its container group and drags the parent + children together.
-      if (merged.parentId !== undefined) node.parentId = merged.parentId;
       // US-025: only the selected node may originate a new connection. Setting
       // `connectable: false` on unselected nodes makes their Handles ignore
       // connection-start gestures (xyflow's per-node `connectable` overrides
@@ -2270,26 +1965,6 @@ export function DemoCanvas({
       // gestures. Selection, right-click, and hover affordances keep
       // working — only the drag is gated.
       if ((merged.data as { locked?: boolean }).locked === true) node.draggable = false;
-      // Group enter/exit gate: children whose parent group is NOT the
-      // currently-active group are non-interactive — `pointer-events: none`
-      // (set via the `data-gated-child` CSS hook below) lets mousedown/click/
-      // drag events pass through the child to the parent group's wrapper, so
-      // dragging anywhere inside the group's bounds moves the group as a
-      // whole. xyflow's `selectable: false` / `draggable: false` are kept as
-      // belt-and-suspenders for the rare path where the child still receives
-      // an event (e.g. its own resize controls when forcibly visible). The
-      // user enters the group via double-click on its border, which sets
-      // `activeGroupId` and clears the gate so children become individually
-      // addressable again.
-      if (gatedByGroup) {
-        node.selectable = false;
-        node.draggable = false;
-        // `data-gated-child` is the CSS hook that disables pointer-events
-        // on this child so the parent group's wrapper underneath catches
-        // the mouse gesture. Cast to bypass xyflow's HTMLAttributes typing
-        // which doesn't include arbitrary `data-*` keys.
-        node.domAttributes = { 'data-gated-child': 'true' } as Record<string, string>;
-      }
       return node;
     };
     const fromServer = nodes.map((n) => buildNode(mergeNodeOverride(n, nodeOverrides?.[n.id])));
@@ -2309,35 +1984,7 @@ export function DemoCanvas({
         fromOverrides.push(buildNode({ ...cand, id } as DemoNode));
       }
     }
-    // US-012: enforce React Flow's parent-before-children array invariant. The
-    // server's PATCH path appends new nodes to the end of `nodes[]`, so a
-    // freshly-created group lands AFTER its children even though their
-    // `parentId` already points at it — React Flow then renders children as
-    // floating (position treated as absolute, not parent-relative) until the
-    // next reorder. Hoist every referenced parent just ahead of its earliest
-    // child here so the canvas stays correct between the create-group POST
-    // and the reorder PATCH (and irrespective of whether the on-disk array
-    // ever gets sorted). Cheap for our node counts and idempotent for arrays
-    // that are already correctly ordered.
-    let merged: Node[] = [...fromServer, ...fromOverrides];
-    const referencedParentIds = new Set<string>();
-    for (const n of merged) {
-      if (n.parentId) referencedParentIds.add(n.parentId);
-    }
-    for (const parentId of referencedParentIds) {
-      const parentIdx = merged.findIndex((n) => n.id === parentId);
-      if (parentIdx < 0) continue;
-      const earliestChildIdx = merged.findIndex((n) => n.parentId === parentId);
-      if (earliestChildIdx >= 0 && parentIdx > earliestChildIdx) {
-        const parentNode = merged[parentIdx];
-        if (!parentNode) continue;
-        merged = merged.filter((_, i) => i !== parentIdx);
-        // After splicing the parent out, the earliest child's index has not
-        // shifted (the parent was AFTER the child). Insert directly there.
-        merged.splice(earliestChildIdx, 0, parentNode);
-      }
-    }
-    return merged;
+    return [...fromServer, ...fromOverrides];
   }, [
     projectId,
     nodes,
@@ -2346,15 +1993,12 @@ export function DemoCanvas({
     statusByNode,
     onPlayNode,
     onNodeResize,
-    onGroupNodeResize,
-    onGroupNodeResizeFinal,
     setResizing,
     nodeOverrides,
     onNodeNameChange,
     onNodeDescriptionChange,
     onRetryImageUpload,
     pendingEditNodeId,
-    activeGroupId,
   ]);
 
   // React Flow needs internal node state + onNodesChange to render drag
@@ -2798,25 +2442,15 @@ export function DemoCanvas({
       // connector line stays under nodes whether selected or not; only the
       // visible endpoint-dot portal (CSS z-index 2000) sits on top.
       const next: Edge = enableReconnect ? { ...edge, reconnectable: true } : edge;
-      // Group enter/exit gate for edges: when both endpoints live inside the
-      // same group AND that group is not active, the edge is not directly
-      // selectable. `handleEdgeClickWithGroupGate` (the wrapped onEdgeClick)
-      // surfaces a click on the parent group instead — matching the node
-      // gate above.
-      const srcParent = parentIdById.get(c.source);
-      const tgtParent = parentIdById.get(c.target);
-      const gatedByGroup =
-        srcParent !== undefined && srcParent === tgtParent && srcParent !== activeGroupId;
-      const gated: Edge = gatedByGroup ? { ...next, selectable: false } : next;
       // Inject the runtime label-change callback into edge.data — same
       // channel the custom node components use for `onPlay` / `onResize`.
       // US-024: `reconnectable` tells the edge component to render the
       // visible (non-interactive) endpoint dots above other nodes; React
       // Flow's native EdgeUpdateAnchors handle the actual drag.
       return {
-        ...gated,
+        ...next,
         data: {
-          ...gated.data,
+          ...next.data,
           onLabelChange: onConnectorLabelChange,
           reconnectable: enableReconnect,
           // US-018: stable callback (useCallback with empty deps) so the
@@ -2876,8 +2510,6 @@ export function DemoCanvas({
     onConnectorLabelChange,
     reconnectableEdges,
     registerEditHandle,
-    parentIdById,
-    activeGroupId,
   ]);
 
   // Mirror rfEdges into a ref so onEdgesChange (declared earlier) reads the
@@ -3434,88 +3066,24 @@ export function DemoCanvas({
     [commitDraggedNodes],
   );
 
-  // Group enter/exit handlers (the "double-click to enter, click outside to
-  // exit" gesture). Children of an inactive group are gated as
-  // `selectable: false` / `draggable: false` in `buildNode`; React Flow still
-  // dispatches `onNodeClick` for them, so we redirect those clicks to the
-  // parent group's id here. A double-click on a group enters it; a click on
-  // the empty pane or on a non-descendant node exits it.
   const handleNodeClickWithGroupGate = useCallback(
     (_e: ReactMouseEvent, node: Node) => {
-      const activeId = activeGroupIdRef.current;
-      const parentId = parentIdByIdRef.current.get(node.id);
-      // Inactive-group child → surface the click on the parent group instead.
-      // Without this redirect a gated child's `onNodeClick` would leave both
-      // the detail panel and selection untouched.
-      if (parentId !== undefined && parentId !== activeId) {
-        if (onSelectionChangeRef.current) {
-          const prev = selectedIdSetRef.current;
-          const same = prev.size === 1 && prev.has(parentId);
-          if (!same) {
-            selectedIdSetRef.current = new Set([parentId]);
-            onSelectionChangeRef.current([parentId], []);
-          }
-        }
-        onNodeClick?.(parentId);
-        return;
-      }
-      // Click landed on a node OUTSIDE the active group (and not the group
-      // itself) → leave the active group before forwarding the click.
-      if (activeId && node.id !== activeId && parentId !== activeId) {
-        setActiveGroupId(null);
-      }
       onNodeClick?.(node.id);
     },
     [onNodeClick],
   );
-  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, node: Node) => {
-    // Double-click on a group enters it (children become directly addressable).
-    // No-op on other node types; React Flow's `zoomOnDoubleClick` is already
-    // false so we don't have to preventDefault to suppress zoom.
-    if (node.type !== 'group') return;
-    // US-010: bail if the dblclick originated on a child node inside this
-    // group's bounding rect. xyflow's flat-DOM rendering makes this almost
-    // never trigger, but the guard makes the "only the group's own chrome
-    // activates" invariant explicit and resilient to any future DOM nesting.
-    if (eventTargetIsOtherNode(e.target, node.id)) return;
-    setActiveGroupId(node.id);
-  }, []);
   const handlePaneClickWithGroupExit = useCallback(
     (e: ReactMouseEvent) => {
-      // Empty-canvas click exits the active group. The user's onPaneClick (if
-      // any) still fires so the detail panel close path is preserved.
-      if (activeGroupIdRef.current !== null) setActiveGroupId(null);
       onPaneClick?.();
-      // Discard the event arg — onPaneClick has a no-arg signature.
       void e;
     },
     [onPaneClick],
   );
-  // Edge click redirect: when both endpoints are children of the same
-  // inactive group, surface the click as a click on the containing group
-  // (parallels the node redirect above). For edges with one endpoint inside
-  // and one outside (cross-boundary), the click is forwarded as-is.
   const handleEdgeClickWithGroupGate = useCallback(
     (_e: ReactMouseEvent, edge: Edge) => {
-      const parentIds = parentIdByIdRef.current;
-      const activeId = activeGroupIdRef.current;
-      const srcParent = parentIds.get(edge.source);
-      const tgtParent = parentIds.get(edge.target);
-      if (srcParent !== undefined && srcParent === tgtParent && srcParent !== activeId) {
-        if (onSelectionChangeRef.current) {
-          const prev = selectedIdSetRef.current;
-          const same = prev.size === 1 && prev.has(srcParent);
-          if (!same) {
-            selectedIdSetRef.current = new Set([srcParent]);
-            onSelectionChangeRef.current([srcParent], []);
-          }
-        }
-        onNodeClick?.(srcParent);
-        return;
-      }
       onConnectorClick?.(edge.id);
     },
-    [onConnectorClick, onNodeClick],
+    [onConnectorClick],
   );
 
   // Cursor for the wrapper. Draw mode → crosshair (own gesture). Space-held →
@@ -3727,7 +3295,6 @@ export function DemoCanvas({
         // node-drag gestures don't trigger them, so a drag no longer opens
         // the panel as a side effect.
         onNodeClick={handleNodeClickWithGroupGate}
-        onNodeDoubleClick={handleNodeDoubleClick}
         onEdgeClick={handleEdgeClickWithGroupGate}
         // US-018: double-click anywhere on the edge body opens the inline
         // label editor (not just the existing label-button onDoubleClick). The
@@ -3940,28 +3507,6 @@ export function DemoCanvas({
             ) : null}
             {contextOnNode &&
             (onCopyNode || onPasteAt) &&
-            // US-003 / US-013: include 'Change icon' and any-group 'Ungroup'
-            // in the "has-following-section" check so the Copy/Paste →
-            // following-section separator renders for any of them.
-            ((ungroupableCount >= 1 && !!onUngroupSelection) ||
-              (contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
-              onReorderNode ||
-              onDeleteNode) ? (
-              <ContextMenuSeparator />
-            ) : null}
-            {/* US-013: dissolve every group in the selection back into free
-                nodes. Visible when ≥ 1 selected node is a group (filtered by
-                `selectUngroupableSet`). The mirror "Group" item that wrapped a
-                marquee selection into a new group is removed for now —
-                marquee selection still works for every other multi-action
-                (copy, paste, delete, style, lock). */}
-            {ungroupableCount >= 1 && onUngroupSelection ? (
-              <ContextMenuItem data-testid="node-context-menu-ungroup" onSelect={handleUngroupPick}>
-                Ungroup
-              </ContextMenuItem>
-            ) : null}
-            {ungroupableCount >= 1 &&
-            onUngroupSelection &&
             ((contextNodeType === 'iconNode' && !!onRequestIconReplace) ||
               onReorderNode ||
               onDeleteNode) ? (

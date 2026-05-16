@@ -14,11 +14,10 @@ const node = (
   y: number,
   width?: number,
   height?: number,
-  extra: { parentId?: string; locked?: boolean } = {},
+  extra: { locked?: boolean } = {},
 ): OverlayInputNode => ({
   id,
   position: { x, y },
-  parentId: extra.parentId,
   data: { width, height, locked: extra.locked },
 });
 
@@ -64,37 +63,10 @@ describe('selectionEligibleForOverlay', () => {
     expect(selectionEligibleForOverlay([node('a', 0, 0, 10, 10)])).toBe(false);
   });
 
-  it('returns true when 2+ loose (parent-less) nodes are selected', () => {
+  it('returns true when 2+ nodes are selected', () => {
     expect(selectionEligibleForOverlay([node('a', 0, 0, 10, 10), node('b', 50, 50, 10, 10)])).toBe(
       true,
     );
-  });
-
-  it('returns false when every selected node shares the same group parent', () => {
-    expect(
-      selectionEligibleForOverlay([
-        node('a', 0, 0, 10, 10, { parentId: 'g' }),
-        node('b', 50, 50, 10, 10, { parentId: 'g' }),
-      ]),
-    ).toBe(false);
-  });
-
-  it('returns true when selection mixes a loose node with a grouped child', () => {
-    expect(
-      selectionEligibleForOverlay([
-        node('a', 0, 0, 10, 10),
-        node('b', 50, 50, 10, 10, { parentId: 'g' }),
-      ]),
-    ).toBe(true);
-  });
-
-  it('returns true when selection mixes children from different groups', () => {
-    expect(
-      selectionEligibleForOverlay([
-        node('a', 0, 0, 10, 10, { parentId: 'g1' }),
-        node('b', 50, 50, 10, 10, { parentId: 'g2' }),
-      ]),
-    ).toBe(true);
   });
 });
 

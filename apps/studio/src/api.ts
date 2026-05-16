@@ -593,7 +593,6 @@ export function createApi(options: ApiOptions): Hono {
       node.type === 'shapeNode' ||
       node.type === 'imageNode' ||
       node.type === 'iconNode' ||
-      node.type === 'group' ||
       node.type === 'htmlNode' ||
       !node.data.playAction
     ) {

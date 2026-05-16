@@ -3,83 +3,9 @@
   "name": "AI-Powered E-Commerce Platform",
   "nodes": [
     {
-      "id": "group-client",
-      "type": "group",
-      "position": { "x": 0, "y": 0 },
-      "data": {
-        "name": "Client Applications",
-        "width": 1420,
-        "height": 160,
-        "borderColor": "blue",
-        "borderStyle": "dashed"
-      }
-    },
-    {
-      "id": "group-gateway",
-      "type": "group",
-      "position": { "x": 0, "y": 195 },
-      "data": {
-        "name": "Edge & Gateway Layer",
-        "width": 1420,
-        "height": 170,
-        "borderColor": "purple",
-        "borderStyle": "dashed"
-      }
-    },
-    {
-      "id": "group-core",
-      "type": "group",
-      "position": { "x": 0, "y": 400 },
-      "data": {
-        "name": "Core Microservices",
-        "width": 1420,
-        "height": 175,
-        "borderColor": "green",
-        "borderStyle": "dashed"
-      }
-    },
-    {
-      "id": "group-business",
-      "type": "group",
-      "position": { "x": 0, "y": 610 },
-      "data": {
-        "name": "Business Logic",
-        "width": 1420,
-        "height": 175,
-        "borderColor": "amber",
-        "borderStyle": "dashed"
-      }
-    },
-    {
-      "id": "group-data",
-      "type": "group",
-      "position": { "x": 0, "y": 820 },
-      "data": {
-        "name": "Data & AI Platform",
-        "width": 1420,
-        "height": 175,
-        "borderColor": "purple",
-        "borderStyle": "dashed"
-      }
-    },
-    {
-      "id": "group-infra",
-      "type": "group",
-      "position": { "x": 0, "y": 1030 },
-      "data": {
-        "name": "Infrastructure & Storage",
-        "width": 1420,
-        "height": 165,
-        "borderColor": "slate",
-        "borderStyle": "dashed"
-      }
-    },
-
-    {
       "id": "web-client",
       "type": "shapeNode",
       "position": { "x": 100, "y": 48 },
-      "parentId": "group-client",
       "data": {
         "shape": "user",
         "name": "Web Browser",
@@ -90,7 +16,6 @@
       "id": "mobile-client",
       "type": "shapeNode",
       "position": { "x": 420, "y": 48 },
-      "parentId": "group-client",
       "data": {
         "shape": "user",
         "name": "Mobile App",
@@ -101,7 +26,6 @@
       "id": "partner-api-client",
       "type": "shapeNode",
       "position": { "x": 740, "y": 48 },
-      "parentId": "group-client",
       "data": {
         "shape": "server",
         "name": "Partner API Client",
@@ -112,7 +36,6 @@
       "id": "admin-portal",
       "type": "shapeNode",
       "position": { "x": 1060, "y": 48 },
-      "parentId": "group-client",
       "data": {
         "shape": "user",
         "name": "Admin Portal",
@@ -123,8 +46,7 @@
     {
       "id": "cdn",
       "type": "shapeNode",
-      "position": { "x": 60, "y": 58 },
-      "parentId": "group-gateway",
+      "position": { "x": 60, "y": 253 },
       "data": {
         "shape": "cloud",
         "name": "CloudFront CDN",
@@ -134,8 +56,7 @@
     {
       "id": "waf",
       "type": "stateNode",
-      "position": { "x": 340, "y": 55 },
-      "parentId": "group-gateway",
+      "position": { "x": 340, "y": 250 },
       "data": {
         "name": "WAF / DDoS Shield",
         "kind": "security",
@@ -147,8 +68,7 @@
     {
       "id": "api-gateway",
       "type": "playNode",
-      "position": { "x": 640, "y": 50 },
-      "parentId": "group-gateway",
+      "position": { "x": 640, "y": 245 },
       "data": {
         "name": "API Gateway",
         "kind": "gateway",
@@ -166,8 +86,7 @@
     {
       "id": "load-balancer",
       "type": "shapeNode",
-      "position": { "x": 1060, "y": 58 },
-      "parentId": "group-gateway",
+      "position": { "x": 1060, "y": 253 },
       "data": {
         "shape": "server",
         "name": "Load Balancer (ALB)",
@@ -178,8 +97,7 @@
     {
       "id": "auth-service",
       "type": "stateNode",
-      "position": { "x": 60, "y": 60 },
-      "parentId": "group-core",
+      "position": { "x": 60, "y": 460 },
       "data": {
         "name": "Auth Service",
         "kind": "service",
@@ -191,8 +109,7 @@
     {
       "id": "user-service",
       "type": "stateNode",
-      "position": { "x": 340, "y": 60 },
-      "parentId": "group-core",
+      "position": { "x": 340, "y": 460 },
       "data": {
         "name": "User Service",
         "kind": "service",
@@ -204,8 +121,7 @@
     {
       "id": "product-service",
       "type": "stateNode",
-      "position": { "x": 620, "y": 60 },
-      "parentId": "group-core",
+      "position": { "x": 620, "y": 460 },
       "data": {
         "name": "Product Catalog",
         "kind": "service",
@@ -217,8 +133,7 @@
     {
       "id": "search-service",
       "type": "stateNode",
-      "position": { "x": 900, "y": 60 },
-      "parentId": "group-core",
+      "position": { "x": 900, "y": 460 },
       "data": {
         "name": "Search Service",
         "kind": "service",
@@ -230,8 +145,7 @@
     {
       "id": "media-service",
       "type": "stateNode",
-      "position": { "x": 1180, "y": 60 },
-      "parentId": "group-core",
+      "position": { "x": 1180, "y": 460 },
       "data": {
         "name": "Media Service",
         "kind": "service",
@@ -244,8 +158,7 @@
     {
       "id": "cart-service",
       "type": "playNode",
-      "position": { "x": 60, "y": 60 },
-      "parentId": "group-business",
+      "position": { "x": 60, "y": 670 },
       "data": {
         "name": "Cart Service",
         "kind": "service",
@@ -263,8 +176,7 @@
     {
       "id": "order-service",
       "type": "playNode",
-      "position": { "x": 340, "y": 60 },
-      "parentId": "group-business",
+      "position": { "x": 340, "y": 670 },
       "data": {
         "name": "Order Service",
         "kind": "worker",
@@ -282,8 +194,7 @@
     {
       "id": "payment-service",
       "type": "stateNode",
-      "position": { "x": 620, "y": 60 },
-      "parentId": "group-business",
+      "position": { "x": 620, "y": 670 },
       "data": {
         "name": "Payment Service",
         "kind": "worker",
@@ -295,8 +206,7 @@
     {
       "id": "inventory-service",
       "type": "stateNode",
-      "position": { "x": 900, "y": 60 },
-      "parentId": "group-business",
+      "position": { "x": 900, "y": 670 },
       "data": {
         "name": "Inventory Service",
         "kind": "worker",
@@ -308,8 +218,7 @@
     {
       "id": "fulfillment-service",
       "type": "stateNode",
-      "position": { "x": 1180, "y": 60 },
-      "parentId": "group-business",
+      "position": { "x": 1180, "y": 670 },
       "data": {
         "name": "Fulfillment Service",
         "kind": "worker",
@@ -322,8 +231,7 @@
     {
       "id": "analytics-service",
       "type": "stateNode",
-      "position": { "x": 60, "y": 60 },
-      "parentId": "group-data",
+      "position": { "x": 60, "y": 880 },
       "data": {
         "name": "Analytics Service",
         "kind": "worker",
@@ -335,8 +243,7 @@
     {
       "id": "recommendation-engine",
       "type": "stateNode",
-      "position": { "x": 340, "y": 60 },
-      "parentId": "group-data",
+      "position": { "x": 340, "y": 880 },
       "data": {
         "name": "AI Recommendation Engine",
         "kind": "ml",
@@ -348,8 +255,7 @@
     {
       "id": "notification-service",
       "type": "stateNode",
-      "position": { "x": 620, "y": 60 },
-      "parentId": "group-data",
+      "position": { "x": 620, "y": 880 },
       "data": {
         "name": "Notification Service",
         "kind": "worker",
@@ -361,8 +267,7 @@
     {
       "id": "audit-logger",
       "type": "stateNode",
-      "position": { "x": 900, "y": 60 },
-      "parentId": "group-data",
+      "position": { "x": 900, "y": 880 },
       "data": {
         "name": "Audit Logger",
         "kind": "worker",
@@ -374,8 +279,7 @@
     {
       "id": "report-generator",
       "type": "stateNode",
-      "position": { "x": 1180, "y": 60 },
-      "parentId": "group-data",
+      "position": { "x": 1180, "y": 880 },
       "data": {
         "name": "Report Generator",
         "kind": "worker",
@@ -388,8 +292,7 @@
     {
       "id": "postgresql",
       "type": "shapeNode",
-      "position": { "x": 60, "y": 55 },
-      "parentId": "group-infra",
+      "position": { "x": 60, "y": 1085 },
       "data": {
         "shape": "database",
         "name": "PostgreSQL (RDS)",
@@ -399,8 +302,7 @@
     {
       "id": "redis",
       "type": "shapeNode",
-      "position": { "x": 340, "y": 55 },
-      "parentId": "group-infra",
+      "position": { "x": 340, "y": 1085 },
       "data": {
         "shape": "database",
         "name": "Redis Cluster",
@@ -410,8 +312,7 @@
     {
       "id": "elasticsearch",
       "type": "shapeNode",
-      "position": { "x": 620, "y": 55 },
-      "parentId": "group-infra",
+      "position": { "x": 620, "y": 1085 },
       "data": {
         "shape": "database",
         "name": "Elasticsearch",
@@ -421,8 +322,7 @@
     {
       "id": "kafka",
       "type": "shapeNode",
-      "position": { "x": 900, "y": 55 },
-      "parentId": "group-infra",
+      "position": { "x": 900, "y": 1085 },
       "data": {
         "shape": "queue",
         "name": "Kafka (MSK)",
@@ -432,8 +332,7 @@
     {
       "id": "s3",
       "type": "shapeNode",
-      "position": { "x": 1180, "y": 55 },
-      "parentId": "group-infra",
+      "position": { "x": 1180, "y": 1085 },
       "data": {
         "shape": "cloud",
         "name": "S3 / Glacier",
