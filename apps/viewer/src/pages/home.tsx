@@ -282,10 +282,6 @@ export function Home() {
           <div className="max-w-6xl mx-auto px-6">
             <div className="flex flex-col lg:flex-row items-center gap-6 md:gap-12">
               <div className="lg:w-1/2">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-500/20 bg-purple-500/10 text-xs font-medium text-purple-400 mb-4 md:mb-6">
-                  <Wand2 size={12} />
-                  Claude Code Plugin
-                </div>
                 <h2 className="text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
                   Zero to running demo in one prompt.
                 </h2>
