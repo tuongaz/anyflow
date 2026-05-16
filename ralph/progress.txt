@@ -128,3 +128,16 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - DNS is live and seeflow.dev resolves to CloudFront; both API smoke tests pass via the public domain
   - The deployed API Gateway URL is https://jiau4sk484.execute-api.ap-southeast-2.amazonaws.com (direct, bypass CloudFront)
 ---
+
+## 2026-05-16 - US-009
+- Implemented fetch + state machine in flow-view.tsx: loading spinner, error message, success → ViewCanvas
+- Created apps/viewer/src/types.ts with Demo, DemoNode, Connector types (mirrors apps/web/src/lib/api.ts interfaces)
+- Created apps/viewer/src/components/view-canvas.tsx as a stub accepting { demo, uuid } (full canvas in US-010)
+- Added spinner CSS keyframe + .spinner class to apps/viewer/index.html global styles
+- Files changed: apps/viewer/index.html, apps/viewer/src/types.ts, apps/viewer/src/components/view-canvas.tsx, apps/viewer/src/pages/flow-view.tsx
+- **Learnings for future iterations:**
+  - Demo type is defined locally in apps/viewer/src/types.ts mirroring apps/web/src/lib/api.ts — no cross-app import needed
+  - FlowView uses AbortController to cancel in-flight fetches on unmount/uuid change
+  - ViewCanvas stub accepts both `demo` and `uuid` props — uuid is needed for US-011 cloud URL rewriting
+  - Spinner is a pure CSS animation in index.html; component uses className="spinner" with no external deps
+---
