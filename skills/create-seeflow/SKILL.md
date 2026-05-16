@@ -142,7 +142,7 @@ curl --max-time 0.5 -fsS "$STUDIO_URL/health"
 On failure, check `which seeflow`:
 
 - **CLI found:** `Studio not reachable at <url>. Start it with: seeflow start`
-- **CLI not found:** `Studio not reachable at <url> and the seeflow CLI is not installed. Run: npx @tuongaz/seeflow` or clone + `make dev`.
+- **CLI not found:** `Studio not reachable at <url> and the seeflow CLI is not installed. Run: npx tuongaz/seeflow` or clone + `make dev`.
 
 Do not retry. Do not auto-start. On success: continue to Phase 1.
 
@@ -378,7 +378,7 @@ Never re-run `register.ts` in the fix-up loop.
 
 | Failure | Response |
 |---|---|
-| Studio `/health` fails | `which seeflow` → if found: `seeflow start`; if not: `npx @tuongaz/seeflow` or clone + `make dev`. No retry. |
+| Studio `/health` fails | `which seeflow` → if found: `seeflow start`; if not: `npx tuongaz/seeflow` or clone + `make dev`. No retry. |
 | Sub-agent unparseable output | Retry once with parse error; if still failing, surface and stop. |
 | Schema validation fails (Phase 5) | Feed Zod issues back to relevant designer. Max 3 retries. |
 | Register 400 (Phase 6) | Show body; ask "fix-and-retry / stop". |
