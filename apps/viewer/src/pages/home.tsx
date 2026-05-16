@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import {
   Activity,
   CheckCircle,
@@ -16,6 +15,8 @@ import {
   Wand2,
   Workflow,
 } from 'lucide-react';
+import type React from 'react';
+import { useState } from 'react';
 
 function BgGrid({ className = '', children }: { className?: string; children?: React.ReactNode }) {
   return (
@@ -121,6 +122,7 @@ export function Home() {
               <span className="text-zinc-500 mr-4">$</span>
               npx tuongaz/seeflow start
               <button
+                type="button"
                 onClick={handleCopy}
                 className="ml-4 text-zinc-500 hover:text-zinc-300 transition-colors"
                 aria-label="Copy command"
@@ -132,7 +134,10 @@ export function Home() {
                 )}
               </button>
             </div>
-            <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg px-5 py-2.5 text-sm font-medium transition-all">
+            <button
+              type="button"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg px-5 py-2.5 text-sm font-medium transition-all"
+            >
               <PlayCircle size={18} className="text-emerald-400" />
               Play Demo
             </button>
@@ -172,7 +177,10 @@ export function Home() {
                     </div>
                     Gateway
                   </div>
-                  <button className="text-emerald-400 hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    className="text-emerald-400 hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
                     <PlayCircle size={18} />
                   </button>
                 </div>
@@ -219,17 +227,7 @@ export function Home() {
                     </div>
                     Payment
                   </div>
-                  <svg
-                    className="text-amber-400 animate-spin"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
+                  <RefreshCw size={16} className="text-amber-400 animate-spin" />
                 </div>
                 <div
                   className="text-xs text-zinc-500"
@@ -460,21 +458,25 @@ export function Home() {
                   automatically.
                 </p>
                 <ul className="space-y-3 mb-8 text-sm text-zinc-300">
-                  {[
-                    'Scans routes and database connections',
-                    <>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>Scans routes and database connections</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>
                       Generates{' '}
                       <code className="bg-zinc-800 px-1 rounded text-xs text-zinc-400">
                         seeflow.json
                       </code>
-                    </>,
-                    'Works with Claude Code, Codex, Cursor, Windsurf and any MCP-compatible editor',
-                  ].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>
+                      Works with Claude Code, Codex, Cursor, Windsurf and any MCP-compatible editor
+                    </span>
+                  </li>
                 </ul>
               </div>
 
@@ -549,7 +551,7 @@ export function Home() {
                   {`{
   `}
                   <span className="text-blue-400">"name"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"Order Pipeline"</span>
                   {`,
   `}
@@ -560,19 +562,19 @@ export function Home() {
                   {`: {
       `}
                   <span className="text-blue-400">"type"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"service"</span>
                   {`,
       `}
                   <span className="text-blue-400">"label"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"API Gateway"</span>
                   {`,
       `}
                   <span className="text-blue-400">"onPlay"</span>
-                  {`: { `}
+                  {': { '}
                   <span className="text-blue-400">"script"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"post-order.js"</span>
                   {` }
     },
@@ -581,14 +583,14 @@ export function Home() {
                   {`: {
       `}
                   <span className="text-blue-400">"type"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"database"</span>
                   {`,
       `}
                   <span className="text-blue-400">"status"</span>
-                  {`: { `}
+                  {': { '}
                   <span className="text-blue-400">"listen"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"metrics/db-health"</span>
                   {` }
     }
@@ -598,15 +600,15 @@ export function Home() {
                   {`: [
     { `}
                   <span className="text-blue-400">"from"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"gateway"</span>
-                  {`, `}
+                  {', '}
                   <span className="text-blue-400">"to"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"db"</span>
-                  {`, `}
+                  {', '}
                   <span className="text-blue-400">"type"</span>
-                  {`: `}
+                  {': '}
                   <span className="text-emerald-400">"http"</span>
                   {` }
   ]
