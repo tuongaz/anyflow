@@ -141,8 +141,8 @@ curl --max-time 0.5 -fsS "$STUDIO_URL/health"
 
 On failure, check `which seeflow`:
 
-- **CLI found:** `Studio not reachable at <url>. Start it with: seeflow start`
-- **CLI not found:** `Studio not reachable at <url> and the seeflow CLI is not installed. Run: npx tuongaz/seeflow` or clone + `make dev`.
+- **CLI found:** `Studio not reachable at <url>. Start it with: npx tuongaz/seeflow start`
+- **CLI not found:** `Studio not reachable at <url> and the seeflow CLI is not installed. Run: npx tuongaz/seeflow start` or clone + `make dev`.
 
 Do not retry. Do not auto-start. On success: continue to Phase 1.
 
