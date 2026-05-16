@@ -107,14 +107,7 @@ OTP ?=
 
 deploy: gh.deploy ## Alias for gh.deploy
 
-gh.deploy: build ## Build dist/web, commit+push it, then trigger viewer deployment via GitHub Actions
-	@if ! git diff --quiet apps/studio/dist/web; then \
-		git add apps/studio/dist/web && \
-		git commit -m "build: rebuild dist/web" && \
-		git push; \
-	else \
-		echo "dist/web unchanged, skipping commit"; \
-	fi
+gh.deploy: ## Trigger viewer deployment via GitHub Actions (workflow builds dist/web and commits it)
 	gh workflow run deploy-viewer.yml
 	@echo "Deployment triggered. Follow progress at: https://github.com/tuongaz/seeflow/actions/workflows/deploy-viewer.yml"
 
