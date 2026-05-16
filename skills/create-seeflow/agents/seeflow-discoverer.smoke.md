@@ -25,7 +25,7 @@ From a Claude Code session anywhere with this plugin installed:
      existingDemo: null
 
    It must return a single fenced JSON block matching the contract
-   in agents/seeflow-discoverer.md and nothing else.
+   in skills/create-seeflow/agents/seeflow-discoverer.md and nothing else.
    ```
 
 3. Read the agent's final message.
@@ -96,6 +96,6 @@ SeeFlow default audience).
 
 Re-run this smoke whenever:
 
-- `agents/seeflow-discoverer.md` is edited.
+- `skills/create-seeflow/agents/seeflow-discoverer.md` is edited.
 - The output contract in the agent prompt changes — also update the
   "Structural checks" list above.

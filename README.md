@@ -16,6 +16,12 @@ Turn your static system architecture into a live control panel wired directly to
 
 The SeeFlow plugin reads your codebase, understands your architecture, and generates the full diagram and request scripts automatically. Works with Claude Code, Codex, Cursor, and Windsurf.
 
+### Skill installer (recommended)
+
+```bash
+npx skills add tuongaz/seeflow
+```
+
 ### Claude Code
 
 ```bash

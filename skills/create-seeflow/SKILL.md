@@ -577,7 +577,7 @@ Malformed lines are silently dropped. Emit one full JSON object per line.
 | `seeflow-play-designer` | `Read, Grep, Glob, LS` | Phase 4: design playActions + script bodies |
 | `seeflow-status-designer` | `Read, Grep, Glob, LS` | Phase 4: design statusActions + script bodies |
 
-Full prompts + worked examples in `agents/<agent>.md`.
+Full prompts + worked examples in `skills/create-seeflow/agents/<agent>.md`.
 
 ## Studio API touchpoints
 
