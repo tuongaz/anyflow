@@ -271,7 +271,7 @@
         "Verify in browser using dev-browser skill — navigate to the generated seeflow.dev/flow/{uuid} URL and confirm the above"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

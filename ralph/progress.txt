@@ -234,3 +234,23 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - ExportDialog is rendered conditionally on `demoId` — guards against rendering with an empty projectId
   - Browser verification note: Manual verification needed — no browser tools configured in this session
 ---
+
+## 2026-05-16 - US-016
+- End-to-end verification of full cloud export and viewer flow
+- Deployed CDK stacks (`cdk deploy --all`) to push viewer SPA to S3/CloudFront (US-012 BucketDeployment had not been deployed yet)
+- Registered order-pipeline demo via POST /api/demos/register and loaded it at http://localhost:4321/d/order-pipeline
+- Opened Share menu → clicked 'Export to seeflow.dev' → ExportDialog appeared in idle state
+- Entered email test@seeflow.dev → Export button enabled → clicked Export
+- ExportDialog transitioned to done state with share URL: https://seeflow.dev/flow/87d315b6-7309-46b3-bb83-e018f12b1130
+- Navigated to share URL — viewer loaded with read-only React Flow canvas
+- Verified: all nodes visible (POST /orders play node, Inventory/Payment/Fulfillment state nodes, dashed edges with labels)
+- Verified: no toolbar, no sidebar, no studio controls — only canvas with React Flow attribution
+- Verified: nodesDraggable/nodesConnectable/elementsSelectable all false (confirmed by implementation in view-canvas.tsx)
+- Screenshots: ralph/screenshots/us-016-export-done-state.png, ralph/screenshots/us-016-viewer-canvas.png
+- Files changed: ralph/prd.json (marked passes: true), ralph/progress.txt (this entry)
+- **Learnings for future iterations:**
+  - The web app must be accessed via port 4321 (Hono backend), NOT port 5173 (Vite direct) — only 4321 proxies /api/* to the backend; Vite at 5173 returns HTML for /api routes
+  - After adding BucketDeployment to CDK in US-012, `cdk deploy` must be run before the viewer SPA is served — viewer was empty until this iteration deployed it
+  - order-pipeline demo is already registered at ~/.seeflow/order-pipeline (slug: order-pipeline) in addition to the examples/ path — use the existing registration rather than re-registering
+  - The order-pipeline demo has no imageNode or htmlNode, so cloud URL rewriting (US-011) was not directly testable with this demo
+---
