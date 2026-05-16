@@ -5,7 +5,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { FileDown, Image as ImageIcon, Loader2, Share2 } from 'lucide-react';
+import { FileDown, Image as ImageIcon, Loader2, Share2, Upload } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 export interface ShareMenuProps {
@@ -20,17 +20,23 @@ export interface ShareMenuProps {
    * menu item is hidden.
    */
   onDownloadPng?: () => Promise<unknown> | unknown;
+  /**
+   * Open the export-to-cloud dialog. When omitted, the "Export to seeflow.dev"
+   * menu item is hidden.
+   */
+  onExportToCloud?: () => void;
 }
 
 const SHARE_LABEL = 'Share / download';
 const DOWNLOAD_PDF_LABEL = 'Download PDF';
 const DOWNLOAD_PNG_LABEL = 'Download PNG';
+const EXPORT_TO_CLOUD_LABEL = 'Export to seeflow.dev';
 
 /**
  * Top-right share affordance. Replaces the toolbar's Export SVG/PDF buttons
  * with a single discoverable entry point that offers PDF and PNG formats.
  */
-export function ShareMenu({ onDownloadPdf, onDownloadPng }: ShareMenuProps) {
+export function ShareMenu({ onDownloadPdf, onDownloadPng, onExportToCloud }: ShareMenuProps) {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingPng, setDownloadingPng] = useState(false);
 
@@ -46,7 +52,7 @@ export function ShareMenu({ onDownloadPdf, onDownloadPng }: ShareMenuProps) {
     Promise.resolve(onDownloadPng()).finally(() => setDownloadingPng(false));
   }, [onDownloadPng, downloadingPng]);
 
-  if (!onDownloadPdf && !onDownloadPng) return null;
+  if (!onDownloadPdf && !onDownloadPng && !onExportToCloud) return null;
 
   return (
     <DropdownMenu>
@@ -108,6 +114,17 @@ export function ShareMenu({ onDownloadPdf, onDownloadPng }: ShareMenuProps) {
               <ImageIcon className="h-4 w-4" aria-hidden="true" />
             )}
             <span>{DOWNLOAD_PNG_LABEL}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {onExportToCloud ? (
+          <DropdownMenuItem
+            data-testid="share-menu-export-cloud"
+            onSelect={() => {
+              onExportToCloud();
+            }}
+          >
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            <span>{EXPORT_TO_CLOUD_LABEL}</span>
           </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>

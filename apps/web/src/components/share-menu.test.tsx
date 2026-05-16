@@ -83,7 +83,7 @@ function renderShareMenu(props: Partial<ShareMenuProps>): unknown {
 }
 
 describe('ShareMenu', () => {
-  it('renders null when neither callback is provided (no-demo state hides the affordance)', () => {
+  it('renders null when no callback is provided (no-demo state hides the affordance)', () => {
     const tree = renderShareMenu({});
     expect(tree).toBeNull();
   });
@@ -149,5 +149,33 @@ describe('ShareMenu', () => {
     const onSelect = pngItem.props.onSelect as (e: Event) => void;
     onSelect({ preventDefault } as unknown as Event);
     expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the trigger when only onExportToCloud is provided', () => {
+    const tree = renderShareMenu({ onExportToCloud: () => {} });
+    const trigger = findByTestId(tree, 'share-menu-trigger');
+    expect(trigger).not.toBeNull();
+  });
+
+  it('renders the export cloud item when onExportToCloud is wired', () => {
+    const tree = renderShareMenu({ onExportToCloud: () => {} });
+    const cloudItem = findByTestId(tree, 'share-menu-export-cloud');
+    expect(cloudItem).not.toBeNull();
+  });
+
+  it('does not render the export cloud item when onExportToCloud is not provided', () => {
+    const tree = renderShareMenu({ onDownloadPng: () => {} });
+    const cloudItem = findByTestId(tree, 'share-menu-export-cloud');
+    expect(cloudItem).toBeNull();
+  });
+
+  it('selecting the export cloud item calls onExportToCloud', () => {
+    const onExportToCloud = mock(() => {});
+    const tree = renderShareMenu({ onExportToCloud });
+    const cloudItem = findByTestId(tree, 'share-menu-export-cloud');
+    if (!cloudItem) throw new Error('Export cloud item missing');
+    const onSelect = cloudItem.props.onSelect as (e: Event) => void;
+    onSelect({ preventDefault: () => {} } as unknown as Event);
+    expect(onExportToCloud).toHaveBeenCalledTimes(1);
   });
 });

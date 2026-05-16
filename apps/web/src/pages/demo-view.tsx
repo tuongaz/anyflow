@@ -1,6 +1,7 @@
 import { CommandPalette } from '@/components/command-palette';
 import { DemoCanvas } from '@/components/demo-canvas';
 import { DetailPanel } from '@/components/detail-panel';
+import { ExportDialog } from '@/components/export-dialog';
 import { ICON_DEFAULT_SIZE } from '@/components/nodes/icon-node';
 import { SHAPE_DEFAULT_SIZE } from '@/components/nodes/shape-node';
 import { RestartDemoButton } from '@/components/restart-demo-button';
@@ -368,6 +369,7 @@ export function DemoView({
   }, [demoNodes, nodeOrderOverride]);
 
   const demoId = detail?.id ?? null;
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const { setOverride: setNodeOverride, dropOverride: dropNodeOverride } = nodePending;
   // Read live displayed position for a node (override merged) so a multi-node
   // drag's snapshot reflects the in-flight visual state, not the stale server
@@ -2957,6 +2959,7 @@ export function DemoView({
         <ShareMenu
           onDownloadPdf={demoId ? onExportPdf : undefined}
           onDownloadPng={demoId ? onExportPng : undefined}
+          onExportToCloud={demoId ? () => setExportDialogOpen(true) : undefined}
         />
       </div>
 
@@ -3081,6 +3084,14 @@ export function DemoView({
           setPanelConnectorId(null);
         }}
       />
+
+      {demoId ? (
+        <ExportDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          projectId={demoId}
+        />
+      ) : null}
     </div>
   );
 }
