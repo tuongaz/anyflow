@@ -72,6 +72,18 @@ const exportPanelStyle: React.CSSProperties = {
   gap: 6,
 };
 
+const attributionStyle: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.85)',
+  padding: '3px 8px',
+  borderRadius: 4,
+  fontSize: 11,
+  color: '#555',
+  textDecoration: 'none',
+  backdropFilter: 'blur(2px)',
+  border: '1px solid rgba(0,0,0,0.06)',
+  lineHeight: 1.4,
+};
+
 function convertNode(node: DemoNode): Node {
   const data = node.data as unknown as Record<string, unknown>;
   const w = typeof data.width === 'number' ? data.width : undefined;
@@ -206,6 +218,16 @@ export function ViewCanvas({ demo, uuid }: ViewCanvasProps) {
           }}
         >
           <Controls />
+          <Panel position="bottom-right">
+            <a
+              href="https://seeflow.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={attributionStyle}
+            >
+              Powered by <strong>seeflow.dev</strong>
+            </a>
+          </Panel>
           <Panel position="top-right" style={exportPanelStyle}>
             <button type="button" style={exportBtnStyle} onClick={downloadPng} title="Download PNG">
               <ImageIcon size={13} />
