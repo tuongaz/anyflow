@@ -85,12 +85,12 @@ export function Home() {
         </div>
       </header>
 
-      <main className="flex-grow pt-24 pb-20">
+      <main className="flex-grow pt-24 pb-12 md:pb-20">
         {/* Hero */}
-        <section className="relative max-w-6xl mx-auto px-6 pt-16 md:pt-24 pb-16 text-center">
+        <section className="relative max-w-6xl mx-auto px-6 pt-6 md:pt-24 pb-8 md:pb-16 text-center">
           <BgGrid className="absolute inset-0 -z-10 [mask-image:radial-gradient(ellipse_at_center,white,transparent_70%)]" />
 
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900/50 text-xs font-medium text-zinc-400 mb-8 backdrop-blur-sm">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900/50 text-xs font-medium text-zinc-400 mb-5 md:mb-8 backdrop-blur-sm">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
             v1.0 is now live
           </div>
@@ -109,7 +109,7 @@ export function Home() {
             </span>
           </h1>
 
-          <p className="text-base md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed font-medium">
+          <p className="text-base md:text-xl text-zinc-400 max-w-2xl mx-auto mb-6 md:mb-10 leading-relaxed font-medium">
             Figma meets Postman. Turn your static system architecture into a live control panel
             wired directly to your running application.
           </p>
@@ -145,7 +145,7 @@ export function Home() {
 
           {/* Hero canvas mockup */}
           <div
-            className="mt-16 md:mt-24 relative rounded-xl border border-zinc-800/60 bg-zinc-950/50 backdrop-blur-xl shadow-2xl overflow-hidden"
+            className="mt-8 md:mt-24 relative rounded-xl border border-zinc-800/60 bg-zinc-950/50 backdrop-blur-xl shadow-2xl overflow-hidden"
             style={{ boxShadow: '0 0 40px -10px rgba(16,185,129,0.15)' }}
           >
             {/* Mac window header */}
@@ -285,8 +285,8 @@ export function Home() {
         </section>
 
         {/* Problem */}
-        <section id="problem" className="max-w-6xl mx-auto px-6 py-20 border-t border-zinc-800/50">
-          <div className="text-center mb-16">
+        <section id="problem" className="max-w-6xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50">
+          <div className="text-center mb-8 md:mb-16">
             <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
               Static diagrams are dead on arrival.
             </h2>
@@ -326,9 +326,9 @@ export function Home() {
         </section>
 
         {/* How It Works */}
-        <section className="py-20 bg-zinc-900/20 border-y border-zinc-800/50">
+        <section className="py-8 md:py-20 bg-zinc-900/20 border-y border-zinc-800/50">
           <div className="max-w-6xl mx-auto px-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 relative">
               <div className="hidden md:block absolute top-6 left-1/6 right-1/6 h-px bg-zinc-800 -z-10" />
 
               <div className="text-center">
@@ -377,16 +377,16 @@ export function Home() {
         </section>
 
         {/* Features Bento */}
-        <section id="features" className="max-w-6xl mx-auto px-6 py-20">
-          <div className="mb-12">
+        <section id="features" className="max-w-6xl mx-auto px-6 py-8 md:py-20">
+          <div className="mb-6 md:mb-12">
             <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
               Everything you need to document reality.
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ gridAutoRows: '250px' }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Interactive Canvas */}
-            <div className="md:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 flex flex-col justify-between relative overflow-hidden group">
+            <div className="md:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 md:p-8 flex flex-col justify-between relative overflow-hidden group">
               <div className="absolute right-0 top-0 w-64 h-full bg-gradient-to-l from-zinc-800/20 to-transparent pointer-events-none" />
               <div className="z-10 max-w-sm">
                 <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-300 mb-4 border border-zinc-700">
@@ -409,7 +409,7 @@ export function Home() {
             </div>
 
             {/* Live Status */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 flex flex-col justify-between relative overflow-hidden">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 md:p-8 flex flex-col justify-between relative overflow-hidden">
               <div className="z-10">
                 <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-300 mb-4 border border-zinc-700">
                   <Activity size={20} />
@@ -441,23 +441,23 @@ export function Home() {
         </section>
 
         {/* AI Integration */}
-        <section id="ai" className="py-20 border-t border-zinc-800/50">
+        <section id="ai" className="py-8 md:py-20 border-t border-zinc-800/50">
           <div className="max-w-6xl mx-auto px-6">
-            <div className="flex flex-col lg:flex-row items-center gap-12">
+            <div className="flex flex-col lg:flex-row items-center gap-6 md:gap-12">
               <div className="lg:w-1/2">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-500/20 bg-purple-500/10 text-xs font-medium text-purple-400 mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-500/20 bg-purple-500/10 text-xs font-medium text-purple-400 mb-4 md:mb-6">
                   <Wand2 size={12} />
                   Claude Code Plugin
                 </div>
                 <h2 className="text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
                   Zero to running demo in one prompt.
                 </h2>
-                <p className="text-zinc-400 text-base leading-relaxed mb-6">
+                <p className="text-zinc-400 text-base leading-relaxed mb-4 md:mb-6">
                   Don't want to write JSON? The SeeFlow Claude Code plugin reads your codebase,
                   understands your architecture, and generates the full diagram and request scripts
                   automatically.
                 </p>
-                <ul className="space-y-3 mb-8 text-sm text-zinc-300">
+                <ul className="space-y-3 mb-5 md:mb-8 text-sm text-zinc-300">
                   <li className="flex items-start gap-2">
                     <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
                     <span>Scans routes and database connections</span>
@@ -519,12 +519,12 @@ export function Home() {
         {/* JSON Config */}
         <section
           id="docs"
-          className="max-w-4xl mx-auto px-6 py-20 border-t border-zinc-800/50 text-center"
+          className="max-w-4xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50 text-center"
         >
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-100 mb-4">
             No magic, just JSON.
           </h2>
-          <p className="text-zinc-400 text-base mb-10 max-w-xl mx-auto">
+          <p className="text-zinc-400 text-base mb-6 md:mb-10 max-w-xl mx-auto">
             Define your architecture using a declarative configuration that lives in your repo.
           </p>
 
@@ -621,7 +621,7 @@ export function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800/50 bg-zinc-950 py-12">
+      <footer className="border-t border-zinc-800/50 bg-zinc-950 py-8 md:py-12">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2 text-zinc-100 font-semibold tracking-tight text-lg">
             <Workflow size={18} className="text-emerald-400" />
