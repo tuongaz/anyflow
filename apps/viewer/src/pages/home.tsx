@@ -90,6 +90,11 @@ export function Home() {
         <section className="relative max-w-6xl mx-auto px-6 pt-6 md:pt-24 pb-8 md:pb-16 text-center">
           <BgGrid className="absolute inset-0 -z-10 [mask-image:radial-gradient(ellipse_at_center,white,transparent_70%)]" />
 
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-xs font-medium text-emerald-400 mb-6 backdrop-blur-sm">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+            100% free &amp; open source
+          </div>
+
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-semibold tracking-tight text-zinc-100 mb-6 max-w-4xl mx-auto leading-tight">
             Architecture diagrams that{' '}
             <span
@@ -285,7 +290,7 @@ export function Home() {
                   Zero to running demo in one prompt.
                 </h2>
                 <p className="text-zinc-400 text-base leading-relaxed mb-4 md:mb-6">
-                  Don't want to write JSON? The SeeFlow Claude Code plugin reads your codebase,
+                  Don't want to write JSON? The SeeFlow AI Agent Skill reads your codebase,
                   understands your architecture, and generates the full diagram and request scripts
                   automatically.
                 </p>
@@ -515,12 +520,10 @@ export function Home() {
           </div>
           <div className="flex gap-6 text-sm text-zinc-400 font-medium">
             {[
-              { label: 'npm', href: '#' },
               { label: 'GitHub', href: 'https://github.com/tuongaz/seeflow' },
-              { label: 'Docs', href: '#' },
-              { label: 'Twitter', href: '#' },
+              { label: 'X', href: 'https://x.com/tuongaz' },
             ].map(({ label, href }) => (
-              <a key={label} href={href} className="hover:text-zinc-100 transition-colors">
+              <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-100 transition-colors">
                 {label}
               </a>
             ))}
