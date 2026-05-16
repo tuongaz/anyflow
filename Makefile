@@ -107,9 +107,16 @@ OTP ?=
 
 deploy: gh.deploy ## Alias for gh.deploy
 
-gh.deploy: build ## Trigger manual deployment of apps/viewer to S3 + CloudFront via GitHub Actions
+gh.deploy: build ## Build dist/web, commit+push it, then trigger viewer deployment via GitHub Actions
+	@if ! git diff --quiet apps/studio/dist/web; then \
+		git add apps/studio/dist/web && \
+		git commit -m "build: rebuild dist/web" && \
+		git push; \
+	else \
+		echo "dist/web unchanged, skipping commit"; \
+	fi
 	gh workflow run deploy-viewer.yml
-	@echo "Deployment triggered. Follow progress at: https://github.com/tuongaz/anydemo/actions/workflows/deploy-viewer.yml"
+	@echo "Deployment triggered. Follow progress at: https://github.com/tuongaz/seeflow/actions/workflows/deploy-viewer.yml"
 
 release: ## Publish @tuongaz/seeflow to npm (NPM_TOKEN=<tok> make release; add OTP=<code> if 2FA is required)
 	@test -n "$(NPM_TOKEN)" || (echo "ERROR: NPM_TOKEN is not set" >&2; exit 1)
