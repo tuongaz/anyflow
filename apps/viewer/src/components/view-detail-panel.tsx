@@ -20,12 +20,14 @@ function useIsMobile() {
   return isMobile;
 }
 
+const HEADER_HEIGHT = 52;
+
 const panelBaseStyle: React.CSSProperties = {
   position: 'fixed',
-  top: 0,
+  top: HEADER_HEIGHT,
   right: 0,
   width: 360,
-  height: '100%',
+  height: `calc(100% - ${HEADER_HEIGHT}px)`,
   background: '#fff',
   borderLeft: '1px solid #e2e8f0',
   display: 'flex',
@@ -70,7 +72,7 @@ export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
   const detail = data.detail ?? '';
 
   const panelStyle: React.CSSProperties = isMobile
-    ? { ...panelBaseStyle, width: '100%', zIndex: 30 }
+    ? { ...panelBaseStyle, top: 0, height: '100%', width: '100%', zIndex: 30 }
     : panelBaseStyle;
 
   return (

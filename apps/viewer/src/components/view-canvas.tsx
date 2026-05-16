@@ -197,6 +197,7 @@ export function ViewCanvas({ demo, uuid }: ViewCanvasProps) {
           onNodeClick={handleNodeClick}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onPaneClick={() => setSelectedNode(null)}
           onInit={(rf) => {
             rfRef.current = rf;
           }}
