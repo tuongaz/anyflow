@@ -50,7 +50,6 @@ const bodyStyle: React.CSSProperties = {
   padding: '16px',
 };
 
-
 export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
   const data = node.data as unknown as Record<string, string | undefined>;
   const name = data.name ?? '';
@@ -66,9 +65,7 @@ export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
               {name}
             </div>
           )}
-          {description && (
-            <div style={{ fontSize: 13, color: '#64748b' }}>{description}</div>
-          )}
+          {description && <div style={{ fontSize: 13, color: '#64748b' }}>{description}</div>}
         </div>
         <button style={closeStyle} onClick={onClose} aria-label="Close">
           <X size={16} />
@@ -80,7 +77,9 @@ export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{detail}</ReactMarkdown>
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>No details available.</p>
+          <p style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>
+            No details available.
+          </p>
         )}
       </div>
     </div>

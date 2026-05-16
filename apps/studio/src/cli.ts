@@ -142,13 +142,13 @@ async function seedExample(registry: Registry, exampleName: string) {
   const destDir = join(homedir(), '.seeflow', exampleName);
   const demoPath = '.seeflow/seeflow.json';
 
-  if (registry.getByRepoPathAndDemoPath(destDir, demoPath)) return;
+  // Always sync from source so that schema changes and example updates are
+  // reflected on every startup, even when the dest directory already exists.
+  const srcDir = join(import.meta.dir, `../examples/${exampleName}`);
+  if (!existsSync(srcDir)) return;
+  cpSync(srcDir, destDir, { recursive: true });
 
-  if (!existsSync(destDir)) {
-    const srcDir = join(import.meta.dir, `../examples/${exampleName}`);
-    if (!existsSync(srcDir)) return;
-    cpSync(srcDir, destDir, { recursive: true });
-  }
+  if (registry.getByRepoPathAndDemoPath(destDir, demoPath)) return;
 
   const flowFile = join(destDir, demoPath);
   if (!existsSync(flowFile)) return;

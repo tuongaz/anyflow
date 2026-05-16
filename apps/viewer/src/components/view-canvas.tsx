@@ -197,7 +197,9 @@ export function ViewCanvas({ demo, uuid }: ViewCanvasProps) {
           onNodeClick={handleNodeClick}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onInit={(rf) => { rfRef.current = rf; }}
+          onInit={(rf) => {
+            rfRef.current = rf;
+          }}
         >
           <Controls />
           <Panel position="top-right" style={exportPanelStyle}>
