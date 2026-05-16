@@ -63,3 +63,14 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - For binary file responses (images), return `isBase64Encoded: true` and base64-encode the body
   - US-005 GET handlers are already implemented in this commit — next iteration should mark US-005 as done after verifying
 ---
+
+## 2026-05-16 - US-005
+- GET /flows/{uuid} and GET /flows/{uuid}/files/{proxy+} handlers were already implemented as part of the US-004 commit
+- Verified all acceptance criteria are satisfied: returns seeflow.json as application/json, 404 on missing key, streams files with inferred Content-Type, 404 on missing file
+- Typecheck passes with no errors
+- Files changed: ralph/prd.json (marked passes: true), ralph/progress.txt (this entry)
+- **Learnings for future iterations:**
+  - Content-Type inference uses a simple extension→MIME map; the default is application/octet-stream
+  - Binary file responses require `isBase64Encoded: true` with base64-encoded body for API Gateway HTTP API
+  - NoSuchKey from S3 GetObjectCommand is caught with a broad catch and returns 404 — this is intentional
+---
