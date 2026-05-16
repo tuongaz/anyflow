@@ -6,6 +6,7 @@ import {
   Panel,
   ReactFlow,
   type ReactFlowInstance,
+  SelectionMode,
   useEdgesState,
   useNodesState,
 } from '@xyflow/react';
@@ -190,7 +191,9 @@ export function ViewCanvas({ demo, uuid }: ViewCanvasProps) {
           nodesDraggable={true}
           nodesConnectable={false}
           elementsSelectable={true}
-          panOnDrag={true}
+          selectionOnDrag={true}
+          panOnDrag={[1, 2]}
+          selectionMode={SelectionMode.Partial}
           fitView
           defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
           proOptions={{ hideAttribution: false }}
