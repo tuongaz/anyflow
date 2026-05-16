@@ -20,9 +20,10 @@ export function Header({
       <button
         type="button"
         onClick={() => navigate('/')}
-        className="text-sm font-semibold tracking-tight hover:text-foreground/80"
+        className="text-base font-bold tracking-tight text-[#0f172a] hover:text-[#0f172a]/80"
+        style={{ letterSpacing: '-0.02em' }}
       >
-        SeeFlow Studio
+        SeeFlow
       </button>
       <div className="flex items-center gap-3">
         <ProjectSwitcher
