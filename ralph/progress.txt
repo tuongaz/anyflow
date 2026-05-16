@@ -15,6 +15,10 @@ Started: Sat 16 May 2026 14:58:15 AEST
 - `fflate` (^0.8.2) is the right unzip library for Lambda: pure JS, bundles cleanly with esbuild, types included
 - `@aws-sdk/client-s3` must be added to package.json for TypeScript types; esbuild marks it external so it uses the runtime SDK
 - API Gateway HTTP API passes binary bodies base64-encoded; check `event.isBase64Encoded` before decoding
+- ACM certificates for CloudFront must be in us-east-1; use a separate `SeeflowCertStack` with `crossRegionReferences: true` on both stacks
+- `S3BucketOrigin.withOriginAccessControl()` (CDK 2.150+) auto-creates OAC + bucket policy for CloudFront → S3
+- Extract API Gateway hostname for CloudFront HttpOrigin: `cdk.Fn.select(2, cdk.Fn.split('/', httpApi.apiEndpoint))`
+- CloudFront `/api/*` behavior uses a CloudFront Function (JS_2_0) to strip the `/api` prefix before forwarding to API Gateway
 
 ## 2026-05-16 - US-001
 - Initialised apps/cloud/ CDK project scaffold
@@ -73,4 +77,25 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - Content-Type inference uses a simple extension→MIME map; the default is application/octet-stream
   - Binary file responses require `isBase64Encoded: true` with base64-encoded body for API Gateway HTTP API
   - NoSuchKey from S3 GetObjectCommand is caught with a broad catch and returns 404 — this is intentional
+---
+
+## 2026-05-16 - US-006
+- Created `apps/cloud/lib/seeflow-cert-stack.ts`: new stack deployed to us-east-1 that creates ACM certificate for seeflow.dev with DNS validation against the existing Route53 hosted zone
+- Updated `apps/cloud/bin/app.ts`: instantiates SeeflowCertStack (us-east-1, crossRegionReferences: true) and SeeflowStack (default region, crossRegionReferences: true), passing the certificate across stacks
+- Updated `apps/cloud/lib/seeflow-stack.ts`:
+  - Added CloudFront Function (`ApiPathRewriteFunction`) to strip `/api` prefix before forwarding to API Gateway (keeps Lambda route keys as `/flows` etc.)
+  - S3 origin via `S3BucketOrigin.withOriginAccessControl()` (CDK auto-creates OAC + bucket policy)
+  - HttpOrigin for API Gateway using `Fn.select(2, Fn.split('/', httpApi.apiEndpoint))` to extract hostname
+  - CloudFront Distribution with cert, CNAME `seeflow.dev`, SPA error responses (403/404 → index.html 200)
+  - `/api/*` behavior: ALLOW_ALL methods, CACHING_DISABLED, ALL_VIEWER_EXCEPT_HOST_HEADER origin request policy, path rewrite function
+  - Route53 HostedZone.fromLookup + ARecord alias to CloudFront distribution
+  - CloudFront domain exported as `SeeflowCloudFrontDomain` stack output
+- Typecheck passes
+- **Learnings for future iterations:**
+  - For CloudFront + ACM, the certificate MUST be in us-east-1; use a separate `SeeflowCertStack` with `env.region: 'us-east-1'` and `crossRegionReferences: true` on both stacks
+  - CDK cross-region references use SSM parameters under the hood — requires `crossRegionReferences: true` on both the source and target stacks
+  - `S3BucketOrigin.withOriginAccessControl()` (CDK 2.150+) auto-creates OAC and adds the required bucket policy — no manual policy needed
+  - API Gateway endpoint URL needs hostname extraction: `cdk.Fn.select(2, cdk.Fn.split('/', httpApi.apiEndpoint))`
+  - CloudFront Functions (JS_2_0 runtime) are used for path rewriting; the function strips `/api` prefix so API Gateway sees `/flows` not `/api/flows`
+  - `HostedZone.fromLookup` requires AWS credentials at synthesis time to populate CDK context cache
 ---
