@@ -196,7 +196,7 @@ export function ViewCanvas({ demo, uuid }: ViewCanvasProps) {
           selectionMode={SelectionMode.Partial}
           fitView
           defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
-          proOptions={{ hideAttribution: false }}
+          proOptions={{ hideAttribution: true }}
           onNodeClick={handleNodeClick}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
