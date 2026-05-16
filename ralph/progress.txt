@@ -189,3 +189,16 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - Source path is relative to stack file's __dirname (apps/cloud/lib/): `../../viewer/dist` reaches apps/viewer/dist/
   - SPA fallback (403/404 → index.html 200) defined in US-006 handles `/flow/:uuid` deep links — no additional config needed
 ---
+
+## 2026-05-16 - US-013
+- Created apps/web/src/hooks/use-export-to-cloud.ts exporting `exportToCloud(projectId, email)` and `useExportToCloud(projectId)` hook
+- Created apps/web/src/hooks/use-export-to-cloud.test.ts with 9 tests covering: happy path, seeflow.json in zip, imageNode files, htmlNode files, deduplication, 404 skip, null demo error, cloud error, missing url error
+- Added fflate@^0.8.2 to apps/web/package.json dependencies
+- Files changed: apps/web/package.json, bun.lock, apps/web/src/hooks/use-export-to-cloud.ts, apps/web/src/hooks/use-export-to-cloud.test.ts
+- **Learnings for future iterations:**
+  - `fflate.zipSync` takes `Record<string, Uint8Array>` — pass `zipped.buffer as ArrayBuffer` (not the Uint8Array itself) as the fetch body; Bun's TypeScript types for `BodyInit` don't accept `Uint8Array` directly
+  - Tests mock `globalThis.fetch` with a multi-URL handler (url.includes pattern) to intercept demo fetch, file fetches, and cloud POST in one test
+  - Use `assertArrayBuffer(v)` assertion helper instead of `!` non-null assertions — biome's `noNonNullAssertion` rule is enabled
+  - `exportToCloud` is a plain async function tested directly; `useExportToCloud` is a thin `useCallback` wrapper — test the async function, not the hook
+  - Import order: biome requires `@/` paths before npm packages before framework (react) — check with `biome check` before committing
+---
