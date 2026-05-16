@@ -911,6 +911,9 @@ export async function moveNodeImpl(
   });
 
   if (result.kind === 'ok') {
+    // Eagerly refresh snapshot so a subsequent GET /api/demos/:id (e.g. export)
+    // returns the updated position without waiting for the 100ms FSWatcher debounce.
+    deps.watcher?.reparse(demoId);
     return { kind: 'ok', data: { position: { x: position.x, y: position.y } } };
   }
   return result;
