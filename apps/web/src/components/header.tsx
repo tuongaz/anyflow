@@ -1,6 +1,7 @@
 import { ProjectSwitcher } from '@/components/project-switcher';
 import type { CreateProjectResult, DemoSummary } from '@/lib/api';
 import { navigate } from '@/lib/router';
+import { Workflow } from 'lucide-react';
 
 export interface HeaderProps {
   demos: DemoSummary[];
@@ -21,6 +22,9 @@ export function Header({
         type="button"
         onClick={() => navigate('/')}
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
           fontWeight: 700,
           fontSize: 16,
           color: '#0f172a',
@@ -31,6 +35,7 @@ export function Header({
           padding: 0,
         }}
       >
+        <Workflow size={20} color="#34d399" strokeWidth={2} />
         SeeFlow
       </button>
       <div className="flex items-center gap-3">

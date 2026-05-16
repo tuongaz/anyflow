@@ -1,3 +1,4 @@
+import { Workflow } from 'lucide-react';
 import { Link, useMatch } from 'react-router-dom';
 
 const headerStyle: React.CSSProperties = {
@@ -13,6 +14,9 @@ const headerStyle: React.CSSProperties = {
 };
 
 const logoStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
   fontWeight: 700,
   fontSize: 16,
   color: '#0f172a',
@@ -37,6 +41,7 @@ export function ViewerHeader() {
   return (
     <header style={headerStyle}>
       <Link to="/" style={logoStyle}>
+        <Workflow size={20} color="#34d399" strokeWidth={2} />
         SeeFlow
       </Link>
       {!isFlowView && (
