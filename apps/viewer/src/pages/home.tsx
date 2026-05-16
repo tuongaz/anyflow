@@ -60,17 +60,11 @@ export function Home() {
             SeeFlow
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-400">
-            <a href="#problem" className="hover:text-zinc-100 transition-colors">
-              Problem
-            </a>
             <a href="#features" className="hover:text-zinc-100 transition-colors">
               Features
             </a>
             <a href="#ai" className="hover:text-zinc-100 transition-colors">
-              Claude Plugin
-            </a>
-            <a href="#docs" className="hover:text-zinc-100 transition-colors">
-              Docs
+              How to Use
             </a>
           </nav>
           <a
