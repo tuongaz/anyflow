@@ -141,3 +141,24 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - ViewCanvas stub accepts both `demo` and `uuid` props — uuid is needed for US-011 cloud URL rewriting
   - Spinner is a pure CSS animation in index.html; component uses className="spinner" with no external deps
 ---
+
+## 2026-05-16 - US-010
+- Implemented full read-only React Flow canvas in apps/viewer/src/components/view-canvas.tsx
+- Created apps/viewer/src/lib/color-tokens.ts — standalone color token resolver (no CSS vars; uses hardcoded HSL values since viewer has no theme)
+- Created apps/viewer/src/lib/icon-registry.ts — lucide-react icon registry (same logic as apps/web)
+- Created read-only node renderers: view-state-node.tsx, view-play-node.tsx, view-shape-node.tsx, view-image-node.tsx, view-icon-node.tsx, view-html-node.tsx
+- Created view-edge.tsx — simple BaseEdge+EdgeLabelRenderer using getBezierPath or getSmoothStepPath
+- Added lucide-react@^0.453.0 to apps/viewer/package.json
+- Inline SVG illustrative shapes (database, server, user, queue, cloud) directly in view-shape-node.tsx — no external shape files
+- All node types use hidden (opacity:0) handles for edge routing; nodesDraggable/nodesConnectable/elementsSelectable all false
+- Typecheck passes; build produces dist/ without errors (chunk size warning is expected with full lucide-react import)
+- Files changed: apps/viewer/package.json, bun.lock, apps/viewer/src/components/view-canvas.tsx, apps/viewer/src/components/view-edge.tsx, apps/viewer/src/components/nodes/* (6 new files), apps/viewer/src/lib/color-tokens.ts, apps/viewer/src/lib/icon-registry.ts
+- **Learnings for future iterations:**
+  - viewer has no Tailwind/shadcn — all node styling must use inline CSSProperties, not class names
+  - viewer's color-tokens.ts uses hardcoded HSL values for 'default' token (not CSS vars like apps/web) since there is no theme provider
+  - @xyflow/react NodeProps data must satisfy Record<string, unknown> — add `& Record<string, unknown>` to custom node data types
+  - For read-only viewer, hidden handles (opacity:0, pointerEvents:none) still enable correct edge routing to sourceHandle/targetHandle IDs
+  - Biome's noSvgWithoutTitle rule requires aria-hidden="true" on all decorative SVGs
+  - Biome's noArrayIndexKey rule triggers even when index is embedded in a template string key — use explicit string arrays instead
+  - ImageNode cloudSrc and HtmlNode cloudHtmlSrc are stubs for now; US-011 will inject the cloud URL via data props
+---

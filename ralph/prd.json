@@ -164,7 +164,7 @@
         "Verify in browser using dev-browser skill — navigate to a test UUID and confirm the canvas renders"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
