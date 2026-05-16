@@ -414,6 +414,8 @@ Full schema: `skills/create-seeflow/vendored/schema.ts`. Below covers ~95% of ca
 
 **playNode** — has a clickable Play button. Required: `name`, `kind`, `stateSource`, `playAction`. Optional: `statusAction`, `description` (≤ 15 words), `detail`.
 
+**RULE — detail on important nodes:** Every `playNode` and `stateNode` that carries meaningful behaviour MUST include a `detail` field. `detail` renders as **markdown** — use it to explain what the node does, what it emits, why it matters, sample payloads, links to source files, or anything an audience member would ask. Decorative `shapeNode`/`iconNode` entries are exempt.
+
 `kind`: `service`, `endpoint`, `worker`, `workflow`, `queue`, `topic`, `bus`, `db`, `store`, `cache`, `scheduler`, `external-api`, `trigger`.
 
 ```json
@@ -426,7 +428,8 @@ Full schema: `skills/create-seeflow/vendored/schema.ts`. Below covers ~95% of ca
                     "scriptPath": "checkout-flow/scripts/play-checkout.ts",
                     "input": { "items": [{"sku":"ABC","qty":1}] },
                     "timeoutMs": 30000 },
-    "description": "Receives a cart, creates an order."
+    "description": "Receives a cart, creates an order.",
+    "detail": "Validates the cart, reserves stock, and publishes an `order.created` event.\n\n**Emits:** `order.created` → Order Worker\n\n**Source:** `src/routes/checkout.ts`"
   }
 }
 ```
@@ -441,7 +444,8 @@ Full schema: `skills/create-seeflow/vendored/schema.ts`. Below covers ~95% of ca
     "stateSource": { "kind": "event" },
     "statusAction": { "kind": "script", "interpreter": "bun", "args": ["run"],
                       "scriptPath": "checkout-flow/scripts/status-orders.ts",
-                      "maxLifetimeMs": 600000 }
+                      "maxLifetimeMs": 600000 },
+    "detail": "Postgres table `orders`. Rows land here after `order.created` is processed.\n\n**Schema:** `id`, `status`, `total`, `created_at`\n\n**Source:** `src/db/migrations/001_orders.sql`"
   }
 }
 ```
