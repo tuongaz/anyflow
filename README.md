@@ -30,14 +30,10 @@ npx tuongaz/seeflow start
 npx skills add tuongaz/seeflow
 ```
 
-**Claude Code:**
-
 ```bash
 /plugin marketplace add tuongaz/seeflow
 /plugin install create-seeflow@seeflow
 ```
-
-**Codex / Windsurf:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tuongaz/seeflow/main/install.sh | bash
