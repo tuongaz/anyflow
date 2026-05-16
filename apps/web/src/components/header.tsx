@@ -20,8 +20,16 @@ export function Header({
       <button
         type="button"
         onClick={() => navigate('/')}
-        className="text-base font-bold tracking-tight text-[#0f172a] hover:text-[#0f172a]/80"
-        style={{ letterSpacing: '-0.02em' }}
+        style={{
+          fontWeight: 700,
+          fontSize: 16,
+          color: '#0f172a',
+          letterSpacing: '-0.02em',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+        }}
       >
         SeeFlow
       </button>
