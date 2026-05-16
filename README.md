@@ -12,38 +12,28 @@ Turn your static system architecture into a live control panel wired directly to
 - **Onboarding friction** — New engineers click through a live flow instead of reading six-month-old docs.
 - **Demo tedium** — Script it once, replay it flawlessly. No more manually clicking through microservices for stakeholders.
 
-## Quickstart
-
-```bash
-npx tuongaz/seeflow start
-```
-
-Opens the studio at <http://localhost:4321>. Then register a demo from any repo that has a `.seeflow/seeflow.json`:
-
-```bash
-npx tuongaz/seeflow register --path /path/to/your/repo
-```
-
-**Or clone and run the bundled example:**
-
-```bash
-git clone https://github.com/tuongaz/seeflow.git
-cd seeflow && bun install
-make demo
-```
-
-`make demo` starts the studio, registers the **Todo Demo**, and opens it at <http://localhost:4321/d/todo-demo>. Click **Play** on any node — a real script runs, the node animates, and the detail panel renders the response. Run `make stop` when done.
-
-## Generate a demo in one prompt
+## Quick Start
 
 The SeeFlow plugin reads your codebase, understands your architecture, and generates the full diagram and request scripts automatically. Works with Claude Code, Codex, Cursor, and Windsurf.
 
-**Install the plugin:**
+### Claude Code
 
 ```bash
 /plugin marketplace add tuongaz/seeflow
 /plugin install create-seeflow@seeflow
 ```
+
+### Codex / Windsurf
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuongaz/seeflow/main/install.sh | bash
+```
+
+### Cursor
+
+Cursor auto-discovers the plugin via `.cursor-plugin/plugin.json` when this repo is cloned. No manual installation needed — just clone and open in Cursor.
+
+---
 
 **Then just ask:**
 
