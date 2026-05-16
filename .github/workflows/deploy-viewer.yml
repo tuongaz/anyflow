@@ -87,3 +87,53 @@ jobs:
 
       - name: Summary
         run: echo "Deployed apps/viewer to https://seeflow.dev" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish @tuongaz/seeflow to npm
+    runs-on: ubuntu-latest
+    needs: deploy
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node (for npm publish)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build web bundle
+        run: cd apps/web && bun run build
+
+      - name: Verify web bundle landed in apps/studio/dist/web
+        run: |
+          test -f apps/studio/dist/web/index.html || {
+            echo "ERROR: apps/studio/dist/web/index.html missing after build" >&2
+            exit 1
+          }
+
+      - name: Stage README for npm package
+        run: cp README.md apps/studio/README.md
+
+      - name: Publish to npm with provenance
+        working-directory: apps/studio
+        run: npm publish --provenance --access public --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          pkg=$(node -p "require('./apps/studio/package.json').version")
+          echo "Published @tuongaz/seeflow@${pkg} to https://www.npmjs.com/package/@tuongaz/seeflow" >> "$GITHUB_STEP_SUMMARY"
