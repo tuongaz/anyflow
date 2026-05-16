@@ -105,8 +105,8 @@ export function Home() {
           </h1>
 
           <p className="text-base md:text-xl text-zinc-400 max-w-2xl mx-auto mb-6 md:mb-10 leading-relaxed font-medium">
-            Figma meets Postman. Turn your static system architecture into a live control panel
-            wired directly to your running application.
+            Turn your static system architecture into a live control panel wired directly to your
+            running application.
           </p>
 
           <div className="flex items-center justify-center">
@@ -306,7 +306,7 @@ export function Home() {
                   <li className="flex items-start gap-2">
                     <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
                     <span>
-                      Works with Claude Code, Codex, Cursor, Windsurf and any MCP-compatible editor
+                      Works with Claude Code, Codex, Cursor, and Windsurf
                     </span>
                   </li>
                 </ul>
