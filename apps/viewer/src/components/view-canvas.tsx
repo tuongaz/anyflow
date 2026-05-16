@@ -2,6 +2,7 @@ import { type Edge, MarkerType, type Node, ReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMemo } from 'react';
 import { colorTokenStyle } from '../lib/color-tokens';
+import { UuidContext } from '../lib/uuid-context';
 import type { Connector, Demo, DemoNode } from '../types';
 import { ViewHtmlNode } from './nodes/view-html-node';
 import { ViewIconNode } from './nodes/view-icon-node';
@@ -84,25 +85,27 @@ export interface ViewCanvasProps {
   uuid: string;
 }
 
-export function ViewCanvas({ demo }: ViewCanvasProps) {
+export function ViewCanvas({ demo, uuid }: ViewCanvasProps) {
   const nodes = useMemo(() => demo.nodes.map(convertNode), [demo.nodes]);
   const edges = useMemo(() => demo.connectors.map(convertConnector), [demo.connectors]);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnDrag={true}
-        fitView
-        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
-        proOptions={{ hideAttribution: false }}
-      />
-    </div>
+    <UuidContext.Provider value={uuid}>
+      <div style={{ width: '100%', height: '100%' }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          panOnDrag={true}
+          fitView
+          defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+          proOptions={{ hideAttribution: false }}
+        />
+      </div>
+    </UuidContext.Provider>
   );
 }

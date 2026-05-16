@@ -1,18 +1,18 @@
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import type { CSSProperties } from 'react';
 import { colorTokenStyle } from '../../lib/color-tokens';
+import { useUuid } from '../../lib/uuid-context';
 import type { HtmlNodeData } from '../../types';
 
-export type ViewHtmlNodeType = Node<
-  HtmlNodeData & { cloudHtmlSrc?: string } & Record<string, unknown>,
-  'htmlNode'
->;
+export type ViewHtmlNodeType = Node<HtmlNodeData & Record<string, unknown>, 'htmlNode'>;
 
 const HANDLE_STYLE: CSSProperties = { opacity: 0, pointerEvents: 'none' };
 const DEFAULT_W = 320;
 const DEFAULT_H = 200;
+const API_BASE = 'https://seeflow.dev/api/flows';
 
 export function ViewHtmlNode({ data }: NodeProps<ViewHtmlNodeType>) {
+  const uuid = useUuid();
   const sized = data.width !== undefined || data.height !== undefined;
 
   const containerStyle: CSSProperties = {
@@ -30,7 +30,7 @@ export function ViewHtmlNode({ data }: NodeProps<ViewHtmlNodeType>) {
     overflow: 'hidden',
   };
 
-  const cloudSrc = data.cloudHtmlSrc;
+  const cloudSrc = uuid && data.htmlPath ? `${API_BASE}/${uuid}/files/${data.htmlPath}` : '';
 
   return (
     <div style={containerStyle} data-testid="html-node">

@@ -1,18 +1,18 @@
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react';
 import type { CSSProperties } from 'react';
 import { NODE_DEFAULT_BG_WHITE, colorTokenStyle } from '../../lib/color-tokens';
+import { useUuid } from '../../lib/uuid-context';
 import type { ImageNodeData } from '../../types';
 
-export type ViewImageNodeType = Node<
-  ImageNodeData & { cloudSrc?: string } & Record<string, unknown>,
-  'imageNode'
->;
+export type ViewImageNodeType = Node<ImageNodeData & Record<string, unknown>, 'imageNode'>;
 
 const HANDLE_STYLE: CSSProperties = { opacity: 0, pointerEvents: 'none' };
 const DEFAULT_W = 200;
 const DEFAULT_H = 150;
+const API_BASE = 'https://seeflow.dev/api/flows';
 
 export function ViewImageNode({ data }: NodeProps<ViewImageNodeType>) {
+  const uuid = useUuid();
   const sized = data.width !== undefined || data.height !== undefined;
 
   const containerStyle: CSSProperties = {
@@ -31,7 +31,7 @@ export function ViewImageNode({ data }: NodeProps<ViewImageNodeType>) {
     overflow: 'hidden',
   };
 
-  const src = data.cloudSrc ?? '';
+  const src = uuid && data.path ? `${API_BASE}/${uuid}/files/${data.path}` : '';
 
   return (
     <div style={containerStyle} data-testid="image-node">
