@@ -1,7 +1,8 @@
 const demoId = process.env.SEEFLOW_DEMO_ID ?? '';
 const runId = process.env.SEEFLOW_RUN_ID ?? '';
+const studioUrl = (process.env.SEEFLOW_STUDIO_URL ?? 'http://localhost:4321').replace(/\/+$/, '');
 
-const res = await fetch('http://localhost:3000/orders', {
+const res = await fetch(`${studioUrl}/demo/orders`, {
   method: 'POST',
   headers: {
     'content-type': 'application/json',
@@ -12,6 +13,6 @@ const res = await fetch('http://localhost:3000/orders', {
 });
 
 if (!res.ok) {
-  console.error(`POST /orders failed: ${res.status}`);
+  console.error(`POST /demo/orders failed: ${res.status}`);
   process.exit(1);
 }

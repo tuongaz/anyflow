@@ -2,12 +2,5 @@
   "name": "order-pipeline",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "bun run src/server.ts"
-  },
-  "dependencies": {
-    "@seeflow/sdk": "workspace:*",
-    "hono": "^4.6.14"
-  }
+  "type": "module"
 }

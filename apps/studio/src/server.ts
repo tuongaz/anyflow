@@ -4,6 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { type ProxyFacade, createApi } from './api.ts';
+import { createDemoRouter } from './demo.ts';
 import { type EventBus, createEventBus } from './events.ts';
 import { createMcpServer } from './mcp.ts';
 import { type ProcessSpawner, defaultProcessSpawner } from './process-spawner.ts';
@@ -101,6 +102,8 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       },
     });
   });
+
+  app.route('/demo', createDemoRouter(events));
 
   app.route(
     '/api',
