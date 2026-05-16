@@ -2,40 +2,27 @@
 
 > Architecture diagrams that actually run.
 
-Whiteboard diagrams and Confluence pages rot the moment they're drawn. They
-can't tell you whether `order.created` still flows from the API to the
-inventory worker — only running code can. SeeFlow turns your architecture
-into a **playable canvas**: click a box, fire a real request, watch
-downstream services light up as your app emits events back.
+Turn your static system architecture into a live control panel wired directly to your running application. Click a node, fire a real request, watch downstream services light up as your app emits events back.
 
-Use it to onboard a new teammate in an afternoon instead of a week, align a
-product team on what actually happens during checkout, or keep a permanent
-record of how your system behaves — one that breaks loudly when it drifts.
+## Why
 
-## Why you'd use it
+- **Diagram drift** — Confluence pages go stale. SeeFlow breaks loudly when your actual system changes.
+- **Onboarding friction** — New engineers click through a live flow instead of reading six-month-old docs.
+- **Demo tedium** — Script it once, replay it flawlessly. No more manually clicking through microservices for stakeholders.
 
-- **A diagram that can't lie.** The boxes are real endpoints; the arrows
-  fire real requests. Drift is visible immediately.
-- **Living onboarding.** New engineers click around instead of reading
-  six-month-old docs.
-- **Generated, not drawn.** The bundled Claude Code plugin produces the
-  diagram from your code, so you don't pay a tax to keep it.
-- **Hot reload.** Edit the demo file, the canvas updates. No rebuild.
-
-## Quickstart (under a minute)
+## Quickstart
 
 ```bash
 npx tuongaz/seeflow start
 ```
 
-That starts the studio at <http://localhost:4321>. Then register a demo from
-any repo that has a `.seeflow/seeflow.json`:
+Opens the studio at <http://localhost:4321>. Then register a demo from any repo that has a `.seeflow/seeflow.json`:
 
 ```bash
 npx tuongaz/seeflow register --path /path/to/your/repo
 ```
 
-**Alternative — check out the repo:**
+**Or clone and run the bundled example:**
 
 ```bash
 git clone https://github.com/tuongaz/seeflow.git
@@ -43,64 +30,38 @@ cd seeflow && bun install
 make demo
 ```
 
-`make demo` starts the studio, registers the bundled **Todo Demo** example,
-and opens it at <http://localhost:4321/d/todo-demo>. In the canvas, click
-**Play** on the `POST /todos/:id/complete` node — a real `bun` script runs,
-the node animates `running → done`, and the detail panel renders the response.
-Edit `.seeflow/seeflow.json` in the registered demo and save — the canvas
-hot-reloads. When you're done, run `make stop`.
+`make demo` starts the studio, registers the **Todo Demo**, and opens it at <http://localhost:4321/d/todo-demo>. Click **Play** on any node — a real script runs, the node animates, and the detail panel renders the response. Run `make stop` when done.
 
-## Generate a demo from your own code (Claude Code plugin)
+## Generate a demo in one prompt
 
-Inside the cloned repo there's a Claude Code plugin (`create-seeflow`) that
-walks your codebase, picks a slice, and writes a `.seeflow/<slug>/seeflow.json`
-for you — no manual diagramming. From Claude Code:
+The SeeFlow plugin reads your codebase, understands your architecture, and generates the full diagram and request scripts automatically. Works with Claude Code, Codex, Cursor, and Windsurf.
 
-```
+**Install the plugin:**
+
+```bash
 /plugin marketplace add tuongaz/seeflow
 /plugin install create-seeflow@seeflow
 ```
 
-Then in any project, just describe what you want:
+**Then just ask:**
 
-> create a demo showing how the order pipeline works
-
-Claude walks your code, drafts the nodes, asks you to confirm, then writes +
-registers the demo against your running studio. The plugin handles schema
-validation and end-to-end checks before opening the canvas.
-
-For deeper authoring, browse [`skills/create-seeflow/`](./skills/create-seeflow/)
-and [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts) (the Zod
-source of truth).
-
-## Author a demo by hand
-
-A demo is a single file at `<your-repo>/.seeflow/seeflow.json` — no build
-step, no DSL. See [`apps/studio/src/schema.ts`](./apps/studio/src/schema.ts)
-for the full schema.
-
-Register your demo with:
-
-```bash
-npx -y @tuongaz/seeflow register --path /path/to/your/repo
+```
+/create-seeflow show me the shopping cart feature
 ```
 
-## MCP server (Cursor, Windsurf, any MCP-aware agent)
+The plugin scans your routes and database connections, generates `seeflow.json`, wires up demo scripts, and opens the canvas at localhost:4321.
 
-SeeFlow ships an MCP server so any MCP-aware coding agent (Claude Code,
-Cursor, Windsurf, etc.) can list, register, and edit demos directly —
-adding nodes, moving them, wiring connectors, patching styles. The studio
-must be running (`make demo` or `npx -y @tuongaz/seeflow start`); the MCP
-server is a thin stdio shim that proxies to its `/mcp` endpoint.
+## MCP server
 
-**Claude Code** — one command:
+SeeFlow ships an MCP server so any MCP-aware editor can list, register, and edit demos directly. The studio must be running first.
+
+**Claude Code:**
 
 ```bash
 claude mcp add seeflow -- npx -y -p @tuongaz/seeflow seeflow-mcp
 ```
 
-**Anything that reads `.mcp.json`** (Claude Code project-scoped, Cursor,
-etc.) — drop this into the project's `.mcp.json`:
+**Via `.mcp.json`** (Cursor, Windsurf, etc.):
 
 ```json
 {
@@ -113,26 +74,21 @@ etc.) — drop this into the project's `.mcp.json`:
 }
 ```
 
-The shim talks to `http://127.0.0.1:4321/mcp` by default. Override with
-`SEEFLOW_STUDIO_URL` if the studio runs elsewhere. If the studio isn't
-running, tool calls return a clear error instead of hanging.
+The MCP server talks to `http://127.0.0.1:4321/mcp` by default. Override with `SEEFLOW_STUDIO_URL` if needed.
 
-## Develop on SeeFlow itself
+## Develop
 
 ```bash
 git clone https://github.com/tuongaz/seeflow.git
-cd seeflow
-bun install
+cd seeflow && bun install
 make dev   # Vite (5173) + Hono studio (4321), both hot-reloading
 ```
 
-`make help` lists every target. Toolchain: Bun ≥ 1.3, Hono, React Flow,
-Zod, Biome.
+`make help` lists every target. Toolchain: Bun ≥ 1.3, Hono, React Flow, Zod, Biome.
 
 ## Status
 
-Early-stage. The schema is stable enough to author against, but expect
-changes. Issues, ideas, and PRs welcome.
+Early-stage. The schema is stable enough to author against, but expect changes. Issues, ideas, and PRs welcome.
 
 ## License
 
