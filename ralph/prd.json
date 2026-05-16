@@ -235,7 +235,7 @@
         "Verify in browser using dev-browser skill — open the dialog, enter email, confirm states render correctly"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

@@ -202,3 +202,21 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - `exportToCloud` is a plain async function tested directly; `useExportToCloud` is a thin `useCallback` wrapper — test the async function, not the hook
   - Import order: biome requires `@/` paths before npm packages before framework (react) — check with `biome check` before committing
 ---
+
+## 2026-05-16 - US-014
+- Created apps/web/src/components/export-dialog.tsx with ExportDialog component
+- Uses discriminated union `State` type (`idle | loading | done | error`) for clean state machine transitions
+- idle state: email input + Export button (disabled when email empty)
+- loading state: spinner + 'Uploading…' text, all inputs disabled
+- done state: read-only URL input + Copy link icon button (with check-mark feedback) + Done button
+- error state: error alert + Try again button (returns to idle) + Cancel button
+- Pre-fills email from localStorage on open; saves email to localStorage on successful export
+- Copy link uses navigator.clipboard.writeText with 2s visual confirmation (Check icon)
+- Files changed: apps/web/src/components/export-dialog.tsx (new), ralph/prd.json, ralph/progress.txt
+- **Learnings for future iterations:**
+  - Biome formats import order automatically with `biome format --write` — run from root, not inside apps/web
+  - Use discriminated union State type (kind: 'idle'|'loading'|'done'|'error') for multi-state dialogs — TypeScript narrows the union in JSX conditional branches
+  - Pattern for `done` state URL copy: local `copied` boolean + setTimeout reset, no external library needed
+  - The 123 lint errors shown by `bun run lint` at root are pre-existing in cdk.out/; use `biome check <specific-file>` to verify new files are clean
+  - Browser verification note: Manual verification needed — no browser tools configured in this session
+---
