@@ -1139,7 +1139,6 @@ describe('DemoCanvas', () => {
   });
 
   describe('selected connectors render LAST', () => {
-
     it('selected connectors render LAST so their EdgeUpdateAnchor wins hit-testing over overlapping siblings', () => {
       // Every edge sits at zIndex 0 (under nodes), so when two unselected
       // edges overlap, DOM order decides which one catches a click on its

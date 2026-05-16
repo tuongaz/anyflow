@@ -1836,7 +1836,6 @@ describe('DemoSchema', () => {
       }
       expect(result.data.connectors).toHaveLength(2);
     });
-
   });
 
   // US-001: script-based playAction + optional statusAction + StatusReport.

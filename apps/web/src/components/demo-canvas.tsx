@@ -1689,11 +1689,7 @@ export function DemoCanvas({
   // every node. The menu items read `contextNodeIdRef` so callbacks dispatch
   // to the right node even if state hasn't re-rendered yet.
   const contextEnabled =
-    !!onReorderNode ||
-    !!onDeleteNode ||
-    !!onCopyNode ||
-    !!onPasteAt ||
-    !!onUnpinEndpoint;
+    !!onReorderNode || !!onDeleteNode || !!onCopyNode || !!onPasteAt || !!onUnpinEndpoint;
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Whether the most recent right-click landed on a node (true) vs. the empty
   // pane (false). Used to gate per-node items (Copy / reorder / Delete) which

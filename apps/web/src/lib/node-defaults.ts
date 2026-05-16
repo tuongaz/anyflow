@@ -129,4 +129,3 @@ export function buildNewImageData(
     ...pick(lastUsed, IMAGE_FIELDS),
   };
 }
-

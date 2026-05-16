@@ -190,4 +190,3 @@ describe('buildNewImageData with lastUsed', () => {
     expect('borderSize' in data).toBe(false);
   });
 });
-

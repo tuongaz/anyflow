@@ -1,4 +1,12 @@
-export type ColorToken = 'default' | 'slate' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'pink';
+export type ColorToken =
+  | 'default'
+  | 'slate'
+  | 'blue'
+  | 'green'
+  | 'amber'
+  | 'red'
+  | 'purple'
+  | 'pink';
 
 export interface NodeVisual {
   width?: number;
@@ -24,7 +32,16 @@ export interface NodeData extends NodeVisual, NodeDescription {
   stateSource: { kind: 'request' | 'event' };
 }
 
-export type ShapeKind = 'rectangle' | 'ellipse' | 'sticky' | 'text' | 'database' | 'server' | 'user' | 'queue' | 'cloud';
+export type ShapeKind =
+  | 'rectangle'
+  | 'ellipse'
+  | 'sticky'
+  | 'text'
+  | 'database'
+  | 'server'
+  | 'user'
+  | 'queue'
+  | 'cloud';
 
 export interface ShapeNodeData extends NodeVisual, NodeDescription {
   shape: ShapeKind;
