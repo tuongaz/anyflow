@@ -3090,6 +3090,10 @@ export function DemoView({
           open={exportDialogOpen}
           onOpenChange={setExportDialogOpen}
           projectId={demoId}
+          onCapturePreview={async () => {
+            const captured = await captureViewportFramed();
+            return captured?.dataUrl;
+          }}
         />
       ) : null}
     </div>

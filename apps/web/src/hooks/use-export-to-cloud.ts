@@ -7,6 +7,7 @@ const CLOUD_API_BASE = 'https://seeflow.dev/api';
 export async function exportToCloud(
   projectId: string,
   email: string,
+  previewDataUrl?: string,
 ): Promise<{ shareUrl: string }> {
   const detail = await fetchDemoDetail(projectId);
   if (!detail.demo) {
@@ -30,6 +31,13 @@ export async function exportToCloud(
   const zipEntries: Record<string, Uint8Array> = {
     'seeflow.json': strToU8(JSON.stringify(demo)),
   };
+
+  if (previewDataUrl) {
+    const base64 = previewDataUrl.split(',')[1];
+    if (base64) {
+      zipEntries['preview.png'] = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    }
+  }
 
   for (const path of filePaths) {
     const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files/${path}`);
@@ -60,6 +68,9 @@ export async function exportToCloud(
 
 export function useExportToCloud(
   projectId: string,
-): (email: string) => Promise<{ shareUrl: string }> {
-  return useCallback((email: string) => exportToCloud(projectId, email), [projectId]);
+): (email: string, previewDataUrl?: string) => Promise<{ shareUrl: string }> {
+  return useCallback(
+    (email: string, previewDataUrl?: string) => exportToCloud(projectId, email, previewDataUrl),
+    [projectId],
+  );
 }

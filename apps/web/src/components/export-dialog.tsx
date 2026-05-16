@@ -23,9 +23,10 @@ export interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
+  onCapturePreview?: () => Promise<string | undefined>;
 }
 
-export function ExportDialog({ open, onOpenChange, projectId }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, projectId, onCapturePreview }: ExportDialogProps) {
   const [email, setEmail] = useState('');
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [copied, setCopied] = useState(false);
@@ -42,13 +43,14 @@ export function ExportDialog({ open, onOpenChange, projectId }: ExportDialogProp
   const handleExport = useCallback(async () => {
     setState({ kind: 'loading' });
     try {
-      const { shareUrl } = await exportToCloud(email.trim());
+      const previewDataUrl = await onCapturePreview?.();
+      const { shareUrl } = await exportToCloud(email.trim(), previewDataUrl);
       localStorage.setItem(EMAIL_STORAGE_KEY, email.trim());
       setState({ kind: 'done', shareUrl });
     } catch (err) {
       setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
-  }, [exportToCloud, email]);
+  }, [exportToCloud, email, onCapturePreview]);
 
   const handleCopy = useCallback(() => {
     if (state.kind !== 'done') return;
