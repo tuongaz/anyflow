@@ -1,0 +1,733 @@
+{
+  "version": 1,
+  "name": "AI-Powered E-Commerce Platform",
+  "nodes": [
+    {
+      "id": "group-client",
+      "type": "group",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "name": "Client Applications",
+        "width": 1420,
+        "height": 160,
+        "borderColor": "blue",
+        "borderStyle": "dashed"
+      }
+    },
+    {
+      "id": "group-gateway",
+      "type": "group",
+      "position": { "x": 0, "y": 195 },
+      "data": {
+        "name": "Edge & Gateway Layer",
+        "width": 1420,
+        "height": 170,
+        "borderColor": "purple",
+        "borderStyle": "dashed"
+      }
+    },
+    {
+      "id": "group-core",
+      "type": "group",
+      "position": { "x": 0, "y": 400 },
+      "data": {
+        "name": "Core Microservices",
+        "width": 1420,
+        "height": 175,
+        "borderColor": "green",
+        "borderStyle": "dashed"
+      }
+    },
+    {
+      "id": "group-business",
+      "type": "group",
+      "position": { "x": 0, "y": 610 },
+      "data": {
+        "name": "Business Logic",
+        "width": 1420,
+        "height": 175,
+        "borderColor": "amber",
+        "borderStyle": "dashed"
+      }
+    },
+    {
+      "id": "group-data",
+      "type": "group",
+      "position": { "x": 0, "y": 820 },
+      "data": {
+        "name": "Data & AI Platform",
+        "width": 1420,
+        "height": 175,
+        "borderColor": "purple",
+        "borderStyle": "dashed"
+      }
+    },
+    {
+      "id": "group-infra",
+      "type": "group",
+      "position": { "x": 0, "y": 1030 },
+      "data": {
+        "name": "Infrastructure & Storage",
+        "width": 1420,
+        "height": 165,
+        "borderColor": "slate",
+        "borderStyle": "dashed"
+      }
+    },
+
+    {
+      "id": "web-client",
+      "type": "shapeNode",
+      "position": { "x": 100, "y": 48 },
+      "parentId": "group-client",
+      "data": {
+        "shape": "user",
+        "name": "Web Browser",
+        "description": "React SPA via CloudFront"
+      }
+    },
+    {
+      "id": "mobile-client",
+      "type": "shapeNode",
+      "position": { "x": 420, "y": 48 },
+      "parentId": "group-client",
+      "data": {
+        "shape": "user",
+        "name": "Mobile App",
+        "description": "iOS / Android (React Native)"
+      }
+    },
+    {
+      "id": "partner-api-client",
+      "type": "shapeNode",
+      "position": { "x": 740, "y": 48 },
+      "parentId": "group-client",
+      "data": {
+        "shape": "server",
+        "name": "Partner API Client",
+        "description": "Third-party integrations"
+      }
+    },
+    {
+      "id": "admin-portal",
+      "type": "shapeNode",
+      "position": { "x": 1060, "y": 48 },
+      "parentId": "group-client",
+      "data": {
+        "shape": "user",
+        "name": "Admin Portal",
+        "description": "Internal ops dashboard"
+      }
+    },
+
+    {
+      "id": "cdn",
+      "type": "shapeNode",
+      "position": { "x": 60, "y": 58 },
+      "parentId": "group-gateway",
+      "data": {
+        "shape": "cloud",
+        "name": "CloudFront CDN",
+        "description": "Edge caching + TLS termination"
+      }
+    },
+    {
+      "id": "waf",
+      "type": "stateNode",
+      "position": { "x": 340, "y": 55 },
+      "parentId": "group-gateway",
+      "data": {
+        "name": "WAF / DDoS Shield",
+        "kind": "security",
+        "stateSource": { "kind": "request" },
+        "description": "Blocks malicious traffic at the edge.",
+        "detail": "## WAF / DDoS Shield\n\nAWS Shield Advanced + WAF rules protect the platform from:\n- SQL injection and XSS attacks\n- Volumetric DDoS (L3/L4)\n- Application-layer DDoS (L7)\n- Bot and scraper traffic\n\n### Rules\n- Rate-limit: 1 000 req/s per IP\n- Block: known bad actor ASNs\n- Allow: partner IP allowlist"
+      }
+    },
+    {
+      "id": "api-gateway",
+      "type": "playNode",
+      "position": { "x": 640, "y": 50 },
+      "parentId": "group-gateway",
+      "data": {
+        "name": "API Gateway",
+        "kind": "gateway",
+        "stateSource": { "kind": "request" },
+        "description": "Routes, rate-limits, and authenticates all requests.",
+        "detail": "## API Gateway\n\nCentral ingress for every client. Responsibilities:\n\n1. **Auth validation** — verifies JWT against Auth Service before forwarding\n2. **Rate limiting** — token-bucket per user + per IP\n3. **Request routing** — path-based routing to downstream services\n4. **Observability** — emits OpenTelemetry spans for every request\n\n### Endpoints\n- `POST /auth/*` → Auth Service\n- `GET|POST /users/*` → User Service\n- `GET /products/*` → Product Service\n- `GET /search` → Search Service\n- `POST|GET /cart/*` → Cart Service\n- `POST /orders` → Order Service",
+        "playAction": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/play.ts"
+        }
+      }
+    },
+    {
+      "id": "load-balancer",
+      "type": "shapeNode",
+      "position": { "x": 1060, "y": 58 },
+      "parentId": "group-gateway",
+      "data": {
+        "shape": "server",
+        "name": "Load Balancer (ALB)",
+        "description": "Least-connections across AZs"
+      }
+    },
+
+    {
+      "id": "auth-service",
+      "type": "stateNode",
+      "position": { "x": 60, "y": 60 },
+      "parentId": "group-core",
+      "data": {
+        "name": "Auth Service",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "description": "JWT issuance + OAuth2 / OIDC flows.",
+        "detail": "## Auth Service\n\nHandles all authentication and token lifecycle.\n\n### Supported Flows\n- Password-based login (bcrypt)\n- OAuth2 (Google, Apple, Facebook)\n- OIDC for SSO clients\n- Magic-link via email\n\n### Token Lifecycle\n- Access token: 15-minute TTL, RS256 signed\n- Refresh token: 30-day TTL, stored in Redis\n\n### Events Emitted\n- `auth.login` — on successful login\n- `auth.logout` — on explicit logout\n- `auth.token_refreshed` — on token refresh"
+      }
+    },
+    {
+      "id": "user-service",
+      "type": "stateNode",
+      "position": { "x": 340, "y": 60 },
+      "parentId": "group-core",
+      "data": {
+        "name": "User Service",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "description": "Profiles, addresses, preferences.",
+        "detail": "## User Service\n\nOwns the canonical user record.\n\n### Data Model\n```json\n{\n  \"userId\": \"usr_abc123\",\n  \"email\": \"jane@example.com\",\n  \"name\": \"Jane Doe\",\n  \"addresses\": [...],\n  \"preferences\": { \"currency\": \"AUD\", \"locale\": \"en-AU\" }\n}\n```\n\n### Subscriptions\n- `auth.login` → updates `lastSeenAt`\n\n### Events Emitted\n- `user.updated` → Recommendation Engine\n- `user.activity` → Recommendation Engine"
+      }
+    },
+    {
+      "id": "product-service",
+      "type": "stateNode",
+      "position": { "x": 620, "y": 60 },
+      "parentId": "group-core",
+      "data": {
+        "name": "Product Catalog",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "description": "SKUs, variants, pricing rules.",
+        "detail": "## Product Catalog\n\nSingle source of truth for all product data.\n\n### Data Model\n- Products, variants, and option matrices\n- Tiered pricing rules (B2B / B2C / promo)\n- Rich media references (via Media Service)\n- Category taxonomy\n\n### Events Emitted\n- `product.created` → Search Service (index)\n- `product.updated` → Search Service (re-index)\n- `product.viewed` → Recommendation Engine"
+      }
+    },
+    {
+      "id": "search-service",
+      "type": "stateNode",
+      "position": { "x": 900, "y": 60 },
+      "parentId": "group-core",
+      "data": {
+        "name": "Search Service",
+        "kind": "service",
+        "stateSource": { "kind": "event" },
+        "description": "Elasticsearch full-text + faceted search.",
+        "detail": "## Search Service\n\nPowered by Elasticsearch 8.x.\n\n### Features\n- Full-text product search with BM25 ranking\n- Faceted filtering (brand, price, rating, availability)\n- Spell correction and synonym expansion\n- Personalised re-ranking using user vectors from the Recommendation Engine\n\n### Listens For\n- `product.created` / `product.updated` → rebuild index document\n- `product.deleted` → remove from index"
+      }
+    },
+    {
+      "id": "media-service",
+      "type": "stateNode",
+      "position": { "x": 1180, "y": 60 },
+      "parentId": "group-core",
+      "data": {
+        "name": "Media Service",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "description": "Image upload, resize, WebP conversion.",
+        "detail": "## Media Service\n\nHandles all binary asset processing.\n\n### Pipeline\n1. Receive multipart upload\n2. Validate MIME type + size limit (20 MB)\n3. Generate responsive variants (400 / 800 / 1200 / 2400 px)\n4. Convert to WebP + keep original\n5. Upload to S3 and invalidate CloudFront\n\n### Storage\n- S3 `media-{env}` bucket\n- CloudFront distribution for edge delivery"
+      }
+    },
+
+    {
+      "id": "cart-service",
+      "type": "playNode",
+      "position": { "x": 60, "y": 60 },
+      "parentId": "group-business",
+      "data": {
+        "name": "Cart Service",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "description": "Add/remove items, apply coupons, checkout.",
+        "detail": "## Cart Service\n\nManages per-user shopping carts stored in Redis.\n\n### Operations\n- `addItem(sku, qty)` — validate stock, add to cart\n- `removeItem(sku)` — remove line item\n- `applyCoupon(code)` — validate + apply discount\n- `checkout()` — freeze cart, emit `cart.checkout`\n\n### Events Emitted\n- `cart.checkout` → Order Service",
+        "playAction": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/play.ts"
+        }
+      }
+    },
+    {
+      "id": "order-service",
+      "type": "playNode",
+      "position": { "x": 340, "y": 60 },
+      "parentId": "group-business",
+      "data": {
+        "name": "Order Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Lifecycle: pending → confirmed → shipped → delivered.",
+        "detail": "## Order Service\n\nOwns the order record and drives the downstream pipeline.\n\n### State Machine\n```\npending → confirmed → processing → shipped → delivered\n       ↘ cancelled\n```\n\n### Triggered by\n- `cart.checkout` event\n\n### Events Emitted\n- `order.created` → Payment Service, Inventory Service, Analytics, Audit Logger\n- `order.cancelled` → Inventory Service (release stock), Notification Service",
+        "playAction": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/play.ts"
+        }
+      }
+    },
+    {
+      "id": "payment-service",
+      "type": "stateNode",
+      "position": { "x": 620, "y": 60 },
+      "parentId": "group-business",
+      "data": {
+        "name": "Payment Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Stripe + PayPal gateway integration.",
+        "detail": "## Payment Service\n\nCharges the customer and records the transaction.\n\n### Triggered by\n- `order.created`\n\n### Steps\n1. Retrieve customer's saved payment method\n2. Calculate total (subtotal + tax + shipping)\n3. Authorise charge via Stripe\n4. Capture funds on auth success\n5. Persist charge record\n\n### Events Emitted\n- `payment.captured` → Fulfillment Service\n- `payment.failed` → Notification Service, Audit Logger"
+      }
+    },
+    {
+      "id": "inventory-service",
+      "type": "stateNode",
+      "position": { "x": 900, "y": 60 },
+      "parentId": "group-business",
+      "data": {
+        "name": "Inventory Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Reserve and release warehouse stock.",
+        "detail": "## Inventory Service\n\nManages real-time stock levels across warehouses.\n\n### Triggered by\n- `order.created` → reserve stock\n- `order.cancelled` → release reservation\n\n### Logic\n1. Check available qty per warehouse\n2. Prefer closest warehouse to delivery address\n3. Place reservation hold (TTL: 30 min)\n4. Record fulfilling warehouse ID\n\n### Events Emitted\n- `stock.reserved` → Fulfillment Service\n- `stock.unavailable` → Notification Service"
+      }
+    },
+    {
+      "id": "fulfillment-service",
+      "type": "stateNode",
+      "position": { "x": 1180, "y": 60 },
+      "parentId": "group-business",
+      "data": {
+        "name": "Fulfillment Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Pick-pack-ship dispatching to warehouse.",
+        "detail": "## Fulfillment Service\n\nCoordinates the physical shipment of orders.\n\n### Triggered by\n- `payment.captured` AND `stock.reserved` (both required)\n\n### Steps\n1. Convert reservation into pick list\n2. Assign carrier + service level (express / standard)\n3. Generate tracking number\n4. Push job to warehouse queue\n5. Notify customer with tracking link\n\n### Events Emitted\n- `shipment.dispatched` → Notification Service"
+      }
+    },
+
+    {
+      "id": "analytics-service",
+      "type": "stateNode",
+      "position": { "x": 60, "y": 60 },
+      "parentId": "group-data",
+      "data": {
+        "name": "Analytics Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Clickstream + funnel + revenue tracking.",
+        "detail": "## Analytics Service\n\nAggregates business events into actionable metrics.\n\n### Tracked Events\n- Page views, product views, search queries\n- Cart additions and removals\n- Checkout starts and completions\n- Order values and refunds\n\n### Outputs\n- Kafka topic `analytics.batch` → Data Warehouse\n- Real-time dashboard via WebSocket"
+      }
+    },
+    {
+      "id": "recommendation-engine",
+      "type": "stateNode",
+      "position": { "x": 340, "y": 60 },
+      "parentId": "group-data",
+      "data": {
+        "name": "AI Recommendation Engine",
+        "kind": "ml",
+        "stateSource": { "kind": "event" },
+        "description": "Collaborative filtering via PyTorch + Redis ANN.",
+        "detail": "## AI Recommendation Engine\n\nPersonalises product rankings for every user.\n\n### Model\n- Collaborative filtering (matrix factorisation)\n- Re-trained nightly on the last 90 days of events\n- Served via ONNX Runtime for low-latency inference\n\n### Inputs\n- `user.activity` — browsing, search, purchases\n- `product.viewed` — co-viewed products\n\n### Outputs\n- User embeddings stored in Redis (ANN index)\n- Recommendations served to Search Service for re-ranking"
+      }
+    },
+    {
+      "id": "notification-service",
+      "type": "stateNode",
+      "position": { "x": 620, "y": 60 },
+      "parentId": "group-data",
+      "data": {
+        "name": "Notification Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Email + SMS + push via AWS SES / SNS.",
+        "detail": "## Notification Service\n\nDelivers transactional and marketing messages.\n\n### Channels\n- **Email** — AWS SES with DKIM/DMARC\n- **SMS** — Twilio for OTP and shipping alerts\n- **Push** — Firebase Cloud Messaging (iOS + Android)\n\n### Triggered by\n- `shipment.dispatched` — shipping confirmation\n- `payment.failed` — retry prompt\n- `stock.unavailable` — waitlist confirmation\n- `order.cancelled` — refund notification"
+      }
+    },
+    {
+      "id": "audit-logger",
+      "type": "stateNode",
+      "position": { "x": 900, "y": 60 },
+      "parentId": "group-data",
+      "data": {
+        "name": "Audit Logger",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Immutable compliance and security log.",
+        "detail": "## Audit Logger\n\nRecords every sensitive operation for compliance and forensics.\n\n### Retention\n- Hot tier (PostgreSQL): 90 days, queryable\n- Cold tier (S3 Glacier): 7 years, compliance archive\n\n### Indexed Events\n- All payment events (`payment.*`)\n- All order mutations (`order.*`)\n- All auth events (`auth.*`)\n- All admin actions\n\n### Tamper-evidence\n- Each record includes HMAC chained from previous entry\n- Daily hash anchoring to append-only S3 bucket"
+      }
+    },
+    {
+      "id": "report-generator",
+      "type": "stateNode",
+      "position": { "x": 1180, "y": 60 },
+      "parentId": "group-data",
+      "data": {
+        "name": "Report Generator",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Scheduled PDF + CSV exports to S3.",
+        "detail": "## Report Generator\n\nProduces scheduled and on-demand business reports.\n\n### Report Types\n- Daily GMV summary (PDF)\n- Weekly cohort retention (CSV)\n- Monthly tax report (XLSX)\n- Ad-hoc SQL → CSV export\n\n### Triggered by\n- `analytics.batch` queue — nightly scheduled run\n- Admin Portal — on-demand export requests\n\n### Delivery\n- Uploaded to S3 with presigned URL\n- Link emailed to requesting user"
+      }
+    },
+
+    {
+      "id": "postgresql",
+      "type": "shapeNode",
+      "position": { "x": 60, "y": 55 },
+      "parentId": "group-infra",
+      "data": {
+        "shape": "database",
+        "name": "PostgreSQL (RDS)",
+        "description": "Orders, users, products — primary OLTP store"
+      }
+    },
+    {
+      "id": "redis",
+      "type": "shapeNode",
+      "position": { "x": 340, "y": 55 },
+      "parentId": "group-infra",
+      "data": {
+        "shape": "database",
+        "name": "Redis Cluster",
+        "description": "Sessions, cart state, rate-limit counters"
+      }
+    },
+    {
+      "id": "elasticsearch",
+      "type": "shapeNode",
+      "position": { "x": 620, "y": 55 },
+      "parentId": "group-infra",
+      "data": {
+        "shape": "database",
+        "name": "Elasticsearch",
+        "description": "Product search index + ANN vectors"
+      }
+    },
+    {
+      "id": "kafka",
+      "type": "shapeNode",
+      "position": { "x": 900, "y": 55 },
+      "parentId": "group-infra",
+      "data": {
+        "shape": "queue",
+        "name": "Kafka (MSK)",
+        "description": "Event bus — all async inter-service events"
+      }
+    },
+    {
+      "id": "s3",
+      "type": "shapeNode",
+      "position": { "x": 1180, "y": 55 },
+      "parentId": "group-infra",
+      "data": {
+        "shape": "cloud",
+        "name": "S3 / Glacier",
+        "description": "Media assets, reports, audit archive"
+      }
+    }
+  ],
+
+  "connectors": [
+    {
+      "id": "c-web-cdn",
+      "source": "web-client",
+      "target": "cdn",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET assets"
+    },
+    {
+      "id": "c-web-api",
+      "source": "web-client",
+      "target": "api-gateway",
+      "kind": "http",
+      "method": "POST",
+      "label": "REST API"
+    },
+    {
+      "id": "c-mobile-api",
+      "source": "mobile-client",
+      "target": "api-gateway",
+      "kind": "http",
+      "method": "POST",
+      "label": "REST API"
+    },
+    {
+      "id": "c-partner-api",
+      "source": "partner-api-client",
+      "target": "api-gateway",
+      "kind": "http",
+      "method": "POST",
+      "label": "Webhook"
+    },
+    {
+      "id": "c-admin-api",
+      "source": "admin-portal",
+      "target": "api-gateway",
+      "kind": "http",
+      "method": "GET",
+      "label": "Admin API"
+    },
+    {
+      "id": "c-waf-api",
+      "source": "waf",
+      "target": "api-gateway",
+      "kind": "default",
+      "label": "clean traffic"
+    },
+    {
+      "id": "c-api-lb",
+      "source": "api-gateway",
+      "target": "load-balancer",
+      "kind": "default",
+      "label": "route"
+    },
+    {
+      "id": "c-cdn-media",
+      "source": "cdn",
+      "target": "media-service",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET /media"
+    },
+    {
+      "id": "c-api-auth",
+      "source": "api-gateway",
+      "target": "auth-service",
+      "kind": "http",
+      "method": "POST",
+      "label": "POST /auth"
+    },
+    {
+      "id": "c-api-user",
+      "source": "api-gateway",
+      "target": "user-service",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET /users"
+    },
+    {
+      "id": "c-api-product",
+      "source": "api-gateway",
+      "target": "product-service",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET /products"
+    },
+    {
+      "id": "c-api-search",
+      "source": "api-gateway",
+      "target": "search-service",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET /search"
+    },
+    {
+      "id": "c-api-cart",
+      "source": "api-gateway",
+      "target": "cart-service",
+      "kind": "http",
+      "method": "POST",
+      "label": "POST /cart"
+    },
+    {
+      "id": "c-auth-user",
+      "source": "auth-service",
+      "target": "user-service",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET /identity"
+    },
+    {
+      "id": "c-product-search",
+      "source": "product-service",
+      "target": "search-service",
+      "kind": "event",
+      "eventName": "product.indexed",
+      "label": "product.indexed"
+    },
+    {
+      "id": "c-user-reco",
+      "source": "user-service",
+      "target": "recommendation-engine",
+      "kind": "event",
+      "eventName": "user.activity",
+      "label": "user.activity"
+    },
+    {
+      "id": "c-product-reco",
+      "source": "product-service",
+      "target": "recommendation-engine",
+      "kind": "event",
+      "eventName": "product.viewed",
+      "label": "product.viewed"
+    },
+    {
+      "id": "c-cart-order",
+      "source": "cart-service",
+      "target": "order-service",
+      "kind": "event",
+      "eventName": "cart.checkout",
+      "label": "cart.checkout"
+    },
+    {
+      "id": "c-order-payment",
+      "source": "order-service",
+      "target": "payment-service",
+      "kind": "event",
+      "eventName": "order.created",
+      "label": "order.created"
+    },
+    {
+      "id": "c-order-inventory",
+      "source": "order-service",
+      "target": "inventory-service",
+      "kind": "event",
+      "eventName": "order.created",
+      "label": "order.created"
+    },
+    {
+      "id": "c-payment-fulfill",
+      "source": "payment-service",
+      "target": "fulfillment-service",
+      "kind": "event",
+      "eventName": "payment.captured",
+      "label": "payment.captured"
+    },
+    {
+      "id": "c-inventory-fulfill",
+      "source": "inventory-service",
+      "target": "fulfillment-service",
+      "kind": "event",
+      "eventName": "stock.reserved",
+      "label": "stock.reserved"
+    },
+    {
+      "id": "c-fulfill-notify",
+      "source": "fulfillment-service",
+      "target": "notification-service",
+      "kind": "event",
+      "eventName": "shipment.dispatched",
+      "label": "shipment.dispatched"
+    },
+    {
+      "id": "c-order-analytics",
+      "source": "order-service",
+      "target": "analytics-service",
+      "kind": "event",
+      "eventName": "order.created",
+      "label": "order.created"
+    },
+    {
+      "id": "c-order-audit",
+      "source": "order-service",
+      "target": "audit-logger",
+      "kind": "event",
+      "eventName": "order.created",
+      "label": "order.created"
+    },
+    {
+      "id": "c-payment-audit",
+      "source": "payment-service",
+      "target": "audit-logger",
+      "kind": "event",
+      "eventName": "payment.captured",
+      "label": "payment.captured"
+    },
+    {
+      "id": "c-analytics-report",
+      "source": "analytics-service",
+      "target": "report-generator",
+      "kind": "queue",
+      "queueName": "analytics.batch",
+      "label": "analytics.batch"
+    },
+    {
+      "id": "c-user-pg",
+      "source": "user-service",
+      "target": "postgresql",
+      "kind": "http",
+      "method": "GET",
+      "label": "read/write"
+    },
+    {
+      "id": "c-order-pg",
+      "source": "order-service",
+      "target": "postgresql",
+      "kind": "http",
+      "method": "POST",
+      "label": "read/write"
+    },
+    {
+      "id": "c-payment-pg",
+      "source": "payment-service",
+      "target": "postgresql",
+      "kind": "http",
+      "method": "POST",
+      "label": "read/write"
+    },
+    {
+      "id": "c-cart-redis",
+      "source": "cart-service",
+      "target": "redis",
+      "kind": "http",
+      "method": "GET",
+      "label": "GET/SET"
+    },
+    {
+      "id": "c-auth-redis",
+      "source": "auth-service",
+      "target": "redis",
+      "kind": "http",
+      "method": "GET",
+      "label": "token cache"
+    },
+    {
+      "id": "c-search-es",
+      "source": "search-service",
+      "target": "elasticsearch",
+      "kind": "http",
+      "method": "POST",
+      "label": "query / index"
+    },
+    {
+      "id": "c-analytics-kafka",
+      "source": "analytics-service",
+      "target": "kafka",
+      "kind": "queue",
+      "queueName": "analytics.events",
+      "label": "publish"
+    },
+    {
+      "id": "c-media-s3",
+      "source": "media-service",
+      "target": "s3",
+      "kind": "http",
+      "method": "PUT",
+      "label": "PUT object"
+    },
+    {
+      "id": "c-report-s3",
+      "source": "report-generator",
+      "target": "s3",
+      "kind": "http",
+      "method": "PUT",
+      "label": "PUT report"
+    }
+  ]
+}

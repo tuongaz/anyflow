@@ -134,13 +134,18 @@ async function runStart() {
 }
 
 async function seedExamples(registry: Registry) {
-  const destDir = join(homedir(), '.seeflow', 'order-pipeline');
+  await seedExample(registry, 'order-pipeline');
+  await seedExample(registry, 'ecommerce-platform');
+}
+
+async function seedExample(registry: Registry, exampleName: string) {
+  const destDir = join(homedir(), '.seeflow', exampleName);
   const demoPath = '.seeflow/seeflow.json';
 
   if (registry.getByRepoPathAndDemoPath(destDir, demoPath)) return;
 
   if (!existsSync(destDir)) {
-    const srcDir = join(import.meta.dir, '../examples/order-pipeline');
+    const srcDir = join(import.meta.dir, `../examples/${exampleName}`);
     if (!existsSync(srcDir)) return;
     cpSync(srcDir, destDir, { recursive: true });
   }
@@ -159,7 +164,7 @@ async function seedExamples(registry: Registry) {
   if (!parsed.success) return;
 
   registry.upsert({ name: parsed.data.name, repoPath: destDir, demoPath });
-  console.log(`Seeded example: Order Pipeline → ${destDir}`);
+  console.log(`Seeded example: ${parsed.data.name} → ${destDir}`);
 }
 
 async function spawnDaemon(port: number, host: string) {
