@@ -1,0 +1,65 @@
+# Ralph Progress Log
+Started: Sat 16 May 2026 14:58:15 AEST
+---
+
+## Codebase Patterns
+- apps/cloud/ is a standard AWS CDK TypeScript project using `module: commonjs` in tsconfig (CDK requirement)
+- Lambda handlers live in apps/cloud/lambda/api/index.ts and use @types/aws-lambda for APIGatewayProxyEventV2 types
+- Run `bun install` inside apps/cloud/ separately (not covered by root bun.lock initially)
+- CDK tsconfig must include both `bin/**/*.ts`, `lib/**/*.ts`, and `lambda/**/*.ts` to typecheck all code
+- The apps/cloud/tsconfig.json uses `"module": "commonjs"` — different from the rest of the monorepo which uses ESM
+- `HttpLambdaIntegration` is in stable `aws-cdk-lib/aws-apigatewayv2-integrations` (graduated from alpha package ~CDK 2.114); do NOT add `@aws-cdk/aws-apigatewayv2-integrations-alpha` as it stopped publishing at 2.114.1-alpha.0
+- `NodejsFunction` (aws-cdk-lib/aws-lambda-nodejs) requires `esbuild` as a devDependency for bundling TypeScript Lambda handlers
+- Lambda route dispatch: use `event.routeKey` (e.g. "POST /flows") to branch handlers in a single Lambda behind API Gateway HTTP API (v2)
+- Use `randomUUID` from `node:crypto` (not global `crypto`) for UUID generation — explicit import works under commonjs tsconfig
+- `fflate` (^0.8.2) is the right unzip library for Lambda: pure JS, bundles cleanly with esbuild, types included
+- `@aws-sdk/client-s3` must be added to package.json for TypeScript types; esbuild marks it external so it uses the runtime SDK
+- API Gateway HTTP API passes binary bodies base64-encoded; check `event.isBase64Encoded` before decoding
+
+## 2026-05-16 - US-001
+- Initialised apps/cloud/ CDK project scaffold
+- Files created: apps/cloud/package.json, apps/cloud/cdk.json, apps/cloud/bin/app.ts, apps/cloud/lib/seeflow-stack.ts, apps/cloud/lambda/api/index.ts, apps/cloud/tsconfig.json
+- Dependencies: aws-cdk-lib@^2.170.0, constructs@^10.4.2 (prod); aws-cdk@^2.170.0, @types/aws-lambda@^8.10.145, @types/node@^22.9.0, typescript@^5.6.3 (dev)
+- **Learnings for future iterations:**
+  - CDK requires `"module": "commonjs"` in tsconfig — ESM modules will not work with CDK synthesis
+  - `@types/aws-lambda` needed for Lambda handler type annotations in lambda/api/index.ts
+  - cdk.json uses `npx ts-node --prefer-ts-exts bin/app.ts` as the app entry — no need for source-map-support
+  - Lambda stub handler exports `handler` function accepting APIGatewayProxyEventV2 and returning APIGatewayProxyResultV2
+  - SeeflowStack is an empty cdk.Stack — resource additions come in subsequent stories
+---
+
+## 2026-05-16 - US-002
+- Added two S3 buckets to SeeflowStack: DiagramsBucket (private, versioned, RETAIN) and ViewerBucket (private, DESTROY + autoDeleteObjects)
+- Both buckets export their bucket names as CloudFormation stack outputs with export names SeeflowDiagramsBucketName and SeeflowViewerBucketName
+- Files changed: apps/cloud/lib/seeflow-stack.ts
+- **Learnings for future iterations:**
+  - Import S3 as `import * as s3 from 'aws-cdk-lib/aws-s3'` — all CDK L2 constructs follow this pattern under aws-cdk-lib
+  - Use `s3.BlockPublicAccess.BLOCK_ALL` to ensure public access is fully blocked (not just ACLs)
+  - ViewerBucket uses DESTROY + autoDeleteObjects so it can be cleaned up; DiagramsBucket uses RETAIN to protect diagram data
+  - CfnOutput with exportName makes values available for cross-stack references in future stories
+---
+
+## 2026-05-16 - US-003
+- Added NodejsFunction Lambda, IAM permissions on diagrams bucket, HttpApi with three routes, and API URL stack output
+- Files changed: apps/cloud/lib/seeflow-stack.ts, apps/cloud/package.json, bun.lock
+- Added `esbuild` devDependency for NodejsFunction bundling
+- **Learnings for future iterations:**
+  - `HttpLambdaIntegration` is in stable `aws-cdk-lib/aws-apigatewayv2-integrations` — no alpha package needed
+  - `NodejsFunction` entry path is relative to `__dirname` of the stack file (lib/), so use `path.join(__dirname, '../lambda/api/index.ts')`
+  - `diagramsBucket.grantReadWrite(fn)` adds the correct IAM policy — no need for manual policy statements
+  - `httpApi.apiEndpoint` gives the base URL for the CfnOutput; exported as SeeflowApiUrl
+  - Route `/flows/{uuid}/files/{proxy+}` uses greedy path variable `{proxy+}` for catch-all sub-paths
+---
+
+## 2026-05-16 - US-004
+- Implemented POST /flows Lambda handler: reads email from query param, decodes base64 zip body, validates size limits, unzips with fflate, writes all entries to S3 under {uuid}/, writes metadata.json, returns 201 with share URL
+- Also implemented GET /flows/{uuid} and GET /flows/{uuid}/files/{proxy+} handlers in the same file (routing by routeKey) — these satisfy US-005 acceptance criteria as well
+- Files changed: apps/cloud/lambda/api/index.ts, apps/cloud/package.json, bun.lock
+- Added dependencies: fflate@^0.8.2 (zip parsing), @aws-sdk/client-s3@^3.685.0 (S3 operations)
+- **Learnings for future iterations:**
+  - Dispatch by `event.routeKey` (e.g. "POST /flows") — not by inspecting rawPath + method separately
+  - `unzipSync` from fflate returns `{ [path: string]: Uint8Array }` — iterate with Object.entries
+  - Pass `new Uint8Array(buffer)` to fflate unzipSync — Buffer extends Uint8Array so this works directly
+  - For binary file responses (images), return `isBase64Encoded: true` and base64-encode the body
+  - US-005 GET handlers are already implemented in this commit — next iteration should mark US-005 as done after verifying
+---

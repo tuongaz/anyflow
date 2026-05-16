@@ -1,0 +1,278 @@
+{
+  "project": "SeeFlow",
+  "branchName": "ralph/cloud-share",
+  "description": "Export local SeeFlow diagrams to seeflow.dev and share via link. Anyone with the link can view the diagram read-only.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "CDK project scaffold",
+      "description": "As a developer, I need the apps/cloud/ CDK project initialised so subsequent stories can add resources to it.",
+      "acceptanceCriteria": [
+        "apps/cloud/package.json exists with aws-cdk-lib and constructs dependencies",
+        "apps/cloud/cdk.json exists with app entry pointing to bin/app.ts",
+        "apps/cloud/bin/app.ts creates a CDK App and instantiates SeeflowStack",
+        "apps/cloud/lib/seeflow-stack.ts exports SeeflowStack (empty stack is fine)",
+        "apps/cloud/lambda/api/index.ts exists with a stub handler exporting handler function",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "S3 buckets for diagrams and static viewer",
+      "description": "As a developer, I need two S3 buckets defined in SeeflowStack: one private bucket for diagram data and one for the static viewer SPA.",
+      "acceptanceCriteria": [
+        "SeeflowStack defines a private S3 Bucket named 'seeflow-diagrams' (versioned, RETAIN removal policy)",
+        "SeeflowStack defines a second S3 Bucket for the static viewer SPA (public read blocked, accessed via CloudFront OAC only)",
+        "Both bucket logical IDs are exported as stack outputs",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Lambda function and API Gateway HTTP API",
+      "description": "As a developer, I need a Lambda function and API Gateway HTTP API wired together so the API routes are reachable.",
+      "acceptanceCriteria": [
+        "SeeflowStack defines a NodejsFunction (or equivalent) pointing to apps/cloud/lambda/api/index.ts",
+        "Lambda has read/write IAM permissions on the diagrams S3 bucket",
+        "SeeflowStack defines an HttpApi with routes: POST /flows, GET /flows/{uuid}, GET /flows/{uuid}/files/{proxy+}",
+        "All routes integrate with the Lambda function",
+        "API Gateway endpoint URL exported as stack output",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "POST /flows Lambda handler — accept zip, store in S3",
+      "description": "As a developer, I need the POST /flows handler to accept a zip upload, unzip it in memory, and write the contents to the diagrams S3 bucket.",
+      "acceptanceCriteria": [
+        "Handler reads email from query string parameter 'email'",
+        "Handler reads zip bytes from the request body (base64-decoded if needed for API Gateway proxy)",
+        "Rejects requests where total zip size exceeds 50MB or any single file exceeds 10MB",
+        "Generates a UUID using crypto.randomUUID()",
+        "Unzips in memory and writes each entry to s3://diagrams-bucket/{uuid}/{entry-path}",
+        "Writes s3://diagrams-bucket/{uuid}/metadata.json containing { email, createdAt: ISO string }",
+        "Returns JSON { url: 'https://seeflow.dev/flow/{uuid}' } with status 201",
+        "Returns 400 for missing email, 413 for oversized upload",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "GET /flows/{uuid} and GET /flows/{uuid}/files/{proxy+} Lambda handlers",
+      "description": "As a developer, I need the read endpoints so the viewer can fetch seeflow.json and bundled asset files.",
+      "acceptanceCriteria": [
+        "GET /flows/{uuid} reads s3://diagrams-bucket/{uuid}/seeflow.json and returns it as application/json",
+        "Returns 404 JSON { error: 'Not found' } if the key does not exist in S3",
+        "GET /flows/{uuid}/files/{proxy+} streams s3://diagrams-bucket/{uuid}/files/{proxy} with inferred Content-Type",
+        "Content-Type is inferred from file extension (png→image/png, jpg→image/jpeg, html→text/html, svg→image/svg+xml, default→application/octet-stream)",
+        "Returns 404 if the file key does not exist in S3",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "CloudFront distribution, ACM certificate, and Route53 A record",
+      "description": "As a developer, I need CloudFront wired to the domain seeflow.dev so the viewer SPA and API are reachable at the public URL.",
+      "acceptanceCriteria": [
+        "ACM certificate for seeflow.dev is requested in us-east-1 with DNS validation against the existing Route53 hosted zone",
+        "CloudFront Distribution has two origins: S3 static bucket (via OAC) and API Gateway HTTP API",
+        "Behaviour /api/* routes to the API Gateway origin",
+        "Default behaviour /* routes to the S3 static origin with SPA fallback (404 → index.html, 200)",
+        "Distribution uses the ACM certificate and CNAME seeflow.dev",
+        "Route53 A record (alias) for seeflow.dev points to the CloudFront distribution",
+        "CloudFront distribution domain exported as stack output",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "CDK deploy and smoke test of live API",
+      "description": "As a developer, I need to deploy the CDK stack and verify the API endpoints are reachable at seeflow.dev.",
+      "acceptanceCriteria": [
+        "Run 'cdk deploy' from apps/cloud/ without errors",
+        "POST https://seeflow.dev/api/flows?email=test@test.com with a valid zip returns 201 and a url field",
+        "GET https://seeflow.dev/api/flows/{uuid} returns the seeflow.json from the uploaded zip",
+        "Stack outputs (bucket names, API URL, CloudFront domain) are visible in AWS console"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Viewer app project scaffold",
+      "description": "As a developer, I need the apps/viewer/ Vite + React project initialised with routing so the /flow/:uuid page can be built.",
+      "acceptanceCriteria": [
+        "apps/viewer/package.json exists with react, react-dom, react-router-dom, @xyflow/react, vite dependencies",
+        "apps/viewer/vite.config.ts configures the build output to apps/viewer/dist/",
+        "apps/viewer/src/main.tsx mounts the app with a BrowserRouter",
+        "Route /flow/:uuid renders a placeholder FlowView component",
+        "Default route / renders a simple 'SeeFlow' page",
+        "bun run build in apps/viewer/ produces dist/ without errors",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Viewer flow-view.tsx — fetch and display seeflow.json",
+      "description": "As a viewer, I want the /flow/:uuid page to load the diagram data from the API so the canvas can be rendered.",
+      "acceptanceCriteria": [
+        "flow-view.tsx extracts uuid from useParams()",
+        "On mount fetches GET https://seeflow.dev/api/flows/{uuid}",
+        "Shows a centred spinner while loading",
+        "Shows a centred error message if the fetch fails or returns 404",
+        "On success passes the parsed Demo object to ViewCanvas",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Viewer view-canvas.tsx — read-only React Flow canvas",
+      "description": "As a viewer, I want to see the diagram rendered as a React Flow canvas with no interactive controls.",
+      "acceptanceCriteria": [
+        "view-canvas.tsx renders a ReactFlow component with nodes and edges derived from the Demo object",
+        "Node types used: all node types from apps/web (playNode, stateNode, shapeNode, imageNode, iconNode, group, htmlNode) imported or re-implemented",
+        "nodesDraggable={false}, nodesConnectable={false}, elementsSelectable={false}",
+        "panOnDrag={true} so users can pan the canvas",
+        "No MiniMap, no Controls toolbar, no Background grid",
+        "Canvas fills the full viewport",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill — navigate to a test UUID and confirm the canvas renders"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Viewer imageNode and htmlNode cloud URL rewriting",
+      "description": "As a viewer, I want imageNode and htmlNode assets to load from the API rather than a local studio path.",
+      "acceptanceCriteria": [
+        "view-canvas.tsx accepts a uuid prop and passes it as context/prop to node renderers",
+        "imageNode renderer builds src as https://seeflow.dev/api/flows/{uuid}/files/{data.path}",
+        "htmlNode renderer fetches content from https://seeflow.dev/api/flows/{uuid}/files/{data.htmlPath}",
+        "Nodes with missing files show a placeholder card (same as local studio behaviour)",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Deploy viewer to S3 via CDK BucketDeployment",
+      "description": "As a developer, I need the viewer SPA build output deployed to the static S3 bucket so seeflow.dev serves the app.",
+      "acceptanceCriteria": [
+        "SeeflowStack includes a BucketDeployment that uploads apps/viewer/dist/ to the static viewer bucket",
+        "BucketDeployment invalidates the CloudFront distribution after each deploy",
+        "Running cdk deploy after building apps/viewer/ serves the viewer at https://seeflow.dev",
+        "Navigating to https://seeflow.dev/flow/any-uuid loads the viewer page without a 403 or 404",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "useExportToCloud hook",
+      "description": "As a developer, I need a hook that bundles the current demo into a zip and uploads it to the cloud API.",
+      "acceptanceCriteria": [
+        "apps/web/src/hooks/use-export-to-cloud.ts exports useExportToCloud(projectId: string)",
+        "Hook reads the current demo JSON from the local studio API (GET /api/projects/:id or equivalent)",
+        "Hook collects imageNode .data.path and htmlNode .data.htmlPath values from the demo nodes",
+        "Hook fetches each referenced file from GET /api/projects/:id/files/:path",
+        "Hook zips seeflow.json + files/ using fflate (zipSync or zip) in memory — no temp files",
+        "Hook POSTs the zip to https://seeflow.dev/api/flows?email=<email> with Content-Type: application/zip",
+        "Hook returns { shareUrl: string } on success or throws on error",
+        "fflate added to apps/web package.json dependencies",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "ExportDialog component",
+      "description": "As a user, I want a dialog that collects my email, uploads the diagram, and shows me the share link.",
+      "acceptanceCriteria": [
+        "apps/web/src/components/export-dialog.tsx exports ExportDialog",
+        "Dialog accepts props: open, onOpenChange, projectId",
+        "On open, pre-fills email input from localStorage key 'seeflow.export.email'",
+        "idle state: email input + 'Export' button",
+        "loading state: spinner + 'Uploading…' text, inputs disabled",
+        "done state: share URL in a read-only input + 'Copy link' button + 'Done' button",
+        "error state: error message + 'Try again' button that returns to idle",
+        "On successful export: saves email to localStorage 'seeflow.export.email'",
+        "Copy link button copies the URL to clipboard",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill — open the dialog, enter email, confirm states render correctly"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Wire ExportDialog into ShareMenu and demo-view",
+      "description": "As a user, I want to see 'Export to seeflow.dev' in the Share menu so I can trigger the export flow.",
+      "acceptanceCriteria": [
+        "ShareMenu accepts new optional prop onExportToCloud: () => void",
+        "When onExportToCloud is provided, a third menu item 'Export to seeflow.dev' appears in the dropdown with an Upload icon",
+        "Clicking 'Export to seeflow.dev' calls onExportToCloud",
+        "demo-view.tsx renders ExportDialog and passes open/onOpenChange state",
+        "demo-view.tsx passes onExportToCloud to ShareMenu that sets exportDialogOpen to true",
+        "ShareMenu tests updated to cover the new prop",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill — open the Share menu on a loaded demo and confirm 'Export to seeflow.dev' is visible"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "End-to-end verification on seeflow.dev",
+      "description": "As a user, I want to export a real diagram from the local studio and verify the share link renders correctly on seeflow.dev.",
+      "acceptanceCriteria": [
+        "Local studio is running with the order-pipeline demo loaded",
+        "User opens Share menu, clicks 'Export to seeflow.dev', enters email, hits Export",
+        "ExportDialog transitions to done state and shows a share URL",
+        "Navigating to the share URL in a browser shows the read-only canvas with all nodes visible",
+        "Canvas can be panned but nodes cannot be dragged or selected",
+        "No toolbar, no sidebar, no play buttons visible on the viewer page",
+        "imageNode and htmlNode assets (if present in the demo) render correctly from the cloud URL",
+        "Verify in browser using dev-browser skill — navigate to the generated seeflow.dev/flow/{uuid} URL and confirm the above"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
