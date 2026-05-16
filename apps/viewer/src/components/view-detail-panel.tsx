@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { DemoNode } from '../types';
@@ -8,7 +9,18 @@ interface ViewDetailPanelProps {
   onClose: () => void;
 }
 
-const panelStyle: React.CSSProperties = {
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
+
+const panelBaseStyle: React.CSSProperties = {
   position: 'fixed',
   top: 0,
   right: 0,
@@ -51,10 +63,15 @@ const bodyStyle: React.CSSProperties = {
 };
 
 export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
+  const isMobile = useIsMobile();
   const data = node.data as unknown as Record<string, string | undefined>;
   const name = data.name ?? '';
   const description = data.description ?? '';
   const detail = data.detail ?? '';
+
+  const panelStyle: React.CSSProperties = isMobile
+    ? { ...panelBaseStyle, width: '100%', zIndex: 30 }
+    : panelBaseStyle;
 
   return (
     <div style={panelStyle}>
