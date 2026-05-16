@@ -113,7 +113,7 @@
         "Stack outputs (bucket names, API URL, CloudFront domain) are visible in AWS console"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

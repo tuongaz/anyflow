@@ -99,3 +99,18 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - CloudFront Functions (JS_2_0 runtime) are used for path rewriting; the function strips `/api` prefix so API Gateway sees `/flows` not `/api/flows`
   - `HostedZone.fromLookup` requires AWS credentials at synthesis time to populate CDK context cache
 ---
+
+## 2026-05-16 - US-007
+- Deployed CDK stacks (`cdk deploy --all --require-approval never`) from apps/cloud/
+- SeeflowCertStack (us-east-1): ACM certificate created and DNS-validated against seeflow.dev hosted zone
+- SeeflowStack (ap-southeast-2): S3 buckets, Lambda, API Gateway, CloudFront, Route53 A record all created successfully
+- Stack outputs: DiagramsBucketName=seeflow-diagrams, ViewerBucketName=seeflowstack-viewerbucketc34045e1-0cec4yd7kleu, ApiUrl=https://jiau4sk484.execute-api.ap-southeast-2.amazonaws.com, CloudFrontDomain=d303rdclwao79f.cloudfront.net
+- Smoke tests passed: POST https://seeflow.dev/api/flows?email=test@test.com → 201 + url field, GET https://seeflow.dev/api/flows/{uuid} → 200 + seeflow.json content
+- Files changed: ralph/prd.json (marked passes: true), ralph/progress.txt (this entry)
+- **Learnings for future iterations:**
+  - `cdk deploy --all --require-approval never` deploys all stacks in dependency order automatically
+  - CloudFront propagation takes ~3 minutes after stack creation before the distribution is live
+  - The CloudFront function correctly strips `/api` prefix: `POST https://seeflow.dev/api/flows` → Lambda receives routeKey `POST /flows`
+  - DNS is live and seeflow.dev resolves to CloudFront; both API smoke tests pass via the public domain
+  - The deployed API Gateway URL is https://jiau4sk484.execute-api.ap-southeast-2.amazonaws.com (direct, bypass CloudFront)
+---
