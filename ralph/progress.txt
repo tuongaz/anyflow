@@ -177,3 +177,15 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - Cloud URL pattern: `https://seeflow.dev/api/flows/{uuid}/files/{data.path}` for imageNode, `{uuid}/files/{data.htmlPath}` for htmlNode
   - htmlNode uses an iframe with the cloud URL as src (not srcdoc fetch) — simpler, avoids CORS, and the GET /flows/{uuid}/files/{proxy+} endpoint already serves the content
 ---
+
+## 2026-05-16 - US-012
+- Added `import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment'` to seeflow-stack.ts
+- Added BucketDeployment construct that uploads apps/viewer/dist/ to viewerBucket and invalidates CloudFront with distributionPaths: ['/*']
+- No new dependencies needed — aws-s3-deployment is part of aws-cdk-lib
+- Files changed: apps/cloud/lib/seeflow-stack.ts
+- **Learnings for future iterations:**
+  - `aws-cdk-lib/aws-s3-deployment` is bundled with aws-cdk-lib — no separate package needed
+  - BucketDeployment accepts `distribution` + `distributionPaths: ['/*']` to trigger CloudFront invalidation after upload
+  - Source path is relative to stack file's __dirname (apps/cloud/lib/): `../../viewer/dist` reaches apps/viewer/dist/
+  - SPA fallback (403/404 → index.html 200) defined in US-006 handles `/flow/:uuid` deep links — no additional config needed
+---
