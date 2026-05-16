@@ -162,3 +162,18 @@ Started: Sat 16 May 2026 14:58:15 AEST
   - Biome's noArrayIndexKey rule triggers even when index is embedded in a template string key — use explicit string arrays instead
   - ImageNode cloudSrc and HtmlNode cloudHtmlSrc are stubs for now; US-011 will inject the cloud URL via data props
 ---
+
+## 2026-05-16 - US-011
+- Created apps/viewer/src/lib/uuid-context.ts — React Context (UuidContext) + useUuid() hook for passing uuid to node renderers
+- Updated view-canvas.tsx: destructures uuid prop and wraps ReactFlow in UuidContext.Provider
+- Updated view-image-node.tsx: uses useUuid() + data.path to build `https://seeflow.dev/api/flows/{uuid}/files/{data.path}`; shows "Image" placeholder when path or uuid is missing
+- Updated view-html-node.tsx: uses useUuid() + data.htmlPath to build cloud URL for iframe src; shows name placeholder when path or uuid is missing
+- Removed stub cloudSrc/cloudHtmlSrc data fields; URLs are now derived from context + node data
+- Typecheck and build pass; Biome reports no issues on changed files
+- Files changed: apps/viewer/src/lib/uuid-context.ts (new), apps/viewer/src/components/view-canvas.tsx, apps/viewer/src/components/nodes/view-image-node.tsx, apps/viewer/src/components/nodes/view-html-node.tsx
+- **Learnings for future iterations:**
+  - React Context is the cleanest way to pass uuid into ReactFlow node renderers — avoids adding uuid to every node's data object
+  - UuidContext defaults to '' (empty string) so nodes show placeholders gracefully when uuid is absent
+  - Cloud URL pattern: `https://seeflow.dev/api/flows/{uuid}/files/{data.path}` for imageNode, `{uuid}/files/{data.htmlPath}` for htmlNode
+  - htmlNode uses an iframe with the cloud URL as src (not srcdoc fetch) — simpler, avoids CORS, and the GET /flows/{uuid}/files/{proxy+} endpoint already serves the content
+---
