@@ -10,7 +10,7 @@ ITERATIONS ?= 10
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-seeflow-schema verify-seeflow-schema-sync smoke-create-seeflow release gh.deploy
+.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-seeflow-schema verify-seeflow-schema-sync smoke-create-seeflow release deploy gh.deploy
 
 SEEFLOW_SCHEMA_SRC := apps/studio/src/schema.ts
 SEEFLOW_SCHEMA_DST := skills/create-seeflow/vendored/schema.ts
@@ -105,7 +105,9 @@ smoke-create-seeflow: ## End-to-end smoke: registers TWO demos in one repo via p
 
 OTP ?=
 
-gh.deploy: ## Trigger manual deployment of apps/viewer to S3 + CloudFront via GitHub Actions
+deploy: gh.deploy ## Alias for gh.deploy
+
+gh.deploy: build ## Trigger manual deployment of apps/viewer to S3 + CloudFront via GitHub Actions
 	gh workflow run deploy-viewer.yml
 	@echo "Deployment triggered. Follow progress at: https://github.com/tuongaz/anydemo/actions/workflows/deploy-viewer.yml"
 
