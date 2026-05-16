@@ -25,6 +25,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export interface DetailPanelProps {
   demoId: string | null;
@@ -200,6 +202,7 @@ export function DetailPanel({
                 ariaLabel="Detail"
                 testIdBase="detail-panel-detail"
                 onSave={onDetailChange}
+                markdown={true}
               />
 
               {inspectableNode.type === 'htmlNode' && demoId ? (
@@ -249,6 +252,7 @@ export function EditableField({
   testIdBase,
   onSave,
   textClassName,
+  markdown = false,
 }: {
   nodeId: string;
   value: string;
@@ -258,6 +262,7 @@ export function EditableField({
   testIdBase: string;
   onSave?: (nodeId: string, value: string) => void;
   textClassName?: string;
+  markdown?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -292,12 +297,13 @@ export function EditableField({
         data-testid={testIdBase}
         aria-label={ariaLabel}
         className={cn(
-          'w-full whitespace-pre-wrap break-words rounded-md px-2 py-1.5 text-sm',
+          'w-full rounded-md px-2 py-1.5 text-sm',
           isEmpty ? 'italic text-muted-foreground/50' : 'text-foreground',
+          !markdown && 'whitespace-pre-wrap break-words',
           textClassName,
         )}
       >
-        {isEmpty ? placeholder : value}
+        {isEmpty ? placeholder : markdown ? <MarkdownContent value={value} /> : value}
       </div>
     );
   }
@@ -396,12 +402,13 @@ export function EditableField({
           onClick={enterEdit}
           aria-label={`Edit ${ariaLabel.toLowerCase()}`}
           className={cn(
-            'block w-full cursor-text whitespace-pre-wrap break-words rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/50',
+            'block w-full cursor-text rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/50',
             isEmpty ? 'italic text-muted-foreground/50' : 'text-foreground',
+            !markdown && 'whitespace-pre-wrap break-words',
             textClassName,
           )}
         >
-          {isEmpty ? placeholder : value}
+          {isEmpty ? placeholder : markdown ? <MarkdownContent value={value} /> : value}
         </button>
       )}
     </div>
@@ -610,6 +617,69 @@ export function StatusSection({
         </dl>
       ) : null}
     </section>
+  );
+}
+
+function MarkdownContent({ value }: { value: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => <h1 className="mb-1 text-base font-bold leading-snug">{children}</h1>,
+        h2: ({ children }) => (
+          <h2 className="mb-1 text-sm font-semibold leading-snug">{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="mb-0.5 text-sm font-medium leading-snug">{children}</h3>
+        ),
+        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+        ul: ({ children }) => <ul className="mb-2 list-disc pl-4 last:mb-0">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 last:mb-0">{children}</ol>,
+        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+        code: ({ children, className }) => {
+          const isBlock = className?.includes('language-');
+          return isBlock ? (
+            <code className="block overflow-x-auto rounded bg-muted/60 px-2 py-1 font-mono text-xs">
+              {children}
+            </code>
+          ) : (
+            <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-xs">{children}</code>
+          );
+        },
+        pre: ({ children }) => <pre className="mb-2 last:mb-0">{children}</pre>,
+        blockquote: ({ children }) => (
+          <blockquote className="mb-2 border-l-2 border-muted-foreground/30 pl-3 italic text-muted-foreground last:mb-0">
+            {children}
+          </blockquote>
+        ),
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary underline underline-offset-2"
+          >
+            {children}
+          </a>
+        ),
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        hr: () => <hr className="my-2 border-border" />,
+        table: ({ children }) => (
+          <div className="mb-2 overflow-x-auto last:mb-0">
+            <table className="w-full border-collapse text-xs">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => (
+          <th className="border border-border bg-muted/40 px-2 py-1 text-left font-medium">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+      }}
+    >
+      {value}
+    </ReactMarkdown>
   );
 }
 
