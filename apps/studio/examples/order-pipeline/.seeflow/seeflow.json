@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "name": "Order Pipeline",
+  "nodes": [
+    {
+      "id": "post-orders",
+      "type": "playNode",
+      "position": { "x": 50, "y": 200 },
+      "data": {
+        "name": "POST /orders",
+        "kind": "service",
+        "stateSource": { "kind": "request" },
+        "description": "Creates order, kicks off the pipeline.",
+        "playAction": {
+          "kind": "script",
+          "interpreter": "bun",
+          "args": ["run"],
+          "scriptPath": "scripts/play.ts"
+        }
+      }
+    },
+    {
+      "id": "inventory-service",
+      "type": "stateNode",
+      "position": { "x": 350, "y": 200 },
+      "data": {
+        "name": "Inventory Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Reserves stock."
+      }
+    },
+    {
+      "id": "payment-service",
+      "type": "stateNode",
+      "position": { "x": 650, "y": 200 },
+      "data": {
+        "name": "Payment Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Charges card."
+      }
+    },
+    {
+      "id": "fulfillment-service",
+      "type": "stateNode",
+      "position": { "x": 950, "y": 200 },
+      "data": {
+        "name": "Fulfillment Service",
+        "kind": "worker",
+        "stateSource": { "kind": "event" },
+        "description": "Enqueues shipment."
+      }
+    }
+  ],
+  "connectors": [
+    {
+      "id": "c1",
+      "source": "post-orders",
+      "target": "inventory-service",
+      "kind": "event",
+      "eventName": "order.created",
+      "label": "order.created"
+    },
+    {
+      "id": "c2",
+      "source": "inventory-service",
+      "target": "payment-service",
+      "kind": "event",
+      "eventName": "stock.reserved",
+      "label": "stock.reserved"
+    },
+    {
+      "id": "c3",
+      "source": "payment-service",
+      "target": "fulfillment-service",
+      "kind": "event",
+      "eventName": "payment.captured",
+      "label": "payment.captured"
+    }
+  ]
+}

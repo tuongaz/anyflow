@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { createEventBus } from './events.ts';
 import { defaultProcessSpawner } from './process-spawner.ts';
-import { createRegistry } from './registry.ts';
+import { type Registry, createRegistry } from './registry.ts';
 import {
   clearPid,
   defaultPidPath,
@@ -128,6 +129,37 @@ async function runStart() {
   process.on('exit', cleanup);
 
   console.log(`SeeFlow Studio listening on http://${server.hostname}:${server.port}`);
+
+  await seedExamples(registry);
+}
+
+async function seedExamples(registry: Registry) {
+  const destDir = join(homedir(), '.seeflow', 'order-pipeline');
+  const demoPath = '.seeflow/seeflow.json';
+
+  if (registry.getByRepoPathAndDemoPath(destDir, demoPath)) return;
+
+  if (!existsSync(destDir)) {
+    const srcDir = join(import.meta.dir, '../examples/order-pipeline');
+    if (!existsSync(srcDir)) return;
+    cpSync(srcDir, destDir, { recursive: true });
+  }
+
+  const flowFile = join(destDir, demoPath);
+  if (!existsSync(flowFile)) return;
+
+  let demo: unknown;
+  try {
+    demo = await Bun.file(flowFile).json();
+  } catch {
+    return;
+  }
+
+  const parsed = DemoSchema.safeParse(demo);
+  if (!parsed.success) return;
+
+  registry.upsert({ name: parsed.data.name, repoPath: destDir, demoPath });
+  console.log(`Seeded example: Order Pipeline → ${destDir}`);
 }
 
 async function spawnDaemon(port: number, host: string) {

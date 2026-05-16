@@ -28,7 +28,7 @@
     "seeflow": "bin/seeflow",
     "seeflow-mcp": "bin/seeflow-mcp"
   },
-  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "public", "README.md"],
+  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "public", "examples", "README.md"],
   "engines": {
     "node": ">=18"
   },
