@@ -2,6 +2,20 @@
 Started: Sat 16 May 2026 14:58:15 AEST
 ---
 
+## 2026-05-16 - US-008
+- Created apps/viewer/ Vite + React + react-router-dom scaffold
+- Files created: apps/viewer/package.json, apps/viewer/vite.config.ts, apps/viewer/tsconfig.json, apps/viewer/index.html, apps/viewer/src/main.tsx, apps/viewer/src/app.tsx, apps/viewer/src/pages/flow-view.tsx, apps/viewer/src/pages/home.tsx
+- Dependencies: react, react-dom, react-router-dom, @xyflow/react (prod); @vitejs/plugin-react, vite, typescript, @types/* (dev)
+- vite.config.ts outputs to dist/ (local dist, not studio like apps/web does)
+- BrowserRouter wraps App in main.tsx; Routes defined in app.tsx with /flow/:uuid → FlowView and / → Home
+- bun run build produces dist/; all typechecks pass
+- **Learnings for future iterations:**
+  - apps/viewer tsconfig extends ../../tsconfig.base.json like apps/web — no need for bun types since no server code
+  - vite.config.ts outDir is 'dist' (not '../studio/dist/web' like apps/web) — viewer is a standalone SPA for deployment to S3
+  - react-router-dom v7 pattern: BrowserRouter in main.tsx, Routes/Route in app.tsx
+  - FlowView uses useParams<{ uuid: string }>() to extract uuid — will be expanded in US-009
+---
+
 ## Codebase Patterns
 - apps/cloud/ is a standard AWS CDK TypeScript project using `module: commonjs` in tsconfig (CDK requirement)
 - Lambda handlers live in apps/cloud/lambda/api/index.ts and use @types/aws-lambda for APIGatewayProxyEventV2 types
