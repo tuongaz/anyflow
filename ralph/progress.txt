@@ -46,3 +46,16 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - export-dialog.tsx uses the useExportToCloud hook; when its callback signature changes, update the dialog call site too
   - The zip key is computed as: `visibility === 'link' ? 'seeflow.private.json' : 'seeflow.json'`
 ---
+
+## 2026-05-17 - US-004
+- Added Name text input (localStorage key seeflow.export.name) to export dialog
+- Added Visibility select (localStorage key seeflow.export.visibility) with 'public'/'link' options
+- Export button now disabled when name is empty (in addition to email check)
+- Added View button (ExternalLink icon) in done state to open shareUrl in new tab
+- useExportToCloud now called with email, name, visibility (no more placeholder values)
+- Files changed: apps/web/src/components/export-dialog.tsx
+- **Learnings for future iterations:**
+  - Biome requires type imports before value imports within the same import statement (e.g., `import { type Foo, bar }` not `import { bar, type Foo }`)
+  - The export dialog localStorage keys follow pattern seeflow.export.{field}
+  - Browser testing was not performed (no MCP browser tools available); manual verification needed
+---
