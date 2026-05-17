@@ -14,10 +14,11 @@ apps/studio/dist/*
 apps/studio/README.md
 
 docs
-ralph
+ralph/
 .claude/scheduled_tasks.lock
 .claude/skills/agent-browser
 .claude/ralph-loop.local.md
 ,claude/settings.local.json
 .claude/skills/run-ralph
 docs
+apps/cloud/cdk.out
