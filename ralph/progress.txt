@@ -43,3 +43,14 @@ Started: Sun 17 May 2026 11:55:53 AEST
   - To cap grid item width at 600px: wrap each item in `<div style={{ maxWidth: '600px', width: '100%' }}>` — CSS grid `max-width` on items caps them within their cell
   - The `/flows` page background changed from dark (#09090b) to light (#f8fafc) to match the white card theme from US-003
 ---
+
+## 2026-05-17 - US-005
+- Fixed MiniCanvas thumbnail rendering blank by changing its outer div from `width:'100%', height:'100%'` to `position:'absolute', top:0, left:0, right:0, bottom:0`
+- Added `style={{ background: '#f8fafc' }}` to the ReactFlow component so its own background matches the card theme
+- Also fixed pre-existing lint error in apps/cloud/lambda/api/index.ts: `obj.Key!` → `obj.Key?.`
+- Files changed: apps/viewer/src/components/mini-canvas.tsx, apps/cloud/lambda/api/index.ts
+- **Learnings for future iterations:**
+  - `height: '100%'` on a child only works if the parent has an explicit height (e.g. `height: 200px`), NOT if the parent's height is derived from `aspect-ratio`. Use `position: absolute; top:0; left:0; right:0; bottom:0` to fill a relatively-positioned parent whose height comes from aspect-ratio.
+  - ReactFlow needs a non-zero computed height on its container to render; the absolute-fill pattern is the reliable fix.
+  - The pre-existing lint error in apps/cloud/lambda/api/index.ts must be fixed before committing (biome flags `!` non-null assertions); fix with optional chain `?.`.
+---
