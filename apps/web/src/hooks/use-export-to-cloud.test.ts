@@ -285,6 +285,50 @@ describe('exportToCloud', () => {
     );
   });
 
+  it('includes preview.png in the zip when previewDataUrl is provided', async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3, 4]);
+    const base64 = btoa(String.fromCharCode(...pngBytes));
+    const previewDataUrl = `data:image/png;base64,${base64}`;
+    let capturedBody: ArrayBuffer | null = null;
+
+    installMock((url, init) => {
+      if (url.includes('/api/demos/')) return { status: 200, body: makeDetail() };
+      if (url.includes('seeflow.dev')) {
+        const raw = init?.body;
+        capturedBody = raw instanceof ArrayBuffer ? raw : null;
+        return { status: 201, body: { url: 'https://seeflow.dev/flow/abc' } };
+      }
+      throw new Error(`Unexpected: ${url}`);
+    });
+
+    await exportToCloud('proj-1', 'test@example.com', previewDataUrl);
+
+    assertArrayBuffer(capturedBody);
+    const entries = unzipSync(new Uint8Array(capturedBody));
+    expect('preview.png' in entries).toBe(true);
+    expect(entries['preview.png']).toEqual(pngBytes);
+  });
+
+  it('omits preview.png from the zip when previewDataUrl is not provided', async () => {
+    let capturedBody: ArrayBuffer | null = null;
+
+    installMock((url, init) => {
+      if (url.includes('/api/demos/')) return { status: 200, body: makeDetail() };
+      if (url.includes('seeflow.dev')) {
+        const raw = init?.body;
+        capturedBody = raw instanceof ArrayBuffer ? raw : null;
+        return { status: 201, body: { url: 'https://seeflow.dev/flow/abc' } };
+      }
+      throw new Error(`Unexpected: ${url}`);
+    });
+
+    await exportToCloud('proj-1', 'test@example.com');
+
+    assertArrayBuffer(capturedBody);
+    const entries = unzipSync(new Uint8Array(capturedBody));
+    expect('preview.png' in entries).toBe(false);
+  });
+
   it('throws when cloud API response is missing url field', async () => {
     installMock((url) => {
       if (url.includes('/api/demos/')) return { status: 200, body: makeDetail() };
