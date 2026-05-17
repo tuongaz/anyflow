@@ -29,8 +29,19 @@ type DiscoverState =
 
 function DiscoverSkeletonCard() {
   return (
-    <div style={{ border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden' }}>
-      <div style={{ width: '100%', aspectRatio: '16 / 9', background: '#18181b' }} />
+    <div
+      style={{
+        border: '1px solid #e4e4e7',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        background: '#fff',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+      }}
+    >
+      <div
+        className="animate-pulse"
+        style={{ width: '100%', aspectRatio: '16 / 9', background: '#f1f5f9' }}
+      />
       <div
         style={{
           padding: '8px 12px',
@@ -39,8 +50,14 @@ function DiscoverSkeletonCard() {
           gap: '8px',
         }}
       >
-        <div style={{ width: '60%', height: '14px', background: '#27272a', borderRadius: '4px' }} />
-        <div style={{ width: '20%', height: '14px', background: '#27272a', borderRadius: '4px' }} />
+        <div
+          className="animate-pulse"
+          style={{ width: '60%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }}
+        />
+        <div
+          className="animate-pulse"
+          style={{ width: '20%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }}
+        />
       </div>
     </div>
   );

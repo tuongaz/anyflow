@@ -29,14 +29,15 @@ export function FlowCard({ flow, onClick }: FlowCardProps) {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        background: 'none',
-        border: '1px solid #27272a',
+        background: '#fff',
+        border: '1px solid #e4e4e7',
         borderRadius: '8px',
         padding: 0,
         cursor: 'pointer',
         overflow: 'hidden',
         width: '100%',
         textAlign: 'left',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
       }}
     >
       <div
@@ -44,7 +45,7 @@ export function FlowCard({ flow, onClick }: FlowCardProps) {
           position: 'relative',
           width: '100%',
           aspectRatio: '16 / 9',
-          background: '#09090b',
+          background: '#f8fafc',
           overflow: 'hidden',
         }}
       >
@@ -62,7 +63,7 @@ export function FlowCard({ flow, onClick }: FlowCardProps) {
         <span
           style={{
             fontSize: '0.875rem',
-            color: '#e4e4e7',
+            color: '#18181b',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
