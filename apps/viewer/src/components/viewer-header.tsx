@@ -45,9 +45,14 @@ export function ViewerHeader() {
         SeeFlow
       </Link>
       {!isFlowView && (
-        <Link to="/" style={studioLinkStyle}>
-          SeeFlow Studio
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Link to="/flows" style={studioLinkStyle}>
+            Flows
+          </Link>
+          <Link to="/" style={studioLinkStyle}>
+            SeeFlow Studio
+          </Link>
+        </div>
       )}
     </header>
   );
