@@ -98,7 +98,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -152,6 +152,21 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Add help text under Email field in export dialog",
+      "description": "As a user, I want to see a brief explanation under the Email field in the Export to seeflow.dev dialog so I understand why my email is required.",
+      "acceptanceCriteria": [
+        "In the Export to seeflow.dev dialog, a small helper text appears directly below the Email input field",
+        "The helper text reads: 'We'll use this to let you manage your flows in the future.'",
+        "The helper text is styled subtly (e.g., text-xs text-muted-foreground) so it doesn't compete with the input",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 10,
       "passes": false,
       "notes": ""
     }

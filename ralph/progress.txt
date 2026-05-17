@@ -6,6 +6,8 @@
 - viewer-api.ts in apps/viewer/src/lib/ is the single source for all API calls (fetchFlow, fetchFlows) pointing to https://seeflow.dev/api
 - exportToCloud in use-export-to-cloud.ts signature: (projectId, email, name, visibility: 'public'|'link', previewDataUrl?); Visibility type is exported; zip key is seeflow.json (public) or seeflow.private.json (link)
 - When adding required params to a hook used by a component that will be updated in a later story, update the component with a placeholder value to keep typecheck passing
+- FlowCard uses inline styles (not CSS classes) consistent with other viewer components; aspectRatio '16 / 9' for the canvas preview container
+- relativeDate helper: 0d=today, 1d=yesterday, <30d=Nd ago, <12mo=Nmo ago, else Ny ago
 
 # Ralph Progress Log
 Started: Sun 17 May 2026 10:49:11 AEST
@@ -72,4 +74,18 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - MiniCanvas mirrors view-canvas.tsx node/edge types but strips all interactivity
   - useNodesState/useEdgesState still needed even without change handlers (React Flow requires state)
   - proOptions={{ hideAttribution: true }} prevents the XY Flow attribution watermark
+---
+
+## 2026-05-17 - US-006
+- Added FlowListItem and FlowsResponse types to apps/viewer/src/types.ts (prerequisite from US-002 that was missing)
+- Created apps/viewer/src/lib/viewer-api.ts with fetchFlow(uuid, signal?) and fetchFlows(page, limit) (prerequisite from US-002 that was missing)
+- Created apps/viewer/src/components/flow-card.tsx with FlowCard component
+- FlowCard is a button element with 16:9 MiniCanvas preview (#09090b background) and bottom bar showing truncated name + relative date
+- Relative date helper: today/yesterday/Nd ago/Nmo ago/Ny ago
+- Files changed: apps/viewer/src/types.ts, apps/viewer/src/lib/viewer-api.ts (new), apps/viewer/src/components/flow-card.tsx (new)
+- **Learnings for future iterations:**
+  - US-002 changes were marked passes:true in PRD but not committed; had to re-implement FlowListItem type and viewer-api.ts
+  - FlowCard uses inline styles consistent with other viewer components (no CSS classes)
+  - aspectRatio: '16 / 9' CSS property works for the preview container
+  - Browser testing not performed (no MCP browser tools available); manual verification needed
 ---
