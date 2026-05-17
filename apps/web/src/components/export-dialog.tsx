@@ -7,11 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useExportToCloud } from '@/hooks/use-export-to-cloud';
-import { Check, Copy, Loader2 } from 'lucide-react';
+import { type Visibility, useExportToCloud } from '@/hooks/use-export-to-cloud';
+import { Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 const EMAIL_STORAGE_KEY = 'seeflow.export.email';
+const NAME_STORAGE_KEY = 'seeflow.export.name';
+const VISIBILITY_STORAGE_KEY = 'seeflow.export.visibility';
 
 type State =
   | { kind: 'idle' }
@@ -33,6 +35,8 @@ export function ExportDialog({
   onCapturePreview,
 }: ExportDialogProps) {
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [visibility, setVisibility] = useState<Visibility>('public');
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [copied, setCopied] = useState(false);
   const exportToCloud = useExportToCloud(projectId);
@@ -40,6 +44,8 @@ export function ExportDialog({
   useEffect(() => {
     if (open) {
       setEmail(localStorage.getItem(EMAIL_STORAGE_KEY) ?? '');
+      setName(localStorage.getItem(NAME_STORAGE_KEY) ?? '');
+      setVisibility((localStorage.getItem(VISIBILITY_STORAGE_KEY) as Visibility) ?? 'public');
       setState({ kind: 'idle' });
       setCopied(false);
     }
@@ -49,13 +55,20 @@ export function ExportDialog({
     setState({ kind: 'loading' });
     try {
       const previewDataUrl = await onCapturePreview?.();
-      const { shareUrl } = await exportToCloud(email.trim(), '', 'public', previewDataUrl);
+      const { shareUrl } = await exportToCloud(
+        email.trim(),
+        name.trim(),
+        visibility,
+        previewDataUrl,
+      );
       localStorage.setItem(EMAIL_STORAGE_KEY, email.trim());
+      localStorage.setItem(NAME_STORAGE_KEY, name.trim());
+      localStorage.setItem(VISIBILITY_STORAGE_KEY, visibility);
       setState({ kind: 'done', shareUrl });
     } catch (err) {
       setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
-  }, [exportToCloud, email, onCapturePreview]);
+  }, [exportToCloud, email, name, visibility, onCapturePreview]);
 
   const handleCopy = useCallback(() => {
     if (state.kind !== 'done') return;
@@ -66,6 +79,7 @@ export function ExportDialog({
   }, [state]);
 
   const isLoading = state.kind === 'loading';
+  const canExport = email.trim().length > 0 && name.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -102,6 +116,33 @@ export function ExportDialog({
                   data-testid="export-email-input"
                   className="rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="font-medium">Name</span>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={isLoading}
+                  data-testid="export-name-input"
+                  className="rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="font-medium">Visibility</span>
+                <select
+                  value={visibility}
+                  onChange={(e) => setVisibility(e.target.value as Visibility)}
+                  disabled={isLoading}
+                  data-testid="export-visibility-select"
+                  className="rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="public">Public — anyone can discover it</option>
+                  <option value="link">Anyone with the link</option>
+                </select>
               </label>
 
               {state.kind === 'error' ? (
@@ -148,7 +189,7 @@ export function ExportDialog({
                   <Button
                     type="button"
                     onClick={handleExport}
-                    disabled={isLoading || email.trim().length === 0}
+                    disabled={isLoading || !canExport}
                     data-testid="export-submit"
                   >
                     {isLoading ? (
@@ -191,6 +232,16 @@ export function ExportDialog({
                   ) : (
                     <Copy className="h-4 w-4" aria-hidden="true" />
                   )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => window.open(state.shareUrl, '_blank')}
+                  aria-label="View in new tab"
+                  data-testid="export-view"
+                >
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>
