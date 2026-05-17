@@ -79,7 +79,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await exportToCloud('proj-1', 'test@example.com');
+    const result = await exportToCloud('proj-1', 'test@example.com', 'My Flow', 'public');
 
     expect(result.shareUrl).toBe('https://seeflow.dev/flow/uuid-123');
     expect(requests).toHaveLength(2);
@@ -103,7 +103,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com');
+    await exportToCloud('proj-1', 'test@example.com', 'My Flow', 'public');
 
     assertArrayBuffer(capturedBody);
     const entries = unzipSync(new Uint8Array(capturedBody));
@@ -141,7 +141,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com');
+    await exportToCloud('proj-1', 'test@example.com', 'Img Flow', 'public');
 
     expect(requests).toHaveLength(3);
     expect(requests[1]).toContain('/api/projects/proj-1/files/assets/img.png');
@@ -184,7 +184,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com');
+    await exportToCloud('proj-1', 'test@example.com', 'Html Flow', 'public');
 
     expect(requests[1]).toContain('/api/projects/proj-1/files/blocks/widget.html');
     assertArrayBuffer(capturedBody);
@@ -225,7 +225,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com');
+    await exportToCloud('proj-1', 'test@example.com', 'Dup Flow', 'public');
     expect(fileRequests).toHaveLength(1);
   });
 
@@ -256,7 +256,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com');
+    await exportToCloud('proj-1', 'test@example.com', 'Missing Flow', 'public');
 
     assertArrayBuffer(capturedBody);
     const entries = unzipSync(new Uint8Array(capturedBody));
@@ -270,7 +270,9 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await expect(exportToCloud('proj-1', 'test@example.com')).rejects.toThrow('Demo has no data');
+    await expect(
+      exportToCloud('proj-1', 'test@example.com', 'Null Flow', 'public'),
+    ).rejects.toThrow('Demo has no data');
   });
 
   it('throws when cloud API returns non-ok status', async () => {
@@ -280,9 +282,9 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await expect(exportToCloud('proj-1', 'test@example.com')).rejects.toThrow(
-      'Export failed with status 413',
-    );
+    await expect(
+      exportToCloud('proj-1', 'test@example.com', 'Too Large', 'public'),
+    ).rejects.toThrow('Export failed with status 413');
   });
 
   it('includes preview.png in the zip when previewDataUrl is provided', async () => {
@@ -301,7 +303,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com', previewDataUrl);
+    await exportToCloud('proj-1', 'test@example.com', 'Preview Flow', 'public', previewDataUrl);
 
     assertArrayBuffer(capturedBody);
     const entries = unzipSync(new Uint8Array(capturedBody));
@@ -322,7 +324,7 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await exportToCloud('proj-1', 'test@example.com');
+    await exportToCloud('proj-1', 'test@example.com', 'No Preview', 'public');
 
     assertArrayBuffer(capturedBody);
     const entries = unzipSync(new Uint8Array(capturedBody));
@@ -336,6 +338,47 @@ describe('exportToCloud', () => {
       throw new Error(`Unexpected: ${url}`);
     });
 
-    await expect(exportToCloud('proj-1', 'test@example.com')).rejects.toThrow('missing url');
+    await expect(
+      exportToCloud('proj-1', 'test@example.com', 'Missing URL', 'public'),
+    ).rejects.toThrow('missing url');
+  });
+
+  it("visibility 'link' produces seeflow.private.json in zip instead of seeflow.json", async () => {
+    let capturedBody: ArrayBuffer | null = null;
+
+    installMock((url, init) => {
+      if (url.includes('/api/demos/')) return { status: 200, body: makeDetail() };
+      if (url.includes('seeflow.dev')) {
+        const raw = init?.body;
+        capturedBody = raw instanceof ArrayBuffer ? raw : null;
+        return { status: 201, body: { url: 'https://seeflow.dev/flow/abc' } };
+      }
+      throw new Error(`Unexpected: ${url}`);
+    });
+
+    await exportToCloud('proj-1', 'test@example.com', 'Private Flow', 'link');
+
+    assertArrayBuffer(capturedBody);
+    const entries = unzipSync(new Uint8Array(capturedBody));
+    expect('seeflow.private.json' in entries).toBe(true);
+    expect('seeflow.json' in entries).toBe(false);
+  });
+
+  it('name appears in cloud API URL query params', async () => {
+    const capturedUrls: string[] = [];
+
+    installMock((url) => {
+      capturedUrls.push(url);
+      if (url.includes('/api/demos/')) return { status: 200, body: makeDetail() };
+      if (url.includes('seeflow.dev'))
+        return { status: 201, body: { url: 'https://seeflow.dev/flow/abc' } };
+      throw new Error(`Unexpected: ${url}`);
+    });
+
+    await exportToCloud('proj-1', 'user@example.com', 'My Awesome Flow', 'public');
+
+    const cloudUrl = capturedUrls.find((u) => u.includes('seeflow.dev'));
+    expect(cloudUrl).toBeDefined();
+    expect(cloudUrl).toContain('name=My%20Awesome%20Flow');
   });
 });

@@ -2,11 +2,15 @@ import { fetchDemoDetail } from '@/lib/api';
 import { strToU8, zipSync } from 'fflate';
 import { useCallback } from 'react';
 
+export type Visibility = 'public' | 'link';
+
 const CLOUD_API_BASE = 'https://seeflow.dev/api';
 
 export async function exportToCloud(
   projectId: string,
   email: string,
+  name: string,
+  visibility: Visibility,
   previewDataUrl?: string,
 ): Promise<{ shareUrl: string }> {
   const detail = await fetchDemoDetail(projectId);
@@ -28,8 +32,10 @@ export async function exportToCloud(
     }
   }
 
+  const demoKey = visibility === 'link' ? 'seeflow.private.json' : 'seeflow.json';
+
   const zipEntries: Record<string, Uint8Array> = {
-    'seeflow.json': strToU8(JSON.stringify(demo)),
+    [demoKey]: strToU8(JSON.stringify(demo)),
   };
 
   if (previewDataUrl) {
@@ -48,11 +54,14 @@ export async function exportToCloud(
 
   const zipped = zipSync(zipEntries);
 
-  const cloudRes = await fetch(`${CLOUD_API_BASE}/flows?email=${encodeURIComponent(email)}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/zip' },
-    body: zipped.buffer as ArrayBuffer,
-  });
+  const cloudRes = await fetch(
+    `${CLOUD_API_BASE}/flows?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/zip' },
+      body: zipped.buffer as ArrayBuffer,
+    },
+  );
 
   if (!cloudRes.ok) {
     throw new Error(`Export failed with status ${cloudRes.status}`);
@@ -68,9 +77,15 @@ export async function exportToCloud(
 
 export function useExportToCloud(
   projectId: string,
-): (email: string, previewDataUrl?: string) => Promise<{ shareUrl: string }> {
+): (
+  email: string,
+  name: string,
+  visibility: Visibility,
+  previewDataUrl?: string,
+) => Promise<{ shareUrl: string }> {
   return useCallback(
-    (email: string, previewDataUrl?: string) => exportToCloud(projectId, email, previewDataUrl),
+    (email: string, name: string, visibility: Visibility, previewDataUrl?: string) =>
+      exportToCloud(projectId, email, name, visibility, previewDataUrl),
     [projectId],
   );
 }

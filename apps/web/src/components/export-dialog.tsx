@@ -49,7 +49,7 @@ export function ExportDialog({
     setState({ kind: 'loading' });
     try {
       const previewDataUrl = await onCapturePreview?.();
-      const { shareUrl } = await exportToCloud(email.trim(), previewDataUrl);
+      const { shareUrl } = await exportToCloud(email.trim(), '', 'public', previewDataUrl);
       localStorage.setItem(EMAIL_STORAGE_KEY, email.trim());
       setState({ kind: 'done', shareUrl });
     } catch (err) {
