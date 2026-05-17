@@ -425,8 +425,8 @@ export function Home() {
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   >
                     <div className="text-zinc-300 mb-2">
-                      <span className="text-emerald-400">❯</span> /create-seeflow show me the
-                      shopping cart feature
+                      <span className="text-emerald-400">❯</span> /seeflow show me the shopping cart
+                      feature
                     </div>
                     <div className="text-zinc-500 pl-4 mb-2">
                       Analyzing codebase...

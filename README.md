@@ -32,7 +32,7 @@ npx skills add tuongaz/seeflow
 
 ```bash
 /plugin marketplace add tuongaz/seeflow
-/plugin install create-seeflow@seeflow
+/plugin install seeflow@seeflow
 ```
 
 ```bash
@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/tuongaz/seeflow/main/install.sh | b
 **Then just ask:**
 
 ```
-/create-seeflow show me the shopping cart feature
+/seeflow show me the shopping cart feature
 ```
 
 The plugin scans your routes and database connections, generates `seeflow.json`, wires up demo scripts, and opens the canvas at localhost:4321.

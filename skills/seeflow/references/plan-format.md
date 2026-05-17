@@ -1,6 +1,6 @@
 # Phase 4 plan-presentation template
 
-This is the canonical format the `create-seeflow` skill renders to the user
+This is the canonical format the `seeflow` skill renders to the user
 at the end of Phase 4 (synthesis + schema validation), before writing any
 files. It is the user's **last chance** to redirect before disk writes,
 register, and end-to-end validation.
