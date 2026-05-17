@@ -55,6 +55,20 @@ Started: Sun 17 May 2026 11:55:53 AEST
   - The pre-existing lint error in apps/cloud/lambda/api/index.ts must be fixed before committing (biome flags `!` non-null assertions); fix with optional chain `?.`.
 ---
 
+## 2026-05-17 - US-007
+- Installed react-helmet-async@3.0.0 in apps/viewer
+- Added static baseline OG tags to apps/viewer/index.html: og:site_name, og:type, og:description, og:url, twitter:card
+- Wrapped app root in HelmetProvider in apps/viewer/src/main.tsx
+- apps/viewer/src/pages/flow-view.tsx: added Helmet with dynamic title ({flowName} | SeeFlow), og:title, og:description, og:url (window.location.href)
+- apps/viewer/src/pages/flows.tsx: added Helmet with title 'Flows | SeeFlow'
+- apps/viewer/src/pages/home.tsx: added Helmet with title 'SeeFlow | Architecture diagrams that actually run'
+- Files changed: apps/viewer/index.html, apps/viewer/src/main.tsx, apps/viewer/src/pages/flow-view.tsx, apps/viewer/src/pages/flows.tsx, apps/viewer/src/pages/home.tsx, apps/viewer/package.json, bun.lock
+- **Learnings for future iterations:**
+  - react-helmet-async v3 is the current version; HelmetProvider wraps the entire app in main.tsx, Helmet components go inside individual pages
+  - Demo.name is a required string (not optional) — no null coalescing needed when using it in Helmet title
+  - OG tags for flow-view use window.location.href for the canonical URL (works fine in browser-only SPA context)
+---
+
 ## 2026-05-17 - US-006
 - Replaced the header logo `<div>` in apps/viewer/src/pages/home.tsx with `<Link to="/">` from react-router-dom
 - Added `hover:opacity-75 transition-opacity` Tailwind classes and `cursor: 'pointer'` style for interactive feedback
