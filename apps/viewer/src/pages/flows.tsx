@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FlowCard } from '../components/flow-card';
 import { fetchFlows } from '../lib/viewer-api';
-import type { FlowsResponse } from '../types';
+import type { FlowListItem } from '../types';
 
-const LIMIT = 12;
-
-type State =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'done'; data: FlowsResponse };
+const LIMIT = 20;
 
 function SkeletonCard() {
   return (
-    <div style={{ border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden' }}>
-      <div style={{ width: '100%', aspectRatio: '16 / 9', background: '#18181b' }} />
+    <div
+      className="animate-pulse"
+      style={{
+        border: '1px solid #e4e4e7',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        background: '#fff',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+      }}
+    >
+      <div style={{ width: '100%', aspectRatio: '16 / 9', background: '#f1f5f9' }} />
       <div
         style={{
           padding: '8px 12px',
@@ -23,119 +27,162 @@ function SkeletonCard() {
           gap: '8px',
         }}
       >
-        <div style={{ width: '60%', height: '14px', background: '#27272a', borderRadius: '4px' }} />
-        <div style={{ width: '20%', height: '14px', background: '#27272a', borderRadius: '4px' }} />
+        <div style={{ width: '60%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }} />
+        <div style={{ width: '20%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }} />
       </div>
     </div>
   );
 }
 
-const paginationBtn = (disabled: boolean): React.CSSProperties => ({
-  padding: '6px 16px',
-  background: 'none',
-  border: '1px solid #27272a',
-  borderRadius: '6px',
-  color: disabled ? '#52525b' : '#e4e4e7',
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  fontSize: '0.875rem',
-});
-
 export function FlowsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
-  const [state, setState] = useState<State>({ status: 'loading' });
+  const [flows, setFlows] = useState<FlowListItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
+  const pageRef = useRef(1);
+  const totalPagesRef = useRef<number | null>(null);
+
+  const loadPage = useCallback(async (pageToLoad: number) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoadMoreError(null);
+
+    if (pageToLoad === 1) {
+      setInitialLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
+    try {
+      const data = await fetchFlows(pageToLoad, LIMIT);
+      setFlows((prev) => (pageToLoad === 1 ? data.flows : [...prev, ...data.flows]));
+      setTotalPages(data.totalPages);
+      totalPagesRef.current = data.totalPages;
+      setPage(pageToLoad);
+      pageRef.current = pageToLoad;
+    } catch (err) {
+      if (pageToLoad > 1) {
+        const message = err instanceof Error ? err.message : 'Failed to load more flows';
+        setLoadMoreError(message);
+      }
+    } finally {
+      setInitialLoading(false);
+      setLoadingMore(false);
+      loadingRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
-    setState({ status: 'loading' });
-    fetchFlows(page, LIMIT)
-      .then((data) => setState({ status: 'done', data }))
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Failed to load flows';
-        setState({ status: 'error', message });
-      });
-  }, [page]);
+    loadPage(1);
+  }, [loadPage]);
 
-  function goToPage(next: number) {
-    setSearchParams({ page: String(next) });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const tp = totalPagesRef.current;
+        if (
+          entries[0]?.isIntersecting &&
+          tp !== null &&
+          pageRef.current < tp &&
+          !loadingRef.current
+        ) {
+          loadPage(pageRef.current + 1);
+        }
+      },
+      { rootMargin: '300px' },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadPage]);
+
+  const allLoaded = totalPages !== null && page >= totalPages && flows.length > 0;
 
   return (
     <div
       style={{
         minHeight: '100%',
-        backgroundColor: '#09090b',
-        color: '#e4e4e7',
+        backgroundColor: '#f8fafc',
+        color: '#18181b',
         padding: '24px',
       }}
     >
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '24px', color: '#f4f4f5' }}>
-        Flows
-      </h1>
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '24px', color: '#18181b' }}>
+          Flows
+        </h1>
 
-      {state.status === 'loading' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: LIMIT }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no identity
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      )}
-
-      {state.status === 'error' && (
-        <p style={{ color: '#64748b', textAlign: 'center', marginTop: '48px' }}>{state.message}</p>
-      )}
-
-      {state.status === 'done' && state.data.flows.length === 0 && (
-        <p style={{ color: '#64748b', textAlign: 'center', marginTop: '48px' }}>No flows yet.</p>
-      )}
-
-      {state.status === 'done' && state.data.flows.length > 0 && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {state.data.flows.map((flow) => (
-              <FlowCard
-                key={flow.uuid}
-                flow={flow}
-                onClick={() => navigate(`/flow/${flow.uuid}`)}
-              />
+        {initialLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {Array.from({ length: LIMIT }).map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no identity
+              <SkeletonCard key={i} />
             ))}
           </div>
+        ) : flows.length === 0 ? (
+          <p style={{ color: '#64748b', textAlign: 'center', marginTop: '48px' }}>No flows yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {flows.map((flow) => (
+              <div key={flow.uuid} style={{ maxWidth: '600px', width: '100%' }}>
+                <FlowCard flow={flow} onClick={() => navigate(`/flow/${flow.uuid}`)} />
+              </div>
+            ))}
+          </div>
+        )}
 
-          {state.data.totalPages > 1 && (
-            <div
+        {loadingMore && (
+          <p
+            style={{
+              textAlign: 'center',
+              marginTop: '24px',
+              color: '#64748b',
+              fontSize: '0.875rem',
+            }}
+          >
+            Loading more…
+          </p>
+        )}
+
+        {loadMoreError && (
+          <div style={{ textAlign: 'center', marginTop: '24px' }}>
+            <p style={{ color: '#ef4444', fontSize: '0.875rem', marginBottom: '8px' }}>
+              Failed to load more
+            </p>
+            <button
+              type="button"
+              onClick={() => loadPage(page + 1)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '16px',
-                marginTop: '32px',
+                padding: '6px 16px',
+                background: 'none',
+                border: '1px solid #e4e4e7',
+                borderRadius: '6px',
+                color: '#18181b',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
               }}
             >
-              <button
-                type="button"
-                onClick={() => goToPage(page - 1)}
-                disabled={page <= 1}
-                style={paginationBtn(page <= 1)}
-              >
-                Previous
-              </button>
-              <span style={{ fontSize: '0.875rem', color: '#71717a' }}>
-                Page {page} of {state.data.totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => goToPage(page + 1)}
-                disabled={page >= state.data.totalPages}
-                style={paginationBtn(page >= state.data.totalPages)}
-              >
-                Next
-              </button>
-            </div>
+              Retry
+            </button>
+          </div>
+        )}
+
+        <div ref={sentinelRef} style={{ height: '1px', marginTop: '24px' }}>
+          {allLoaded && (
+            <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>
+              All flows loaded
+            </p>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
