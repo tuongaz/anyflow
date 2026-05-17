@@ -122,7 +122,7 @@ export function ExportDialog({
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm">
-                <span className="font-medium">Name</span>
+                <span className="font-medium">Flow Name</span>
                 <input
                   type="text"
                   required
