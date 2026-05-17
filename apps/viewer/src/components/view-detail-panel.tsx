@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { getStored, setStored, startResizeGesture } from '../lib/view-detail-panel-width';
 import type { DemoNode } from '../types';
 
 interface ViewDetailPanelProps {
@@ -26,7 +27,6 @@ const panelBaseStyle: React.CSSProperties = {
   position: 'fixed',
   top: HEADER_HEIGHT,
   right: 0,
-  width: 360,
   height: `calc(100% - ${HEADER_HEIGHT}px)`,
   background: '#fff',
   borderLeft: '1px solid #e2e8f0',
@@ -71,12 +71,39 @@ export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
   const description = data.description ?? '';
   const detail = data.detail ?? '';
 
+  const [width, setWidth] = useState<number>(() => getStored());
+
   const panelStyle: React.CSSProperties = isMobile
     ? { ...panelBaseStyle, top: 0, height: '100%', width: '100%', zIndex: 30 }
-    : panelBaseStyle;
+    : { ...panelBaseStyle, width };
+
+  const dragHandleStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: '100%',
+    width: 6,
+    cursor: 'col-resize',
+    zIndex: 11,
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    startResizeGesture(width, e.clientX, {
+      onWidth: setWidth,
+      onCommit: setStored,
+    });
+  };
 
   return (
     <div style={panelStyle}>
+      {!isMobile && (
+        <div
+          style={dragHandleStyle}
+          onPointerDown={handlePointerDown}
+          aria-label="Resize detail panel"
+        />
+      )}
       <div style={headerStyle}>
         <div>
           {name && (
