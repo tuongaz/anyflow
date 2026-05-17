@@ -110,3 +110,17 @@ export interface Demo {
   nodes: DemoNode[];
   connectors: Connector[];
 }
+
+export interface FlowListItem {
+  uuid: string;
+  name: string;
+  createdAt: string;
+  demo: Demo;
+}
+
+export interface FlowsResponse {
+  flows: FlowListItem[];
+  total: number;
+  page: number;
+  totalPages: number;
+}

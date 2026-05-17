@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { ViewCanvas } from '../components/view-canvas';
+import { fetchFlow } from '../lib/viewer-api';
 import type { Demo } from '../types';
-
-const API_BASE = 'https://seeflow.dev/api';
 
 type State =
   | { status: 'loading' }
@@ -30,20 +29,14 @@ export function FlowView() {
 
     const controller = new AbortController();
 
-    fetch(`${API_BASE}/flows/${uuid}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) {
-          const message =
-            res.status === 404 ? 'Flow not found' : `Failed to load flow (${res.status})`;
-          setState({ status: 'error', message });
-          return;
-        }
-        const demo = (await res.json()) as Demo;
+    fetchFlow(uuid, controller.signal)
+      .then((demo) => {
         setState({ status: 'done', demo });
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') return;
-        setState({ status: 'error', message: 'Failed to load flow' });
+        const message = err instanceof Error ? err.message : 'Failed to load flow';
+        setState({ status: 'error', message });
       });
 
     return () => controller.abort();
