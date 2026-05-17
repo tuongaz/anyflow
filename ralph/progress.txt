@@ -132,3 +132,13 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - biome format collapsed the FlowCard onClick inline — no logic change
   - Browser testing not performed (no MCP browser tools available); manual verification needed
 ---
+
+## 2026-05-17 - US-010
+- Added helper text span directly below the Email input in export-dialog.tsx
+- Helper text: "We'll use this to let you manage your flows in the future."
+- Styled with text-xs text-muted-foreground for subtle appearance
+- Files changed: apps/web/src/components/export-dialog.tsx
+- **Learnings for future iterations:**
+  - Helper text placed inside the label's flex column, after the input element, inherits the label context without needing an extra wrapper
+  - Browser testing not performed (no MCP browser tools available); manual verification needed
+---
