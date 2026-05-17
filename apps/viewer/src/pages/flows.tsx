@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { useNavigate } from 'react-router-dom';
 import { FlowCard } from '../components/flow-card';
 import { fetchFlows } from '../lib/viewer-api';
@@ -115,6 +116,9 @@ export function FlowsPage() {
         padding: '24px',
       }}
     >
+      <Helmet>
+        <title>Flows | SeeFlow</title>
+      </Helmet>
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '24px', color: '#18181b' }}>
           Flows

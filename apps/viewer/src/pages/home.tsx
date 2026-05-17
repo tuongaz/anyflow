@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { Link, useNavigate } from 'react-router-dom';
 import { FlowCard } from '../components/flow-card';
 import { fetchFlows } from '../lib/viewer-api';
@@ -151,6 +152,9 @@ export function Home() {
         scrollBehavior: 'smooth',
       }}
     >
+      <Helmet>
+        <title>SeeFlow | Architecture diagrams that actually run</title>
+      </Helmet>
       {/* Header */}
       <header className="fixed top-0 w-full z-50 border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">

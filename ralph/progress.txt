@@ -54,3 +54,13 @@ Started: Sun 17 May 2026 11:55:53 AEST
   - ReactFlow needs a non-zero computed height on its container to render; the absolute-fill pattern is the reliable fix.
   - The pre-existing lint error in apps/cloud/lambda/api/index.ts must be fixed before committing (biome flags `!` non-null assertions); fix with optional chain `?.`.
 ---
+
+## 2026-05-17 - US-006
+- Replaced the header logo `<div>` in apps/viewer/src/pages/home.tsx with `<Link to="/">` from react-router-dom
+- Added `hover:opacity-75 transition-opacity` Tailwind classes and `cursor: 'pointer'` style for interactive feedback
+- `Link` was already imported in the file (used for the "View all →" link), so no new import was needed
+- Files changed: apps/viewer/src/pages/home.tsx (header logo element)
+- **Learnings for future iterations:**
+  - home.tsx already imports `Link` from react-router-dom — check existing imports before adding new ones
+  - The ViewerHeader component (viewer-header.tsx) already uses `<Link>` for its logo; home.tsx had inconsistently used `<div>`
+---
