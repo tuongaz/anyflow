@@ -89,3 +89,21 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - aspectRatio: '16 / 9' CSS property works for the preview container
   - Browser testing not performed (no MCP browser tools available); manual verification needed
 ---
+
+## 2026-05-17 - US-007
+- Created apps/viewer/src/pages/flows.tsx with FlowsPage component
+- Fetches GET /api/flows?page=N&limit=12 using fetchFlows from viewer-api
+- Responsive grid: 1 col mobile, 2 cols md, 3 cols lg (Tailwind classes)
+- Loading state: 12 SkeletonCard placeholders matching FlowCard dimensions (16:9 aspect ratio)
+- Clicking a card navigates to /flow/:uuid via useNavigate
+- Pagination: Previous/Page N of M/Next; Previous disabled on page 1, Next disabled on last page; page in ?page= query param; scrolls to top on change
+- Pagination hidden when totalPages <= 1
+- Empty state: 'No flows yet.' — error state: error message text
+- Files changed: apps/viewer/src/pages/flows.tsx (new)
+- **Learnings for future iterations:**
+  - useSearchParams from react-router-dom handles ?page= query param; setSearchParams replaces the entire query string
+  - biome-ignore comment needed for array index keys in skeleton arrays (noArrayIndexKey rule)
+  - paginationBtn style helper function keeps DRY without CSS classes
+  - FlowsPage is a standalone component — routing is wired in app.tsx (US-008)
+  - Browser testing not performed (no MCP browser tools available); manual verification needed
+---
