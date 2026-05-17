@@ -35,7 +35,9 @@ export function MiniCanvas({ demo }: MiniCanvasProps) {
   const [edges] = useEdgesState(initialEdges);
 
   return (
-    <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
+    <div
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -51,6 +53,7 @@ export function MiniCanvas({ demo }: MiniCanvasProps) {
         elementsSelectable={false}
         defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         proOptions={{ hideAttribution: true }}
+        style={{ background: '#f8fafc' }}
       />
     </div>
   );
