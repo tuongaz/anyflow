@@ -1,6 +1,6 @@
-import { MarkerType, type Edge, type Node } from '@xyflow/react';
-import { colorTokenStyle } from './color-tokens';
+import { type Edge, MarkerType, type Node } from '@xyflow/react';
 import type { Connector, DemoNode } from '../types';
+import { colorTokenStyle } from './color-tokens';
 
 export const STYLE_BY_KIND: Record<Connector['kind'], { strokeDasharray?: string }> = {
   http: {},
@@ -9,12 +9,11 @@ export const STYLE_BY_KIND: Record<Connector['kind'], { strokeDasharray?: string
   default: {},
 };
 
-export const STYLE_BY_STYLE: Record<'solid' | 'dashed' | 'dotted', { strokeDasharray?: string }> =
-  {
-    solid: {},
-    dashed: { strokeDasharray: '6 4' },
-    dotted: { strokeDasharray: '2 4' },
-  };
+export const STYLE_BY_STYLE: Record<'solid' | 'dashed' | 'dotted', { strokeDasharray?: string }> = {
+  solid: {},
+  dashed: { strokeDasharray: '6 4' },
+  dotted: { strokeDasharray: '2 4' },
+};
 
 export function convertNode(node: DemoNode): Node {
   const data = node.data as unknown as Record<string, unknown>;
