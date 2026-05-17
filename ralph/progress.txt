@@ -117,3 +117,18 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - viewer-header.tsx uses useMatch('/flow/:uuid') for isFlowView; the !isFlowView block hides nav links on the flow view page
   - Browser testing not performed (no MCP browser tools available); manual verification needed
 ---
+
+## 2026-05-17 - US-009
+- Added DiscoverSection component to apps/viewer/src/pages/home.tsx, rendered just above the footer
+- Section heading 'Discover recent flows' with a Link to /flows ('View all →')
+- Fetches GET /api/flows?page=1&limit=6 using fetchFlows on mount
+- Loading state: 6 DiscoverSkeletonCard placeholders in responsive grid (1/2/3 col)
+- Loaded state: 6 FlowCard components with onClick navigating to /flow/:uuid via useNavigate
+- Error or empty response: DiscoverSection returns null (entire section hidden)
+- Files changed: apps/viewer/src/pages/home.tsx
+- **Learnings for future iterations:**
+  - Home component (at '/') is inside BrowserRouter context, so useNavigate and Link work fine
+  - DiscoverSection placed outside the Home function (but in same file) as a separate component
+  - biome format collapsed the FlowCard onClick inline — no logic change
+  - Browser testing not performed (no MCP browser tools available); manual verification needed
+---
