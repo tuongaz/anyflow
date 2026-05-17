@@ -113,6 +113,7 @@ gh.deploy: ## Bump patch version, commit+tag (triggers npm publish), then deploy
 	NEW=$$(echo "$$OLD" | awk -F. '{print $$1"."$$2"."$$3+1}'); \
 	echo "Bumping $$OLD -> $$NEW"; \
 	bun -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./$$PKG'));p.version='$$NEW';fs.writeFileSync('./$$PKG',JSON.stringify(p,null,'\t')+'\n')"; \
+	bun run format; \
 	git add apps/studio/package.json; \
 	git commit -m "chore: bump version to $$NEW"; \
 	git push; \
