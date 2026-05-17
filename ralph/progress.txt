@@ -78,3 +78,15 @@ Started: Sun 17 May 2026 11:55:53 AEST
   - home.tsx already imports `Link` from react-router-dom — check existing imports before adding new ones
   - The ViewerHeader component (viewer-header.tsx) already uses `<Link>` for its logo; home.tsx had inconsistently used `<div>`
 ---
+
+## 2026-05-17 - US-008
+- Created apps/viewer/src/lib/view-detail-panel-width.ts mirroring the web app's detail-panel-width.ts pattern with viewer-specific constants: KEY='seeflow:viewer-detail-panel-width', DEFAULT=360, MIN=280, MAX=700
+- Exported helpers: clamp, getStored, setStored, startResizeGesture (identical resize gesture logic — panel on right, dragging left widens)
+- Updated apps/viewer/src/components/view-detail-panel.tsx to use useState initialized to getStored(), compute panelStyle width dynamically, and render a 6px drag handle div on the left edge (absolute position, zIndex 11, col-resize cursor)
+- Drag handle hidden on mobile (isMobile check); handle's onPointerDown calls startResizeGesture with setWidth/setStored callbacks
+- Files changed: apps/viewer/src/lib/view-detail-panel-width.ts (new), apps/viewer/src/components/view-detail-panel.tsx
+- **Learnings for future iterations:**
+  - The panelBaseStyle is `position: fixed` — absolutely positioned children inside a fixed element are positioned relative to the fixed element, so no extra `position: relative` wrapper is needed
+  - startResizeGesture captures startWidth at pointer-down time (no stale closure risk in the handler); no widthRef needed
+  - Biome organizeImports requires relative imports to come before type imports from sibling paths — type imports must be sorted after regular imports
+---

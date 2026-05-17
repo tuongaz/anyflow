@@ -131,7 +131,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -152,6 +152,33 @@
       "priority": 9,
       "passes": false,
       "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Redesign viewer homepage features section as alternating-row layout with mockups",
+      "description": "As a visitor to the SeeFlow homepage, I want a clear, visually compelling features section where each feature gets its own full-width row with an animated HTML/CSS mockup and description, alternating left/right, replacing the existing bento grid.",
+      "acceptanceCriteria": [
+        "The 'Features Bento' section (id='features', currently a 3-column grid with 2 cards) in apps/viewer/src/pages/home.tsx is replaced with a 7-row alternating layout",
+        "A reusable FeatureRow component accepts: reverse?: boolean, label: string, heading: string, body: string, bullets?: string[], mockup: React.ReactNode — renders 2-col grid on lg+ (flex-row-reverse when reverse=true), stacks to single column on mobile",
+        "Row 1 (mockup LEFT): Interactive Canvas — animated node-firing-request mockup with Gateway and Payment nodes; heading 'Click a node. Fire a real request.'",
+        "Row 2 (mockup RIGHT, reverse): Live Status — streaming metric tickers mockup with 4 rows each showing label, value, and progress bar; heading 'Metrics streaming directly from your app.'",
+        "Row 3 (mockup LEFT): AI Agent — terminal mockup showing '/seeflow show me the checkout feature' with scanning output and 4 editor badges (Claude Code, Cursor, Windsurf, Codex); heading 'Zero to running demo in one prompt.'",
+        "Row 4 (mockup RIGHT, reverse): MCP — .mcp.json config snippet + 5 available tool names list (list_demos, get_demo, add_node, patch_connector, register_demo); heading 'Your flow becomes the architecture source.'",
+        "Row 5 (mockup LEFT): Share — export dialog mockup with name input, Public/Link-only toggle buttons, Publish button, and share URL row; heading 'Publish a live link in one click.'",
+        "Row 6 (mockup RIGHT, reverse): Git — terminal header showing 'git diff seeflow.json' with red/green diff lines and a footer note 'Committed, reviewed, reverted — just like code.'; heading 'Infrastructure that's committed and trackable.'",
+        "Row 7 (mockup LEFT): Open Source — LICENSE file mockup with repo/license info and 2x2 grid of facts (MIT, Free forever, Self-hosted, No account) plus a git clone command; heading '100% free. MIT licensed. No accounts.'",
+        "All mockup cards share dark rounded card style: border border-zinc-800 bg-zinc-950 rounded-xl shadow-xl overflow-hidden with a window chrome header",
+        "Rows are wrapped in a div with divide-y divide-zinc-800/50; each FeatureRow has py-12 md:py-20 vertical padding",
+        "The section heading 'Everything you need to document reality.' is preserved",
+        "The old bento grid (grid grid-cols-1 md:grid-cols-3 gap-4 with Interactive Canvas and Live Status cards) is removed entirely",
+        "No unused Lucide imports remain after the edit — remove MousePointer2 and Activity if they are no longer referenced elsewhere in the file",
+        "Typecheck passes",
+        "bun run format && bun run lint pass with no errors",
+        "Verify in browser: scroll to features section, confirm 7 rows render, alternating mockup sides visible on desktop, rows stack on mobile"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Full implementation plan at docs/plans/2026-05-17-homepage-features-section.md. Row 3 uses '/seeflow' (the renamed skill from US-009) — use '/seeflow' regardless of whether US-009 has already run."
     }
   ]
 }
