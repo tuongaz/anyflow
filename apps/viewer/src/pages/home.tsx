@@ -16,7 +16,89 @@ import {
   Workflow,
 } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { FlowCard } from '../components/flow-card';
+import { fetchFlows } from '../lib/viewer-api';
+import type { FlowsResponse } from '../types';
+
+type DiscoverState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'done'; data: FlowsResponse };
+
+function DiscoverSkeletonCard() {
+  return (
+    <div style={{ border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden' }}>
+      <div style={{ width: '100%', aspectRatio: '16 / 9', background: '#18181b' }} />
+      <div
+        style={{
+          padding: '8px 12px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '8px',
+        }}
+      >
+        <div style={{ width: '60%', height: '14px', background: '#27272a', borderRadius: '4px' }} />
+        <div style={{ width: '20%', height: '14px', background: '#27272a', borderRadius: '4px' }} />
+      </div>
+    </div>
+  );
+}
+
+function DiscoverSection() {
+  const navigate = useNavigate();
+  const [state, setState] = useState<DiscoverState>({ status: 'loading' });
+
+  useEffect(() => {
+    fetchFlows(1, 6)
+      .then((data) => setState({ status: 'done', data }))
+      .catch(() => setState({ status: 'error' }));
+  }, []);
+
+  if (state.status === 'error') return null;
+  if (state.status === 'done' && state.data.flows.length === 0) return null;
+
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '24px',
+        }}
+      >
+        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-100">
+          Discover recent flows
+        </h2>
+        <Link
+          to="/flows"
+          style={{ fontSize: '0.875rem', color: '#a1a1aa', textDecoration: 'none' }}
+        >
+          View all →
+        </Link>
+      </div>
+
+      {state.status === 'loading' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no identity
+            <DiscoverSkeletonCard key={i} />
+          ))}
+        </div>
+      )}
+
+      {state.status === 'done' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {state.data.flows.map((flow) => (
+            <FlowCard key={flow.uuid} flow={flow} onClick={() => navigate(`/flow/${flow.uuid}`)} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function BgGrid({ className = '', children }: { className?: string; children?: React.ReactNode }) {
   return (
@@ -500,6 +582,8 @@ export function Home() {
           </div>
         </section>
       </main>
+
+      <DiscoverSection />
 
       {/* Footer */}
       <footer className="border-t border-zinc-800/50 bg-zinc-950 py-8 md:py-12">
