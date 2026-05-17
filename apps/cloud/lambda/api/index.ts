@@ -94,7 +94,7 @@ async function handleGetFlows(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   const flows = await Promise.all(
     slice.map(async (obj) => {
-      const uuid = obj.Key!.replace('/seeflow.json', '');
+      const uuid = obj.Key?.replace('/seeflow.json', '');
       const [demoRes, metaRes] = await Promise.all([
         s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${uuid}/seeflow.json` })),
         s3

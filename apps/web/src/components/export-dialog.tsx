@@ -70,12 +70,15 @@ export function ExportDialog({
     }
   }, [exportToCloud, email, name, visibility, onCapturePreview]);
 
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback(async () => {
     if (state.kind !== 'done') return;
-    navigator.clipboard.writeText(state.shareUrl).then(() => {
+    try {
+      await navigator.clipboard.writeText(state.shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
   }, [state]);
 
   const isLoading = state.kind === 'loading';
@@ -122,7 +125,7 @@ export function ExportDialog({
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm">
-                <span className="font-medium">Name</span>
+                <span className="font-medium">Flow Name</span>
                 <input
                   type="text"
                   required

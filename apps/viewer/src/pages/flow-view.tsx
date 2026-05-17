@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { useParams } from 'react-router-dom';
 
 import { ViewCanvas } from '../components/view-canvas';
@@ -58,5 +59,18 @@ export function FlowView() {
     );
   }
 
-  return <ViewCanvas demo={state.demo} uuid={uuid ?? ''} />;
+  const { name: flowName } = state.demo;
+  const currentUrl = window.location.href;
+
+  return (
+    <>
+      <Helmet>
+        <title>{flowName} | SeeFlow</title>
+        <meta property="og:title" content={`${flowName} | SeeFlow`} />
+        <meta property="og:description" content="Interactive architecture diagram on SeeFlow" />
+        <meta property="og:url" content={currentUrl} />
+      </Helmet>
+      <ViewCanvas demo={state.demo} uuid={uuid ?? ''} />
+    </>
+  );
 }

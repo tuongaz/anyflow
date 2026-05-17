@@ -10,10 +10,10 @@ ITERATIONS ?= 10
 
 CLI := bun run apps/studio/src/cli.ts
 
-.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-seeflow-schema verify-seeflow-schema-sync smoke-create-seeflow release deploy gh.deploy
+.PHONY: help install dev build typecheck lint format test clean start stop register demo example-order-pipeline ralph ralph-clean sync-seeflow-schema verify-seeflow-schema-sync smoke-seeflow release deploy gh.deploy
 
 SEEFLOW_SCHEMA_SRC := apps/studio/src/schema.ts
-SEEFLOW_SCHEMA_DST := skills/create-seeflow/vendored/schema.ts
+SEEFLOW_SCHEMA_DST := skills/seeflow/vendored/schema.ts
 
 help: ## Show this target list
 	@echo "SeeFlow — make targets"
@@ -82,7 +82,7 @@ ralph-clean: ## Clear ralph state: progress.txt, prd.json, .last-branch, archive
 	rm -f ralph/progress.txt ralph/prd.json ralph/.last-branch
 	rm -rf ralph/archive
 
-sync-seeflow-schema: ## Copy apps/studio/src/schema.ts into the create-seeflow plugin's vendored/
+sync-seeflow-schema: ## Copy apps/studio/src/schema.ts into the seeflow plugin's vendored/
 	@mkdir -p $(dir $(SEEFLOW_SCHEMA_DST))
 	@cp $(SEEFLOW_SCHEMA_SRC) $(SEEFLOW_SCHEMA_DST)
 	@echo "Synced $(SEEFLOW_SCHEMA_SRC) -> $(SEEFLOW_SCHEMA_DST)"
@@ -100,8 +100,8 @@ verify-seeflow-schema-sync: ## Fail if vendored schema has drifted from apps/stu
 	fi
 	@echo "OK: $(SEEFLOW_SCHEMA_DST) matches $(SEEFLOW_SCHEMA_SRC)"
 
-smoke-create-seeflow: ## End-to-end smoke: registers TWO demos in one repo via plugin scripts (studio must be running)
-	@bun run skills/create-seeflow/scripts/smoke.ts
+smoke-seeflow: ## End-to-end smoke: registers TWO demos in one repo via plugin scripts (studio must be running)
+	@bun run skills/seeflow/scripts/smoke.ts
 
 OTP ?=
 

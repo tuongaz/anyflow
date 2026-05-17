@@ -1,9 +1,9 @@
 ---
-name: create-seeflow
+name: seeflow
 description: Use when the user asks to create, generate, or scaffold a SeeFlow flow from a natural-language prompt — "create a flow", "show how X works", "diagram our checkout system", "add a flow to this repo". Orchestrates four sub-agents and bun scripts to write a registered, validated flow under <project>/.seeflow/<slug>/.
 ---
 
-# create-seeflow
+# seeflow
 
 Turn a natural-language prompt into a registered, runnable SeeFlow flow under `<project>/.seeflow/<slug>/`. Orchestrate four sub-agents and bun scripts; never read the codebase directly.
 
@@ -12,10 +12,10 @@ Turn a natural-language prompt into a registered, runnable SeeFlow flow under `<
 In any project, just run:
 
 ```
-/create-seeflow Create a flow showing how the order pipeline works
-/create-seeflow Show how checkout works end to end
-/create-seeflow Diagram our event-driven notification system
-/create-seeflow Add another flow to this repo
+/seeflow Create a flow showing how the order pipeline works
+/seeflow Show how checkout works end to end
+/seeflow Diagram our event-driven notification system
+/seeflow Add another flow to this repo
 ```
 
 Ask for clarification only when the prompt is incoherent — never ask "what is your codebase?".
@@ -246,12 +246,12 @@ Paths (used in this phase and Phase 6):
 2. `mkdir -p $flowDir` then write to `$flowDir/seeflow-nodes.json`.
 3. Validate:
    ```bash
-   bun skills/create-seeflow/scripts/validate-schema.ts "$flowDir/seeflow-nodes.json"
+   bun skills/seeflow/scripts/validate-schema.ts "$flowDir/seeflow-nodes.json"
    ```
    On failure: fix field-level issues in-place (no re-run of node-planner), retry.
 4. Write `$flowDir/seeflow.json` and register:
    ```bash
-   bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --flow "$flowPath"
+   bun skills/seeflow/scripts/register.ts --path "$repoPath" --flow "$flowPath"
    ```
    Stash the returned `id`.
 5. Ask the user:
@@ -318,7 +318,7 @@ Launch `seeflow-play-designer` and `seeflow-status-designer` **in parallel** (si
 4. **Validate:**
 
 ```bash
-bun skills/create-seeflow/scripts/validate-schema.ts "$flowDir/seeflow-draft.json"
+bun skills/seeflow/scripts/validate-schema.ts "$flowDir/seeflow-draft.json"
 ```
 
 `{"ok":true}` → continue. `{"ok":false,"issues":[…]}` → feed issues back to the relevant designer, retry. **Max 3 retries**, then surface verbatim and stop.
@@ -337,7 +337,7 @@ bun skills/create-seeflow/scripts/validate-schema.ts "$flowDir/seeflow-draft.jso
 3. Re-register:
 
 ```bash
-bun skills/create-seeflow/scripts/register.ts --path "$repoPath" --demo "$flowPath"
+bun skills/seeflow/scripts/register.ts --path "$repoPath" --demo "$flowPath"
 ```
 
 Prints `{id, slug}`. Use the new `id` for Phases 7 + 8.
@@ -351,7 +351,7 @@ On 400: show body, ask "fix-and-retry / stop". On other 4xx/5xx: show body, stop
 **Must run. Do not skip or simulate.**
 
 ```bash
-bun skills/create-seeflow/scripts/validate-end-to-end.ts <id> [--skip-nodes <id1>,<id2>]
+bun skills/seeflow/scripts/validate-end-to-end.ts <id> [--skip-nodes <id1>,<id2>]
 ```
 
 Pass `--skip-nodes` when `unsafeNodeIds` is non-empty (nodes that hit third-party services or charge money). Skipped nodes appear in `skipped[]` and are not counted as failures.
@@ -393,7 +393,7 @@ Retry caps: Phase 5 schema → **3**. Phase 7 fix-up → **2**.
 
 ## Schema cheatsheet
 
-Full schema: `skills/create-seeflow/vendored/schema.ts`. Below covers ~95% of cases.
+Full schema: `skills/seeflow/vendored/schema.ts`. Below covers ~95% of cases.
 
 ### Flow envelope
 
@@ -577,7 +577,7 @@ Malformed lines are silently dropped. Emit one full JSON object per line.
 | `seeflow-play-designer` | `Read, Grep, Glob, LS` | Phase 4: design playActions + script bodies |
 | `seeflow-status-designer` | `Read, Grep, Glob, LS` | Phase 4: design statusActions + script bodies |
 
-Full prompts + worked examples in `skills/create-seeflow/agents/<agent>.md`.
+Full prompts + worked examples in `skills/seeflow/agents/<agent>.md`.
 
 ## Studio API touchpoints
 
