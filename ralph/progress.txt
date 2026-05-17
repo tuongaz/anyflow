@@ -59,3 +59,17 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - The export dialog localStorage keys follow pattern seeflow.export.{field}
   - Browser testing was not performed (no MCP browser tools available); manual verification needed
 ---
+
+## 2026-05-17 - US-005
+- Created apps/viewer/src/components/mini-canvas.tsx with MiniCanvas component
+- Accepts demo: Demo prop; renders ReactFlow with all interactions disabled
+- All interaction flags set to false: panOnDrag, zoomOnScroll, zoomOnPinch, zoomOnDoubleClick, nodesDraggable, nodesConnectable, elementsSelectable
+- Container div has pointerEvents: 'none'
+- Uses same nodeTypes and edgeTypes as view-canvas.tsx
+- Imports convertNode and convertConnector from ../lib/demo-to-flow
+- Files changed: apps/viewer/src/components/mini-canvas.tsx (new)
+- **Learnings for future iterations:**
+  - MiniCanvas mirrors view-canvas.tsx node/edge types but strips all interactivity
+  - useNodesState/useEdgesState still needed even without change handlers (React Flow requires state)
+  - proOptions={{ hideAttribution: true }} prevents the XY Flow attribution watermark
+---

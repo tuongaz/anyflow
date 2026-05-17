@@ -1,4 +1,4 @@
-import type { Demo, FlowsResponse } from '../types';
+import type { Demo, FlowListItem, FlowsResponse } from '../types';
 
 const API_BASE = 'https://seeflow.dev/api';
 
@@ -18,3 +18,5 @@ export async function fetchFlows(page: number, limit: number): Promise<FlowsResp
   }
   return res.json() as Promise<FlowsResponse>;
 }
+
+export type { FlowListItem };
