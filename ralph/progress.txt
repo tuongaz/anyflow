@@ -1,0 +1,29 @@
+# Ralph Progress Log
+Started: Sun 17 May 2026 11:55:53 AEST
+---
+
+## 2026-05-17 - US-001
+- Changed label text from "Name" to "Flow Name" in the export dialog's name input field
+- Files changed: apps/web/src/components/export-dialog.tsx (line 125)
+- **Learnings for future iterations:**
+  - The export dialog at apps/web/src/components/export-dialog.tsx uses data-testid attributes for all inputs — these must remain unchanged when updating labels
+  - Typecheck covers all workspaces via `bun run typecheck` with --filter '*'
+---
+
+## 2026-05-17 - US-002
+- Converted handleCopy in export-dialog.tsx from `.then()` to async/await with try/catch
+- Files changed: apps/web/src/components/export-dialog.tsx (handleCopy function)
+- **Learnings for future iterations:**
+  - The handleCopy function was using `.then()` with no `.catch()` — clipboard errors were silently swallowed; async/await + try/catch is the pattern to use
+  - navigator.clipboard.writeText can throw in non-secure contexts or if permission is denied; always wrap with try/catch and log
+---
+
+## 2026-05-17 - US-003
+- Updated FlowCard to use white (#fff) background, border #e4e4e7, box-shadow '0 1px 4px rgba(0,0,0,0.08)', dark text (#18181b) for flow name, and light (#f8fafc) MiniCanvas thumbnail area
+- Updated DiscoverSkeletonCard in home.tsx to match white card style with Tailwind `animate-pulse` class and light (#f1f5f9 / #e2e8f0) skeleton colors
+- Files changed: apps/viewer/src/components/flow-card.tsx, apps/viewer/src/pages/home.tsx
+- **Learnings for future iterations:**
+  - apps/viewer has no UI lib skeleton component — use Tailwind `animate-pulse` class on elements for shimmer effect
+  - FlowCard is shared between home page DiscoverSection and the /flows page — styling changes affect both places
+  - Pre-existing lint error in apps/cloud/lambda/api/index.ts (non-null assertion) — do not treat as a blocker for changes in other packages
+---

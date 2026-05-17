@@ -1,0 +1,157 @@
+{
+  "project": "SeeFlow",
+  "branchName": "ralph/flows-ui-polish",
+  "description": "UI polish, export dialog fixes, infinite scroll, OG tags, resizable sidebar",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Rename 'Name' to 'Flow Name' in export dialog",
+      "description": "As a user, I want the name field in the export dialog to be labelled 'Flow Name' so the label is more descriptive.",
+      "acceptanceCriteria": [
+        "In apps/web/src/components/export-dialog.tsx, the label for the name input reads 'Flow Name' (not 'Name')",
+        "The data-testid 'export-name-input' attribute is unchanged",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Fix Copy button in export dialog not copying the share link",
+      "description": "As a user, after a successful export I want the Copy button to copy the share URL to my clipboard.",
+      "acceptanceCriteria": [
+        "Clicking the Copy button (data-testid='export-copy') in the done state copies state.shareUrl to the clipboard",
+        "After clicking, the button briefly shows a checkmark (already in place) and reverts after 2s",
+        "The copy works without any browser permission errors (use navigator.clipboard.writeText with proper error handling)",
+        "If clipboard write fails, the button does not break silently — catch the error and log it",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Home page 'Discover recent flows' — white cards, shadow, Skeleton component",
+      "description": "As a visitor, I want the Discover recent flows section on the home page to show white cards with a subtle shadow and proper animated skeletons while loading.",
+      "acceptanceCriteria": [
+        "Each FlowCard in the DiscoverSection on the home page has a white (#fff) background and a subtle box-shadow (e.g. '0 1px 4px rgba(0,0,0,0.08)')",
+        "The flow name text and date text are dark (readable on white background)",
+        "The MiniCanvas thumbnail area has a light background (#f8fafc or similar) instead of dark (#09090b)",
+        "Loading skeleton cards in DiscoverSection use the Skeleton component from apps/viewer's UI lib if one exists (check src/components/ui/skeleton.tsx or similar); if not, keep custom skeleton but animate it with a pulse/shimmer",
+        "The section heading 'Discover recent flows' and 'View all →' link remain unchanged",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "/flows page — max-width, responsive grid, 600px card cap, infinite scroll",
+      "description": "As a user, I want the /flows discovery page to have a capped max-width, show an appropriate number of cards per screen size, cap each card at 600px, and load more flows automatically as I scroll.",
+      "acceptanceCriteria": [
+        "The page content has a max-width of 1400px centered horizontally",
+        "Grid columns: 1 on mobile (<768px), 2 on md (768px–1199px), 3 on lg (≥1200px) — each column capped at 600px max-width",
+        "Initial fetch uses a limit of 20 flows (replace the const LIMIT = 12 with 20)",
+        "Pagination controls (Previous / Next buttons) are removed",
+        "Infinite scroll: when the user scrolls near the bottom (within ~300px), the next page is fetched and appended to the existing list",
+        "An IntersectionObserver sentinel div at the bottom of the list triggers the next-page fetch",
+        "A 'Loading more…' indicator appears below the grid while fetching the next page",
+        "When all pages are loaded, the sentinel shows 'All flows loaded' or is hidden",
+        "Error during load-more shows an inline 'Failed to load more' message with a retry option",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Ensure FlowCard MiniCanvas thumbnail renders correctly (not blank)",
+      "description": "As a user, I want each flow card to show a live canvas preview of the flow diagram, not a blank or black box.",
+      "acceptanceCriteria": [
+        "The MiniCanvas container inside FlowCard has an explicit height so ReactFlow receives a non-zero computed height (e.g. set height: '100%' on the parent and ensure the aspectRatio container propagates height correctly, or switch to a fixed pixel height derived from the card width)",
+        "MiniCanvas renders the flow nodes visually — not a blank/black box — for typical flows with at least one node",
+        "The MiniCanvas background uses a light color (#f8fafc) consistent with US-003 white card theme",
+        "No static image (<img> or background-image) is used for flow thumbnails; the live ReactFlow canvas is the only thumbnail",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Make viewer home page header logo a proper clickable link",
+      "description": "As a user, I want the SeeFlow logo in the home page header to behave as a proper link so it is keyboard-accessible and right-clickable.",
+      "acceptanceCriteria": [
+        "In apps/viewer/src/pages/home.tsx, the logo '<div>' in the header is replaced with a '<Link to=\"/\">' (from react-router-dom) or an '<a href=\"/\">'",
+        "The logo has 'cursor: pointer' and a hover state (e.g. slight opacity change) to indicate it is interactive",
+        "The ViewerHeader logo (on /flows and /flow/:uuid routes) is already a Link — no change needed there",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add Open Graph meta tags to viewer flow pages for social sharing",
+      "description": "As a user sharing a flow link, I want chat apps and search engines to display a rich preview with the flow name and description.",
+      "acceptanceCriteria": [
+        "apps/viewer/index.html has static baseline OG tags: og:site_name='SeeFlow', og:type='website', og:description, og:url, twitter:card='summary_large_image'",
+        "Install react-helmet-async (or use the existing package if already installed) in apps/viewer",
+        "Wrap the app in HelmetProvider in apps/viewer/src/main.tsx",
+        "apps/viewer/src/pages/flow-view.tsx uses Helmet to set: <title>{flowName} | SeeFlow</title>, <meta property='og:title'>, <meta property='og:description'> (e.g. 'Interactive architecture diagram on SeeFlow'), <meta property='og:url'> (current URL)",
+        "apps/viewer/src/pages/flows.tsx uses Helmet to set title 'Flows | SeeFlow'",
+        "apps/viewer/src/pages/home.tsx uses Helmet to set the default title 'SeeFlow | Architecture diagrams that actually run'",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Make viewer detail panel (view-detail-panel) resizable by dragging",
+      "description": "As a user viewing a flow, I want to drag the left edge of the detail panel to resize it, and have my preference remembered across sessions.",
+      "acceptanceCriteria": [
+        "Create apps/viewer/src/lib/view-detail-panel-width.ts with constants VIEWER_DETAIL_PANEL_WIDTH_KEY='seeflow:viewer-detail-panel-width', DEFAULT=360, MIN=280, MAX=700 and helpers clamp, getStored, setStored, startResizeGesture — mirroring the pattern in apps/web/src/lib/detail-panel-width.ts",
+        "apps/viewer/src/components/view-detail-panel.tsx reads the stored width on mount via getStored and uses it as the panel width (replacing the hardcoded 360)",
+        "A 6px-wide drag handle div is rendered on the left edge of the panel (position: absolute, left: 0, top: 0, height: '100%', cursor: 'col-resize', zIndex: 11)",
+        "onPointerDown on the handle calls startResizeGesture; onWidth updates the panel width live; onCommit calls setStored",
+        "Width is clamped between MIN and MAX at all times",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Rename skill 'create-seeflow' to 'seeflow' and update all references",
+      "description": "As a developer and user, I want the SeeFlow skill to be invoked as /seeflow (not /create-seeflow) and the skill directory renamed accordingly, with all references updated throughout the codebase.",
+      "acceptanceCriteria": [
+        "Rename directory skills/create-seeflow/ to skills/seeflow/ (git mv)",
+        "skills/seeflow/SKILL.md: frontmatter name changed from 'create-seeflow' to 'seeflow'; all internal path references updated from 'skills/create-seeflow/' to 'skills/seeflow/'; trigger examples changed from '/create-seeflow' to '/seeflow'",
+        ".claude-plugin/plugin.json: 'name' field changed from 'create-seeflow' to 'seeflow'; 'agents' path changed from './skills/create-seeflow/agents/' to './skills/seeflow/agents/'",
+        ".cursor-plugin/plugin.json: same changes as .claude-plugin/plugin.json",
+        "README.md: '/plugin install create-seeflow@seeflow' → '/plugin install seeflow@seeflow'; '/create-seeflow show...' → '/seeflow show...'",
+        "apps/studio/README.md: same README.md changes",
+        "apps/viewer/src/pages/home.tsx: terminal mockup line changed from '/create-seeflow show me the shopping cart feature' to '/seeflow show me the shopping cart feature'",
+        "All agent .md files in skills/seeflow/agents/ updated to replace any 'create-seeflow' path references with 'seeflow' (e.g. 'skills/create-seeflow/...' → 'skills/seeflow/...')",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
