@@ -154,10 +154,14 @@ export function Home() {
       {/* Header */}
       <header className="fixed top-0 w-full z-50 border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-zinc-100 font-semibold tracking-tight text-lg">
+          <Link
+            to="/"
+            className="flex items-center gap-2 text-zinc-100 font-semibold tracking-tight text-lg hover:opacity-75 transition-opacity"
+            style={{ textDecoration: 'none', cursor: 'pointer' }}
+          >
             <Workflow size={20} className="text-emerald-400" />
             SeeFlow
-          </div>
+          </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-400">
             <a href="#features" className="hover:text-zinc-100 transition-colors">
               Features
