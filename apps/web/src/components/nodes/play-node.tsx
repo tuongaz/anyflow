@@ -1,6 +1,7 @@
 import { InlineEdit } from '@/components/inline-edit';
 import { LockBadge } from '@/components/nodes/lock-badge';
 import { ResizeControls } from '@/components/nodes/resize-controls';
+import { StatusBadge } from '@/components/nodes/status-badge';
 import type { NodeStatus } from '@/components/nodes/status-pill';
 import { useResizeGesture } from '@/components/nodes/use-resize-gesture';
 import { Button } from '@/components/ui/button';
@@ -268,6 +269,15 @@ function PlayNodeImpl({ id, data, selected, isConnectable }: NodeProps<PlayNodeT
           </button>
         )}
       </div>
+      {data.statusReport && (
+        <div className="flex items-center px-2 pb-1" data-testid="play-node-status-badge">
+          <StatusBadge
+            state={data.statusReport.state}
+            summary={data.statusReport.summary}
+            data-testid="status-badge"
+          />
+        </div>
+      )}
       <Handle
         type="source"
         position={Position.Right}

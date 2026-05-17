@@ -215,14 +215,16 @@ export async function validateEndToEnd(options: ValidateOptions): Promise<Valida
 
   const nodes = demoData.demo.nodes ?? [];
 
-  // skipNodes is supplied by the orchestrator (nodes with validationSafe: false were stripped
-  // from seeflow.json in Phase 4 but the orchestrator retains the list and passes it via --skip-nodes).
   const skipSet = new Set(options.skipNodes ?? []);
   const playTargets: string[] = [];
   for (const node of nodes) {
     if (!hasPlayAction(node)) continue;
+    if (node.data?.playAction?.validationSafe === false) {
+      skipped.push({ nodeId: node.id, reason: 'playAction.validationSafe is false' });
+      continue;
+    }
     if (skipSet.has(node.id)) {
-      skipped.push({ nodeId: node.id, reason: 'validationSafe: false — skipped by orchestrator' });
+      skipped.push({ nodeId: node.id, reason: 'playAction.validationSafe is false' });
       continue;
     }
     playTargets.push(node.id);
