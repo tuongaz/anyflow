@@ -107,3 +107,13 @@ Started: Sun 17 May 2026 10:49:11 AEST
   - FlowsPage is a standalone component — routing is wired in app.tsx (US-008)
   - Browser testing not performed (no MCP browser tools available); manual verification needed
 ---
+
+## 2026-05-17 - US-008
+- Added `<Route path='/flows' element={<FlowsPage />} />` inside ViewerLayout in apps/viewer/src/app.tsx
+- Added 'Flows' Link to viewer-header.tsx (same studioLinkStyle as SeeFlow Studio link), wrapped both links in a flex div; hidden on /flow/:uuid via existing isFlowView logic
+- Files changed: apps/viewer/src/app.tsx, apps/viewer/src/components/viewer-header.tsx
+- **Learnings for future iterations:**
+  - The ViewerLayout wrapper in app.tsx is the right place for routes that need the header
+  - viewer-header.tsx uses useMatch('/flow/:uuid') for isFlowView; the !isFlowView block hides nav links on the flow view page
+  - Browser testing not performed (no MCP browser tools available); manual verification needed
+---
