@@ -608,7 +608,7 @@ export function Home() {
               </a>
             ))}
           </div>
-          <div className="text-sm text-zinc-500">© 2024 SeeFlow. The living truth.</div>
+          <div className="text-sm text-zinc-500">© 2026 SeeFlow. The living truth.</div>
         </div>
       </footer>
     </div>
