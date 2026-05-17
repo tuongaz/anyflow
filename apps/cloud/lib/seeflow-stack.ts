@@ -58,7 +58,7 @@ export class SeeflowStack extends cdk.Stack {
 
     httpApi.addRoutes({
       path: '/flows',
-      methods: [apigwv2.HttpMethod.POST],
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
       integration,
     });
 
