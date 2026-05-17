@@ -27,3 +27,19 @@ Started: Sun 17 May 2026 11:55:53 AEST
   - FlowCard is shared between home page DiscoverSection and the /flows page — styling changes affect both places
   - Pre-existing lint error in apps/cloud/lambda/api/index.ts (non-null assertion) — do not treat as a blocker for changes in other packages
 ---
+
+## 2026-05-17 - US-004
+- Rewrote flows.tsx to replace page-based pagination with infinite scroll using IntersectionObserver
+- Changed LIMIT from 12 to 20, removed Previous/Next buttons, added sentinel div at bottom
+- Added maxWidth 1400px container, updated grid to `grid-cols-1 md:grid-cols-2 xl:grid-cols-3` (xl≈1280px closest Tailwind breakpoint to PRD's 1200px)
+- Wrapped each FlowCard in a div with `maxWidth: '600px'` to cap column width
+- Uses pageRef/totalPagesRef to avoid stale closures in the IntersectionObserver callback
+- loadingRef prevents concurrent fetches; loadMoreError state shows 'Failed to load more' with Retry button
+- Updated SkeletonCard to match white card style (consistent with US-003)
+- Files changed: apps/viewer/src/pages/flows.tsx
+- **Learnings for future iterations:**
+  - IntersectionObserver callbacks close over state — use refs (pageRef, totalPagesRef) to read current values instead of re-creating the observer on every state change
+  - Tailwind's `xl` breakpoint (1280px) is the closest to PRD's 1200px threshold for 3-column grid; use `xl:grid-cols-3` instead of `lg:grid-cols-3`
+  - To cap grid item width at 600px: wrap each item in `<div style={{ maxWidth: '600px', width: '100%' }}>` — CSS grid `max-width` on items caps them within their cell
+  - The `/flows` page background changed from dark (#09090b) to light (#f8fafc) to match the white card theme from US-003
+---
