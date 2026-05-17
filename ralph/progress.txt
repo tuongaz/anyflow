@@ -90,3 +90,33 @@ Started: Sun 17 May 2026 11:55:53 AEST
   - startResizeGesture captures startWidth at pointer-down time (no stale closure risk in the handler); no widthRef needed
   - Biome organizeImports requires relative imports to come before type imports from sibling paths — type imports must be sorted after regular imports
 ---
+
+## 2026-05-17 - US-009
+- Renamed directory skills/create-seeflow/ to skills/seeflow/ via git mv
+- Updated SKILL.md: frontmatter name, heading, trigger examples, all path references
+- Updated .claude-plugin/plugin.json and .cursor-plugin/plugin.json: name, agents path, description
+- Updated README.md: /plugin install and /create-seeflow invocation examples
+- Updated apps/viewer/src/pages/home.tsx: terminal mockup command
+- Updated all 5 agent .md files in skills/seeflow/agents/: replaced 'create-seeflow' with 'seeflow' throughout
+- Updated Makefile: SEEFLOW_SCHEMA_DST path, smoke-create-seeflow target renamed to smoke-seeflow
+- Updated skills/seeflow/references/plan-format.md: skill name reference
+- Files changed: 28 files (23 renames + 5 content-only edits)
+- **Learnings for future iterations:**
+  - apps/studio/README.md is in .gitignore — it cannot be git-added; biome format won't touch it either
+  - When renaming a skill directory, check Makefile for any hardcoded paths to the old directory (schema sync targets, smoke test targets)
+  - `replace_all: true` on Edit is the fastest way to rename a string throughout a file; safe when the old string only appears in the right contexts
+---
+
+## 2026-05-17 - US-010
+- Replaced the Features Bento section (3-column grid with 2 cards) in apps/viewer/src/pages/home.tsx with a 7-row alternating layout
+- Added FeatureRow layout component (accepts reverse, label, heading, body, bullets, mockup props)
+- Added 7 mockup components: MockupCanvas, MockupLiveStatus, MockupAI, MockupMCP, MockupShare, MockupGit, MockupOpenSource
+- Removed unused Lucide imports: MousePointer2, Wand2
+- Fixed 3 biome lint errors (noUnusedTemplateLiteral) in MockupGit — used plain string literals for `+    {`, `+    }`, `   ]`
+- Browser-verified: all 7 alternating rows render with mockups on correct sides
+- Files changed: apps/viewer/src/pages/home.tsx
+- **Learnings for future iterations:**
+  - Biome flags template literals that don't use interpolation (`noUnusedTemplateLiteral`); use plain string literals `{'+    {'}` for strings containing braces when no interpolation is needed
+  - The `FeatureRow` reverse prop uses `lg:flex-row-reverse` — mockup and description swap at the `lg` (1024px) breakpoint
+  - `Activity` icon is still used in the Problem section — only `MousePointer2` was bento-only in the old bento grid
+---

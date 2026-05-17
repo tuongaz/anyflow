@@ -150,7 +150,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -177,7 +177,7 @@
         "Verify in browser: scroll to features section, confirm 7 rows render, alternating mockup sides visible on desktop, rows stack on mobile"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Full implementation plan at docs/plans/2026-05-17-homepage-features-section.md. Row 3 uses '/seeflow' (the renamed skill from US-009) — use '/seeflow' regardless of whether US-009 has already run."
     }
   ]
