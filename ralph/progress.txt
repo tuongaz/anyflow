@@ -1,0 +1,48 @@
+## Codebase Patterns
+- apps/viewer uses @xyflow/react for React Flow canvas rendering
+- convertNode/convertConnector are the bridge from Demo types to React Flow Node/Edge types
+- colorTokenStyle from lib/color-tokens.ts handles color token → CSS style conversion
+- STYLE_BY_KIND and STYLE_BY_STYLE in demo-to-flow.ts control connector dash patterns
+- viewer-api.ts in apps/viewer/src/lib/ is the single source for all API calls (fetchFlow, fetchFlows) pointing to https://seeflow.dev/api
+- exportToCloud in use-export-to-cloud.ts signature: (projectId, email, name, visibility: 'public'|'link', previewDataUrl?); Visibility type is exported; zip key is seeflow.json (public) or seeflow.private.json (link)
+- When adding required params to a hook used by a component that will be updated in a later story, update the component with a placeholder value to keep typecheck passing
+
+# Ralph Progress Log
+Started: Sun 17 May 2026 10:49:11 AEST
+---
+
+## 2026-05-17 - US-001
+- Extracted convertNode, convertConnector, STYLE_BY_KIND, STYLE_BY_STYLE from view-canvas.tsx into apps/viewer/src/lib/demo-to-flow.ts
+- view-canvas.tsx now imports convertNode and convertConnector from ../lib/demo-to-flow
+- Files changed: apps/viewer/src/lib/demo-to-flow.ts (new), apps/viewer/src/components/view-canvas.tsx
+- **Learnings for future iterations:**
+  - The Node type from @xyflow/react is needed in view-canvas.tsx for the handleNodeClick handler parameter type
+  - When removing functions from a file, also check for unused imports (e.g., type Edge, MarkerType, colorTokenStyle were removed)
+  - apps/viewer/src/lib/ is the home for shared utility modules in the viewer app
+---
+
+## 2026-05-17 - US-002
+- Added FlowListItem and FlowsResponse types to apps/viewer/src/types.ts
+- Created apps/viewer/src/lib/viewer-api.ts with fetchFlow(uuid, signal?) and fetchFlows(page, limit)
+- Refactored apps/viewer/src/pages/flow-view.tsx to use fetchFlow, removing inline API_BASE and raw fetch
+- Files changed: apps/viewer/src/types.ts, apps/viewer/src/lib/viewer-api.ts (new), apps/viewer/src/pages/flow-view.tsx
+- **Learnings for future iterations:**
+  - fetchFlow accepts an optional AbortSignal so callers can still cancel in-flight requests
+  - Error messages are constructed inside fetchFlow (404 → 'Flow not found', other → 'Failed to load flow (status)')
+  - FlowListItem has createdAt as string (ISO date string from API)
+---
+
+## 2026-05-17 - US-003
+- Updated exportToCloud signature to (projectId, email, name, visibility: Visibility, previewDataUrl?)
+- Exported Visibility type ('public' | 'link') from use-export-to-cloud.ts
+- zip key is now dynamic: 'seeflow.json' for public, 'seeflow.private.json' for link
+- name added as URL query param to cloud API call alongside email
+- Updated useExportToCloud hook return callback to include name and visibility params
+- Updated export-dialog.tsx with placeholder values (name='', visibility='public') to keep typecheck passing; US-004 will add proper UI
+- Updated all 10 existing tests to pass name and visibility args
+- Added 2 new tests: link visibility produces seeflow.private.json; name appears in URL query params
+- Files changed: apps/web/src/hooks/use-export-to-cloud.ts, apps/web/src/hooks/use-export-to-cloud.test.ts, apps/web/src/components/export-dialog.tsx
+- **Learnings for future iterations:**
+  - export-dialog.tsx uses the useExportToCloud hook; when its callback signature changes, update the dialog call site too
+  - The zip key is computed as: `visibility === 'link' ? 'seeflow.private.json' : 'seeflow.json'`
+---

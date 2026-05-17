@@ -1,0 +1,159 @@
+{
+  "project": "SeeFlow",
+  "branchName": "ralph/flows-discovery-export",
+  "description": "Flows Discovery & Export Enhancements — add Name/Visibility to export dialog, /flows discovery page with mini canvas previews, and Discover section on home page",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Extract demo→flow conversion to shared util",
+      "description": "As a developer, I need convertNode and convertConnector extracted from view-canvas.tsx into apps/viewer/src/lib/demo-to-flow.ts so both view-canvas and the upcoming MiniCanvas can share them.",
+      "acceptanceCriteria": [
+        "Create apps/viewer/src/lib/demo-to-flow.ts exporting convertNode and convertConnector (with STYLE_BY_KIND, STYLE_BY_STYLE constants)",
+        "Remove the private convertNode, convertConnector, STYLE_BY_KIND, STYLE_BY_STYLE from apps/viewer/src/components/view-canvas.tsx",
+        "view-canvas.tsx imports convertNode and convertConnector from ../lib/demo-to-flow",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add FlowListItem types and viewer API helpers",
+      "description": "As a developer, I need FlowListItem and FlowsResponse types in types.ts, a viewer-api.ts module with fetchFlow and fetchFlows helpers, and flow-view.tsx refactored to use fetchFlow.",
+      "acceptanceCriteria": [
+        "Append FlowListItem (uuid, name, createdAt, demo: Demo) and FlowsResponse (flows, total, page, totalPages) to apps/viewer/src/types.ts",
+        "Create apps/viewer/src/lib/viewer-api.ts with fetchFlow(uuid) and fetchFlows(page, limit) functions pointing to https://seeflow.dev/api",
+        "apps/viewer/src/pages/flow-view.tsx uses fetchFlow from viewer-api.ts and removes its inline API_BASE constant and raw fetch call",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add name and visibility params to exportToCloud",
+      "description": "As a developer, I need exportToCloud to accept name and visibility params, use the zip key seeflow.json (public) or seeflow.private.json (link), and include name in the API query string.",
+      "acceptanceCriteria": [
+        "exportToCloud signature is (projectId, email, name, visibility: 'public' | 'link')",
+        "Visibility 'public' puts demo JSON in seeflow.json; 'link' puts it in seeflow.private.json",
+        "name is sent as URL query param alongside email",
+        "Visibility type is exported as Visibility from use-export-to-cloud.ts",
+        "All existing tests updated to pass name and visibility args",
+        "New test: visibility 'link' produces seeflow.private.json in zip (not seeflow.json)",
+        "New test: name appears in cloud API URL query params",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add Name, Visibility fields and View button to export dialog",
+      "description": "As a user, I want to name my flow, choose its visibility, and open the shared link directly from the export dialog.",
+      "acceptanceCriteria": [
+        "Export dialog has a Name text input (required, localStorage key seeflow.export.name) placed above Visibility",
+        "Export dialog has a Visibility select with options 'Public — anyone can discover it' (value public) and 'Anyone with the link' (value link), persisted in localStorage key seeflow.export.visibility",
+        "Export button is disabled when name is empty (in addition to existing email check)",
+        "After successful export, a View button (ExternalLink icon) opens shareUrl in a new tab alongside the existing copy button",
+        "useExportToCloud hook is called with email, name, visibility",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Add MiniCanvas non-interactive preview component",
+      "description": "As a developer, I need a MiniCanvas component in apps/viewer that renders a Demo as a locked-down, non-interactive React Flow canvas for use inside flow cards.",
+      "acceptanceCriteria": [
+        "Create apps/viewer/src/components/mini-canvas.tsx",
+        "MiniCanvas accepts a demo: Demo prop",
+        "Renders ReactFlow with fitView, all interaction disabled (panOnDrag=false, zoomOnScroll=false, zoomOnPinch=false, zoomOnDoubleClick=false, nodesDraggable=false, nodesConnectable=false, elementsSelectable=false)",
+        "Container has pointerEvents: none",
+        "Uses node and edge types from the viewer (same as view-canvas.tsx)",
+        "Imports convertNode and convertConnector from lib/demo-to-flow",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Add FlowCard component with mini canvas preview",
+      "description": "As a user, I want to see a clickable card showing a mini live preview of a flow, its name, and how long ago it was published.",
+      "acceptanceCriteria": [
+        "Create apps/viewer/src/components/flow-card.tsx",
+        "FlowCard accepts flow: FlowListItem and onClick: () => void",
+        "Card has a 16:9 aspect-ratio container with MiniCanvas filling it on a dark (#09090b) background",
+        "Bottom bar shows flow name (truncated) on the left and relative date on the right",
+        "Relative date formats: 'today', 'yesterday', 'Nd ago', 'Nmo ago', 'Ny ago'",
+        "Entire card is a button element that calls onClick",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add /flows discovery page with grid and pagination",
+      "description": "As a user, I want to browse all public flows in a responsive grid with pagination.",
+      "acceptanceCriteria": [
+        "Create apps/viewer/src/pages/flows.tsx with a FlowsPage component",
+        "Fetches GET /api/flows?page=N&limit=12 using fetchFlows from viewer-api",
+        "Grid is 1 col on mobile, 2 cols on md, 3 cols on lg",
+        "Loading state shows 12 skeleton placeholder cards matching FlowCard dimensions",
+        "Clicking a card navigates to /flow/:uuid",
+        "Pagination shows Previous / Page N of M / Next buttons; Previous disabled on page 1, Next disabled on last page; page stored in ?page= query param; scrolls to top on page change",
+        "Pagination hidden when totalPages <= 1",
+        "Empty state shows 'No flows yet.' text",
+        "Error state shows error message text",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Wire /flows route and add Flows nav link to header",
+      "description": "As a user, I want to reach the /flows page from the viewer header and by navigating directly to the URL.",
+      "acceptanceCriteria": [
+        "apps/viewer/src/app.tsx adds <Route path='/flows' element={<FlowsPage />} /> inside the ViewerLayout wrapper alongside the existing /flow/:uuid route",
+        "apps/viewer/src/components/viewer-header.tsx shows a 'Flows' link (same style as the existing SeeFlow Studio link) pointing to /flows",
+        "The Flows link is not shown when on the /flow/:uuid route (consistent with existing isFlowView logic)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Add Discover recent flows section to home page",
+      "description": "As a visitor, I want to see the 6 most recent public flows on the home page so I can explore what others have shared.",
+      "acceptanceCriteria": [
+        "apps/viewer/src/pages/home.tsx adds a DiscoverSection component rendered just above the footer",
+        "Section heading is 'Discover recent flows' with a 'View all →' link to /flows",
+        "Fetches GET /api/flows?page=1&limit=6 using fetchFlows on mount",
+        "Loading state: 6 skeleton cards in the same grid (1/2/3 col responsive)",
+        "Loaded state: 6 FlowCard components; clicking navigates to /flow/:uuid",
+        "If the API errors or returns 0 flows, the entire section is hidden (returns null)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
