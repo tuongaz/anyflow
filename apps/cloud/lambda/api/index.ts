@@ -97,9 +97,9 @@ async function handleGetFlows(event: APIGatewayProxyEventV2): Promise<APIGateway
       const uuid = obj.Key!.replace('/seeflow.json', '');
       const [demoRes, metaRes] = await Promise.all([
         s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${uuid}/seeflow.json` })),
-        s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${uuid}/metadata.json` })).catch(
-          () => null,
-        ),
+        s3
+          .send(new GetObjectCommand({ Bucket: BUCKET, Key: `${uuid}/metadata.json` }))
+          .catch(() => null),
       ]);
 
       const demoStr = await demoRes.Body?.transformToString('utf-8');
