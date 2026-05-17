@@ -35,6 +35,7 @@ function DiscoverSkeletonCard() {
         overflow: 'hidden',
         background: '#fff',
         boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+        width: '100%',
       }}
     >
       <div
@@ -46,16 +47,17 @@ function DiscoverSkeletonCard() {
           padding: '8px 12px',
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
           gap: '8px',
         }}
       >
         <div
           className="animate-pulse"
-          style={{ width: '60%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }}
+          style={{ width: '60%', height: '1.25rem', background: '#e2e8f0', borderRadius: '4px' }}
         />
         <div
           className="animate-pulse"
-          style={{ width: '20%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }}
+          style={{ width: '20%', height: '1rem', background: '#e2e8f0', borderRadius: '4px' }}
         />
       </div>
     </div>

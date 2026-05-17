@@ -25,11 +25,14 @@ function SkeletonCard() {
           padding: '8px 12px',
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
           gap: '8px',
         }}
       >
-        <div style={{ width: '60%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }} />
-        <div style={{ width: '20%', height: '14px', background: '#e2e8f0', borderRadius: '4px' }} />
+        <div
+          style={{ width: '60%', height: '1.25rem', background: '#e2e8f0', borderRadius: '4px' }}
+        />
+        <div style={{ width: '20%', height: '1rem', background: '#e2e8f0', borderRadius: '4px' }} />
       </div>
     </div>
   );
@@ -41,6 +44,7 @@ export function FlowsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -55,6 +59,7 @@ export function FlowsPage() {
 
     if (pageToLoad === 1) {
       setInitialLoading(true);
+      setInitialLoadError(null);
     } else {
       setLoadingMore(true);
     }
@@ -67,8 +72,10 @@ export function FlowsPage() {
       setPage(pageToLoad);
       pageRef.current = pageToLoad;
     } catch (err) {
-      if (pageToLoad > 1) {
-        const message = err instanceof Error ? err.message : 'Failed to load more flows';
+      const message = err instanceof Error ? err.message : 'Failed to load flows';
+      if (pageToLoad === 1) {
+        setInitialLoadError(message);
+      } else {
         setLoadMoreError(message);
       }
     } finally {
@@ -110,7 +117,8 @@ export function FlowsPage() {
   return (
     <div
       style={{
-        minHeight: '100%',
+        height: '100%',
+        overflowY: 'auto',
         backgroundColor: '#f8fafc',
         color: '#18181b',
         padding: '24px',
@@ -130,6 +138,27 @@ export function FlowsPage() {
               // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders have no identity
               <SkeletonCard key={i} />
             ))}
+          </div>
+        ) : initialLoadError ? (
+          <div style={{ textAlign: 'center', marginTop: '48px' }}>
+            <p style={{ color: '#ef4444', fontSize: '0.875rem', marginBottom: '8px' }}>
+              Failed to load flows
+            </p>
+            <button
+              type="button"
+              onClick={() => loadPage(1)}
+              style={{
+                padding: '6px 16px',
+                background: 'none',
+                border: '1px solid #e4e4e7',
+                borderRadius: '6px',
+                color: '#18181b',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+              }}
+            >
+              Retry
+            </button>
           </div>
         ) : flows.length === 0 ? (
           <p style={{ color: '#64748b', textAlign: 'center', marginTop: '48px' }}>No flows yet.</p>
