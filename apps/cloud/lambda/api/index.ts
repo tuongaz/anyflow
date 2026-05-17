@@ -104,6 +104,8 @@ async function handleGetFlows(event: APIGatewayProxyEventV2): Promise<APIGateway
 
       const demoStr = await demoRes.Body?.transformToString('utf-8');
       const demo = JSON.parse(demoStr ?? '{}');
+      if (!Array.isArray(demo.nodes)) demo.nodes = [];
+      if (!Array.isArray(demo.connectors)) demo.connectors = [];
 
       let name = demo.name ?? '';
       let createdAt = obj.LastModified?.toISOString() ?? new Date().toISOString();

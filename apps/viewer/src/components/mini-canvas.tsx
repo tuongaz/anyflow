@@ -29,8 +29,11 @@ export interface MiniCanvasProps {
 }
 
 export function MiniCanvas({ demo }: MiniCanvasProps) {
-  const initialNodes = useMemo(() => demo.nodes.map(convertNode), [demo.nodes]);
-  const initialEdges = useMemo(() => demo.connectors.map(convertConnector), [demo.connectors]);
+  const initialNodes = useMemo(() => (demo.nodes ?? []).map(convertNode), [demo.nodes]);
+  const initialEdges = useMemo(
+    () => (demo.connectors ?? []).map(convertConnector),
+    [demo.connectors],
+  );
   const [nodes] = useNodesState(initialNodes);
   const [edges] = useEdgesState(initialEdges);
 
