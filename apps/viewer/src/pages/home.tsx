@@ -300,9 +300,7 @@ export function Home() {
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
-                    <span>
-                      Works with Claude Code, Codex, Cursor, and Windsurf
-                    </span>
+                    <span>Works with Claude Code, Codex, Cursor, and Windsurf</span>
                   </li>
                 </ul>
               </div>
@@ -344,7 +342,10 @@ export function Home() {
         </section>
 
         {/* Problem */}
-        <section id="problem" className="max-w-6xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50">
+        <section
+          id="problem"
+          className="max-w-6xl mx-auto px-6 py-8 md:py-20 border-t border-zinc-800/50"
+        >
           <div className="text-center mb-8 md:mb-16">
             <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-100 mb-4">
               Static diagrams are dead on arrival.
@@ -498,7 +499,6 @@ export function Home() {
             </div>
           </div>
         </section>
-
       </main>
 
       {/* Footer */}
@@ -513,7 +513,13 @@ export function Home() {
               { label: 'GitHub', href: 'https://github.com/tuongaz/seeflow' },
               { label: 'X', href: 'https://x.com/tuongaz' },
             ].map(({ label, href }) => (
-              <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-100 transition-colors">
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-zinc-100 transition-colors"
+              >
                 {label}
               </a>
             ))}

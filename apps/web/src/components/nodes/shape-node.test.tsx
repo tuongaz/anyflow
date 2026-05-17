@@ -527,7 +527,7 @@ describe('ShapeNode header/body layout (rectangle + ellipse)', () => {
       (el) => typeof (el.props as { onDoubleClick?: unknown }).onDoubleClick === 'function',
     ).at(0);
     expect(outerDiv).toBeDefined();
-    const handler = (outerDiv!.props as { onDoubleClick: (e: unknown) => void }).onDoubleClick;
+    const handler = (outerDiv?.props as { onDoubleClick: (e: unknown) => void }).onDoubleClick;
     // Simulate border click: target has no header/body ancestor (closest always null)
     const borderTarget = { closest: (_: string) => null };
     handler({ target: borderTarget, stopPropagation: () => {} });

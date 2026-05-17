@@ -17,13 +17,13 @@ import { useMemo, useRef, useState } from 'react';
 import { colorTokenStyle } from '../lib/color-tokens';
 import { UuidContext } from '../lib/uuid-context';
 import type { Connector, Demo, DemoNode } from '../types';
-import { ViewDetailPanel } from './view-detail-panel';
 import { ViewHtmlNode } from './nodes/view-html-node';
 import { ViewIconNode } from './nodes/view-icon-node';
 import { ViewImageNode } from './nodes/view-image-node';
 import { ViewPlayNode } from './nodes/view-play-node';
 import { ViewShapeNode } from './nodes/view-shape-node';
 import { ViewStateNode } from './nodes/view-state-node';
+import { ViewDetailPanel } from './view-detail-panel';
 import { ViewEdge } from './view-edge';
 
 const nodeTypes = {

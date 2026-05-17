@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { unzipSync } from 'fflate';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { unzipSync } from 'fflate';
 
 const s3 = new S3Client({});
-const BUCKET = process.env.DIAGRAMS_BUCKET_NAME!;
+const BUCKET = process.env.DIAGRAMS_BUCKET_NAME ?? '';
 
 const MAX_TOTAL = 50 * 1024 * 1024;
 const MAX_FILE = 10 * 1024 * 1024;

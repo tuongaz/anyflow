@@ -46,12 +46,37 @@ export function ViewStateNode({ data }: NodeProps<ViewStateNodeType>) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize, fontWeight: 600, lineHeight: 1.25, wordBreak: 'break-word', overflowWrap: 'break-word', minWidth: 0, flex: 1, ...textColorStyle }}>
+        <span
+          style={{
+            fontSize,
+            fontWeight: 600,
+            lineHeight: 1.25,
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            minWidth: 0,
+            flex: 1,
+            ...textColorStyle,
+          }}
+        >
           {data.name}
         </span>
       </div>
-      <div style={{ padding: '4px 8px', flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
-        <span style={{ fontSize, color: '#64748b', lineHeight: 1.5, wordBreak: 'break-word', overflowWrap: 'break-word', width: '100%', ...textColorStyle }}>{description}</span>
+      <div
+        style={{ padding: '4px 8px', flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}
+      >
+        <span
+          style={{
+            fontSize,
+            color: '#64748b',
+            lineHeight: 1.5,
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            width: '100%',
+            ...textColorStyle,
+          }}
+        >
+          {description}
+        </span>
       </div>
       <Handle type="source" position={Position.Right} id="r" style={HANDLE_STYLE} />
       <Handle type="source" position={Position.Bottom} id="b" style={HANDLE_STYLE} />

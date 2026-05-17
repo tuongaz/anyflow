@@ -26,7 +26,12 @@ export interface ExportDialogProps {
   onCapturePreview?: () => Promise<string | undefined>;
 }
 
-export function ExportDialog({ open, onOpenChange, projectId, onCapturePreview }: ExportDialogProps) {
+export function ExportDialog({
+  open,
+  onOpenChange,
+  projectId,
+  onCapturePreview,
+}: ExportDialogProps) {
   const [email, setEmail] = useState('');
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [copied, setCopied] = useState(false);

@@ -86,7 +86,7 @@ export function ViewDetailPanel({ node, onClose }: ViewDetailPanelProps) {
           )}
           {description && <div style={{ fontSize: 13, color: '#64748b' }}>{description}</div>}
         </div>
-        <button style={closeStyle} onClick={onClose} aria-label="Close">
+        <button type="button" style={closeStyle} onClick={onClose} aria-label="Close">
           <X size={16} />
         </button>
       </div>

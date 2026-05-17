@@ -1,63 +1,55 @@
 {
-	"name": "@tuongaz/seeflow",
-	"version": "0.1.4",
-	"description": "Local studio that hosts file-defined demos as React Flow canvases wired to a running app via REST + SSE + Zod schema.",
-	"keywords": [
-		"seeflow",
-		"react-flow",
-		"diagram",
-		"architecture",
-		"playable",
-		"studio",
-		"hono",
-		"bun"
-	],
-	"homepage": "https://github.com/tuongaz/seeflow#readme",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/tuongaz/seeflow.git",
-		"directory": "apps/studio"
-	},
-	"bugs": {
-		"url": "https://github.com/tuongaz/seeflow/issues"
-	},
-	"license": "MIT",
-	"author": "Tuong Le",
-	"type": "module",
-	"bin": {
-		"seeflow": "bin/seeflow",
-		"seeflow-mcp": "bin/seeflow-mcp"
-	},
-	"files": [
-		"bin",
-		"src",
-		"!src/**/*.test.ts",
-		"dist/web",
-		"public",
-		"examples",
-		"README.md"
-	],
-	"engines": {
-		"node": ">=18"
-	},
-	"scripts": {
-		"typecheck": "tsc --noEmit",
-		"dev": "NODE_ENV=development bun --hot run src/cli.ts start",
-		"start": "bun run src/cli.ts start",
-		"test": "bun test",
-		"build:web": "cd ../web && bun run build",
-		"prepublishOnly": "bun run build:web && cp ../../README.md ./README.md"
-	},
-	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.29.0",
-		"dagre": "^0.8.5",
-		"hono": "^4.6.14",
-		"zod": "^3.23.8",
-		"zod-to-json-schema": "^3.25.2"
-	},
-	"devDependencies": {
-		"@types/bun": "^1.1.14",
-		"@types/dagre": "^0.7.54",
-		"typescript": "^5.6.3"
-	}
+  "name": "@tuongaz/seeflow",
+  "version": "0.1.4",
+  "description": "Local studio that hosts file-defined demos as React Flow canvases wired to a running app via REST + SSE + Zod schema.",
+  "keywords": [
+    "seeflow",
+    "react-flow",
+    "diagram",
+    "architecture",
+    "playable",
+    "studio",
+    "hono",
+    "bun"
+  ],
+  "homepage": "https://github.com/tuongaz/seeflow#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tuongaz/seeflow.git",
+    "directory": "apps/studio"
+  },
+  "bugs": {
+    "url": "https://github.com/tuongaz/seeflow/issues"
+  },
+  "license": "MIT",
+  "author": "Tuong Le",
+  "type": "module",
+  "bin": {
+    "seeflow": "bin/seeflow",
+    "seeflow-mcp": "bin/seeflow-mcp"
+  },
+  "files": ["bin", "src", "!src/**/*.test.ts", "dist/web", "public", "examples", "README.md"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "NODE_ENV=development bun --hot run src/cli.ts start",
+    "start": "bun run src/cli.ts start",
+    "test": "bun test",
+    "build:web": "cd ../web && bun run build",
+    "prepublishOnly": "bun run build:web && cp ../../README.md ./README.md"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dagre": "^0.8.5",
+    "hono": "^4.6.14",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "@types/dagre": "^0.7.54",
+    "typescript": "^5.6.3"
+  }
 }

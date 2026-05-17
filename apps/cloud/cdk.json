@@ -54,8 +54,6 @@
     "@aws-cdk/aws-appsync:appSyncGraphQLAPIScopeLambdaPermission": true,
     "@aws-cdk/aws-rds:preventRenderingDeprecatedCredentials": true,
     "@aws-cdk/aws-codepipeline-actions:useNewDefaultBranchForGitHubSource": true,
-    "@aws-cdk/aws-cloudwatch-actions:changeLambdaPermissionLogicalIdForLambdaAction": true,
-    "@aws-cdk/aws-codepipeline:crossAccountKeysDefaultValueToFalse": true,
     "@aws-cdk/aws-stepfunctions-tasks:useNewS3UriForBedrockInvokeModelTask": true,
     "@aws-cdk/aws-s3:keepNotificationInImportedBucket": true
   }
